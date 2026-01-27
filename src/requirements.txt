@@ -1,0 +1,11 @@
+numpy
+netCDF4
+matplotlib
+cartopy
+Pillow
+scipy
+opencv-python
+paramiko
+PyQt6
+PyQt6-Fluent-Widgets
+requests

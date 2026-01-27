@@ -1,0 +1,591 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_grid.nml - Grid pre-processing                   !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_grid.nml - 网格预处理                            !
+! -------------------------------------------------------------------- !
+
+! -------------------------------------------------------------------- !
+! Define the spectrum parameterization via SPECTRUM_NML namelist
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     SPECTRUM%XFR         = 0.            ! frequency increment
+!     SPECTRUM%FREQ1       = 0.            ! first frequency (Hz)
+!     SPECTRUM%NK          = 0             ! number of frequencies (wavenumbers)
+!     SPECTRUM%NTH         = 0             ! number of direction bins
+!     SPECTRUM%THOFF       = 0.            ! relative offset of first direction [-0.5,0.5]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 SPECTRUM_NML namelist 定义频谱参数化
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     SPECTRUM%XFR         = 0.            ! 频率增量
+!     SPECTRUM%FREQ1       = 0.            ! 起始频率 (Hz)
+!     SPECTRUM%NK          = 0             ! 频率数量（波数）
+!     SPECTRUM%NTH         = 0             ! 方向分箱数量
+!     SPECTRUM%THOFF       = 0.            ! 第一个方向的相对偏移量 [-0.5,0.5]
+! -------------------------------------------------------------------- !
+&SPECTRUM_NML
+  SPECTRUM%XFR       =  1.1
+  SPECTRUM%FREQ1     =  0.04118
+  SPECTRUM%NK        =  32
+  SPECTRUM%NTH       =  24
+/
+
+! -------------------------------------------------------------------- !
+! Define the run parameterization via RUN_NML namelist
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     RUN%FLDRY            = F             ! dry run (I/O only, no calculation)
+!     RUN%FLCX             = F             ! x-component of propagation
+!     RUN%FLCY             = F             ! y-component of propagation
+!     RUN%FLCTH            = F             ! direction shift
+!     RUN%FLCK             = F             ! wavenumber shift
+!     RUN%FLSOU            = F             ! source terms
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 RUN_NML namelist 定义运行参数化
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     RUN%FLDRY            = F             ! 干运行（仅I/O，不进行计算）
+!     RUN%FLCX             = F             ! x方向传播分量
+!     RUN%FLCY             = F             ! y方向传播分量
+!     RUN%FLCTH            = F             ! 方向偏移
+!     RUN%FLCK             = F             ! 波数偏移
+!     RUN%FLSOU            = F             ! 源项
+! -------------------------------------------------------------------- !
+&RUN_NML
+  RUN%FLCX         =  T
+  RUN%FLCY         =  T
+  RUN%FLCTH        =  T
+  RUN%FLSOU        =  T
+/
+
+! -------------------------------------------------------------------- !
+! Define the timesteps parameterization via TIMESTEPS_NML namelist
+!
+! * It is highly recommended to set up time steps which are multiple 
+!   between them. 
+!
+! * The first time step to calculate is the maximum CFL time step
+!   which depend on the lowest frequency FREQ1 previously set up and the
+!   lowest spatial grid resolution in meters DXY.
+!   reminder : 1 degree=60minutes // 1minute=1mile // 1mile=1.852km
+!   The formula for the CFL time is :
+!   Tcfl = DXY / (G / (FREQ1*4*Pi) ) with the constants Pi=3,14 and G=9.8m/s²;
+!   DTXY  ~= 90% Tcfl
+!   DTMAX ~= 3 * DTXY   (maximum global time step limit)
+!
+! * The refraction time step depends on how strong can be the current velocities
+!   on your grid :
+!   DTKTH ~= DTMAX / 2   ! in case of no or light current velocities
+!   DTKTH ~= DTMAX / 10  ! in case of strong current velocities
+!
+! * The source terms time step is usually defined between 5s and 60s.
+!   A common value is 10s.
+!   DTMIN ~= 10
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     TIMESTEPS%DTMAX      = 0.         ! maximum global time step (s)
+!     TIMESTEPS%DTXY       = 0.         ! maximum CFL time step for x-y (s)
+!     TIMESTEPS%DTKTH      = 0.         ! maximum CFL time step for k-th (s)
+!     TIMESTEPS%DTMIN      = 0.         ! minimum source term time step (s)
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 TIMESTEPS_NML namelist 定义时间步长参数化
+!
+! * 强烈建议设置彼此成倍数关系的时间步长。
+!
+! * 要计算的第一个时间步长是最大CFL时间步长，它取决于先前设置的最低频率FREQ1
+!   和以米为单位的最低空间网格分辨率DXY。
+!   提醒：1度=60分钟 // 1分钟=1海里 // 1海里=1.852公里
+!   CFL时间的公式为：
+!   Tcfl = DXY / (G / (FREQ1*4*Pi) )，其中常数Pi=3.14，G=9.8m/s²；
+!   DTXY  ~= 90% Tcfl
+!   DTMAX ~= 3 * DTXY   （最大全局时间步长限制）
+!
+! * 折射时间步长取决于网格上的流速强度：
+!   DTKTH ~= DTMAX / 2   ! 无流或弱流情况
+!   DTKTH ~= DTMAX / 10  ! 强流情况
+!
+! * 源项时间步长通常在5秒到60秒之间定义。
+!   常用值为10秒。
+!   DTMIN ~= 10
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     TIMESTEPS%DTMAX      = 0.         ! 最大全局时间步长 (秒)
+!     TIMESTEPS%DTXY       = 0.         ! x-y方向最大CFL时间步长 (秒)
+!     TIMESTEPS%DTKTH      = 0.         ! k-th方向最大CFL时间步长 (秒)
+!     TIMESTEPS%DTMIN      = 0.         ! 最小源项时间步长 (秒)
+! -------------------------------------------------------------------- !
+&TIMESTEPS_NML
+  TIMESTEPS%DTMAX        =  900
+  TIMESTEPS%DTXY         =  320
+  TIMESTEPS%DTKTH        =  300
+  TIMESTEPS%DTMIN        =  15
+/
+
+! -------------------------------------------------------------------- !
+! Define the grid to preprocess via GRID_NML namelist
+!
+! * the tunable parameters for source terms, propagation schemes, and 
+!    numerics are read using namelists. 
+! * Any namelist found in the folowing sections is temporarily written
+!   to param.scratch, and read from there if necessary. 
+! * The order of the namelists is immaterial.
+! * Namelists not needed for the given switch settings will be skipped
+!   automatically
+!
+! * grid type can be : 
+!    'RECT' : rectilinear
+!    'CURV' : curvilinear
+!    'UNST' : unstructured (triangle-based)
+!
+! * coordinate system can be : 
+!    'SPHE' : Spherical (degrees)
+!    'CART' : Cartesian (meters)
+!
+! * grid closure can only be applied in spherical coordinates
+!
+! * grid closure can be : 
+!    'NONE' : No closure is applied
+!    'SMPL' : Simple grid closure. Grid is periodic in the
+!           : i-index and wraps at i=NX+1. In other words,
+!           : (NX+1,J) => (1,J). A grid with simple closure
+!           : may be rectilinear or curvilinear.
+!    'TRPL' : Tripole grid closure : Grid is periodic in the
+!           : i-index and wraps at i=NX+1 and has closure at
+!           : j=NY+1. In other words, (NX+1,J<=NY) => (1,J)
+!           : and (I,NY+1) => (NX-I+1,NY). Tripole
+!           : grid closure requires that NX be even. A grid
+!           : with tripole closure must be curvilinear.
+!
+! * The coastline limit depth is the value which distinguish the sea 
+!   points to the land points. All the points with depth values (ZBIN)
+!   greater than this limit (ZLIM) will be considered as excluded points
+!   and will never be wet points, even if the water level grows over.
+!   It can only overwrite the status of a sea point to a land point.
+!   The value must have a negative value under the mean sea level
+!
+! * The minimum water depth allowed to compute the model is the absolute
+!   depth value (DMIN) used in the model if the input depth is lower to 
+!   avoid the model to blow up.
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     GRID%NAME             = 'unset'            ! grid name (30 char)
+!     GRID%NML              = 'namelists.nml'    ! namelists filename
+!     GRID%TYPE             = 'unset'            ! grid type
+!     GRID%COORD            = 'unset'            ! coordinate system
+!     GRID%CLOS             = 'unset'            ! grid closure
+!
+!     GRID%ZLIM             = 0.        ! coastline limit depth (m)
+!     GRID%DMIN             = 0.        ! abs. minimum water depth (m)
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 GRID_NML namelist 定义要预处理的网格
+!
+! * 源项、传播方案和数值方法的可调参数通过namelist读取。
+! * 以下部分中找到的任何namelist都会临时写入param.scratch，
+!   并在需要时从那里读取。
+! * namelist的顺序无关紧要。
+! * 对于给定的开关设置不需要的namelist将自动跳过。
+!
+! * 网格类型可以是：
+!    'RECT' : 矩形网格
+!    'CURV' : 曲线网格
+!    'UNST' : 非结构化（基于三角形）
+!
+! * 坐标系可以是：
+!    'SPHE' : 球面坐标（度）
+!    'CART' : 笛卡尔坐标（米）
+!
+! * 网格闭合只能在球面坐标中应用
+!
+! * 网格闭合可以是：
+!    'NONE' : 不应用闭合
+!    'SMPL' : 简单网格闭合。网格在i索引上是周期性的，
+!           : 并在i=NX+1处环绕。换句话说，
+!           : (NX+1,J) => (1,J)。具有简单闭合的网格
+!           : 可以是矩形或曲线网格。
+!    'TRPL' : 三极网格闭合：网格在i索引上是周期性的，
+!           : 在i=NX+1处环绕，并在j=NY+1处闭合。
+!           : 换句话说，(NX+1,J<=NY) => (1,J)
+!           : 和 (I,NY+1) => (NX-I+1,NY)。
+!           : 三极网格闭合要求NX为偶数。
+!           : 具有三极闭合的网格必须是曲线网格。
+!
+! * 海岸线限制深度是区分海点和陆点的值。所有深度值（ZBIN）
+!   大于此限制（ZLIM）的点将被视为排除点，
+!   即使水位上升，也永远不会是湿点。
+!   它只能将海点的状态覆盖为陆点。
+!   该值必须在平均海平面以下为负值。
+!
+! * 允许计算模型的最小水深是如果输入深度较低时
+!   模型中使用的绝对深度值（DMIN），以避免模型爆炸。
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     GRID%NAME             = 'unset'            ! 网格名称（30字符）
+!     GRID%NML              = 'namelists.nml'    ! namelists文件名
+!     GRID%TYPE             = 'unset'            ! 网格类型
+!     GRID%COORD            = 'unset'            ! 坐标系
+!     GRID%CLOS             = 'unset'            ! 网格闭合
+!
+!     GRID%ZLIM             = 0.        ! 海岸线限制深度 (米)
+!     GRID%DMIN             = 0.        ! 绝对最小水深 (米)
+! -------------------------------------------------------------------- !
+&GRID_NML
+  GRID%NAME         =  'I Love ZhangXiaoPeng'
+  GRID%NML          =  'namelists.nml'
+  GRID%TYPE         =  'RECT'
+  GRID%COORD        =  'SPHE'
+  GRID%CLOS         =  'NONE'
+  GRID%ZLIM         =  -0.1
+  GRID%DMIN         =  2.5
+/
+
+! -------------------------------------------------------------------- !
+! Define the rectilinear grid type via RECT_NML namelist
+! - only for RECT grids -
+!
+! * The minimum grid size is 3x3.
+!
+! * If the grid increments SX and SY are given in minutes of arc, the scaling
+!   factor SF must be set to 60. to provide an increment factor in degree.
+!
+! * If CSTRG='SMPL', then SX is forced to 360/NX.
+!
+! * value <= value_read / scale_fac
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     RECT%NX               = 0        ! number of points along x-axis
+!     RECT%NY               = 0        ! number of points along y-axis
+!
+!     RECT%SX               = 0.       ! grid increment along x-axis
+!     RECT%SY               = 0.       ! grid increment along y-axis
+!     RECT%SF               = 1.       ! scaling division factor for x-y axis
+!
+!     RECT%X0               = 0.       ! x-coordinate of lower-left corner (deg)
+!     RECT%Y0               = 0.       ! y-coordinate of lower-left corner (deg)
+!     RECT%SF0              = 1.       ! scaling division factor for x0,y0 coord
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 RECT_NML namelist 定义矩形网格类型
+! - 仅用于 RECT 网格 -
+!
+! * 最小网格尺寸为3x3。
+!
+! * 如果网格增量SX和SY以弧分给出，则缩放因子SF必须设置为60.0，
+!   以提供以度为单位的增量因子。
+!
+! * 如果CSTRG='SMPL'，则SX被强制为360/NX。
+!
+! * 值 <= 读取值 / 缩放因子
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     RECT%NX               = 0        ! x轴上的点数
+!     RECT%NY               = 0        ! y轴上的点数
+!
+!     RECT%SX               = 0.       ! x轴方向的网格增量
+!     RECT%SY               = 0.       ! y轴方向的网格增量
+!     RECT%SF               = 1.       ! x-y轴的缩放除法因子
+!
+!     RECT%X0               = 0.       ! 左下角的x坐标（度）
+!     RECT%Y0               = 0.       ! 左下角的y坐标（度）
+!     RECT%SF0              = 1.       ! x0,y0坐标的缩放除法因子
+! -------------------------------------------------------------------- !
+&RECT_NML
+  RECT%NX           =  301
+  RECT%NY           =  201
+  RECT%SX           =  3.00
+  RECT%SY           =  3.00
+  RECT%SF           =  60.00
+  RECT%X0           =  -15.0000
+  RECT%Y0           =  65.0000
+  RECT%SF0          =  1.00
+/
+
+! -------------------------------------------------------------------- !
+! Define the depth to preprocess via DEPTH_NML namelist
+! - for RECT and CURV grids -
+!
+! * if no obstruction subgrid, need to set &MISC FLAGTR = 0
+!
+! * The depth value must have negative values under the mean sea level
+!
+! * value <= value_read * scale_fac
+!
+! * IDLA : Layout indicator :
+!                  1   : Read line-by-line bottom to top.  (default)
+!                  2   : Like 1, single read statement.
+!                  3   : Read line-by-line top to bottom.
+!                  4   : Like 3, single read statement.
+! * IDFM : format indicator :
+!                  1   : Free format.  (default)
+!                  2   : Fixed format.
+!                  3   : Unformatted.
+! * FORMAT : element format to read :
+!               '(....)'  : auto detected  (default)
+!               '(f10.6)' : float type
+!
+! * Example :
+!      IDF  SF     IDLA  IDFM   FORMAT    FILENAME
+!      50   0.001  1     1     '(....)'  'GLOB-30M.bot'
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     DEPTH%SF             = 1.       ! scale factor
+!     DEPTH%FILENAME       = 'unset'  ! filename
+!     DEPTH%IDF            = 50       ! file unit number
+!     DEPTH%IDLA           = 1        ! layout indicator
+!     DEPTH%IDFM           = 1        ! format indicator
+!     DEPTH%FORMAT         = '(....)' ! formatted read format
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 DEPTH_NML namelist 定义要预处理的深度
+! - 用于 RECT 和 CURV 网格 -
+!
+! * 如果没有障碍子网格，需要设置 &MISC FLAGTR = 0
+!
+! * 深度值必须在平均海平面以下为负值
+!
+! * 值 <= 读取值 * 缩放因子
+!
+! * IDLA : 布局指示符：
+!                  1   : 从下到上逐行读取。（默认）
+!                  2   : 类似1，单次读取语句。
+!                  3   : 从上到下逐行读取。
+!                  4   : 类似3，单次读取语句。
+! * IDFM : 格式指示符：
+!                  1   : 自由格式。（默认）
+!                  2   : 固定格式。
+!                  3   : 无格式。
+! * FORMAT : 要读取的元素格式：
+!               '(....)'  : 自动检测（默认）
+!               '(f10.6)' : 浮点类型
+!
+! * 示例：
+!      IDF  SF     IDLA  IDFM   FORMAT    FILENAME
+!      50   0.001  1     1     '(....)'  'GLOB-30M.bot'
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     DEPTH%SF             = 1.       ! 缩放因子
+!     DEPTH%FILENAME       = 'unset'  ! 文件名
+!     DEPTH%IDF            = 50       ! 文件单元号
+!     DEPTH%IDLA           = 1        ! 布局指示符
+!     DEPTH%IDFM           = 1        ! 格式指示符
+!     DEPTH%FORMAT         = '(....)' ! 格式化读取格式
+! -------------------------------------------------------------------- !
+&DEPTH_NML
+  DEPTH%SF        =  1
+  DEPTH%FILENAME  =  'grid.bot'
+/
+
+! -------------------------------------------------------------------- !
+! Define the point status map via MASK_NML namelist
+! - only for RECT and CURV grids -
+!
+! * If no mask defined, INBOUND can be used to set active boundaries
+!
+! * IDLA : Layout indicator :
+!                  1   : Read line-by-line bottom to top.  (default)
+!                  2   : Like 1, single read statement.
+!                  3   : Read line-by-line top to bottom.
+!                  4   : Like 3, single read statement.
+! * IDFM : format indicator :
+!                  1   : Free format.  (default)
+!                  2   : Fixed format.
+!                  3   : Unformatted.
+! * FORMAT : element format to read :
+!               '(....)'  : auto detected  (default)
+!               '(f10.6)' : float type
+!
+! * Example :
+!      IDF  IDLA  IDFM   FORMAT    FILENAME
+!      60   1     1     '(....)'  'GLOB-30M.mask'
+!
+! * The legend for the input map is :
+!    -2 : Excluded boundary point (covered by ice)
+!    -1 : Excluded sea point (covered by ice)
+!     0 : Excluded land point
+!     1 : Sea point
+!     2 : Active boundary point
+!     3 : Excluded grid point
+!     7 : Ice point
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     MASK%FILENAME         = 'unset'  ! filename
+!     MASK%IDF              = 60       ! file unit number
+!     MASK%IDLA             = 1        ! layout indicator
+!     MASK%IDFM             = 1        ! format indicator
+!     MASK%FORMAT           = '(....)' ! formatted read format
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 MASK_NML namelist 定义点状态映射
+! - 仅用于 RECT 和 CURV 网格 -
+!
+! * 如果未定义掩码，可以使用INBOUND设置活动边界
+!
+! * IDLA : 布局指示符：
+!                  1   : 从下到上逐行读取。（默认）
+!                  2   : 类似1，单次读取语句。
+!                  3   : 从上到下逐行读取。
+!                  4   : 类似3，单次读取语句。
+! * IDFM : 格式指示符：
+!                  1   : 自由格式。（默认）
+!                  2   : 固定格式。
+!                  3   : 无格式。
+! * FORMAT : 要读取的元素格式：
+!               '(....)'  : 自动检测（默认）
+!               '(f10.6)' : 浮点类型
+!
+! * 示例：
+!      IDF  IDLA  IDFM   FORMAT    FILENAME
+!      60   1     1     '(....)'  'GLOB-30M.mask'
+!
+! * 输入映射的图例为：
+!    -2 : 排除的边界点（被冰覆盖）
+!    -1 : 排除的海点（被冰覆盖）
+!     0 : 排除的陆点
+!     1 : 海点
+!     2 : 活动边界点
+!     3 : 排除的网格点
+!     7 : 冰点
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     MASK%FILENAME         = 'unset'  ! 文件名
+!     MASK%IDF              = 60       ! 文件单元号
+!     MASK%IDLA             = 1        ! 布局指示符
+!     MASK%IDFM             = 1        ! 格式指示符
+!     MASK%FORMAT           = '(....)' ! 格式化读取格式
+! -------------------------------------------------------------------- !
+&MASK_NML
+  MASK%FILENAME  =  'grid.mask'
+/
+
+! -------------------------------------------------------------------- !
+! Define the obstruction map via OBST_NML namelist
+! - only for RECT and CURV grids -
+!
+! * only used if &MISC FLAGTR = 1 in param.nml
+!                (transparencies at cell boundaries)
+!          or if &MISC FLAGTR = 2 in param.nml
+!                (transparencies at cell centers)
+!          or if &MISC FLAGTR = 3 in param.nml
+!                (transparencies at cell boundaries with cont. ice)
+!          or if &MISC FLAGTR = 4 in param.nml
+!                (transparencies at cell centers with cont. ice)
+!
+! * value <= value_read * scale_fac
+!
+! * IDLA : Layout indicator :
+!                  1   : Read line-by-line bottom to top.  (default)
+!                  2   : Like 1, single read statement.
+!                  3   : Read line-by-line top to bottom.
+!                  4   : Like 3, single read statement.
+! * IDFM : format indicator :
+!                  1   : Free format.  (default)
+!                  2   : Fixed format.
+!                  3   : Unformatted.
+! * FORMAT : element format to read :
+!               '(....)'  : auto detected  (default)
+!               '(f10.6)' : float type
+!
+! * Example :
+!      IDF  SF      IDLA  IDFM   FORMAT    FILENAME
+!      70   0.0001  1     1     '(....)'  'GLOB-30M.obst'
+!
+! * If the file unit number equals 10, then the data is read from this
+!   file. The data must follow the above record. No comment lines are
+!   allowed within the data input.
+!
+! * In the case of unstructured grids, no obstruction file can be added
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     OBST%SF              = 1.       ! scale factor
+!     OBST%FILENAME        = 'unset'  ! filename
+!     OBST%IDF             = 70       ! file unit number
+!     OBST%IDLA            = 1        ! layout indicator
+!     OBST%IDFM            = 1        ! format indicator
+!     OBST%FORMAT          = '(....)' ! formatted read format
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 OBST_NML namelist 定义障碍映射
+! - 仅用于 RECT 和 CURV 网格 -
+!
+! * 仅在param.nml中&MISC FLAGTR = 1时使用
+!                （单元边界处的透明度）
+!          或如果param.nml中&MISC FLAGTR = 2
+!                （单元中心处的透明度）
+!          或如果param.nml中&MISC FLAGTR = 3
+!                （单元边界处的透明度，含连续冰）
+!          或如果param.nml中&MISC FLAGTR = 4
+!                （单元中心处的透明度，含连续冰）
+!
+! * 值 <= 读取值 * 缩放因子
+!
+! * IDLA : 布局指示符：
+!                  1   : 从下到上逐行读取。（默认）
+!                  2   : 类似1，单次读取语句。
+!                  3   : 从上到下逐行读取。
+!                  4   : 类似3，单次读取语句。
+! * IDFM : 格式指示符：
+!                  1   : 自由格式。（默认）
+!                  2   : 固定格式。
+!                  3   : 无格式。
+! * FORMAT : 要读取的元素格式：
+!               '(....)'  : 自动检测（默认）
+!               '(f10.6)' : 浮点类型
+!
+! * 示例：
+!      IDF  SF      IDLA  IDFM   FORMAT    FILENAME
+!      70   0.0001  1     1     '(....)'  'GLOB-30M.obst'
+!
+! * 如果文件单元号等于10，则从该文件读取数据。
+!   数据必须遵循上述记录。数据输入中不允许有注释行。
+!
+! * 对于非结构化网格，无法添加障碍文件
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     OBST%SF              = 1.       ! 缩放因子
+!     OBST%FILENAME        = 'unset'  ! 文件名
+!     OBST%IDF             = 70       ! 文件单元号
+!     OBST%IDLA            = 1        ! 布局指示符
+!     OBST%IDFM            = 1        ! 格式指示符
+!     OBST%FORMAT          = '(....)' ! 格式化读取格式
+! -------------------------------------------------------------------- !
+&OBST_NML
+  OBST%SF        =  0.010000
+  OBST%FILENAME  =  'grid.obst'
+/
+
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - end of namelist                                      !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - namelist结束                                          !
+! -------------------------------------------------------------------- ! 

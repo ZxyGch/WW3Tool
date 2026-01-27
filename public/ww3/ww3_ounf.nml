@@ -1,0 +1,108 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III ww3_ounf.nml - Grid output post-processing             !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III ww3_ounf.nml - 网格输出后处理                          !
+! -------------------------------------------------------------------- !
+
+! -------------------------------------------------------------------- !
+! Define the output fields to postprocess via FIELD_NML namelist
+!
+! * the detailed list of field names FIELD%LIST is given in ww3_shel.nml
+!  DPT CUR WND AST WLV ICE IBG D50 IC1 IC5
+!  HS LM T02 T0M1 T01 FP DIR SPR DP HIG
+!  EF TH1M STH1M TH2M STH2M WN
+!  PHS PTP PLP PDIR PSPR PWS PDP PQP PPE PGW PSW PTM10 PT01 PT02 PEP TWS PNR
+!  UST CHA CGE FAW TAW TWA WCC WCF WCH WCM FWS
+!  SXY TWO BHD FOC TUS USS P2S USF P2L TWI FIC USP TOC
+!  ABR UBR BED FBB TBB
+!  MSS MSC MSD MCD QP QKK SKW EMB EMC
+!  DTD FC CFX CFD CFK
+!  U1 U2
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     FIELD%TIMESTART            = '19000101 000000'  ! Stop date for the output field
+!     FIELD%TIMESTRIDE           = '0'                ! Time stride for the output field
+!     FIELD%TIMESTOP             = '29001231 000000'  ! Stop date for the output field
+!     FIELD%TIMECOUNT            = '1000000000'       ! Number of time steps
+!     FIELD%TIMESPLIT            = 6                  ! [0(nodate),4(yearly),6(monthly),8(daily),10(hourly)]
+!     FIELD%LIST                 = 'unset'            ! List of output fields
+!     FIELD%PARTITION            = '0 1 2 3'          ! List of wave partitions ['0 1 2 3 4 5']
+!     FIELD%SAMEFILE             = T                  ! All the variables in the same file [T|F]
+!     FIELD%TYPE                 = 3                  ! [2 = SHORT, 3 = it depends , 4 = REAL]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FIELD_NML namelist 定义要后处理的输出场
+!
+! * 字段名称的详细列表 FIELD%LIST 在 ww3_shel.nml 中给出
+!  DPT CUR WND AST WLV ICE IBG D50 IC1 IC5
+!  HS LM T02 T0M1 T01 FP DIR SPR DP HIG
+!  EF TH1M STH1M TH2M STH2M WN
+!  PHS PTP PLP PDIR PSPR PWS PDP PQP PPE PGW PSW PTM10 PT01 PT02 PEP TWS PNR
+!  UST CHA CGE FAW TAW TWA WCC WCF WCH WCM FWS
+!  SXY TWO BHD FOC TUS USS P2S USF P2L TWI FIC USP TOC
+!  ABR UBR BED FBB TBB
+!  MSS MSC MSD MCD QP QKK SKW EMB EMC
+!  DTD FC CFX CFD CFK
+!  U1 U2
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FIELD%TIMESTART            = '19000101 000000'  ! 输出场的开始日期
+!     FIELD%TIMESTRIDE           = '0'                ! 输出场的时间步长
+!     FIELD%TIMESTOP             = '29001231 000000'  ! 输出场的结束日期
+!     FIELD%TIMECOUNT            = '1000000000'       ! 时间步数
+!     FIELD%TIMESPLIT            = 6                  ! [0(无日期),4(年),6(月),8(日),10(小时)]
+!     FIELD%LIST                 = 'unset'            ! 输出场列表
+!     FIELD%PARTITION            = '0 1 2 3'          ! 波浪分区列表 ['0 1 2 3 4 5']
+!     FIELD%SAMEFILE             = T                  ! 所有变量在同一文件中 [T|F]
+!     FIELD%TYPE                 = 3                  ! [2 = SHORT, 3 = 取决于, 4 = REAL]
+! -------------------------------------------------------------------- !
+&FIELD_NML
+  FIELD%TIMESTART        =  '20250103 000000'
+  FIELD%TIMESTRIDE       =  '3600'
+  FIELD%LIST             =  'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
+  FIELD%TIMESPLIT        =  4
+  FIELD%PARTITION        =  '0 1'
+  FIELD%TYPE             =  4
+/
+
+! -------------------------------------------------------------------- !
+! Define the content of the output file via FILE_NML namelist
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     FILE%PREFIX        = 'ww3.'            ! Prefix for output file name
+!     FILE%NETCDF        = 3                 ! Netcdf version [3|4]
+!     FILE%IX0           = 1                 ! First X-axis or node index
+!     FILE%IXN           = 1000000000        ! Last X-axis or node index
+!     FILE%IY0           = 1                 ! First Y-axis index
+!     FILE%IYN           = 1000000000        ! Last Y-axis index
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FILE_NML namelist 定义输出文件的内容
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FILE%PREFIX        = 'ww3.'            ! 输出文件名的前缀
+!     FILE%NETCDF        = 3                 ! Netcdf版本 [3|4]
+!     FILE%IX0           = 1                 ! 第一个X轴或节点索引
+!     FILE%IXN           = 1000000000        ! 最后一个X轴或节点索引
+!     FILE%IY0           = 1                 ! 第一个Y轴索引
+!     FILE%IYN           = 1000000000        ! 最后一个Y轴索引
+! -------------------------------------------------------------------- !
+&FILE_NML
+  FILE%NETCDF        = 4
+/
+
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - end of namelist                                      !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - namelist结束                                          !
+! -------------------------------------------------------------------- !

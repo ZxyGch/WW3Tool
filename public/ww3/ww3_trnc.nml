@@ -1,0 +1,63 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_trnc.nml - Track output post-processing          !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_trnc.nml - 轨迹输出后处理                        !
+! -------------------------------------------------------------------- !
+
+
+! -------------------------------------------------------------------- !
+! Define the output fields to postprocess via TRACK_NML namelist
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     TRACK%TIMESTART            = '19000101 000000'  ! Start date for the output field
+!     TRACK%TIMESTRIDE           = '0'                ! Time stride for the output field (seconds)
+!     TRACK%TIMECOUNT            = '1000000000'       ! Number of time steps
+!     TRACK%TIMESPLIT            = 6                  ! [4(yearly),6(monthly),8(daily),10(hourly)]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 TRACK_NML namelist 定义要后处理的输出字段
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     TRACK%TIMESTART            = '19000101 000000'  ! 输出字段的开始日期
+!     TRACK%TIMESTRIDE           = '0'                ! 输出字段的时间步长（秒）
+!     TRACK%TIMECOUNT            = '1000000000'       ! 时间步数
+!     TRACK%TIMESPLIT            = 6                  ! [4(按年),6(按月),8(按日),10(按小时)]
+! -------------------------------------------------------------------- !
+&TRACK_NML
+  TRACK%TIMESTART        =  '20250103 000000'    
+  TRACK%TIMESTRIDE       =  '3600'               
+  TRACK%TIMESPLIT        =  4
+/
+
+
+! -------------------------------------------------------------------- !
+! Define the content of the output file via FILE_NML namelist
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     FILE%PREFIX        = 'ww3.'            ! Prefix for output file name
+!     FILE%NETCDF        = 3                 ! Netcdf version [3|4]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FILE_NML namelist 定义输出文件的内容
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FILE%PREFIX        = 'ww3.'            ! 输出文件名的前缀
+!     FILE%NETCDF        = 3                 ! Netcdf 版本 [3|4]
+! -------------------------------------------------------------------- !
+&FILE_NML
+  FILE%PREFIX        = 'ww3.'              
+  FILE%NETCDF        = 4                   
+/
+
+
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - end of namelist                                      !
+! -------------------------------------------------------------------- !
