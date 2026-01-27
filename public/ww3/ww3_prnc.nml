@@ -1,0 +1,153 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III ww3_prnc.nml - Field preprocessor                      !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III ww3_prnc.nml - 场预处理程序                           !
+! -------------------------------------------------------------------- !
+
+
+! -------------------------------------------------------------------- !
+! Define the forcing fields to preprocess via FORCING_NML namelist
+!
+! * only one FORCING%FIELD can be set at true
+! * only one FORCING%grid can be set at true
+! * tidal constituents FORCING%tidal is only available on grid%asis with FIELD%level or FIELD%current
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     FORCING%TIMESTART            = '19000101 000000'  ! Start date for the forcing field
+!     FORCING%TIMESTOP             = '29001231 000000'  ! Stop date for the forcing field
+!
+!     FORCING%FIELD%ICE_PARAM1     = F           ! Ice thickness                      (1-component)
+!     FORCING%FIELD%ICE_PARAM2     = F           ! Ice viscosity                      (1-component)
+!     FORCING%FIELD%ICE_PARAM3     = F           ! Ice density                        (1-component)
+!     FORCING%FIELD%ICE_PARAM4     = F           ! Ice modulus                        (1-component)
+!     FORCING%FIELD%ICE_PARAM5     = F           ! Ice floe mean diameter             (1-component)
+!     FORCING%FIELD%MUD_DENSITY    = F           ! Mud density                        (1-component)
+!     FORCING%FIELD%MUD_THICKNESS  = F           ! Mud thickness                      (1-component)
+!     FORCING%FIELD%MUD_VISCOSITY  = F           ! Mud viscosity                      (1-component)
+!     FORCING%FIELD%WATER_LEVELS   = F           ! Level                              (1-component)
+!     FORCING%FIELD%CURRENTS       = F           ! Current                            (2-components)
+!     FORCING%FIELD%WINDS          = F           ! Wind                               (2-components)
+!     FORCING%FIELD%WIND_AST       = F           ! Wind and air-sea temp. dif.        (3-components)
+!     INPUT%FORCING%ATM_MOMENTUM   = f           ! Atmospheric momentum               (2-components)
+!     INPUT%FORCING%AIR_DENSITY    = f           ! Air density                        (1-component)
+!     FORCING%FIELD%ICE_CONC       = F           ! Ice concentration                  (1-component)
+!     FORCING%FIELD%ICE_BERG       = F           ! Icebergs and sea ice concentration (2-components)
+!     FORCING%FIELD%DATA_ASSIM     = F           ! Data for assimilation              (1-component)
+!
+!     FORCING%GRID%ASIS            = F           ! Transfert field 'as is' on the model grid
+!     FORCING%GRID%LATLON          = F           ! Define field on regular lat/lon or cartesian grid
+!
+!     FORCING%TIDAL                = 'unset'     ! Set the tidal constituents [FAST | VFAST | 'M2 S2 N2']
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FORCING_NML namelist 定义要预处理的强迫场
+!
+! * 只能将 FORCING%FIELD 中的一个设置为 true
+! * 只能将 FORCING%grid 中的一个设置为 true
+! * 潮汐分量 FORCING%tidal 仅在 grid%asis 上可用，且需要 FIELD%level 或 FIELD%current
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FORCING%TIMESTART            = '19000101 000000'  ! 强迫场的开始日期
+!     FORCING%TIMESTOP             = '29001231 000000'  ! 强迫场的结束日期
+!
+!     FORCING%FIELD%ICE_PARAM1     = F           ! 冰厚度                      (1分量)
+!     FORCING%FIELD%ICE_PARAM2     = F           ! 冰粘度                      (1分量)
+!     FORCING%FIELD%ICE_PARAM3     = F           ! 冰密度                      (1分量)
+!     FORCING%FIELD%ICE_PARAM4     = F           ! 冰模量                      (1分量)
+!     FORCING%FIELD%ICE_PARAM5     = F           ! 冰浮冰平均直径               (1分量)
+!     FORCING%FIELD%MUD_DENSITY    = F           ! 泥密度                      (1分量)
+!     FORCING%FIELD%MUD_THICKNESS  = F           ! 泥厚度                      (1分量)
+!     FORCING%FIELD%MUD_VISCOSITY  = F           ! 泥粘度                      (1分量)
+!     FORCING%FIELD%WATER_LEVELS   = F           ! 水位                        (1分量)
+!     FORCING%FIELD%CURRENTS       = F           ! 流场                        (2分量)
+!     FORCING%FIELD%WINDS          = F           ! 风场                        (2分量)
+!     FORCING%FIELD%WIND_AST       = F           ! 风和海气温差                  (3分量)
+!     INPUT%FORCING%ATM_MOMENTUM   = f           ! 大气动量                    (2分量)
+!     INPUT%FORCING%AIR_DENSITY    = f           ! 空气密度                    (1分量)
+!     FORCING%FIELD%ICE_CONC       = F           ! 冰浓度                      (1分量)
+!     FORCING%FIELD%ICE_BERG       = F           ! 冰山和海冰浓度               (2分量)
+!     FORCING%FIELD%DATA_ASSIM     = F           ! 同化数据                    (1分量)
+!
+!     FORCING%GRID%ASIS            = F           ! 将场"按原样"传输到模型网格
+!     FORCING%GRID%LATLON          = F           ! 在规则经纬度或笛卡尔网格上定义场
+!
+!     FORCING%TIDAL                = 'unset'     ! 设置潮汐分量 [FAST | VFAST | 'M2 S2 N2']
+! -------------------------------------------------------------------- !
+&FORCING_NML
+  FORCING%TIMESTART            = '19000101 000000'  
+  FORCING%TIMESTOP             = '29001231 000000'  
+  FORCING%FIELD%WINDS          = T
+  FORCING%FIELD%CURRENTS       = F
+  FORCING%FIELD%WATER_LEVELS   = F
+  FORCING%FIELD%ICE_CONC       = F
+  FORCING%FIELD%ICE_PARAM1     = F
+  FORCING%GRID%LATLON          = T
+/
+
+! -------------------------------------------------------------------- !
+! Define the content of the input file via FILE_NML namelist
+!
+! * input file must respect netCDF format and CF conventions
+! * input file must contain :
+!      -dimension : time, name expected to be called time
+!      -dimension : longitude/latitude, names can defined in the namelist
+!      -variable : time defined along time dimension
+!      -attribute : time with attributes units written as ISO8601 convention
+!      -attribute : time with attributes calendar set to standard as CF convention
+!      -variable : longitude defined along longitude dimension
+!      -variable : latitude defined along latitude dimension
+!      -variable : field defined along time,latitude,longitude dimensions
+! * FILE%VAR(I) must be set for each field component
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     FILE%FILENAME      = 'unset'           ! relative path input file name
+!     FILE%LONGITUDE     = 'unset'           ! longitude/x dimension name
+!     FILE%LATITUDE      = 'unset'           ! latitude/y dimension name
+!     FILE%VAR(I)        = 'unset'           ! field component
+!     FILE%TIMESHIFT     = '00000000 000000' ! shift the time value to 'YYYYMMDD HHMMSS'
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FILE_NML namelist 定义输入文件的内容
+!
+! * 输入文件必须符合 netCDF 格式和 CF 约定
+! * 输入文件必须包含：
+!      -维度 : 时间，名称预期为 time
+!      -维度 : 经度/纬度，名称可在 namelist 中定义
+!      -变量 : 沿时间维度定义的时间
+!      -属性 : 时间属性单位按 ISO8601 约定编写
+!      -属性 : 时间属性日历按 CF 约定设置为标准
+!      -变量 : 沿经度维度定义的经度
+!      -变量 : 沿纬度维度定义的纬度
+!      -变量 : 沿时间、纬度、经度维度定义的场
+! * FILE%VAR(I) 必须为每个场分量设置
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FILE%FILENAME      = 'unset'           ! 相对路径输入文件名
+!     FILE%LONGITUDE     = 'unset'           ! 经度/x维度名称
+!     FILE%LATITUDE      = 'unset'           ! 纬度/y维度名称
+!     FILE%VAR(I)        = 'unset'           ! 场分量
+!     FILE%TIMESHIFT     = '00000000 000000' ! 将时间值偏移到 'YYYYMMDD HHMMSS'
+! -------------------------------------------------------------------- !
+&FILE_NML
+  FILE%FILENAME      = 'wind.nc'
+  FILE%LONGITUDE     = 'longitude'
+  FILE%LATITUDE      = 'latitude'
+  FILE%VAR(1)        = 'u10'
+  FILE%VAR(2)        = 'v10'
+/
+
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - end of namelist                                      !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - namelist结束                                          !
+! -------------------------------------------------------------------- !

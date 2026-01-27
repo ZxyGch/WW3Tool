@@ -1,0 +1,289 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_multi.nml - multi-grid model                     !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_multi.nml - 多网格模型                          !
+! -------------------------------------------------------------------- !
+
+! -------------------------------------------------------------------- !
+! Define top-level model parameters via DOMAIN_NML namelist
+!
+! * IOSTYP defines the output server mode for parallel implementation.
+!             0 : No data server processes, direct access output from
+!                 each process (requires true parallel file system).
+!             1 : No data server process. All output for each type 
+!                 performed by process that performs computations too.
+!             2 : Last process is reserved for all output, and does no
+!                 computing.
+!             3 : Multiple dedicated output processes.
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     DOMAIN%NRINP  =  0  ! Number of grids defining input fields.
+!     DOMAIN%NRGRD  =  1  ! Number of wave model grids.
+!     DOMAIN%UNIPTS =  F  ! Flag for using unified point output file.
+!     DOMAIN%IOSTYP =  1  ! Output server type
+!     DOMAIN%UPPROC =  F  ! Flag for dedicated process for unified point output.
+!     DOMAIN%PSHARE =  F  ! Flag for grids sharing dedicated output processes.
+!     DOMAIN%FLGHG1 =  F  ! Flag for masking computation in two-way nesting
+!     DOMAIN%FLGHG2 =  F  ! Flag for masking at printout time
+!     DOMAIN%START  = '19680606 000000'  ! Start date for the entire model
+!     DOMAIN%STOP   = '19680607 000000'  ! Stop date for the entire model
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 DOMAIN_NML namelist 定义顶级模型参数
+!
+! * IOSTYP 定义并行实现的输出服务器模式。
+!             0 : 无数据服务器进程，每个进程直接访问输出
+!                （需要真正的并行文件系统）。
+!             1 : 无数据服务器进程。所有输出由执行计算的进程执行。
+!             2 : 最后一个进程保留用于所有输出，不进行计算。
+!             3 : 多个专用输出进程。
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     DOMAIN%NRINP  =  0  ! 定义输入场的网格数量（用于共享强迫场）
+!     DOMAIN%NRGRD  =  1  ! 波浪模型网格数量
+!     DOMAIN%UNIPTS =  F  ! 使用统一点输出文件的标志
+!     DOMAIN%IOSTYP =  1  ! 输出服务器类型
+!     DOMAIN%UPPROC =  F  ! 统一点输出专用进程的标志
+!     DOMAIN%PSHARE =  F  ! 网格共享专用输出进程的标志
+!     DOMAIN%FLGHG1 =  F  ! 双向嵌套中掩码计算的标志
+!     DOMAIN%FLGHG2 =  F  ! 打印时掩码的标志
+!     DOMAIN%START  = '19680606 000000'  ! 整个模型的开始日期
+!     DOMAIN%STOP   = '19680607 000000'  ! 整个模型的结束日期
+! -------------------------------------------------------------------- !
+&DOMAIN_NML
+  DOMAIN%NRINP  = 0
+  DOMAIN%NRGRD  = 2
+  DOMAIN%UNIPTS = F
+  DOMAIN%START  = '20250103 000000'
+  DOMAIN%STOP   = '20250105 235959'
+/
+
+! -------------------------------------------------------------------- !
+! Define each input grid via the INPUT_GRID_NML namelist
+!
+! * index I must match indexes from 1 to DOMAIN%NRINP
+! * INPUT(I)%NAME must be set for each active input grid I
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     INPUT(I)%NAME                  = 'unset'
+!     INPUT(I)%FORCING%WATER_LEVELS  = F
+!     INPUT(I)%FORCING%CURRENTS      = F
+!     INPUT(I)%FORCING%WINDS         = F
+!     INPUT(I)%FORCING%ATM_MOMENTUM  = F
+!     INPUT(I)%FORCING%AIR_DENSITY   = F
+!     INPUT(I)%FORCING%ICE_CONC      = F
+!     INPUT(I)%FORCING%ICE_PARAM1    = F
+!     INPUT(I)%FORCING%ICE_PARAM2    = F
+!     INPUT(I)%FORCING%ICE_PARAM3    = F
+!     INPUT(I)%FORCING%ICE_PARAM4    = F
+!     INPUT(I)%FORCING%ICE_PARAM5    = F
+!     INPUT(I)%FORCING%MUD_DENSITY   = F
+!     INPUT(I)%FORCING%MUD_THICKNESS = F
+!     INPUT(I)%FORCING%MUD_VISCOSITY = F
+!     INPUT(I)%ASSIM%MEAN            = F
+!     INPUT(I)%ASSIM%SPEC1D          = F
+!     INPUT(I)%ASSIM%SPEC2D          = F
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 INPUT_GRID_NML namelist 定义每个输入网格
+!
+! * 索引 I 必须匹配从 1 到 DOMAIN%NRINP 的索引
+! * 必须为每个活动输入网格 I 设置 INPUT(I)%NAME
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     INPUT(I)%NAME                  = 'unset'
+!     INPUT(I)%FORCING%WATER_LEVELS  = F
+!     INPUT(I)%FORCING%CURRENTS      = F
+!     INPUT(I)%FORCING%WINDS         = F
+!     INPUT(I)%FORCING%ATM_MOMENTUM  = F
+!     INPUT(I)%FORCING%AIR_DENSITY   = F
+!     INPUT(I)%FORCING%ICE_CONC      = F
+!     INPUT(I)%FORCING%ICE_PARAM1    = F
+!     INPUT(I)%FORCING%ICE_PARAM2    = F
+!     INPUT(I)%FORCING%ICE_PARAM3    = F
+!     INPUT(I)%FORCING%ICE_PARAM4    = F
+!     INPUT(I)%FORCING%ICE_PARAM5    = F
+!     INPUT(I)%FORCING%MUD_DENSITY   = F
+!     INPUT(I)%FORCING%MUD_THICKNESS = F
+!     INPUT(I)%FORCING%MUD_VISCOSITY = F
+!     INPUT(I)%ASSIM%MEAN            = F
+!     INPUT(I)%ASSIM%SPEC1D          = F
+!     INPUT(I)%ASSIM%SPEC2D          = F
+! -------------------------------------------------------------------- !
+&INPUT_GRID_NML
+  INPUT(1)%NAME                  = 'wind'
+  INPUT(1)%FORCING%WINDS         = T
+  
+  INPUT(2)%NAME                  = 'current'
+  INPUT(2)%FORCING%CURRENTS      = F
+  
+  INPUT(3)%NAME                  = 'level'
+  INPUT(3)%FORCING%WATER_LEVELS  = F
+  
+  INPUT(4)%NAME                  = 'ice'
+  INPUT(4)%FORCING%ICE_CONC      = F
+
+  INPUT(5)%NAME                  = 'ice1'
+  INPUT(5)%FORCING%ICE_PARAM1    = F
+/
+! -------------------------------------------------------------------- !
+! Define each model grid via the MODEL_GRID_NML namelist
+!
+! * index I must match indexes from 1 to DOMAIN%NRGRD
+! * MODEL(I)%NAME must be set for each active model grid I
+! * The grid file will be automatically found as mod_def.MODEL(I)%NAME
+! * FORCING can be set as :
+!    - 'no'          : This input is not used.
+!    - 'native'      : This grid has its own input files, e.g. grid
+!                      grdX (mod_def.grdX) uses ice.grdX.
+!    - 'INPUT%NAME'  : Take input from the grid identified by
+!                      INPUT%NAME.
+! * RESOURCE%RANK_ID : Rank number of grid (internally sorted and reassigned).
+! * RESOURCE%GROUP_ID : Group number (internally reassigned so that different
+!                                     ranks result in different group numbers).
+! * RESOURCE%COMM_FRAC : Fraction of communicator (processes) used for this grid.
+! * RESOURCE%BOUND_FLAG : Flag identifying dumping of boundary data used by this
+!                         grid. If true, the file nest.MODID is generated.
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     MODEL(I)%NAME                  = 'unset'
+!     MODEL(I)%FORCING%WATER_LEVELS  = 'no'
+!     MODEL(I)%FORCING%CURRENTS      = 'no'
+!     MODEL(I)%FORCING%WINDS         = 'no'
+!     MODEL(I)%FORCING%ATM_MOMENTUM  = 'no'
+!     MODEL(I)%FORCING%AIR_DENSITY   = 'no'
+!     MODEL(I)%FORCING%ICE_CONC      = 'no'
+!     MODEL(I)%FORCING%ICE_PARAM1    = 'no'
+!     MODEL(I)%FORCING%ICE_PARAM2    = 'no'
+!     MODEL(I)%FORCING%ICE_PARAM3    = 'no'
+!     MODEL(I)%FORCING%ICE_PARAM4    = 'no'
+!     MODEL(I)%FORCING%ICE_PARAM5    = 'no'
+!     MODEL(I)%FORCING%MUD_DENSITY   = 'no'
+!     MODEL(I)%FORCING%MUD_THICKNESS = 'no'
+!     MODEL(I)%FORCING%MUD_VISCOSITY = 'no'
+!     MODEL(I)%ASSIM%MEAN            = 'no'
+!     MODEL(I)%ASSIM%SPEC1d          = 'no'
+!     MODEL(I)%ASSIM%SPEC2d          = 'no'
+!     MODEL(I)%RESOURCE%RANK_ID      = I
+!     MODEL(I)%RESOURCE%GROUP_ID     = 1
+!     MODEL(I)%RESOURCE%COMM_FRAC    = 0.00,1.00
+!     MODEL(I)%RESOURCE%BOUND_FLAG   = F
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 MODEL_GRID_NML namelist 定义每个模型网格
+!
+! * 索引 I 必须匹配从 1 到 DOMAIN%NRGRD 的索引
+! * 必须为每个活动模型网格 I 设置 MODEL(I)%NAME
+! * 网格文件将自动查找为 mod_def.MODEL(I)%NAME
+! * FORCING 可以设置为：
+!    - 'no'          : 不使用此输入
+!    - 'native'      : 此网格有自己的输入文件
+!    - 'INPUT%NAME'  : 从由 INPUT%NAME 标识的网格获取输入
+! * RESOURCE%RANK_ID : 网格的等级号（内部排序和重新分配）
+! * RESOURCE%GROUP_ID : 组号（内部重新分配）
+! * RESOURCE%COMM_FRAC : 用于此网格的通信器（进程）分数
+! * RESOURCE%BOUND_FLAG : 标识此网格使用的边界数据转储的标志
+!
+! * namelist 必须以 / 结尾
+! -------------------------------------------------------------------- !
+&MODEL_GRID_NML
+
+  MODEL(1)%NAME                  = 'coarse'
+  MODEL(1)%FORCING%WINDS         = 'native'
+  MODEL(1)%FORCING%CURRENTS      = 'no'
+  MODEL(1)%FORCING%WATER_LEVELS  = 'no'
+  MODEL(1)%FORCING%ICE_CONC      = 'no'
+  MODEL(1)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(1)%RESOURCE              = 1 1 0.00 0.50 F
+
+  MODEL(2)%NAME                  = 'fine'
+  MODEL(2)%FORCING%WINDS         = 'native'
+  MODEL(2)%FORCING%CURRENTS      = 'no'
+  MODEL(2)%FORCING%WATER_LEVELS  = 'no'
+  MODEL(2)%FORCING%ICE_CONC      = 'no'
+  MODEL(2)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(2)%RESOURCE              = 2 1 0.50 1.00 F
+/
+
+! -------------------------------------------------------------------- !
+! Define the output types point parameters via OUTPUT_TYPE_NML namelist
+!
+! * index I must match indexes from 1 to DOMAIN%NRGRD
+! * ALLTYPE will apply the output types for all the model grids
+! * ITYPE(I) will apply the output types for the model grid number I
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     ALLTYPE%FIELD%LIST         =  'unset'
+!     ALLTYPE%POINT%FILE         =  'points.list'
+!     ALLTYPE%TRACK%FORMAT       =  T
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 OUTPUT_TYPE_NML namelist 定义输出类型点参数
+!
+! * 索引 I 必须匹配从 1 到 DOMAIN%NRGRD 的索引
+! * ALLTYPE 将应用于所有模型网格的输出类型
+! * ITYPE(I) 将应用于模型网格号 I 的输出类型
+!
+! * namelist 必须以 / 结尾
+! -------------------------------------------------------------------- !
+&OUTPUT_TYPE_NML
+  ALLTYPE%FIELD%LIST     = 'HS LM T02 T0M1 T01 FP DIR SPR DP PHS PTP PLP PDIR PSPR PWS TWS PNR'
+/
+
+! -------------------------------------------------------------------- !
+! Define output dates via OUTPUT_DATE_NML namelist
+!
+! * index I must match indexes from 1 to DOMAIN%NRGRD
+! * ALLDATE will apply the output dates for all the model grids
+! * IDATE(I) will apply the output dates for the model grid number i
+! * start and stop times are with format 'yyyymmdd hhmmss'
+! * if time stride is equal '0', then output is disabled
+! * time stride is given in seconds
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     ALLDATE%FIELD%START         =  '19680606 000000'
+!     ALLDATE%FIELD%STRIDE        =  '0'
+!     ALLDATE%FIELD%STOP          =  '19680607 000000'
+!     ALLDATE%RESTART%START       =  '19680606 000000'
+!     ALLDATE%RESTART%STRIDE      =  '0'
+!     ALLDATE%RESTART%STOP        =  '19680607 000000'
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 OUTPUT_DATE_NML namelist 定义输出日期
+!
+! * 索引 I 必须匹配从 1 到 DOMAIN%NRGRD 的索引
+! * ALLDATE 将应用于所有模型网格的输出日期
+! * IDATE(I) 将应用于模型网格号 i 的输出日期
+! * 开始和结束时间格式为 'yyyymmdd hhmmss'
+! * 如果时间步长等于 '0'，则禁用输出
+! * 时间步长以秒为单位给出
+!
+! * namelist 必须以 / 结尾
+! -------------------------------------------------------------------- !
+&OUTPUT_DATE_NML
+  ALLDATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
+  ALLDATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
+/
+
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - end of namelist                                      !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - namelist结束                                          !
+! -------------------------------------------------------------------- !
+

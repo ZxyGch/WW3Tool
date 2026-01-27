@@ -1,0 +1,123 @@
+{
+    "MATLAB_PATH": "/Applications/MATLAB_R2024a.app/bin/matlab",
+    "GRIDGEN_PATH": "",
+    "REFERENCE_DATA_PATH": "",
+    "GRIDGEN_VERSION": "Python",
+    "DX": "0.05",
+    "DY": "0.05",
+    "NESTED_OUTER_DX": "0.1",
+    "NESTED_OUTER_DY": "0.1",
+    "LATITUDE_SORTH": "",
+    "LATITUDE_NORTH": "",
+    "LONGITUDE_WEST": "",
+    "LONGITUDE_EAST": "",
+    "NESTED_CONTRACTION_COEFFICIENT": "1.1",
+    "BATHYMETRY": "GEBCO",
+    "COASTLINE_PRECISION": "最高",
+    "JASON_PATH": "/Users/zxy/ocean/WW3Tool/jason3",
+    "DEFAULT_WORKDIR": "",
+    "FORCING_FIELD_DIR_PATH": "",
+    "CPU_GROUP": [
+        "CPU6240R",
+        "CPU6336Y"
+    ],
+    "DEFAULT_CPU": "CPU6240R",
+    "KERNEL_NUM": "48",
+    "NODE_NUM": "1",
+    "PLOT_TIME_STEP": "6",
+    "WIND_FIELD_TIME_STEP": "24",
+    "PLOT_ENERGY_THRESHOLD": "0.01",
+    "PLOT_SPECTRUM_MODE": "归一化",
+    "COMPUTE_PRECISION": "1800",
+    "OUTPUT_PRECISION": "3600",
+    "FILE_SPLIT": "年",
+    "ST_OPTIONS": [
+        "ST2",
+        "ST4",
+        "ST6",
+        "ST6a",
+        "ST6b"
+    ],
+    "FREQ_INC": "1.1",
+    "FREQ_START": "0.04118",
+    "FREQ_NUM": "32",
+    "DIR_NUM": "24",
+    "DTMAX": "900",
+    "GRID_ZLIM": "-0.1",
+    "GRID_DMIN": "2.5",
+    "DTXY": "320",
+    "DTKTH": "300",
+    "DTMIN": "15",
+    "WW3BIN_PATH": "/Users/zxy/ocean/WW3/build/bin",
+    "LANGUAGE": "en_US",
+    "THEME": "AUTO",
+    "RUN_MODE": "both",
+    "SERVER_HOST": "",
+    "SERVER_PORT": "22",
+    "SERVER_USER": "",
+    "SERVER_PASSWORD": "",
+    "SERVER_PATH": "",
+    "SHOW_LAND_COASTLINE": true,
+    "RECENT_WORKDIRS": [
+        "/Users/zxy/ocean/WW3Tool/workSpace/new"
+    ],
+    "JASON_REMOTE_PATH": "",
+    "JASON_HARMONY_URL": "",
+    "JASON3_AUTO_DOWNLOAD_MISSING": true,
+    "JASON3_DOWNLOAD_URL": "ftp:/ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr",
+    "WW3_CONFIG_PATH": "",
+    "LOCAL_SCRIPT_PATH": "",
+    "SERVER_SCRIPT_PATH": "",
+    "ST_VERSIONS": [
+        {
+            "name": "ST2",
+            "path": "/public/home/weiyl001/software/wavewatch3/model/exe"
+        },
+        {
+            "name": "ST4",
+            "path": "/public/home/weiyl001/software2/ww4/model/exe"
+        },
+        {
+            "name": "ST6",
+            "path": "/public/home/weiyl001/software2/ww6/model/exe"
+        },
+        {
+            "name": "ST6A",
+            "path": "/public/home/weiyl001/software2/ww6a/model/exe"
+        },
+        {
+            "name": "ST6B",
+            "path": "/public/home/weiyl001/software2/ww6b/model/exe"
+        }
+    ],
+    "FORCING_FIELD_FILE_PROCESS_MODE": "copy",
+    "FORCING_FIELD_AUTO_ASSOCIATE": true,
+    "OUTPUT_VARS_SCHEMES": {
+        "Default Scheme": [
+            "HS",
+            "DIR",
+            "FP",
+            "T02",
+            "WND",
+            "PHS",
+            "PTP",
+            "PDIR",
+            "PWS",
+            "PNR",
+            "TWS"
+        ],
+        "默认方案": [
+            "HS",
+            "DIR",
+            "FP",
+            "T02",
+            "WND",
+            "PHS",
+            "PTP",
+            "PDIR",
+            "PWS",
+            "PNR",
+            "TWS"
+        ]
+    }
+}

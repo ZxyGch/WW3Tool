@@ -1,0 +1,103 @@
+! -------------------------------------------------------------------- !
+! MISC namelist - Miscellaneous parameters                            !
+! -------------------------------------------------------------------- !
+! FLAGTR : Transparency flag for obstruction subgrid                  !
+!          0 = No obstruction subgrid                                 !
+!          1 = Transparencies at cell boundaries                      !
+!          2 = Transparencies at cell centers                         !
+!          3 = Transparencies at cell boundaries with continuous ice  !
+!          4 = Transparencies at cell centers with continuous ice     !
+! RWNDC  : Wind speed cutoff (m/s), below which wind input is zero    !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! MISC namelist - 杂项参数                                            
+! -------------------------------------------------------------------- !
+! FLAGTR : 障碍子网格的透明度标志                                         
+!          0 = 无障碍子网格                                             
+!          1 = 单元边界处的透明度                                        
+!          2 = 单元中心处的透明度                                    
+!          3 = 单元边界处的透明度（含连续冰）                        
+!          4 = 单元中心处的透明度（含连续冰）                        
+! RWNDC  : 风速截止值 (m/s)，低于此值时风输入为零                    
+! -------------------------------------------------------------------- !
+&MISC FLAGTR = 4, RWNDC=0.0 /
+
+
+!
+! -------------------------------------------------------------------- !
+! FLX3 namelist - Flux/Bottom friction parameters                     !
+! -------------------------------------------------------------------- !
+! CDMAX  : Maximum drag coefficient for bottom friction              !
+!          Limits the drag coefficient in bottom friction calculations!
+! CTYPE  : Type flag for bottom friction parameterization             !
+!          0 = Classical constant type / Default scheme (most stable) !
+!          1 = Empirical formula varying with wind speed               !
+!          2 = High wind speed correction scheme                      !
+!          3 = Advanced experimental scheme                           !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! FLX3 namelist - 通量/底摩擦参数                                         
+! -------------------------------------------------------------------- !
+! CDMAX  : 拖曳系数最大值（ST方案内部有自己的拖曳系数，这里只是最终截断）                                                      
+! CTYPE  : 底摩擦参数化方案的类型标志                                       
+!          0 = 默认方案（最稳妥）                                          
+!          1 = 随风速变化的经验公式                                        
+!          2 = 高风速修正方案                                             
+!          3 = 先进实验型方案                                             
+! -------------------------------------------------------------------- !
+&FLX3 CDMAX = 3.5E-3 , CTYPE = 0 /
+
+
+
+
+$ Output of 3D arrays------------------------------------------------- $
+$ In order to limit the use of memory, arrays for 3D output fiels (i.e.
+$ variables that are a function of both space and frequency, are not
+$ declared, and thus cannot be used, unless specified by namelists.
+$ NB: Output of 'first 5' moments E, th1m, sth1m, th2, sth2m allows to estimate the full
+$  directional spectrum using, e.g. MEM (Lygre&Krogstad 1986).
+$
+$ Parameters (integers)   : Namelist OUTS
+$ For the frequency spectrum E(f)
+$                              E3D : <=0: not declared, > 0: declared
+$                            I1E3D : First frequency index of output (default is 1)
+$                            I2E3D : Last frequency index of output  (default is NK)
+$ For the mean direction th1m(f), and spread sth1m(f)
+$                    TH1MF, STH1MF : <=0: not declared, > 0: declared
+$                I1TH1MF, I1STH1MF : First frequency index of output (default is 1)
+$                I2TH1MF, I2STH1MF : First frequency index of output (default is 1)
+$ For the mean direction th2m(f), and spread sth2m(f)
+$                    TH2MF, STH2MF : <=0: not declared, > 0: declared
+$                I1TH2MF, I1STH2MF : First frequency index of output (default is 1)
+$                I2TH2MF, I2STH2MF : First frequency index of output (default is 1)
+$ For 2nd order pressure at K=0 (source of microseisms & microbaroms)
+$                             P2SF : <=0: not declared, > 0: declared
+$                           I1P2SF : First frequency index of output (default is 1)
+$                           I2P2SF : Last frequency index of output  (default is NK)
+$ For the surface Stokes drift partitions (USP)
+$                             USSP : First index (default is 1, should always be 1)
+$                            IUSSP : Last index (must be <= than NK and should be
+$                                               between 3 and ~10 with the tradeoff
+$                                               between accuracy and resources)
+$                           STK_WN : List of wavenumbers (size of IUSSP)
+$                           e.g.: USSP = 1, IUSSP=3, STK_WN = 0.04, 0.11, 0.33
+$                                 provides 3 partitions of both x & y component,
+$                                 with a reasonable accuracy for using in
+$                                 a climate model.
+! -------------------------------------------------------------------- !
+&OUTS E3D = 0 /
+
+
+
+
+!
+! -------------------------------------------------------------------- !
+! END OF NAMELISTS                                                     !
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! NAMELISTS 结束                                                       !
+! -------------------------------------------------------------------- !
+END OF NAMELISTS
