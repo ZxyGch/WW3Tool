@@ -1,0 +1,235 @@
+$-------------------------------------------------------------------------$
+$
+$ Grid namelist for gridgen routine
+$
+$-------------------------------------------------------------------------$
+
+
+$-------------------------------------------------------------------------$
+$ a. Path to directories and file names
+$
+$ BIN_DIR    : location of matlab scripts
+$
+$ REF_DIR    : location of reference data
+$
+$ DATA_DIR   : input/output grid directory
+$
+$ FNAME_POLY : Optional file that has a list of switches to choose which
+$              of the optional coastal polygons need to be switched off or on. 
+$              The switches in the file should coincide with the polygons
+$              in the "optional_coastal_polygons.mat". A flag OPT_POLY is 
+$              provided in namelist GRID BOUND to activate or not this option.
+$
+$ FNAME      : File name of the target grid, used as prefix for output files.
+$              It is usually composed by the grid name in upper case followed
+$              by the resolution in arc minutes (1deg is 60arc min).
+$              For example : 'GLOB-30M' for global grid at 0.5deg resolution
+$
+$ FNAMEB     : File name of the base grid files which are used to activate the
+$              open boundaries of the target grid. The base grid is the coarser
+$              grid covering the target grid, otherwise use the target grid itself.
+$
+$ BOUND_SELECT : Selection of the grid boundaries definition. It allows user
+$                to exclude grid points out of a given polygon which can be set :
+$                0 -> manually on the plot
+$                1 -> automatically around the borders given by min/max of lat/lon
+$                2 -> from a .poly file (see tutorial Appendix D)
+$-------------------------------------------------------------------------$
+
+&GRID_INIT
+  BIN_DIR = '../bin'                        
+  REF_DIR = '../reference'
+  DATA_DIR = '../data'
+  FNAME_POLY = 'user_polygons.flag'
+  FNAME = 'GLOB-30M'
+  FNAMEB = 'no'
+  BOUND_SELECT = 1
+/
+
+$-------------------------------------------------------------------------$
+$ b. Information on bathymetry file
+$
+$ Gridgen is designed to work with curvilinear and/or rectilinear grids. In
+$ both cases it expects a 2D array defining the Longitudes (x values) and 
+$ Latitudes (y values). For curvilinear grids, the user will have to use 
+$ alternative software to determine these arrays. For rectilinear grids 
+$ these are determined by the grid domain and desired resolution as shown 
+$ below
+$
+$  REF_GRID : reference grid source = name of the bathy source file
+$             (without '.nc' extension)
+$             ref_grid = 'etopo1' -> Etopo1 grid
+$             ref_grid = 'gebco'  -> Gebco grid
+$             ref_grid = '???'    -> user-defined bathy file
+$
+$  LONFROM  : origin of longitudes defined in bathy file
+$             lonfrom = -180 -> longitudes from -180 to 180 (ie. gebco)
+$             lonfrom = 0    -> longitudes from 0 to 360 (ie. etopo1)
+$
+$  XVAR     : name of variable defining longitudes in bathy file
+$             xvar = 'x' (ie. etopo1)
+$             xvar = 'lon' (ie. gebco)
+$
+$  YVAR     : name of variable defining latitudes in bathy file
+$             yvar = 'y' (ie. etopo1)
+$             yvar = 'lat' (ie. gebco)
+$
+$  ZVAR     : name of variable defining depths in bathy file
+$             zvar = 'z' (ie. etopo1)
+$             zvar = 'elevation' (ie. gebco)
+$-------------------------------------------------------------------------$
+
+&BATHY_FILE
+  REF_GRID = 'gebco2014'
+  XVAR = 'lon'
+  YVAR = 'lat'
+  ZVAR = 'elevation'
+  LONFROM = -180
+/
+
+$-------------------------------------------------------------------------$
+$ c. Required grid resolution and boundaries
+$
+$  TYPE       : rectangular, curvilinear or lambert grid ['rect','curv','lamb']
+$
+$  DX         : resolution in longitudes (in degree)
+$
+$  DY         : resolution in latitudes (in degree)
+$
+$  LON_WEST   : western boundary (in degree)
+$
+$  LON_EAST   : eastern boundary (in degree)
+$               if LONFROM = 0    : lon_west & lon_east within [0 ; 360]
+$                                   with possibly lon_west > lon_east
+$                                   if the Greenwich meridian is crossed
+$               if LONFROM = -180 : lon_west & lon_east within [-180 ; 180]
+$
+$  LAT_SOUTH  : southern boundary (in degree)
+$
+$  LAT_NORTH  : northern boundary (in degree)
+$               lat_south & lat_north in [-90 ; 90]
+$               in any case lat_south < lat_north
+$
+$  IS_GLOBAL  : [0|1] flag if target grid is periodic along the longitude
+$
+$  IS_GLOBALB : [0|1] flag if base grid is periodic along the longitude
+$-------------------------------------------------------------------------$
+
+&OUTGRID
+  TYPE = 'rect'
+  DX =  0.5
+  DY =  0.5
+  LON_WEST =  -179.9999
+  LON_EAST =  179.995833333327
+  LAT_SOUTH = -78
+  LAT_NORTH =  80
+  IS_GLOBAL = 1
+  IS_GLOBALB =   1
+/
+
+$-------------------------------------------------------------------------$
+$ d. Boundary options
+$
+$  BOUNDARY      : Option to determine which GSHHS boundary polygon database
+$                  .mat file to load:
+$                         full = full resolution
+$                         high = 0.2 km
+$                         inter = 1 km
+$                         low   = 5 km
+$                         coarse = 25 km
+$
+$  READ_BOUNDARY : [0|1] flag to determine if input boundary information
+$                  needs to be read; boundary data files can be 
+$                  significantly large and need to be read only the first 
+$                  time. So when making multiple grids, the flag can be set
+$                  to 0 for subsequent grids.
+$                  (Note : If the workspace is cleared, the boundary data
+$                  will have to be read again)
+$
+$  OPT_POLY      : [0|1] flag for reading the optional user-defined
+$                  polygons. Set to 0 if you do not wish to use this option
+$
+$  MIN_DIST      : threshold defining the minimum distance (in °) between
+$                  the edge of a polygon and the inside/outside boundary.
+$                  A low value reduces computation time but can raise
+$                  errors if the grid is too coarse. If the script crashes,
+$                  consider increasing the value.
+$                  Default value used to be min_dist = 4
+$                  Used in 'compute_boundary' and 'split_boundary'
+$-------------------------------------------------------------------------$
+
+&GRID_BOUND
+  BOUNDARY = 'low'
+  READ_BOUNDARY = 1
+  OPT_POLY = 0 
+  MIN_DIST = 20
+/
+
+$-------------------------------------------------------------------------$
+$ e. Parameter values used in the software
+$
+$  CUT_OFF   : Cut-off depth to distinguish between dry and wet cells.
+$              All depths below the cut_off depth are marked wet
+$              Used in 'generate_grid'
+$
+$  LIM_BATHY : Proportion of base bathymetry cells that need to be wet for 
+$              the target cell to be considered wet. 
+$              NOTE : If you have accurate boundary polygons, then it is
+$              better to have a low value for CUT_OFF, which will make the 
+$              target bathymetry cell wet even when there are only few wet
+$              cells in the base bathymetry. This will then be cleaned up
+$              by the polygons in the 'mask cleanup' section. If, on the 
+$              other hand, you do not intend to use the polygons to define
+$              the coastal domains, then you are better off with CUT_OFF = 0.5
+$
+$  AVG       : 2D averaging depth method ('mean' or 'max') from base grid
+$              if desired grid is coarser than base grid, otherwise 
+$              interpolation is done. 'max' will keep the shallower depth 
+$              since depth values are negative downward. 
+$
+$  DRY_VAL   : Depth value set for dry cells (can be changed as desired)
+$              Used in 'generate_grid' and in the making of initial mask
+$
+$  SPLIT_LIM : Limit for splitting the boundary polygons into chuncks to
+$              save computation time when cleaning up the mask
+$              Rule of thumbs: from 5 to 10 times max(dx,dy)
+$              Used in 'split_boundary'
+$
+$  LIM_VAL   : Fraction of a wet cell that has to be inside a boundary polygon
+$              for the cell to be marked dry
+$              Used in 'clean_mask'
+$
+$  OFFSET    : Additional buffer around the boundary to check if cell is
+$              crossing boundary. Should be set to largest grid resolution
+$              ie OFFSET = max([dx dy])
+$              Used in 'clean_mask'
+$
+$  LAKE_TOL  : Tolerance value that determines if all the wet cells          
+$              corresponding to a particular wet body should be flagged   
+$              dry or not.
+$              if LAKE_TOL>0 : all water bodies having less than this
+$                                value of total wet cells will be flagged dry
+$              if LAKE_TOL=0 : the output and input masks are unchanged.
+$              if LAKE_TOL<0 : all but the largest water body is flagged dry
+$              Used in 'remove_lake'
+$
+$  OBSTR_OFFSET : Flag to determine if obstruction at a cell should consider
+$                 obstruction on the cell itself [0] or in both neighbors [1]
+$                 Used in 'create_obstr'
+$-------------------------------------------------------------------------$
+                    
+&GRID_PARAM
+  DRY_VAL = 999999
+  CUT_OFF =  0
+  LIM_BATHY =  0.4
+  AVG = 'mean'
+  LIM_VAL =  0.5
+  SPLIT_LIM = 0
+  OFFSET =  0.5
+  LAKE_TOL =  50
+  OBSTR_OFFSET =  1
+/
+
+$-------------------------------------------------------------------------$
+$ end of namelist
+$-------------------------------------------------------------------------$
