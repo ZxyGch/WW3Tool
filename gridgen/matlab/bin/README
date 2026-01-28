@@ -1,0 +1,14 @@
+wiki
+https://forge.ifremer.fr/plugins/mediawiki/wiki/ww3/index.php/En:using_ww3:tutorials:grid_generation_rect
+
+
+EMODnet bathymetry
+1/8 * 1/8 minutes resolution
+http://www.emodnet-hydrography.eu/content/content.asp?menu=0040000_000000
+
+convert the C3.nc file with nco tools :
+
+mv C3.nc C3_ori.nc
+ncpdq -P upk -v DEPTH C3_ori.nc C3_upk.nc
+ncap2 -O -s 'DEPTH[LINES,COLUMN]=nearbynt(DEPTH)' C3_upk.nc C3.nc 
+

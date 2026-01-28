@@ -7,6 +7,7 @@ import sys
 import json
 import glob
 import shutil
+import re
 import subprocess
 import threading
 import platform
@@ -1604,7 +1605,7 @@ class HomeStepTwoCard:
             self.log_signal.emit(tr("step2_params", "   参数: dx={dx}, dy={dy}").format(dx=dx_value, dy=dy_value))
             self.log_signal.emit(tr("step2_lon_range", "   经度范围: [{min}, {max}]").format(min=lon_west, max=lon_east))
             self.log_signal.emit(tr("step2_lat_range", "   纬度范围: [{min}, {max}]").format(min=lat_south, max=lat_north))
-            self.log_signal.emit(tr("step2_output_dir", "   输出目录: {dir}").format(dir=output_dir_norm))
+            # 输出目录日志过于冗长，默认不打印
 
             # 从配置中读取水深数据和海岸边界精度
             bathymetry_config = current_config.get("BATHYMETRY", "GEBCO")
@@ -1619,22 +1620,39 @@ class HomeStepTwoCard:
             ref_grid = bathymetry_map.get(bathymetry_config.upper(), "gebco")
             
             # 转换海岸边界精度：最高/高/中/低 -> full/high/inter/low
-            # 支持翻译后的文本
+            # 支持翻译后的文本、英文显示值与内部编码值
             full_text = tr("step2_coastline_precision_full", "最高")
             high_text = tr("step2_coastline_precision_high", "高")
             inter_text = tr("step2_coastline_precision_inter", "中")
             low_text = tr("step2_coastline_precision_low", "低")
+            coarse_text = tr("coastline_coarse", "粗")
             coastline_map = {
+                # 本地化显示值
                 full_text: "full",
-                "最高": "full",  # 保持向后兼容
                 high_text: "high",
-                "高": "high",  # 保持向后兼容
                 inter_text: "inter",
-                "中": "inter",  # 保持向后兼容
                 low_text: "low",
-                "低": "low"  # 保持向后兼容
+                coarse_text: "coarse",
+                # 中文显示值（兼容旧配置）
+                "最高": "full",
+                "高": "high",
+                "中": "inter",
+                "低": "low",
+                "粗": "coarse",
+                # 英文显示值（兼容设置页）
+                "Highest": "full",
+                "High": "high",
+                "Medium": "inter",
+                "Low": "low",
+                "Coarse": "coarse",
+                # 编码值（设置页保存）
+                "full": "full",
+                "high": "high",
+                "inter": "inter",
+                "low": "low",
+                "coarse": "coarse"
             }
-            boundary = coastline_map.get(coastline_precision_config, "full")
+            boundary = coastline_map.get(str(coastline_precision_config), "full")
             
             # 检查缓存（使用原始配置值）
             cache_key = self._get_grid_cache_key(dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config)
@@ -1781,12 +1799,13 @@ create_grid(
                 }
                 ref_grid = bathymetry_map.get(bathymetry_config.upper(), "gebco")
                 
-                # 转换海岸边界精度：最高/高/中/低 -> full/high/inter/low
-                # 支持翻译后的文本
+                # 转换海岸边界精度：最高/高/中/低/粗 -> full/high/inter/low/coarse
+                # 支持翻译后的文本与英文代码
                 full_text = tr("step2_coastline_precision_full", "最高")
                 high_text = tr("step2_coastline_precision_high", "高")
                 inter_text = tr("step2_coastline_precision_inter", "中")
                 low_text = tr("step2_coastline_precision_low", "低")
+                coarse_text = tr("coastline_coarse", "粗")
                 coastline_map = {
                     full_text: "full",
                     "最高": "full",  # 保持向后兼容
@@ -1795,25 +1814,62 @@ create_grid(
                     inter_text: "inter",
                     "中": "inter",  # 保持向后兼容
                     low_text: "low",
-                    "低": "low"  # 保持向后兼容
+                    "低": "low",  # 保持向后兼容
+                    coarse_text: "coarse",
+                    "粗": "coarse",  # 保持向后兼容
+                    "full": "full",
+                    "high": "high",
+                    "inter": "inter",
+                    "low": "low",
+                    "coarse": "coarse",
                 }
                 boundary = coastline_map.get(coastline_precision_config, "full")
                 
+                boundary_file = os.path.join(ref_dir, f"coastal_bound_{boundary}.mat")
+                if not os.path.exists(boundary_file):
+                    self.log_signal.emit(
+                        tr(
+                            "step2_boundary_file_missing",
+                            "❌ 未找到边界文件：{path}（精度: {boundary}），请先准备对应的 coastal_bound_*.mat 或降低精度"
+                        ).format(path=boundary_file, boundary=boundary)
+                    )
+                    return False
+                # 边界文件信息日志过于冗长，默认不打印
+                # 边界精度提示日志过于冗长，默认不打印
+
                 # 构建 MATLAB 命令，直接调用 create_grid 并传入参数
                 # 注意：MATLAB 的路径需要使用正斜杠（MATLAB 在 Windows 上也支持正斜杠）
                 matlab_bin_dir = matlab_bin_dir_norm.replace('\\', '/') if matlab_bin_dir_norm else None
+                matlab_bin_scripts = None
+                if matlab_bin_dir_norm:
+                    matlab_bin_scripts = os.path.join(matlab_bin_dir_norm, "bin")
+                matlab_bin_scripts_posix = matlab_bin_scripts.replace('\\', '/') if matlab_bin_scripts else None
                 matlab_out_dir = output_dir_norm.replace('\\', '/')
+
+                # 同步 grid.nml 参数（MATLAB 版本）
+                try:
+                    self._update_matlab_grid_nml(
+                        matlab_bin_dir_norm,
+                        output_dir_norm,
+                        ref_dir,
+                        ref_grid,
+                        boundary,
+                        dx_value,
+                        dy_value,
+                        lon_west,
+                        lon_east,
+                        lat_south,
+                        lat_north
+                    )
+                except Exception as e:
+                    self.log_signal.emit(tr("step2_update_grid_nml_failed", "⚠️ 更新 grid.nml 失败: {error}").format(error=e))
                 
                 matlab_cmd = (
                     f"warning('off', 'all'); "
                     f"feature('DefaultCharacterSet', 'UTF8'); "
-                    f"addpath('{matlab_bin_dir}'); "
-                    f"create_grid('dx', {dx_value}, 'dy', {dy_value}, "
-                    f"'lon_range', [{lon_west}, {lon_east}], "
-                    f"'lat_range', [{lat_south}, {lat_north}], "
-                    f"'out_dir', '{matlab_out_dir}', "
-                    f"'ref_grid', '{ref_grid}', "
-                    f"'boundary', '{boundary}');"
+                    f"addpath('{matlab_bin_scripts_posix}'); "
+                    f"cd('{matlab_bin_scripts_posix}'); "
+                    f"create_grid('grid.nml');"
                 )
                 
                 cmd = [matlab_path]
@@ -1877,6 +1933,65 @@ create_grid(
             for line in error_details.splitlines():
                 self.log_signal.emit(line)
             return False
+
+    def _update_matlab_grid_nml(
+        self,
+        matlab_bin_dir,
+        output_dir,
+        ref_dir,
+        ref_grid,
+        boundary,
+        dx_value,
+        dy_value,
+        lon_west,
+        lon_east,
+        lat_south,
+        lat_north
+    ):
+        """更新 MATLAB gridgen 的 grid.nml 参数"""
+        if not matlab_bin_dir:
+            return
+        grid_nml_path = os.path.join(matlab_bin_dir, "bin", "grid.nml")
+        if not os.path.exists(grid_nml_path):
+            return
+
+        def to_posix(path_value):
+            return os.path.abspath(os.path.normpath(path_value)).replace("\\", "/")
+
+        replacements = {
+            "BIN_DIR": f"'{to_posix(os.path.join(matlab_bin_dir, 'bin'))}'",
+            "REF_DIR": f"'{to_posix(ref_dir)}'",
+            "DATA_DIR": f"'{to_posix(output_dir)}'",
+            "REF_GRID": f"'{ref_grid}'",
+            "BOUNDARY": f"'{boundary}'",
+            "DX": f"{dx_value}",
+            "DY": f"{dy_value}",
+            "LON_WEST": f"{lon_west}",
+            "LON_EAST": f"{lon_east}",
+            "LAT_SOUTH": f"{lat_south}",
+            "LAT_NORTH": f"{lat_north}",
+        }
+
+        with open(grid_nml_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        new_lines = []
+        for line in lines:
+            line_stripped = line.lstrip()
+            if line_stripped.startswith("$") or line_stripped.startswith("!"):
+                new_lines.append(line)
+                continue
+            updated = False
+            for key, value in replacements.items():
+                if re.match(rf"^\s*{re.escape(key)}\s*=", line):
+                    new_lines.append(f"  {key} = {value}\n")
+                    updated = True
+                    break
+            if not updated:
+                new_lines.append(line)
+
+        with open(grid_nml_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
 
     def visualize_grid_files(self):
         """可视化网格文件：读取四个文件并生成可视化图片"""
@@ -2113,47 +2228,59 @@ create_grid(
         """读取 WAVEWATCH III meta 文件，返回经纬度数组"""
         try:
             with open(fname, 'r') as fid:
-                # 跳过前45行注释
-                for i in range(45):
-                    fid.readline()
+                lines = fid.readlines()
 
-                # 读取网格类型
-                line = fid.readline().strip()
-                gtype = line.split()[0].strip("'\"")
+            grid_line_idx = None
+            gtype = None
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("$"):
+                    continue
+                tokens = stripped.replace("'", "").replace('"', "").split()
+                if not tokens:
+                    continue
+                if tokens[0].upper() in ("RECT", "CURV"):
+                    gtype = tokens[0].upper()
+                    grid_line_idx = i
+                    break
 
-                if gtype == 'RECT':
-                    # 读取网格参数
-                    # 第一行：Nx Ny
-                    line = fid.readline().strip()
-                    values = line.split()
-                    Nx = int(float(values[0]))  # 先转 float 再转 int，处理 '401' 或 '401.00' 格式
-                    Ny = int(float(values[1]))
+            if grid_line_idx is None:
+                self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
+                return None, None
 
-                    # 第二行：dx dy scale
-                    line = fid.readline().strip()
-                    values = line.split()
-                    dx = float(values[0])
-                    dy = float(values[1])
-                    scale = float(values[2])
-                    dx = dx / scale
-                    dy = dy / scale
+            if gtype != "RECT":
+                self.log(tr("step2_unsupported_grid_type", "❌ 不支持的网格类型: {gtype}").format(gtype=gtype))
+                return None, None
 
-                    # 第三行：lons lats scale
-                    line = fid.readline().strip()
-                    values = line.split()
-                    lons = float(values[0])
-                    lats = float(values[1])
-                    scale = float(values[2])
+            if grid_line_idx + 3 >= len(lines):
+                self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
+                return None, None
 
-                    # 生成经纬度数组
-                    lon1d = lons / scale + np.arange(Nx) * dx
-                    lat1d = lats / scale + np.arange(Ny) * dy
+            # 第一行：Nx Ny
+            values = lines[grid_line_idx + 1].split()
+            Nx = int(float(values[0]))
+            Ny = int(float(values[1]))
 
-                    lon, lat = np.meshgrid(lon1d, lat1d)
-                    return lon, lat
-                else:
-                    self.log(tr("step2_unsupported_grid_type", "❌ 不支持的网格类型: {gtype}").format(gtype=gtype))
-                    return None, None
+            # 第二行：dx dy scale
+            values = lines[grid_line_idx + 2].split()
+            dx = float(values[0])
+            dy = float(values[1])
+            scale = float(values[2])
+            dx = dx / scale
+            dy = dy / scale
+
+            # 第三行：lons lats scale
+            values = lines[grid_line_idx + 3].split()
+            lons = float(values[0])
+            lats = float(values[1])
+            scale = float(values[2])
+
+            # 生成经纬度数组
+            lon1d = lons / scale + np.arange(Nx) * dx
+            lat1d = lats / scale + np.arange(Ny) * dy
+
+            lon, lat = np.meshgrid(lon1d, lat1d)
+            return lon, lat
         except Exception as e:
             self.log(tr("step2_read_meta_error", "❌ 读取 meta 文件失败: {error}").format(error=e))
             return None, None
