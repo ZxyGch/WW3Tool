@@ -311,7 +311,7 @@ class HomeStepFiveCard:
         """在主线程中更新 CPU 表格（槽函数）"""
         try:
             if not hasattr(self, 'cpu_table') or not self.cpu_table:
-                self.log("❌ CPU table 不存在")
+                self.log(tr("step5_cpu_table_missing", "❌ CPU table 不存在"))
                 return
 
             # 过滤有效行（跳过表头）
@@ -333,7 +333,7 @@ class HomeStepFiveCard:
                         continue
 
             if len(valid_rows) == 0:
-                self.log("⚠️ 没有有效的进程数据")
+                self.log(tr("step5_cpu_no_valid_process", "⚠️ 没有有效的进程数据"))
                 self._clear_cpu_frame()
                 return
 
@@ -349,7 +349,7 @@ class HomeStepFiveCard:
             header_item1 = QTableWidgetItem("USER")
             header_item1.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
             header_item2 = QTableWidgetItem("CPU%")
-            header_item2.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            header_item2.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self.cpu_table.setItem(0, 0, header_item0)
             self.cpu_table.setItem(0, 1, header_item1)
             self.cpu_table.setItem(0, 2, header_item2)
@@ -363,7 +363,7 @@ class HomeStepFiveCard:
                 item1 = QTableWidgetItem(str(user))
                 item1.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
                 item2 = QTableWidgetItem(str(cpu))
-                item2.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                item2.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
                 self.cpu_table.setItem(i + 1, 0, item0)
                 self.cpu_table.setItem(i + 1, 1, item1)
                 self.cpu_table.setItem(i + 1, 2, item2)
@@ -397,10 +397,11 @@ class HomeStepFiveCard:
             self.cpu_table.repaint()
             QtWidgets.QApplication.processEvents()
         except Exception as update_err:
-            self.log(f"❌ 更新 CPU table 时出错: {update_err}")
+            self.log(tr("step5_cpu_table_update_failed", "❌ 更新 CPU table 时出错: {error}").format(error=update_err))
             import traceback
             self.log(traceback.format_exc())
 
+    @QtCore.pyqtSlot()
     def _clear_queue_table(self):
         """清空任务队列表格（原版逻辑）"""
         if not hasattr(self, 'queue_tasks_layout') or not self.queue_tasks_layout:
@@ -477,12 +478,21 @@ class HomeStepFiveCard:
                 if not ln or not ln.strip():
                     continue
                 parts = ln.split()
-                if len(parts) < 9:
-                    continue
                 try:
-                    jobid, partition, name, state, time_val, nodes, nodelist = (
-                        parts[0], parts[1], parts[2], parts[4], parts[5], parts[7], " ".join(parts[8:])
-                    )
+                    if len(parts) >= 7:
+                        # squeue -o '%i %P %j %T %M %D %R' -h
+                        jobid, partition, name, state, time_val, nodes = (
+                            parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
+                        )
+                        nodelist = " ".join(parts[6:])
+                    elif len(parts) >= 9:
+                        # 兼容旧格式（squeue -l）
+                        jobid, partition, name, state, time_val, nodes, nodelist = (
+                            parts[0], parts[1], parts[2], parts[4], parts[5], parts[7], " ".join(parts[8:])
+                        )
+                    else:
+                        continue
+
                     if state not in active_states:
                         continue
                     state_cn = STATE_MAP.get(state, state)
@@ -538,7 +548,10 @@ class HomeStepFiveCard:
                 for idx, task in enumerate(valid_tasks):
                     task_table = existing_tables[idx]
                     task_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-                    task_table.horizontalHeader().setStretchLastSection(True)
+                    header = task_table.horizontalHeader()
+                    header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+                    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+                    header.setStretchLastSection(True)
                     task_table.setWordWrap(True)
                     fields = [
                         (tr("queue_jobid", "JobID:"), task.get('JobID', '')),
@@ -610,7 +623,10 @@ class HomeStepFiveCard:
                     task_table.setColumnCount(2)
                     task_table.setHorizontalHeaderLabels([tr("queue_label", "字段"), tr("queue_value", "值")])
                     task_table.horizontalHeader().setVisible(False)
-                    task_table.horizontalHeader().setStretchLastSection(True)
+                    header = task_table.horizontalHeader()
+                    header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+                    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+                    header.setStretchLastSection(True)
                     task_table.verticalHeader().setVisible(False)
                     task_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
                     task_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
@@ -672,7 +688,7 @@ class HomeStepFiveCard:
                 self.cancel_frame.setVisible(has_tasks)
             QtWidgets.QApplication.processEvents()
         except Exception as e:
-            self.log(f"❌ 更新任务队列表格失败: {e}")
+            self.log(tr("step5_queue_table_update_failed", "❌ 更新任务队列表格失败: {error}").format(error=e))
             import traceback
             self.log(traceback.format_exc())
 
@@ -687,7 +703,7 @@ class HomeStepFiveCard:
             password = current_config.get("SERVER_PASSWORD", SERVER_PASSWORD or "")
             
             if not host or not username:
-                self.log("❌ 请先在设置中配置服务器地址和用户名")
+                self.log(tr("step5_config_missing_host_user", "❌ 请先在设置中配置服务器地址和用户名"))
                 self.status_signal.emit(tr("step6_not_connected", "未连接"))
                 return
             
@@ -698,7 +714,7 @@ class HomeStepFiveCard:
             # 在后台线程中连接
             def connect_in_thread():
                 try:
-                    self.log(f"🔄 正在连接服务器 {host}:{port}...")
+                    self.log(tr("step5_connecting_server", "🔄 正在连接服务器 {host}:{port}...").format(host=host, port=port))
                     
                     # 创建 SSH 客户端
                     ssh = paramiko.SSHClient()
@@ -729,7 +745,9 @@ class HomeStepFiveCard:
                             QtCore.Qt.ConnectionType.QueuedConnection
                         )
                     except Exception as invoke_error:
-                        self.log_signal.emit(f"⚠️ 启用按钮失败（已连接）：{invoke_error}")
+                        self.log_signal.emit(
+                            tr("step5_enable_buttons_failed", "⚠️ 启用按钮失败（已连接）：{error}").format(error=invoke_error)
+                        )
                     
                     # 启动心跳检测和队列更新（切回主线程）
                     if hasattr(self, '_start_heartbeat'):
@@ -740,7 +758,9 @@ class HomeStepFiveCard:
                                 QtCore.Qt.ConnectionType.QueuedConnection
                             )
                         except Exception as invoke_error:
-                            self.log_signal.emit(f"⚠️ 启动心跳失败（已连接）：{invoke_error}")
+                            self.log_signal.emit(
+                                tr("step5_start_heartbeat_failed", "⚠️ 启动心跳失败（已连接）：{error}").format(error=invoke_error)
+                            )
                     if hasattr(self, '_start_queue_timer'):
                         try:
                             QtCore.QMetaObject.invokeMethod(
@@ -749,10 +769,12 @@ class HomeStepFiveCard:
                                 QtCore.Qt.ConnectionType.QueuedConnection
                             )
                         except Exception as invoke_error:
-                            self.log_signal.emit(f"⚠️ 启动队列刷新失败（已连接）：{invoke_error}")
+                            self.log_signal.emit(
+                                tr("step5_start_queue_failed", "⚠️ 启动队列刷新失败（已连接）：{error}").format(error=invoke_error)
+                            )
                     
                 except Exception as e:
-                    self.log_signal.emit(f"❌ 连接服务器失败：{e}")
+                    self.log_signal.emit(tr("step5_connect_failed", "❌ 连接服务器失败：{error}").format(error=e))
                     self.status_signal.emit(tr("step6_not_connected", "未连接"))
                     self.ssh = None
                     QtCore.QTimer.singleShot(0, self._hide_cpu_and_queue)
@@ -775,7 +797,7 @@ class HomeStepFiveCard:
             threading.Thread(target=connect_in_thread, daemon=True).start()
             
         except Exception as e:
-            self.log(f"❌ 连接服务器出错：{e}")
+            self.log(tr("step5_connect_error", "❌ 连接服务器出错：{error}").format(error=e))
             self.status_signal.emit(tr("step6_not_connected", "未连接"))
             if hasattr(self, 'btn_connect'):
                 self.btn_connect.setEnabled(True)
@@ -899,42 +921,44 @@ class HomeStepFiveCard:
             
             # 获取 JobID
             if not hasattr(self, 'cancel_jobid_edit') or not self.cancel_jobid_edit:
-                self.log("❌ 无法获取任务ID输入框")
+                self.log(tr("step5_cancel_no_input_widget", "❌ 无法获取任务ID输入框"))
                 return
             
             jobid = self.cancel_jobid_edit.text().strip()
             if not jobid:
-                self.log("❌ 请输入要取消的任务ID")
+                self.log(tr("step5_cancel_empty_jobid", "❌ 请输入要取消的任务ID"))
                 return
             
             # 在后台线程中执行取消命令
             def cancel_in_thread():
                 try:
-                    self.log_signal.emit(f"🔄 正在取消任务 {jobid}...")
+                    self.log_signal.emit(tr("step5_canceling_job", "🔄 正在取消任务 {jobid}...").format(jobid=jobid))
                     
                     # 执行 scancel 命令
                     stdin, stdout, stderr = self.ssh.exec_command(f"scancel {jobid}")
                     exit_status = stdout.channel.recv_exit_status()
                     
                     if exit_status == 0:
-                        self.log_signal.emit(f"✅ 已成功取消任务 {jobid}")
+                        self.log_signal.emit(tr("step5_cancel_success", "✅ 已成功取消任务 {jobid}").format(jobid=jobid))
                         # 清空输入框
                         QtCore.QTimer.singleShot(0, lambda: self.cancel_jobid_edit.clear())
                     else:
                         error_msg = stderr.read().decode('utf-8', errors='ignore').strip()
                         if error_msg:
-                            self.log_signal.emit(f"❌ 取消任务失败：{error_msg}")
+                            self.log_signal.emit(tr("step5_cancel_failed", "❌ 取消任务失败：{error}").format(error=error_msg))
                         else:
-                            self.log_signal.emit(f"❌ 取消任务失败（返回码：{exit_status}）")
+                            self.log_signal.emit(
+                                tr("step5_cancel_failed_exit", "❌ 取消任务失败（返回码：{code}）").format(code=exit_status)
+                            )
                     
                 except Exception as e:
-                    self.log_signal.emit(f"❌ 取消任务出错：{e}")
+                    self.log_signal.emit(tr("step5_cancel_error", "❌ 取消任务出错：{error}").format(error=e))
             
             # 启动取消线程
             threading.Thread(target=cancel_in_thread, daemon=True).start()
             
         except Exception as e:
-            self.log(f"❌ 取消任务出错：{e}")
+            self.log(tr("step5_cancel_error", "❌ 取消任务出错：{error}").format(error=e))
 
     @QtCore.pyqtSlot()
     def set_btn_connect_enabled_true(self):
@@ -1050,13 +1074,13 @@ class HomeStepFiveCard:
                     return
 
                 if err.strip():
-                    self.log_signal.emit(f"⚠️ CPU 命令错误输出:\n{err}")
+                    self.log_signal.emit(tr("step5_cpu_cmd_error", "⚠️ CPU 命令错误输出:\n{error}").format(error=err))
                     QtCore.QTimer.singleShot(0, lambda: self._clear_cpu_frame())
                     return
 
                 lines = [ln for ln in out.splitlines() if ln.strip()]
                 if len(lines) <= 1:
-                    self.log_signal.emit("⚠️ 数据行数不足，无法显示")
+                    self.log_signal.emit(tr("step5_cpu_insufficient_lines", "⚠️ 数据行数不足，无法显示"))
                     QtCore.QTimer.singleShot(0, lambda: self._clear_cpu_frame())
                     return
 
@@ -1090,7 +1114,7 @@ class HomeStepFiveCard:
                 if not self._queue_running:
                     return
                 err_msg = str(e)
-                self.log_signal.emit(f"❌ 获取 CPU 占用排行失败: {err_msg}")
+                self.log_signal.emit(tr("step5_cpu_fetch_failed", "❌ 获取 CPU 占用排行失败: {error}").format(error=err_msg))
                 import traceback
                 self.log_signal.emit(traceback.format_exc())
                 QtCore.QTimer.singleShot(0, lambda: self._clear_cpu_frame())
@@ -1106,12 +1130,11 @@ class HomeStepFiveCard:
             if not self.ssh or not self._queue_running:
                 return
             try:
-                try:
-                    locale.setlocale(locale.LC_TIME, 'zh_CN.UTF-8')
-                except Exception:
-                    pass
-
-                stdin, stdout, stderr = self.ssh.exec_command("squeue -l", get_pty=True, timeout=5)
+                stdin, stdout, stderr = self.ssh.exec_command(
+                    "squeue -o '%i %P %j %T %M %D %R' -h",
+                    get_pty=True,
+                    timeout=5
+                )
                 stdout_text = stdout.read().decode("utf-8", errors="ignore")
                 stderr_text = stderr.read().decode("utf-8", errors="ignore")
 
@@ -1119,45 +1142,34 @@ class HomeStepFiveCard:
                     return
 
                 if stderr_text.strip():
-                    self.log_signal.emit(f"⚠️ 任务队列命令错误输出:\n{stderr_text}")
+                    self.log_signal.emit(
+                        tr("step5_queue_cmd_error", "⚠️ 任务队列命令错误输出:\n{error}").format(error=stderr_text)
+                    )
 
                 if not stdout_text.strip() and not stderr_text.strip():
-                    self.log_signal.emit("⚠️ 任务队列输出为空")
-                    QtCore.QTimer.singleShot(0, lambda: self._update_queue_table([], ""))
-                    return
-
-                lines = [ln for ln in stdout_text.splitlines() if ln.strip()]
-                if len(lines) <= 2:
-                    QtCore.QTimer.singleShot(0, lambda: self._update_queue_table([], ""))
-                    return
-
-                time_line = lines[0]
-                task_lines = lines[2:]
-
-                # 如果只有表头/分割线，没有任务行，直接清空队列
-                has_task_line = False
-                for ln in task_lines:
-                    if len(ln.split()) >= 9:
-                        has_task_line = True
-                        break
-                if not has_task_line:
-                    QtCore.QTimer.singleShot(0, lambda: self._update_queue_table([], time_cn))
-                    return
-
-                try:
                     try:
-                        locale.setlocale(locale.LC_TIME, 'C')
-                    except:
-                        pass
-                    server_time = time.strptime(time_line, "%a %b %d %H:%M:%S %Y")
-                    try:
-                        locale.setlocale(locale.LC_TIME, 'zh_CN.UTF-8')
-                    except:
-                        pass
-                    time_cn = time.strftime("%Y年%m月%d日 %H:%M:%S", server_time)
-                except Exception:
-                    time_cn = time_line
+                        QtCore.QMetaObject.invokeMethod(
+                            self,
+                            "_clear_queue_table",
+                            QtCore.Qt.ConnectionType.QueuedConnection
+                        )
+                    except Exception:
+                        QtCore.QTimer.singleShot(0, lambda: self._update_queue_table([], ""))
+                    return
 
+                task_lines = [ln for ln in stdout_text.splitlines() if ln.strip()]
+                if not task_lines:
+                    try:
+                        QtCore.QMetaObject.invokeMethod(
+                            self,
+                            "_clear_queue_table",
+                            QtCore.Qt.ConnectionType.QueuedConnection
+                        )
+                    except Exception:
+                        QtCore.QTimer.singleShot(0, lambda: self._update_queue_table([], ""))
+                    return
+
+                time_cn = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.update_queue_table_signal.emit(task_lines, time_cn)
             except (paramiko.ssh_exception.ChannelException,
                     paramiko.ssh_exception.SSHException,
@@ -1186,7 +1198,7 @@ class HomeStepFiveCard:
                 if not self._queue_running:
                     return
                 err_msg = str(e)
-                self.log_signal.emit(f"❌ 获取任务队列失败: {err_msg}")
+                self.log_signal.emit(tr("step5_queue_fetch_failed", "❌ 获取任务队列失败: {error}").format(error=err_msg))
                 import traceback
                 self.log_signal.emit(traceback.format_exc())
 
@@ -1217,7 +1229,7 @@ class HomeStepFiveCard:
                         self._schedule_queue_next()
                 except Exception as e:
                     if self._queue_running:
-                        self.log(f"⚠️ 刷新监控数据时出错: {e}")
+                        self.log(tr("step5_refresh_monitor_error", "⚠️ 刷新监控数据时出错: {error}").format(error=e))
                         self._schedule_queue_next()
             elif not self._queue_running:
                 return
@@ -1274,7 +1286,7 @@ class HomeStepFiveCard:
         """获取远程任务队列信息，返回字符串列表"""
         try:
             # 使用稳定的格式输出，避免表格对齐导致解析异常
-            cmd = "squeue -o '%i %u %T %M %D %R' -h"
+            cmd = "squeue -o '%i %P %j %T %M %D %R' -h"
             stdin, stdout, stderr = self.ssh.exec_command(cmd, get_pty=True, timeout=10)
             output = stdout.read().decode("utf-8", errors="ignore").strip()
             err = stderr.read().decode("utf-8", errors="ignore").strip()

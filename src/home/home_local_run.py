@@ -105,6 +105,9 @@ class HomeLocalRun:
         except Exception:
             bin_dir = ''
 
+        # 进入运行状态，禁用按钮
+        self._set_local_run_button_running()
+
         # 在后台线程中执行
         threading.Thread(target=self._run_local_ww3_internal, args=(bin_dir,), daemon=True).start()
 
@@ -162,6 +165,28 @@ class HomeLocalRun:
             self.log_signal.emit(tr("step5_bash_not_found", "❌ 找不到 bash 命令，无法执行脚本"))
         except Exception as e:
             self.log_signal.emit(tr("step5_local_run_error", "❌ 本地 WW3 运行出错：{error}").format(error=e))
+        finally:
+            QtCore.QTimer.singleShot(0, self._restore_local_run_button)
+
+    @QtCore.pyqtSlot()
+    def _set_local_run_button_running(self):
+        """进入本地运行中状态，禁用按钮并更新文本"""
+        try:
+            if hasattr(self, "local_run_button") and self.local_run_button:
+                self.local_run_button.setEnabled(False)
+                self.local_run_button.setText(tr("step5_local_running", "运行中..."))
+        except Exception:
+            pass
+
+    @QtCore.pyqtSlot()
+    def _restore_local_run_button(self):
+        """恢复本地运行按钮状态"""
+        try:
+            if hasattr(self, "local_run_button") and self.local_run_button:
+                self.local_run_button.setEnabled(True)
+                self.local_run_button.setText(tr("step5_local_run", "本地运行"))
+        except Exception:
+            pass
 
     def run_local_ounf(self):
         """执行 ww3_ounf 或 ww3_ounp（根据计算模式）"""

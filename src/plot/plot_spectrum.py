@@ -57,9 +57,9 @@ class SpectrumPlotMixin(SpectrumServiceMixin):
             header_lon_item = QTableWidgetItem(tr("plotting_table_lon", "经度"))
             header_lon_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             header_lat_item = QTableWidgetItem(tr("plotting_table_lat", "纬度"))
-            header_lat_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            header_lat_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
             header_name_item = QTableWidgetItem(tr("plotting_table_name", "名称"))
-            header_name_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            header_name_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
             # 标记为表头行
             header_lon_item.setData(QtCore.Qt.ItemDataRole.UserRole, "header")
             header_lat_item.setData(QtCore.Qt.ItemDataRole.UserRole, "header")

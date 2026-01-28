@@ -49,7 +49,7 @@
     "DTKTH": "300",
     "DTMIN": "15",
     "WW3BIN_PATH": "/Users/zxy/ocean/WW3/build/bin",
-    "LANGUAGE": "en_US",
+    "LANGUAGE": "zh_CN",
     "THEME": "AUTO",
     "RUN_MODE": "both",
     "SERVER_HOST": "",
@@ -94,19 +94,6 @@
     "FORCING_FIELD_AUTO_ASSOCIATE": true,
     "OUTPUT_VARS_SCHEMES": {
         "Default Scheme": [
-            "HS",
-            "DIR",
-            "FP",
-            "T02",
-            "WND",
-            "PHS",
-            "PTP",
-            "PDIR",
-            "PWS",
-            "PNR",
-            "TWS"
-        ],
-        "默认方案": [
             "HS",
             "DIR",
             "FP",

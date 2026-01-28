@@ -2,9 +2,9 @@
 
 ## 基本介绍
 
-![](public/README-media/ce672a12425aa4ab617ab2feb5dbc042574ee552.svg)
+![](public/resource/README.zh-CN-media/ce672a12425aa4ab617ab2feb5dbc042574ee552.svg)
 
-![](public/README-media/7fb43345a824090ba09535a744874a8bd6890ade.png)
+![](public/resource/README.zh-CN-media/7fb43345a824090ba09535a744874a8bd6890ade.png)
 
 海浪模式 WAVEWATCH III 可视化运行软件 (简称 WW3Tool) 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可以完成基本的 WAVEWATCH III 流程化运行。
 
@@ -19,7 +19,7 @@
 
 实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序。
 
-我本科不是海洋科学的，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 atomgoto@gmail.com
+我本科不是海洋科学的，现在是研究生一年级，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 atomgoto@gmail.com 或在 issue 中提出意见
 
 ## 快速开始
 
@@ -32,6 +32,35 @@ python main.py
 ```
 
 如果还有什么安装失败或缺失的包，请手动安装
+
+如果你是 Ubuntu 系统，建议
+
+``` sh
+cd src
+
+sudo apt install python3-full python3-venv
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+
+python main.py
+```
+
+**注意：我们还需要下载 reference_data ，在下面有下载方法**
+
+## gridgen/reference_data
+
+reference_data 必须下载，否则无法生成网格文件！
+
+执行下载脚本 WW3Tool/gridgen/get_reference_data. py
+
+或者从 OneDrive 下载： https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ
+
+或者从百度网盘下载：https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch
+
+**最后放到 WW3Tool/gridgen/reference_data**
 
 ## 环境配置
 
@@ -51,23 +80,11 @@ python main.py
 
 - Slurm 作业调度系统
 
-### gridgen/reference_data
-
-reference_data 必须下载，否则无法生成网格文件！
-
-执行下载脚本 WW3Tool/gridgen/get_reference_data. py
-
-或者从 OneDrive下载： https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ
-
-或者从百度网盘下载：https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch
-
-**最后放到 gridgen/reference_data**
-
 ## 功能实现细节
 
 ### 创建工作目录
 
-![](public/README-media/e5700c5c0c1c4d8759909648c6ffeda205578cb8.png)
+![](public/resource/README.zh-CN-media/e5700c5c0c1c4d8759909648c6ffeda205578cb8.png)
 
 程序启动时选择或创建工作目录，这一步是强制的，不允许跳过。
 
@@ -77,7 +94,7 @@ reference_data 必须下载，否则无法生成网格文件！
 
 工作目录的默认路径是 WW3Tool/workSpace，在设置页面可以更改默认的工作目录
 
-![](public/README-media/ce165a99ddf5d25a6ce4dd8e6d3c0ac257224a65.png)
+![](public/resource/README.zh-CN-media/ce165a99ddf5d25a6ce4dd8e6d3c0ac257224a65.png)
 
 ### 选择强迫场文件
 
@@ -87,7 +104,7 @@ reference_data 必须下载，否则无法生成网格文件！
 
 我已经在 WW3Tool/public/forcing 预先准备好了几个强迫场文件，你可以直接选择使用（当然，这只是为了测试）。
 
-![](public/README-media/29bb9c6c357fae8805096752541a354cc693eeaf.png)
+![](public/resource/README.zh-CN-media/29bb9c6c357fae8805096752541a354cc693eeaf.png)
 
 由于 WAVEWATCH 要求纬度必须从小到大，而 ERA5 的风场数据纬度默认是从大到小，因此，我在这里加上了隐含的转换逻辑，会判断是否纬度是从小到大的，如果不是则会自动转换。
 
@@ -97,7 +114,7 @@ reference_data 必须下载，否则无法生成网格文件！
 
 强迫场文件会被自动复制（如果你想剪切，在设置页面可以更改）到当前工作目录，并改名为 wind.nc，current.nc，level.nc，ice.nc ，右侧的日志会同时输出强迫场文件的信息。
 
-![](public/README-media/0d68510f6ca43c732e9306550a29a41ccbc11295.png)
+![](public/resource/README.zh-CN-media/0d68510f6ca43c732e9306550a29a41ccbc11295.png)
 
 通常，我们只使用风场作为强迫场即可，并且软件不允许只使用其他强迫场而不包含风场。
 
@@ -109,7 +126,7 @@ reference_data 必须下载，否则无法生成网格文件！
 
 在生成网格之前，我们需要到 WW3Tool/gridgen 目录执行脚本 get_reference_data. py，这个脚本是用来下载水深数据 gebco 和 etop1、etop2，以及海岸边界数据，它会自动下载并解压到目录 reference_data。
 
-![](public/README-media/c1ffc9ab1b634c5011341174f966110e26d380b9.png)
+![](public/resource/README.zh-CN-media/c1ffc9ab1b634c5011341174f966110e26d380b9.png)
 
 #### 一般网格
 
@@ -117,7 +134,7 @@ reference_data 必须下载，否则无法生成网格文件！
 
 DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
-![](public/README-media/c5312abee24134d2105c86e4e54af1c69b5c36b1.png)
+![](public/resource/README.zh-CN-media/c5312abee24134d2105c86e4e54af1c69b5c36b1.png)
 
 最后在工作目录下，会多出四个文件 grid. bot 、grid. obst、grid. meta、grid. mask
 
@@ -125,7 +142,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 选择类型：嵌套网格
 
-![](public/README-media/9bb0a401caada974530ea5639de29580f2b6ab61.png)
+![](public/resource/README.zh-CN-media/9bb0a401caada974530ea5639de29580f2b6ab61.png)
 
 我们在设置页面的规定了一个：嵌套网格收缩系数，我们默认设置为 1.1 倍
 
@@ -133,7 +150,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 同理，点击设置内网格，会自动根据外网格的范围向内收缩 1.1 倍
 
-![](public/README-media/5778a97a18912c4b25777c8647aa2783f970a448.png)
+![](public/resource/README.zh-CN-media/5778a97a18912c4b25777c8647aa2783f970a448.png)
 
 嵌套模式下生成网格会生成执行两次，一次生成外网格，一次生成内网格。
 
@@ -141,7 +158,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 当工作目录存在 coarse 和 fine 文件夹时，打开该目录会自动切换到嵌套网格模式，这对后续的很多操作都会产生影响，因此我们规定当本地已经存在 coarse 和 fine 文件夹或者已经存在其他网格文件，禁止切换网格类型。
 
-![](public/README-media/8719ad75bb3c070a931af192b0141759c5c1975e.png)
+![](public/resource/README.zh-CN-media/8719ad75bb3c070a931af192b0141759c5c1975e.png)
 
 #### 网格缓存
 
@@ -149,7 +166,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 根据网格的生成参数生成 key，作为文件夹的名称，这样每次生成网格的时候会先遍历缓存，如果已经存在缓存了，则直接使用缓存的网格文件。
 
-![](public/README-media/e8eb8dcef23b8278159afb0694d3f95085a78dbd.png)
+![](public/resource/README.zh-CN-media/e8eb8dcef23b8278159afb0694d3f95085a78dbd.png)
 
 每个缓存文件夹下，还有 params. json 可以查看
 
@@ -183,11 +200,11 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 如果你很想使用 MATLAB 的 Gridgen（完全不建议），可以到设置页面改成 MATLAB，同时需要在设置页面配置 MATLAB 的路径。
 
-![](public/README-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)
+![](public/resource/README.zh-CN-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)
 
 #### gridgen 配置
 
-![](public/README-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)
+![](public/resource/README.zh-CN-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)
 
 在设置页面，我们有 Gridgen 的配置，可以修改很多参数
 
@@ -217,11 +234,11 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 #### 谱空间逐点计算模式
 
-![](public/README-media/5eeaf175d3d248425900725fc3b01a53f4f19ff9.png)
+![](public/resource/README.zh-CN-media/5eeaf175d3d248425900725fc3b01a53f4f19ff9.png)
 
 我们可以点击从地图上选点，会打开一个窗口
 
-![](public/README-media/b1b9bc834757642ac865b1117cd3c93f58176c2c.png)
+![](public/resource/README.zh-CN-media/b1b9bc834757642ac865b1117cd3c93f58176c2c.png)
 我们在地图上点击选点，注意蓝色虚线方框内的是网格文件的范围，我们只能在这里面选点，选好后我们点击 **确认并添加点位** 按钮。
 
 随后，在第四步的确认参数时会在工作目录生成一个 points.list 文件
@@ -239,15 +256,15 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
 
-![](public/README-media/b5d6ea9dc0290becf2ea385e6f713510296722de.png)
+![](public/resource/README.zh-CN-media/b5d6ea9dc0290becf2ea385e6f713510296722de.png)
 
 我们可以画出二维谱图
 
-![](public/README-media/bd455cb19d863e669e3f1dd23b163a9cb762accc.png)
+![](public/resource/README.zh-CN-media/bd455cb19d863e669e3f1dd23b163a9cb762accc.png)
 
 #### 航迹模式
 
-![](public/README-media/737c55bb46eef47bd4d1002669e38f7739531c2b.png)
+![](public/resource/README.zh-CN-media/737c55bb46eef47bd4d1002669e38f7739531c2b.png)
 和谱空间逐点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
 
     WAVEWATCH III TRACK LOCATIONS DATA 
@@ -261,7 +278,7 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 我们使用的是航迹模式，这个模式会比普通的区域计算模式多一些日志
 
-![](public/README-media/9de2b1ab0b740ac0e539872dfec3fae35f58e129.png)
+![](public/resource/README.zh-CN-media/9de2b1ab0b740ac0e539872dfec3fae35f58e129.png)
 
 ``` log
 ✅ 已复制 10 个 public/ww3 文件到当前工作目录
@@ -283,7 +300,7 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
     ✅ 已复制 10 个 public/ww3 文件到：/Users/zxy/ocean/WW3Tool/workSpace/qq
 
-![](public/README-media/a3c9157aa3c0999782fde68f7a8c30cc3fe6b7d1.png)
+![](public/resource/README.zh-CN-media/a3c9157aa3c0999782fde68f7a8c30cc3fe6b7d1.png)
 
 ------------------------------------------------------------------------
 
@@ -505,7 +522,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 我们首先生成了嵌套网格，在工作目录创建了 coarse 和 fine 目录，然后选择了二维谱计算模式。
 
-![](public/README-media/e41ff2fd4c7cab7d04df3c61b96e74f35834bc7b.png)
+![](public/resource/README.zh-CN-media/e41ff2fd4c7cab7d04df3c61b96e74f35834bc7b.png)
 
 ``` log
 ======================================================================
@@ -558,7 +575,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 我们首先把 WW3Tool/public/ww3 目录的 server. sh 和 ww3_multi. nml 复制到了工作目录。
 
-![](public/README-media/8238245873ddbc05fb1dd3597bacb88325008398.png)
+![](public/resource/README.zh-CN-media/8238245873ddbc05fb1dd3597bacb88325008398.png)
 
 我们引入了 ww3_multi.nml 修改了起始时间，计算精度，强迫场，这其实和 ww3_shel.nml 类似
 
@@ -614,11 +631,38 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 如果选择本地执行，确保你已经在本地配置好了 WAVEWATCH III，选择 bin 目录，其中应该包含下面这些程序
 
-![](public/README-media/15f57f1ac1b37d5a3620d2f6d157e93fb7a890a5.png)
+![](public/resource/README.zh-CN-media/15f57f1ac1b37d5a3620d2f6d157e93fb7a890a5.png)
 
 ### 连接服务器
 
-首先可以肯定，你需要
+首先，你需要配置 ssh 账号和密码，在设置页面我们找到服务器配置这个选项
+
+注意默认服务器路径，这是你的服务器存放工作目录的路径
+
+![](public/resource/README.zh-CN-media/ee0e866a05f0cf2eacd12eb01e09d5ca25be4fb0.png)
+
+![](public/resource/README.zh-CN-media/9806c316b552c64ffddd842d350a960c19ac3a90.png)
+
+点击连接服务器，连接成功后会先显示一个 CPU 占用排行，这个列表每秒钟刷新一次
+
+![](public/resource/README.zh-CN-media/875743d29c9109bf20d4aa4ba8e2cd660b666815.png)
+如果在第六步提交计算任务到 Slurm ，还会显示任务队列
+
+### 服务器操作
+
+查看任务队列就是在服务器执行了 squeue -l
+
+上传工作目录到服务器，就是把当前工作目录上传到服务器工作目录，这在设置页面有配置
+
+提交计算任务就是在服务器执行了 server.sh 这个脚本，如果运行成功(所有指令正常运行)，会在服务器工作目录生成一个 success.log，包含所有的执行 Log，如果失败，则会生成一个 fail.log 同样包含所有的执行 log
+
+检查是否已完成就是检测是否存在 success. log 或 fail. log
+
+清空文件夹就是清空当前服务器工作目录文件夹
+
+下载结果到本地会自动下载所有 ww3\*nc 文件，如果是嵌套网格模式，只会下载 fine 内的结果文件。
+
+下载 log 文件就是下载 success. log 或 fail. log
 
 ### 自动操作
 
@@ -632,7 +676,7 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 ### 设置页面
 
-![](public/README-media/c65c8fb8a5ca3196935f0c52737ffb0dc2b86228.png)
+![](public/resource/README.zh-CN-media/c65c8fb8a5ca3196935f0c52737ffb0dc2b86228.png)
 
 设置页面的绝大部分设置都是自动保存的，除了谱分区输出方案
 
@@ -641,7 +685,7 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 运行方式，这个其实只是控制主页的某些元素是否显示罢了，没有什么实际的影响
 
 例如选择本地运行的时候，不会显示 Slurm 参数
-![](public/README-media/20c75cadd51c928124be0d3828cd721723f2c6e4.png)
+![](public/resource/README.zh-CN-media/20c75cadd51c928124be0d3828cd721723f2c6e4.png)
 
 #### 强迫场选择
 
@@ -653,7 +697,7 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 JASON 数据路径就是绘图的时候用的，比如你想看模拟的结果和 JASON 3 卫星的观测的波高对比。
 
-![](public/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
+![](public/resource/README.zh-CN-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
 
 #### WW3 配置
 
@@ -677,14 +721,15 @@ sinfo
 
 然后打开软件的设置页面，找到 Slurm 参数一栏，点击 CPU 管理，改成你的服务器的 CPU
 
-![](public/README-media/faf340b9198c04d7ce9ad8c849e68175b49450f3.png)
+![](public/resource/README.zh-CN-media/faf340b9198c04d7ce9ad8c849e68175b49450f3.png)
 
 #### 服务器连接
 
 你需要填写 SSH 账号，以及默认的登录路径，在这个路径，每次的工作目录都会上传到这里。
 
 <figure>
-<img src="public/README-media/c38a16e9205e973c6910377d0d350a207b1f893b.png"
+<img
+src="public/resource/README.zh-CN-media/c38a16e9205e973c6910377d0d350a207b1f893b.png"
 alt="400" />
 <figcaption aria-hidden="true">400</figcaption>
 </figure>
@@ -694,7 +739,8 @@ alt="400" />
 实际上，这个就是你编译的不同版本的 WAVEWATCH，你只需填写它们的路径即可
 
 <figure>
-<img src="public/README-media/8ee956a1601ca113eb979ab560a13cdf83a63ae4.png"
+<img
+src="public/resource/README.zh-CN-media/8ee956a1601ca113eb979ab560a13cdf83a63ae4.png"
 alt="400" />
 <figcaption aria-hidden="true">400</figcaption>
 </figure>
@@ -703,26 +749,26 @@ alt="400" />
 
 #### 风场绘图
 
-![](public/README-media/54c004948927395c7eb51ecc337f6752a7bc31c2.png)
+![](public/resource/README.zh-CN-media/54c004948927395c7eb51ecc337f6752a7bc31c2.png)
 
 #### 二维谱绘图
 
-![](public/README-media/bf6f51063f2c2ac60f608bd42d7ff85e21bd0f7b.png)
+![](public/resource/README.zh-CN-media/bf6f51063f2c2ac60f608bd42d7ff85e21bd0f7b.png)
 
 #### 波高图
 
-![](public/README-media/3021c4434de128e783c2b06f6ba4c1fe876cf416.png)
+![](public/resource/README.zh-CN-media/3021c4434de128e783c2b06f6ba4c1fe876cf416.png)
 
-![](public/README-media/bde9091a001999fdacde4c1f804fc5c025a9995f.png)
+![](public/resource/README.zh-CN-media/bde9091a001999fdacde4c1f804fc5c025a9995f.png)
 
 #### 风涌浪图
 
-![](public/README-media/30f4c0333842e78da6437616709d0c884177e7b5.png)
-![](public/README-media/1968aff8588d84dab9e4750a8e97be006177d709.png)
+![](public/resource/README.zh-CN-media/30f4c0333842e78da6437616709d0c884177e7b5.png)
+![](public/resource/README.zh-CN-media/1968aff8588d84dab9e4750a8e97be006177d709.png)
 
 #### 卫星拟合图
 
-![](public/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
+![](public/resource/README.zh-CN-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
 
 ## 文件获取
 
@@ -734,13 +780,13 @@ https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=dow
 
 下图是 ERA5 的数据下载，你需要先注册一个账号才能下载，注册账号需要注意你的英文名字不能是随机的字母，否则无法注册。
 
-![](public/README-media/7b5a66fa59267d896d32953edbd4b398b59989d3.png)
+![](public/resource/README.zh-CN-media/7b5a66fa59267d896d32953edbd4b398b59989d3.png)
 
-![](public/README-media/49723f276ff95abc61c5a37578dd195e241e86c1.png)
+![](public/resource/README.zh-CN-media/49723f276ff95abc61c5a37578dd195e241e86c1.png)
 
-![](public/README-media/344439033b50144dc811dc44c58c9ccec1a47605.png)
+![](public/resource/README.zh-CN-media/344439033b50144dc811dc44c58c9ccec1a47605.png)
 
-![](public/README-media/3d2a902b95c03729037e8ebae50def9a272c42c1.png)
+![](public/resource/README.zh-CN-media/3d2a902b95c03729037e8ebae50def9a272c42c1.png)
 
 #### CFSR
 
@@ -758,7 +804,7 @@ HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcd
 
 如果你发现无法输入经纬度，则取消选中 Disable horizontal subsetting
 
-![](public/README-media/20305146a39edf9f584b455200bab685abb455f6.png)
+![](public/resource/README.zh-CN-media/20305146a39edf9f584b455200bab685abb455f6.png)
 
 然后点击下面的 Time range 标签，输入时间范围，最后 submit
 
@@ -776,7 +822,7 @@ https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/do
 
 然后输入范围和时间即可，最后点击 DOWNLOAD
 
-![](public/README-media/224d9c7b204410af0f2bb5fa7fbe85d37697748d.png)
+![](public/resource/README.zh-CN-media/224d9c7b204410af0f2bb5fa7fbe85d37697748d.png)
 
 ### 下载冰场
 
@@ -786,9 +832,12 @@ https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/download?
 
 海冰包括海冰覆盖 Sea ice area fraction 、海冰厚度场 Sea ice thickness
 
-![](public/README-media/d64991a6199b7e91b49be401afeca00ffde51619.png)
+![](public/resource/README.zh-CN-media/d64991a6199b7e91b49be401afeca00ffde51619.png)
 
 ### JASON 3 数据
 
-ftp:/ftp-oceans. ncei. noaa. gov/nodc/data/jason3-gdr/gdr
-```
+ftp:/ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
+
+## 授权协议
+
+本软件基于 GPLv3 授权的框架开发，根据 GPLv3 协议要求，整体以 GPLv3 方式发布。

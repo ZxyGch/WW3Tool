@@ -2394,58 +2394,53 @@ class SettingsMixin:
             traceback.print_exc()
 
     def _update_ww3_grid_nml_nearshore(self, config):
-        """更新 public/ww3/ww3_grid.nml 中的 GRID_NML 部分（GRID%ZLIM 和 GRID%DMIN）"""
+        """更新 ww3_grid.nml 中的 GRID_NML 部分（GRID%ZLIM 和 GRID%DMIN）"""
         try:
-            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            nml_path = os.path.join(script_dir, "public", "ww3", "ww3_grid.nml")
-            
-            if not os.path.exists(nml_path):
-                return
-            
             # 读取近岸配置参数
             zlim = config.get("GRID_ZLIM", "-0.1")
             dmin = config.get("GRID_DMIN", "2.5")
-            
-            with open(nml_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            
-            new_lines = []
-            in_grid_nml = False
-            
-            for line in lines:
-                # 检查是否进入 GRID_NML 块
-                if "&GRID_NML" in line.upper():
-                    in_grid_nml = True
-                    new_lines.append(line)
-                    continue
-                
-                if in_grid_nml:
-                    # 遇到结束符号 / 则结束 GRID_NML 块
-                    if "/" in line:
-                        in_grid_nml = False
+
+            for nml_path in self._get_ww3_grid_nml_paths():
+                with open(nml_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+
+                new_lines = []
+                in_grid_nml = False
+
+                for line in lines:
+                    # 检查是否进入 GRID_NML 块
+                    if "&GRID_NML" in line.upper():
+                        in_grid_nml = True
                         new_lines.append(line)
                         continue
-                    
-                    # 检查是否为注释行（以 ! 开头，去除前导空格后）
-                    line_stripped = line.lstrip()
-                    is_comment = line_stripped.startswith('!')
-                    
-                    # 只替换非注释行
-                    if not is_comment:
-                        if "GRID%ZLIM" in line and "=" in line:
-                            new_lines.append(f"  GRID%ZLIM         =  {zlim}\n")
+
+                    if in_grid_nml:
+                        # 遇到结束符号 / 则结束 GRID_NML 块
+                        if "/" in line:
+                            in_grid_nml = False
+                            new_lines.append(line)
                             continue
-                        if "GRID%DMIN" in line and "=" in line:
-                            new_lines.append(f"  GRID%DMIN         =  {dmin}\n")
-                            continue
-                    
-                    # 非 GRID_NML 或未匹配参数，保持原行
-                    new_lines.append(line)
-                else:
-                    new_lines.append(line)
-            
-            with open(nml_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
+
+                        # 检查是否为注释行（以 ! 开头，去除前导空格后）
+                        line_stripped = line.lstrip()
+                        is_comment = line_stripped.startswith('!')
+
+                        # 只替换非注释行
+                        if not is_comment:
+                            if "GRID%ZLIM" in line and "=" in line:
+                                new_lines.append(f"  GRID%ZLIM         =  {zlim}\n")
+                                continue
+                            if "GRID%DMIN" in line and "=" in line:
+                                new_lines.append(f"  GRID%DMIN         =  {dmin}\n")
+                                continue
+
+                        # 非 GRID_NML 或未匹配参数，保持原行
+                        new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+
+                with open(nml_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -2469,119 +2464,141 @@ class SettingsMixin:
 
 
     def _update_ww3_grid_nml_spectrum(self, config):
-        """更新 public/ww3/ww3_grid.nml 中的 SPECTRUM_NML 部分"""
+        """更新 ww3_grid.nml 中的 SPECTRUM_NML 部分"""
         try:
-            nml_path = os.path.join(PUBLIC_DIR, "ww3", "ww3_grid.nml")
-            if not os.path.exists(nml_path):
-                return
-
             # 读取频谱参数
             freq_inc = config.get("FREQ_INC", "1.1")
             freq_start = config.get("FREQ_START", "0.04118")
             freq_num = config.get("FREQ_NUM", "32")
             dir_num = config.get("DIR_NUM", "24")
 
-            # 读取文件
-            with open(nml_path, "r", encoding="utf-8") as f:
-                nml_lines = f.readlines()
+            for nml_path in self._get_ww3_grid_nml_paths():
+                # 读取文件
+                with open(nml_path, "r", encoding="utf-8") as f:
+                    nml_lines = f.readlines()
 
-            new_lines = []
-            in_spectrum = False
+                new_lines = []
+                in_spectrum = False
 
-            for line in nml_lines:
-                if "&SPECTRUM_NML" in line:
-                    in_spectrum = True
-                    new_lines.append(line)
-                    continue
-
-                if in_spectrum:
-                    # 遇到结束符号 / 则结束 SPECTRUM_NML 块
-                    if "/" in line:
-                        in_spectrum = False
+                for line in nml_lines:
+                    if "&SPECTRUM_NML" in line:
+                        in_spectrum = True
                         new_lines.append(line)
                         continue
 
-                    # 替换参数
-                    if "SPECTRUM%XFR" in line:
-                        new_lines.append(f"  SPECTRUM%XFR       =  {freq_inc}\n")
-                        continue
-                    if "SPECTRUM%FREQ1" in line:
-                        new_lines.append(f"  SPECTRUM%FREQ1     =  {freq_start}\n")
-                        continue
-                    if "SPECTRUM%NK" in line:
-                        new_lines.append(f"  SPECTRUM%NK        =  {freq_num}\n")
-                        continue
-                    if "SPECTRUM%NTH" in line:
-                        new_lines.append(f"  SPECTRUM%NTH       =  {dir_num}\n")
-                        continue
+                    if in_spectrum:
+                        # 遇到结束符号 / 则结束 SPECTRUM_NML 块
+                        if "/" in line:
+                            in_spectrum = False
+                            new_lines.append(line)
+                            continue
 
-                # 非 SPECTRUM_NML 或未匹配参数，保持原行
-                new_lines.append(line)
+                        # 替换参数
+                        if "SPECTRUM%XFR" in line:
+                            new_lines.append(f"  SPECTRUM%XFR       =  {freq_inc}\n")
+                            continue
+                        if "SPECTRUM%FREQ1" in line:
+                            new_lines.append(f"  SPECTRUM%FREQ1     =  {freq_start}\n")
+                            continue
+                        if "SPECTRUM%NK" in line:
+                            new_lines.append(f"  SPECTRUM%NK        =  {freq_num}\n")
+                            continue
+                        if "SPECTRUM%NTH" in line:
+                            new_lines.append(f"  SPECTRUM%NTH       =  {dir_num}\n")
+                            continue
 
-            # 写回文件
-            with open(nml_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
+                    # 非 SPECTRUM_NML 或未匹配参数，保持原行
+                    new_lines.append(line)
+
+                # 写回文件
+                with open(nml_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
         except Exception as e:
             import traceback
             traceback.print_exc()
 
 
     def _update_ww3_grid_nml_timesteps(self, config):
-        """更新 public/ww3/ww3_grid.nml 中的 TIMESTEPS_NML 部分"""
+        """更新 ww3_grid.nml 中的 TIMESTEPS_NML 部分"""
         try:
-            nml_path = os.path.join(PUBLIC_DIR, "ww3", "ww3_grid.nml")
-            if not os.path.exists(nml_path):
-                return
-
             # 读取时间步长参数
             dtmax = config.get("DTMAX", "900")
             dtxy = config.get("DTXY", "320")
             dtkth = config.get("DTKTH", "300")
             dtmin = config.get("DTMIN", "15")
 
-            # 读取文件
-            with open(nml_path, "r", encoding="utf-8") as f:
-                nml_lines = f.readlines()
+            for nml_path in self._get_ww3_grid_nml_paths():
+                # 读取文件
+                with open(nml_path, "r", encoding="utf-8") as f:
+                    nml_lines = f.readlines()
 
-            new_lines = []
-            in_timesteps = False
+                new_lines = []
+                in_timesteps = False
 
-            for line in nml_lines:
-                if "&TIMESTEPS_NML" in line:
-                    in_timesteps = True
-                    new_lines.append(line)
-                    continue
-
-                if in_timesteps:
-                    # 遇到结束符号 / 则结束 TIMESTEPS_NML 块
-                    if "/" in line:
-                        in_timesteps = False
+                for line in nml_lines:
+                    if "&TIMESTEPS_NML" in line:
+                        in_timesteps = True
                         new_lines.append(line)
                         continue
 
-                    # 替换参数
-                    if "TIMESTEPS%DTMAX" in line:
-                        new_lines.append(f"  TIMESTEPS%DTMAX        =  {dtmax}\n")
-                        continue
-                    if "TIMESTEPS%DTXY" in line:
-                        new_lines.append(f"  TIMESTEPS%DTXY         =  {dtxy}\n")
-                        continue
-                    if "TIMESTEPS%DTKTH" in line:
-                        new_lines.append(f"  TIMESTEPS%DTKTH        =  {dtkth}\n")
-                        continue
-                    if "TIMESTEPS%DTMIN" in line:
-                        new_lines.append(f"  TIMESTEPS%DTMIN        =  {dtmin}\n")
-                        continue
+                    if in_timesteps:
+                        # 遇到结束符号 / 则结束 TIMESTEPS_NML 块
+                        if "/" in line:
+                            in_timesteps = False
+                            new_lines.append(line)
+                            continue
 
-                # 非 TIMESTEPS_NML 或未匹配参数，保持原行
-                new_lines.append(line)
+                        # 替换参数
+                        if "TIMESTEPS%DTMAX" in line:
+                            new_lines.append(f"  TIMESTEPS%DTMAX        =  {dtmax}\n")
+                            continue
+                        if "TIMESTEPS%DTXY" in line:
+                            new_lines.append(f"  TIMESTEPS%DTXY         =  {dtxy}\n")
+                            continue
+                        if "TIMESTEPS%DTKTH" in line:
+                            new_lines.append(f"  TIMESTEPS%DTKTH        =  {dtkth}\n")
+                            continue
+                        if "TIMESTEPS%DTMIN" in line:
+                            new_lines.append(f"  TIMESTEPS%DTMIN        =  {dtmin}\n")
+                            continue
 
-            # 写回文件
-            with open(nml_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
+                    # 非 TIMESTEPS_NML 或未匹配参数，保持原行
+                    new_lines.append(line)
+
+                # 写回文件
+                with open(nml_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
         except Exception as e:
             import traceback
             traceback.print_exc()
+
+    def _get_ww3_grid_nml_paths(self):
+        """返回需要同步更新的 ww3_grid.nml 路径列表（public + 当前工作目录）"""
+        paths = []
+        try:
+            public_path = os.path.join(PUBLIC_DIR, "ww3", "ww3_grid.nml")
+            if os.path.isfile(public_path):
+                paths.append(public_path)
+
+            selected_folder = getattr(self, "selected_folder", None)
+            if selected_folder and os.path.isdir(selected_folder):
+                work_path = os.path.join(selected_folder, "ww3_grid.nml")
+                if os.path.isfile(work_path):
+                    paths.append(work_path)
+
+                coarse_dir = os.path.join(selected_folder, "coarse")
+                fine_dir = os.path.join(selected_folder, "fine")
+                if os.path.isdir(coarse_dir):
+                    coarse_path = os.path.join(coarse_dir, "ww3_grid.nml")
+                    if os.path.isfile(coarse_path):
+                        paths.append(coarse_path)
+                if os.path.isdir(fine_dir):
+                    fine_path = os.path.join(fine_dir, "ww3_grid.nml")
+                    if os.path.isfile(fine_path):
+                        paths.append(fine_path)
+        except Exception:
+            return paths
+        return paths
 
 
     def _get_st_versions_from_table(self):
@@ -3517,11 +3534,10 @@ class SettingsMixin:
             if scheme_name == current_scheme and current_scheme:
                 is_new_scheme = False
         
-        # 如果是新方案，保存到方案列表
-        if is_new_scheme:
-            self._save_output_vars_scheme(scheme_name, selected_vars)
-            if hasattr(self, 'log'):
-                self.log(tr("scheme_saved", "✅ 已保存新方案：{name}").format(name=scheme_name))
+        # 保存方案（新建或覆盖已有方案）
+        self._save_output_vars_scheme(scheme_name, selected_vars)
+        if is_new_scheme and hasattr(self, 'log'):
+            self.log(tr("scheme_saved", "✅ 已保存新方案：{name}").format(name=scheme_name))
         
         # 生成变量列表字符串，仅保存到配置文件
         var_list_str = ' '.join(selected_vars)

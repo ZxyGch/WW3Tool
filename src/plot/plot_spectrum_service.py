@@ -69,6 +69,7 @@ class SpectrumServiceMixin:
                 if 'longitude' in ds.variables and 'latitude' in ds.variables:
                     lon_var = ds.variables['longitude']
                     lat_var = ds.variables['latitude']
+                    name_var = ds.variables['station_name'] if 'station_name' in ds.variables else None
 
                     if 'station' in ds.dimensions:
                         n_stations = len(ds.dimensions['station'])
@@ -112,6 +113,17 @@ class SpectrumServiceMixin:
                         lon = np.array(lon)
                         lat = np.array(lat)
 
+                    station_names = None
+                    if name_var is not None:
+                        try:
+                            raw_names = np.array(name_var[:])
+                            station_names = []
+                            for row in raw_names[:n_stations]:
+                                name = b"".join(row.tolist()).decode("utf-8", "ignore").strip()
+                                station_names.append(name.replace("\x00", "").strip())
+                        except Exception:
+                            station_names = None
+
                     while self.spectrum_stations_table.rowCount() > 1:
                         self.spectrum_stations_table.removeRow(1)
 
@@ -122,9 +134,14 @@ class SpectrumServiceMixin:
                         lon_item = QTableWidgetItem(f"{float(lon[i]):.6f}")
                         lon_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
                         lat_item = QTableWidgetItem(f"{float(lat[i]):.6f}")
-                        lat_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                        name_item = QTableWidgetItem(f"{i}")
-                        name_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                        lat_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                        station_name = ""
+                        if station_names and i < len(station_names):
+                            station_name = station_names[i]
+                        if not station_name:
+                            station_name = f"{i}"
+                        name_item = QTableWidgetItem(station_name)
+                        name_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
                         self.spectrum_stations_table.setItem(row, 0, lon_item)
                         self.spectrum_stations_table.setItem(row, 1, lat_item)
