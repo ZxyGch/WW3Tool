@@ -205,14 +205,7 @@ class ModifyWW3NML:
         self._validate_and_update_forcing_field_paths()
 
         # 检查是否选择了谱分区输出方案（用于后续显示日志）
-        has_output_scheme = False
-        if hasattr(self, 'output_scheme_combo') and self.output_scheme_combo.currentText():
-            scheme_name = self.output_scheme_combo.currentText()
-            from setting.config import load_config
-            config = load_config()
-            schemes = config.get("OUTPUT_VARS_SCHEMES", {})
-            if scheme_name in schemes:
-                has_output_scheme = True
+        has_output_scheme = self._get_output_scheme_var_list() is not None
 
         # 检查当前计算模式是否为航迹模式
         track_text = tr("step3_track_mode", "航迹模式")
@@ -239,10 +232,13 @@ class ModifyWW3NML:
             # 普通网格模式：按原流程处理
             # 先复制文件（这样后续修改才能应用到工作目录的文件）
             self.copy_public_and_meta_to_grid()
-            
-            # 在复制文件后，显示谱分区输出方案已应用的日志
+
+            # 在复制文件后，应用谱分区输出方案到工作目录
+            applied_scheme = False
             if has_output_scheme:
-                self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
+                applied_scheme = self._apply_output_scheme_to_dir(self.selected_folder)
+                if applied_scheme:
+                    self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
             
             # 更新 server.sh 文件
             self.modify_server_sh_file()
@@ -991,10 +987,10 @@ class ModifyWW3NML:
         self.log(tr("step4_outer_grid_start", "🔄 【外网格】开始处理外网格..."))
        
         self._copy_public_files_to_dir(coarse_dir, grid_label="")
-        # 在复制文件后，显示谱分区输出方案已应用的日志（仅外网格显示一次）
+        # 在复制文件后，应用谱分区输出方案（外/内网格）
+        scheme_applied = False
         if has_output_scheme:
-            self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
-            has_output_scheme = False  # 只显示一次
+            scheme_applied = self._apply_output_scheme_to_dir(coarse_dir) or scheme_applied
         self._sync_grid_meta_to_grid_nml_in_dir(coarse_dir, grid_label="")
         self._apply_ww3_params_to_dir(
             coarse_dir,
@@ -1021,6 +1017,10 @@ class ModifyWW3NML:
         self.log(tr("step4_inner_grid_start", "🔄 【内网格】开始处理内网格..."))
        
         self._copy_public_files_to_dir(fine_dir, grid_label="")
+        if has_output_scheme:
+            scheme_applied = self._apply_output_scheme_to_dir(fine_dir) or scheme_applied
+        if has_output_scheme and scheme_applied:
+            self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
         self._sync_grid_meta_to_grid_nml_in_dir(fine_dir, grid_label="")
         inner_shel_step = self.inner_shel_step_edit.text().strip()
         inner_output_precision = self.inner_output_precision_edit.text().strip()
@@ -1094,6 +1094,89 @@ class ModifyWW3NML:
         """在指定目录中应用 WW3 运行参数"""
         self._apply_ww3_ounf_to_dir(target_dir, output_precision, grid_label=grid_label)
         self._modify_ww3_shel_times_to_dir(target_dir, compute_precision, grid_label=grid_label)
+
+    def _get_output_scheme_var_list(self):
+        """获取当前选择的谱分区输出方案变量列表字符串"""
+        try:
+            if not hasattr(self, 'output_scheme_combo') or not self.output_scheme_combo:
+                return None
+            scheme_name = self.output_scheme_combo.currentText().strip()
+            if not scheme_name:
+                return None
+
+            from setting.config import load_config
+            config = load_config()
+            schemes = config.get("OUTPUT_VARS_SCHEMES", {})
+            vars_list = schemes.get(scheme_name)
+            if not vars_list:
+                return None
+
+            selected_vars = [str(v).strip() for v in vars_list if str(v).strip()]
+            if not selected_vars:
+                return None
+
+            return ' '.join(selected_vars)
+        except Exception:
+            return None
+
+    def _apply_output_scheme_to_dir(self, target_dir):
+        """将谱分区输出方案写入指定目录的 ww3_shel.nml 和 ww3_ounf.nml"""
+        if not target_dir or not isinstance(target_dir, str):
+            return False
+
+        var_list_str = self._get_output_scheme_var_list()
+        if not var_list_str:
+            return False
+
+        modified_any = False
+
+        # 更新 ww3_shel.nml 的 TYPE%FIELD%LIST
+        ww3_shel_path = os.path.join(target_dir, "ww3_shel.nml")
+        if os.path.exists(ww3_shel_path):
+            try:
+                with open(ww3_shel_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                new_lines = []
+                modified = False
+                for line in lines:
+                    line_stripped = line.lstrip()
+                    is_comment = line_stripped.startswith('!')
+                    if not is_comment and re.search(r'TYPE%FIELD%LIST', line, re.IGNORECASE) and "=" in line:
+                        new_lines.append(f"  TYPE%FIELD%LIST       = '{var_list_str}'\n")
+                        modified = True
+                    else:
+                        new_lines.append(line)
+                if modified:
+                    with open(ww3_shel_path, "w", encoding="utf-8") as f:
+                        f.writelines(new_lines)
+                    modified_any = True
+            except Exception:
+                pass
+
+        # 更新 ww3_ounf.nml 的 FIELD%LIST
+        ww3_ounf_path = os.path.join(target_dir, "ww3_ounf.nml")
+        if os.path.exists(ww3_ounf_path):
+            try:
+                with open(ww3_ounf_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                new_lines = []
+                modified = False
+                for line in lines:
+                    line_stripped = line.lstrip()
+                    is_comment = line_stripped.startswith('!')
+                    if not is_comment and re.search(r'FIELD%LIST', line, re.IGNORECASE) and "=" in line:
+                        new_lines.append(f"  FIELD%LIST             =  '{var_list_str}'\n")
+                        modified = True
+                    else:
+                        new_lines.append(line)
+                if modified:
+                    with open(ww3_ounf_path, "w", encoding="utf-8") as f:
+                        f.writelines(new_lines)
+                    modified_any = True
+            except Exception:
+                pass
+
+        return modified_any
 
 
     # ==================== NML 文件修改 ====================
@@ -3430,6 +3513,8 @@ class ModifyWW3NML:
             modified_start = False
             modified_stride = False
             modified_split = False
+            modified_spectra_type = False
+            in_spectra_nml = False
             for line in lines:
                 # 检查是否为注释行（以 ! 开头，去除前导空格后）
                 line_stripped = line.lstrip()
@@ -3437,6 +3522,23 @@ class ModifyWW3NML:
                 
                 # 只替换非注释行
                 if not is_comment:
+                    # 处理 SPECTRA_NML 块
+                    if "&SPECTRA_NML" in line.upper():
+                        in_spectra_nml = True
+                        new_lines.append(line)
+                        continue
+                    if in_spectra_nml:
+                        if re.search(r'SPECTRA%TYPE', line, re.IGNORECASE) and "=" in line:
+                            new_lines.append("  SPECTRA%TYPE          =  4\n")
+                            modified_spectra_type = True
+                            continue
+                        if re.match(r'^\s*/\s*$', line) and not line.strip().startswith("!"):
+                            if not modified_spectra_type:
+                                new_lines.append("  SPECTRA%TYPE          =  4\n")
+                                modified_spectra_type = True
+                            in_spectra_nml = False
+                            new_lines.append(line)
+                            continue
                     # 修改 POINT%TIMESTART
                     if re.search(r'POINT%TIMESTART', line, re.IGNORECASE):
                         new_lines.append(f"  POINT%TIMESTART        =  '{start_date} 000000'\n")
@@ -3466,7 +3568,7 @@ class ModifyWW3NML:
                 if insert_index > 0:
                     new_lines.insert(insert_index, f"  POINT%TIMESPLIT        =  {timesplit_value}\n")
             
-            if modified_start or modified_stride or modified_split:
+            if modified_start or modified_stride or modified_split or modified_spectra_type:
                 with open(ww3_ounp_path, "w", encoding="utf-8") as f:
                     f.writelines(new_lines)
                 if modified_start and modified_stride:
