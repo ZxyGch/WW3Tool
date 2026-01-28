@@ -11,7 +11,7 @@
 本软件包括以下功能：
 
 1.  支持多种强迫场：风场 (ERA5，CFSR，CCMP)、流场 (Copernicus)、水位场(Copernicus)、海冰场(Copernicus)，包含对强迫场的自动修复功能 （纬度排序、时间修复、变量修复）
-2.  gridgen 矩形网格生成，支持最多两层的嵌套网格模式（支持 Python 版本，不依赖 Matlab）
+2.  gridgen 矩形网格生成，支持最多两层的嵌套网格模式（支持 Python 版本，不依赖 Matlab，Two-Way Nesting，相同强迫场数据）
 3.  支持区域计算、二维谱点计算、航迹计算
 4.  支持 Slurm 脚本配置
 5.  自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，主要配置计算精度、输出精度、时间范围、二维谱点计算、航迹计算、谱分区输出、强迫场配置
