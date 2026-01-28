@@ -13,7 +13,7 @@ WAVEWATCH III visualization and run tool (WW3Tool) is a pre-processing workflow 
 This tool includes:
 
 1.  Multiple forcing fields: wind (ERA5, CFSR, CCMP), currents (Copernicus), water level (Copernicus), sea ice (Copernicus), with automatic fixes (latitude ordering, time fixes, variable fixes).
-2.  gridgen rectangular grid generation, supports up to two nested grids (Python version, no MATLAB dependency).
+2.  gridgen rectangular grid generation, supports up to two nested grids (Python version, no MATLAB dependency,Two-Way Nesting,same forcing field).
 3.  Regional runs, 2D spectrum point runs, and track runs.
 4.  Slurm script configuration.
 5.  Automatic configuration for ww3_grid. nml, ww3_prnc. nml, ww3_shel. nml, ww3_ounf. nml, ww3_multi. nml, etc. (compute precision, output precision, time range, 2D spectrum points, track runs, partition output, forcing setup).
