@@ -142,6 +142,7 @@ if [ -d "coarse" ] && [ -d "fine" ]; then
     
     [ -f out_grd.fine ] && mv out_grd.fine fine/out_grd.ww3
     [ -f mod_def.fine ] && mv mod_def.fine fine/mod_def.ww3
+    [ -f out_pnt.fine ] && mv out_pnt.fine fine/out_pnt.ww3
     
     ######################################
     # 导出计算结果 (嵌套网格模式)
