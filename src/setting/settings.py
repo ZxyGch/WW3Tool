@@ -687,7 +687,8 @@ class SettingsMixin:
                 tr("coastline_highest", "最高"),
                 tr("coastline_high", "高"),
                 tr("coastline_medium", "中"),
-                tr("coastline_low", "低")
+                tr("coastline_low", "低"),
+                tr("coastline_coarse", "粗")
             ])
             # 获取当前语言下的默认值
             default_coastline = tr("coastline_highest", "最高")
@@ -700,11 +701,28 @@ class SettingsMixin:
                 tr("coastline_highest", "最高"): 0,
                 tr("coastline_high", "高"): 1,
                 tr("coastline_medium", "中"): 2,
-                tr("coastline_low", "低"): 3
+                tr("coastline_low", "低"): 3,
+                tr("coastline_coarse", "粗"): 4
             }
-            coastline_map_en = {"Highest": 0, "High": 1, "Medium": 2, "Low": 3}
+            coastline_map_en = {
+                "Highest": 0,
+                "High": 1,
+                "Medium": 2,
+                "Low": 3,
+                "Coarse": 4
+            }
+            coastline_map_code = {
+                "full": 0,
+                "high": 1,
+                "inter": 2,
+                "low": 3,
+                "coarse": 4
+            }
             
-            if saved_coastline in coastline_map_zh:
+            if saved_coastline in coastline_map_code:
+                index = coastline_map_code[saved_coastline]
+                self.settings_coastline_combo.setCurrentIndex(index)
+            elif saved_coastline in coastline_map_zh:
                 # 保存的是中文，直接使用索引
                 index = coastline_map_zh[saved_coastline]
                 self.settings_coastline_combo.setCurrentIndex(index)
@@ -2012,9 +2030,9 @@ class SettingsMixin:
                 # 保存海岸线精度时，保存为索引对应的中文值（用于兼容性）
                 # 这样即使切换语言，也能正确加载
                 "COASTLINE_PRECISION": (
-                    {0: "最高", 1: "高", 2: "中", 3: "低"}.get(
+                    {0: "full", 1: "high", 2: "inter", 3: "low", 4: "coarse"}.get(
                         self.settings_coastline_combo.currentIndex() if hasattr(self, 'settings_coastline_combo') else 0,
-                        "最高"
+                        "full"
                     )
                 ),
                 "JASON_PATH": jason_path,

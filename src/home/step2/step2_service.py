@@ -1602,47 +1602,59 @@ create_grid(
         """读取 WAVEWATCH III meta 文件，返回经纬度数组"""
         try:
             with open(fname, 'r') as fid:
-                # 跳过前45行注释
-                for i in range(45):
-                    fid.readline()
+                lines = fid.readlines()
 
-                # 读取网格类型
-                line = fid.readline().strip()
-                gtype = line.split()[0].strip("'\"")
+            grid_line_idx = None
+            gtype = None
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("$"):
+                    continue
+                tokens = stripped.replace("'", "").replace('"', "").split()
+                if not tokens:
+                    continue
+                if tokens[0].upper() in ("RECT", "CURV"):
+                    gtype = tokens[0].upper()
+                    grid_line_idx = i
+                    break
 
-                if gtype == 'RECT':
-                    # 读取网格参数
-                    # 第一行：Nx Ny
-                    line = fid.readline().strip()
-                    values = line.split()
-                    Nx = int(float(values[0]))  # 先转 float 再转 int，处理 '401' 或 '401.00' 格式
-                    Ny = int(float(values[1]))
+            if grid_line_idx is None:
+                self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
+                return None, None
 
-                    # 第二行：dx dy scale
-                    line = fid.readline().strip()
-                    values = line.split()
-                    dx = float(values[0])
-                    dy = float(values[1])
-                    scale = float(values[2])
-                    dx = dx / scale
-                    dy = dy / scale
+            if gtype != "RECT":
+                self.log(tr("step2_unsupported_grid_type", "❌ 不支持的网格类型: {gtype}").format(gtype=gtype))
+                return None, None
 
-                    # 第三行：lons lats scale
-                    line = fid.readline().strip()
-                    values = line.split()
-                    lons = float(values[0])
-                    lats = float(values[1])
-                    scale = float(values[2])
+            if grid_line_idx + 3 >= len(lines):
+                self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
+                return None, None
 
-                    # 生成经纬度数组
-                    lon1d = lons / scale + np.arange(Nx) * dx
-                    lat1d = lats / scale + np.arange(Ny) * dy
+            # 第一行：Nx Ny
+            values = lines[grid_line_idx + 1].split()
+            Nx = int(float(values[0]))
+            Ny = int(float(values[1]))
 
-                    lon, lat = np.meshgrid(lon1d, lat1d)
-                    return lon, lat
-                else:
-                    self.log(tr("step2_unsupported_grid_type", "❌ 不支持的网格类型: {gtype}").format(gtype=gtype))
-                    return None, None
+            # 第二行：dx dy scale
+            values = lines[grid_line_idx + 2].split()
+            dx = float(values[0])
+            dy = float(values[1])
+            scale = float(values[2])
+            dx = dx / scale
+            dy = dy / scale
+
+            # 第三行：lons lats scale
+            values = lines[grid_line_idx + 3].split()
+            lons = float(values[0])
+            lats = float(values[1])
+            scale = float(values[2])
+
+            # 生成经纬度数组
+            lon1d = lons / scale + np.arange(Nx) * dx
+            lat1d = lats / scale + np.arange(Ny) * dy
+
+            lon, lat = np.meshgrid(lon1d, lat1d)
+            return lon, lat
         except Exception as e:
             self.log(tr("step2_read_meta_error", "❌ 读取 meta 文件失败: {error}").format(error=e))
             return None, None

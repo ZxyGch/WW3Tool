@@ -1,0 +1,24 @@
+
+Example script to create a regional 10' grid for Alaska. Also provided is an script to 
+modify the mask file when the regional grid is nested inside the global grid and only 
+part of the regional grid is active (given by a polygon defined in alaska_10minzone.ascii). 
+
+NOTE 1 : The path names at the top of the scripts will have to be changed to 
+         the appropriate directories
+
+NOTE 2:  The same script can be used to generate a global grid. The user will have to 
+         define the grid ranges. For the global grid make sure that the IS_GLOBAL 
+         parameter is set to 1 (this accounts for wrapping around in longitude). 
+
+NOTE 3:  For building grids that cross the 0/360 meridian make the grids in two parts
+         and then stitch them together. This is straightforward to do. 
+
+NOTE 4:  Also provided are example longitude and latitude arrays for a curvilinear grid 
+         of the Arctic using a stereographic projection. For building this grid replace the
+         lines detailing the development of 'lon' and 'lat' arrays in the template
+         file by loading these files.
+         load arctic_stereo_lat.dat ; lat = arctic_stereo_lat.dat;
+         load arctic_stereo_lon.dat ; lon = arctic_stereo_lon.dat;
+-----------------------------------------------------------------------------
+Arun Chawla (arun.chawla@noaa.gov)
+02/06/2014

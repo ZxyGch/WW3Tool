@@ -136,7 +136,8 @@ def create_grid(**kwargs):
         'LAKE_TOL': -1,
         'IS_GLOBAL': 0,
         'OBSTR_OFFSET': 1,
-        'SPLIT_LIM': None,  # Will be set to 5*max(dx,dy) if None
+        'MIN_DIST': 4.0,
+        'SPLIT_LIM': 0.0,  # Align with MATLAB (splitting disabled by default)
         'show_plots': 1
     }
     
@@ -151,7 +152,7 @@ def create_grid(**kwargs):
     if params['OFFSET'] is None:
         params['OFFSET'] = max([params['dx'], params['dy']])
     if params['SPLIT_LIM'] is None:
-        params['SPLIT_LIM'] = 5 * max([params['dx'], params['dy']])
+        params['SPLIT_LIM'] = 0.0
     
     # 0. Initialization
     start_time = time.time()
@@ -329,7 +330,7 @@ def create_grid(**kwargs):
         lat_end = np.max(lat) + params['dy']
         
         coord = [lat_start, lon_start, lat_end, lon_end]
-        b, N1 = compute_boundary(coord, bound, 0.0)  # MIN_DIST = 0.0 for default
+        b, N1 = compute_boundary(coord, bound, params['MIN_DIST'])
         sys.stdout.flush()
         print(f'  Found {N1} boundary segments in grid domain', flush=True)
         print('  Done.\n', flush=True)
@@ -350,7 +351,7 @@ def create_grid(**kwargs):
     if params['read_boundary'] and N1 > 0:
         print('Step 6: Splitting large boundary polygons...', flush=True)
         sys.stdout.flush()
-        b_split = split_boundary(b, params['SPLIT_LIM'], 0.0)  # MIN_DIST = 0.0
+        b_split = split_boundary(b, params['SPLIT_LIM'], params['MIN_DIST'])
         sys.stdout.flush()
         print('  Done.\n', flush=True)
     else:

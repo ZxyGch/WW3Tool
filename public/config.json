@@ -13,7 +13,7 @@
     "LONGITUDE_EAST": "",
     "NESTED_CONTRACTION_COEFFICIENT": "1.1",
     "BATHYMETRY": "GEBCO",
-    "COASTLINE_PRECISION": "最高",
+    "COASTLINE_PRECISION": "full",
     "JASON_PATH": "/Users/zxy/ocean/WW3Tool/jason3",
     "DEFAULT_WORKDIR": "",
     "FORCING_FIELD_DIR_PATH": "",
@@ -59,6 +59,7 @@
     "SERVER_PATH": "",
     "SHOW_LAND_COASTLINE": true,
     "RECENT_WORKDIRS": [
+        "/Users/zxy/ocean/WW3Tool/workSpace/point",
         "/Users/zxy/ocean/WW3Tool/workSpace/new"
     ],
     "JASON_REMOTE_PATH": "",

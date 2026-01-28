@@ -1,0 +1,55 @@
+&SPECTRUM_NML
+  SPECTRUM%XFR         =  1.10
+  SPECTRUM%FREQ1       =  0.0373
+  SPECTRUM%NK          =  32
+  SPECTRUM%NTH         =  24
+/
+
+&RUN_NML
+  RUN%FLCX             = T
+  RUN%FLCY             = T
+  RUN%FLCTH            = T
+  RUN%FLSOU            = T
+/
+
+&TIMESTEPS_NML
+  TIMESTEPS%DTMAX      =  540.00
+  TIMESTEPS%DTXY       =  180.00
+  TIMESTEPS%DTKTH      =  90.00
+  TIMESTEPS%DTMIN      =    1.00
+/
+
+&GRID_NML
+  GRID%NAME            =  'GLOB-30M'
+  GRID%NML             =  'namelists_GLOB-30M.nml'
+  GRID%TYPE            =  'RECT'
+  GRID%COORD           =  'SPHE'
+  GRID%CLOS            =  'NONE'
+  GRID%ZLIM            =  -0.10
+  GRID%DMIN            =   2.50
+/
+
+&RECT_NML
+  RECT%NX              =  401
+  RECT%NY              =  401
+!
+  RECT%SX              =   0.050003051758
+  RECT%SY              =   0.050000190735
+  RECT%X0              =  110.0000
+  RECT%Y0              =   10.0000
+/
+
+&DEPTH_NML
+  DEPTH%SF             = 0.001
+  DEPTH%FILENAME       = 'GLOB-30M.bot'
+/
+
+&MASK_NML
+  MASK%FILENAME        = 'GLOB-30M.mask_nobound'
+/
+
+&OBST_NML
+  OBST%SF              = 0.010
+  OBST%FILENAME        = 'GLOB-30M.obst'
+/
+
