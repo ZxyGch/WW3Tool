@@ -98,6 +98,7 @@
   SPECTRA%OUTPUT        = 3
   SPECTRA%SCALE_FAC     = 1
   SPECTRA%OUTPUT_FAC    = 0
+  SPECTRA%TYPE          = 4
 /
 
 

@@ -20,6 +20,62 @@ try:
 except ImportError:
     HAS_WAVESPECTRA = False
 
+
+def _pick_station_lon_lat(lon, lat, station_index, n_station=None):
+    """Pick station lon/lat robustly across dim orders."""
+    lon_arr = np.array(lon)
+    lat_arr = np.array(lat)
+
+    if lon_arr.ndim == 0:
+        return float(lon_arr), float(lat_arr)
+
+    if lon_arr.ndim == 1:
+        return float(lon_arr[station_index]), float(lat_arr[station_index])
+
+    if n_station is not None:
+        if lon_arr.shape[0] == n_station:
+            return float(lon_arr[station_index].reshape(-1)[0]), float(lat_arr[station_index].reshape(-1)[0])
+        if lon_arr.shape[-1] == n_station:
+            idx = (0,) * (lon_arr.ndim - 1) + (station_index,)
+            return float(lon_arr[idx]), float(lat_arr[idx])
+
+    if lon_arr.shape[-1] > station_index:
+        idx = (0,) * (lon_arr.ndim - 1) + (station_index,)
+        return float(lon_arr[idx]), float(lat_arr[idx])
+
+    flat_idx = min(station_index, lon_arr.size - 1)
+    return float(lon_arr.reshape(-1)[flat_idx]), float(lat_arr.reshape(-1)[flat_idx])
+
+
+def _decode_station_names(station_name_var, n_station):
+    """Decode station_name variable to list of strings."""
+    if station_name_var is None:
+        return None
+    try:
+        raw = np.array(station_name_var)
+        if raw.ndim == 1:
+            names = [str(item) for item in raw.tolist()]
+        elif raw.ndim >= 2:
+            names = []
+            for row in raw[:n_station]:
+                if row.dtype.kind in ("S", "U"):
+                    if row.dtype.kind == "S":
+                        name = b"".join(row.tolist()).decode("utf-8", "ignore").strip()
+                    else:
+                        name = "".join([str(x) for x in row.tolist()]).strip()
+                else:
+                    name = "".join([chr(int(x)) for x in row.tolist() if int(x) != 0]).strip()
+                names.append(name)
+        else:
+            names = []
+        cleaned = []
+        for i in range(n_station):
+            value = names[i].replace("\x00", "").strip() if i < len(names) else ""
+            cleaned.append(value)
+        return cleaned
+    except Exception:
+        return None
+
 def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, result_queue, max_dist_deg=0.125, time_window_hours=0.5):
     """在子进程中执行匹配计算的独立函数"""
     try:
@@ -1966,8 +2022,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             cb.ax.tick_params(labelsize=9)
             
             # 标题
-            lon_val = lon[istation, 0] if lon.ndim > 1 else lon[istation]
-            lat_val = lat[istation, 0] if lat.ndim > 1 else lat[istation]
+            lon_val, lat_val = _pick_station_lon_lat(lon, lat, istation, nStation)
             title_str = f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_dt[itime].strftime("%Y-%m-%d %H:%M:%S")}'
             ax.set_title(title_str, fontsize=10, pad=10)
             
@@ -2063,6 +2118,7 @@ def _sanitize_filename(name):
 
 def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, time_step_hours=24, plot_mode="最大值归一化", station_names=None):
     """生成所有二维谱图的 worker 函数（所有站点、根据时间步长筛选的时间）"""
+    station_name_var = None
     try:
         def log(msg):
             """发送日志到队列"""
@@ -2104,6 +2160,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                 lat = ds.variables['latitude'][:].data
                 nStation = len(ds.dimensions['station'])
                 nTime = len(time)
+                station_name_var = ds.variables['station_name'][:] if 'station_name' in ds.variables else None
             
             # 转换时间
             t0 = datetime(1990, 1, 1, 0, 0, 0)
@@ -2590,6 +2647,15 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                                 facecolor='white', edgecolor='none', pad_inches=0.1)
                     plt.close(fig)
             
+            # 优先使用文件中的站点名称，避免 UI 排序/编辑导致错位
+            file_station_names = _decode_station_names(station_name_var, nStation)
+            if file_station_names and any(file_station_names):
+                station_name_list = file_station_names
+            elif station_names and len(station_names) >= nStation:
+                station_name_list = station_names
+            else:
+                station_name_list = [f"station_{i+1:03d}" for i in range(nStation)]
+
             # 遍历所有站点和筛选后的时间步
             total_count = nStation * nSelectedTime
             current_count = 0
@@ -2608,15 +2674,11 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                         X, Y, E_interp = process_spectrum_data(E, dir_orig, freq)
                         
                         # 获取站点信息
-                        lon_val = lon[istation, 0] if lon.ndim > 1 else lon[istation]
-                        lat_val = lat[istation, 0] if lat.ndim > 1 else lat[istation]
+                        lon_val, lat_val = _pick_station_lon_lat(lon, lat, istation, nStation)
                         time_str = time_dt[itime].strftime("%Y-%m-%d %H:%M:%S")
                         
                         # 获取站点名称（如果提供了站点名称列表）
-                        if station_names and istation < len(station_names):
-                            station_name = _sanitize_filename(station_names[istation])
-                        else:
-                            station_name = f"station_{istation+1:03d}"
+                        station_name = _sanitize_filename(station_name_list[istation])
                         
                         # 生成输出文件名（使用站点名称）
                         time_str_file = time_dt[itime].strftime("%Y%m%d_%H%M%S")
@@ -2656,6 +2718,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
 def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, time_step_hours=24, station_index=0, plot_mode="最大值归一化", station_name=None):
     """生成选中站点的二维谱图 worker 函数（单个站点、根据时间步长筛选的时间）"""
+    station_name_var = None
     try:
         def log(msg):
             """发送日志到队列"""
@@ -2697,6 +2760,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                 lat = ds.variables['latitude'][:].data
                 nStation = len(ds.dimensions['station'])
                 nTime = len(time)
+                station_name_var = ds.variables['station_name'][:] if 'station_name' in ds.variables else None
             
             # 检查站点索引是否有效
             if station_index < 0 or station_index >= nStation:
@@ -3250,9 +3314,16 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     plt.close(fig)
             
             # 获取站点信息
-            lon_val = lon[station_index, 0] if lon.ndim > 1 else lon[station_index]
-            lat_val = lat[station_index, 0] if lat.ndim > 1 else lat[station_index]
+            lon_val, lat_val = _pick_station_lon_lat(lon, lat, station_index, nStation)
             
+            file_station_names = _decode_station_names(station_name_var, nStation)
+            if file_station_names and any(file_station_names):
+                station_name = file_station_names[station_index]
+            elif station_name:
+                station_name = station_name
+            else:
+                station_name = f"station_{station_index+1:03d}"
+
             # 遍历筛选后的时间步
             total_count = nSelectedTime
             current_count = 0
@@ -3273,10 +3344,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     time_str = time_dt[itime].strftime("%Y-%m-%d %H:%M:%S")
                     
                     # 获取站点名称（如果提供了站点名称）
-                    if station_name:
-                        sanitized_name = _sanitize_filename(station_name)
-                    else:
-                        sanitized_name = f"station_{station_index+1:03d}"
+                    sanitized_name = _sanitize_filename(station_name)
                     
                     # 生成输出文件名（使用站点名称）
                     time_str_file = time_dt[itime].strftime("%Y%m%d_%H%M%S")

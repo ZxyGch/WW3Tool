@@ -147,14 +147,24 @@ class StepSixFunctionsMixin:
 
         # 显示确认对话框
         msg_box = MessageBox(
-            tr("clear_folder_confirm_title", "确认清空文件夹"),
-            tr("clear_folder_confirm_content", "确定要清空远程文件夹：\n{path}\n\n此操作不可恢复！").format(path=remote_dir),
+            tr("clear_folder_confirm_title", "确定要清空远程文件夹："),
+            tr("clear_folder_confirm_content", "{path} \n\n此操作不可恢复！").format(path=remote_dir),
             self
         )
         
-        # 设置对话框宽度（参考 WorkFolderDialog 的实现方式，通过内容区域控制宽度）
-        # 设置最小宽度，让对话框有足够的空间显示内容
-        msg_box.setMinimumWidth(750)
+        # 通过内容区域控制宽度（参考 WorkFolderDialog 用控件宽度撑开）
+        try:
+            if hasattr(msg_box, "contentLabel") and msg_box.contentLabel:
+                msg_box.contentLabel.setMinimumWidth(500)
+                msg_box.contentLabel.setWordWrap(False)
+                msg_box.contentLabel.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Expanding,
+                    QtWidgets.QSizePolicy.Policy.Preferred
+                )
+            if hasattr(msg_box, "titleLabel") and msg_box.titleLabel:
+                msg_box.titleLabel.setMinimumWidth(500)
+        except Exception:
+            pass
         
         # 设置确认按钮为红色高亮
         # 使用 QTimer 延迟设置，确保 MessageBox 已经完全初始化
@@ -345,7 +355,7 @@ class StepSixFunctionsMixin:
 
 
     def download_remote_nc(self):
-        """从远程目录下载以 ww3 开头、.nc 结尾的文件到本地选中目录，显示每1%下载进度"""
+        """从远程目录下载 ww3*.nc 文件到本地选中目录，显示每1%下载进度"""
         if not self.selected_folder:
             self.log("❌ 本地未选择有效的目标文件夹。")
             return
@@ -374,30 +384,18 @@ class StepSixFunctionsMixin:
                 if is_nested:
                     # 嵌套模式：从 fine 目录下载
                     search_dir = os.path.join(remote_dir, "fine").replace("\\", "/")
-                    try:
-                        files = sftp.listdir(search_dir)
-                    except (IOError, OSError) as e:
-                        self.log_signal.emit(f"❌ 无法列出远程目录: {search_dir} -> {e}")
-                        sftp.close()
-                        return
                 else:
                     # 普通模式：从主目录下载
                     search_dir = remote_dir
-                    try:
-                        files = sftp.listdir(search_dir)
-                    except IOError as e:
-                        self.log_signal.emit(f"❌ 无法列出远程目录: {search_dir} -> {e}")
-                        sftp.close()
-                        return
 
-                # 分别匹配普通结果文件和 spec 文件
-                # 普通结果文件：ww3*.nc 但不包含 spec
-                matched_result = [f for f in files if f.startswith("ww3") and f.endswith(".nc") and "spec" not in f.lower()]
-                # spec 文件：ww3*spec*nc
-                matched_spec = [f for f in files if f.startswith("ww3") and "spec" in f.lower() and f.endswith(".nc")]
-                
-                # 合并文件列表：先下载普通结果文件，再下载 spec 文件
-                matched = matched_result + matched_spec
+                try:
+                    files = sftp.listdir(search_dir)
+                except (IOError, OSError) as e:
+                    self.log_signal.emit(f"❌ 无法列出远程目录: {search_dir} -> {e}")
+                    sftp.close()
+                    return
+
+                matched = [f for f in files if f.startswith("ww3") and f.endswith(".nc")]
                 
                 if not matched:
                     self.log_signal.emit("⚠️ 远程目录未找到匹配的 ww3*.nc 文件。")

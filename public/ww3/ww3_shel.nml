@@ -510,7 +510,7 @@
 !
 ! -------------------------------------------------------------------- !
 &OUTPUT_TYPE_NML
-  TYPE%FIELD%LIST       = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
+  TYPE%FIELD%LIST       = 'WND HS T02 FP DIR PHS PTP PDIR PWS TWS PNR'
 /
 
 ! -------------------------------------------------------------------- !
