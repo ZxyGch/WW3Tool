@@ -6,6 +6,8 @@
 
 ![](public/resource/README.zh-CN-media/7fb43345a824090ba09535a744874a8bd6890ade.png)
 
+<iframe width="900" height="515" src="https://www.youtube.com/embed/PHXLP1FrZmw?si=DEiGHG3O0CXMxXIE" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 海浪模式 WAVEWATCH III 可视化运行软件 (简称 WW3Tool) 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可以完成基本的 WAVEWATCH III 流程化运行。
 
 本软件包括以下功能：
