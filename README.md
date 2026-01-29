@@ -20,7 +20,7 @@ This tool includes:
 5.  Automatic configuration for ww3_grid. nml, ww3_prnc. nml, ww3_shel. nml, ww3_ounf. nml, ww3_multi. nml, etc. (compute precision, output precision, time range, 2D spectrum points, track runs, partition output, forcing setup).
 6.  Wave height plots, wave height videos, contour plots, 2D spectrum plots, JASON3 satellite tracks, 2D spectrum plots.
 
-You must install WAVEWATCH III yourself on local or server environments. This tool does not provide an installer.
+You must install WAVEWATCH III yourself on local or server environments. This tool does not provide an installer,please read https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL.
 
 My undergraduate major was not oceanography, and I am currently a first-year graduate student. The only WAVEWATCH III methods I know are these. If you have any more ideas, please contact me at atomgoto@gmail.com or issue.
 
