@@ -8,7 +8,6 @@
 
 ![](public/resource/README-media/9c73882ce0c8f81ed4b1195dded3c8b1fe365e19.png)
 
-Youtube: https://www.youtube.com/watch?v=PHXLP1FrZmw
 
 WAVEWATCH III visualization and run tool (WW3Tool) is a pre-processing workflow tool for the WAVEWATCH III model. It helps you complete the basic WAVEWATCH III workflow.
 
