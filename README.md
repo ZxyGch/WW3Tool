@@ -24,7 +24,7 @@ You must install WAVEWATCH III yourself on local or server environments. This to
 
 My undergraduate major was not oceanography, and I am currently a first-year graduate student. The only WAVEWATCH III methods I know are these. If you have any more ideas, please contact me at atomgoto@gmail.com or issue.
 
-
+If you find this tutorial useful, please give me a star 🥳
 
 ## Quick Start
 
