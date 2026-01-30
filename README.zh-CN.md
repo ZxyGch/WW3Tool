@@ -20,7 +20,7 @@
 
 这个软件可以运行在 Win/Linux/Mac，几乎完全由 Python 组成
 
-实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL。
+实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL
 
 我本科不是海洋科学的，现在是研究生一年级，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 atomgoto@gmail.com 或在 issue 中提出意见
 
