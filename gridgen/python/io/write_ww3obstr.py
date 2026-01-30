@@ -46,9 +46,6 @@ def write_ww3obstr(fname, d1, d2):
                 line = ' '.join(f' {int(val)} ' for val in a) + '\n'
                 fid.write(line)
             
-            # Write blank line separator
-            fid.write('\n')
-            
             # Write d2 (y obstruction)
             for i in range(Ny):
                 a = d2[i, :]
