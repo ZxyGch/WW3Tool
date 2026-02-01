@@ -264,11 +264,11 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
 
-![](public/resource/README.zh-CN-media/b5d6ea9dc0290becf2ea385e6f713510296722de.png)
+![[public/resource/README-media/截屏2026-02-01 12.16.50.png]]
 
 我们可以画出二维谱图
 
-![](public/resource/README.zh-CN-media/bd455cb19d863e669e3f1dd23b163a9cb762accc.png)
+![](public/resource/README-media/spectrum_Point_3_19_time_20230101_000000.png)
 
 #### 航迹模式
 

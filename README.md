@@ -268,11 +268,12 @@ The three columns in points.list are longitude, latitude, and point name. If a w
 
 After running WW3, you can get ww3.2025_spec.nc in the plotting page.
 
-![](public/resource/README-media/13c8a9c0e19f7ed2cabccbaf89fd2b8431d50eb9.png)
+![](public/resource/README-media/截屏2026-02-01%2012.32.47.png)
 
 Then you can plot 2D spectra.
 
-![](public/resource/README-media/bd455cb19d863e669e3f1dd23b163a9cb762accc.png)
+![](public/resource/README-media/spectrum_Point_3_19_time_20230101_000000.png)
+
 
 #### Track Mode
 
