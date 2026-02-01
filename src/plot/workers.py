@@ -1834,7 +1834,8 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             with nc.Dataset(spec_file, 'r') as ds:
                 freq = ds.variables['frequency'][:].data  # Hz
                 dir_orig = ds.variables['direction'][:].data  # degree
-                efth = ds.variables['efth'][:]  # m^2
+                # WW3 efth units: m²·s·rad⁻¹ == m²/Hz/rad -> convert to m²/Hz/deg for plotting
+                efth = ds.variables['efth'][:] * (np.pi / 180.0)
                 time = ds.variables['time'][:].data
                 
                 # 读取站点信息
@@ -1853,6 +1854,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             istation = 0
             
             # 获取数据 (time, station, frequency, direction)
+            # efth converted to m²/Hz/deg for plotting
             E = efth[itime, istation, :, :]  # 获取 (frequency, direction)
             E = E.T  # 转置为 (direction, frequency) 以匹配 MATLAB
             
@@ -2018,7 +2020,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             
             cb = plt.colorbar(pcm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
             cb.set_ticklabels(tick_labels)
-            cb.set_label('Energy Density (m²/hz/deg)', fontsize=9)
+            cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
             cb.ax.tick_params(labelsize=9)
             
             # 标题
@@ -2152,7 +2154,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
             with nc.Dataset(spec_file, 'r') as ds:
                 freq = ds.variables['frequency'][:].data  # Hz
                 dir_orig = ds.variables['direction'][:].data  # degree
-                efth = ds.variables['efth'][:]  # m^2
+                # WW3 efth units: m²·s·rad⁻¹ == m²/Hz/rad -> convert to m²/Hz/deg for plotting
+                efth = ds.variables['efth'][:] * (np.pi / 180.0)
                 time = ds.variables['time'][:].data
                 
                 # 读取站点信息
@@ -2587,7 +2590,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     
                     cb = plt.colorbar(pcm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
                     cb.set_ticklabels(tick_labels)
-                    cb.set_label('Energy Density (m²/hz/deg)', fontsize=9)
+                    cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
                     cb.ax.tick_params(labelsize=9)
                     
                     # 标题
@@ -2752,7 +2755,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
             with nc.Dataset(spec_file, 'r') as ds:
                 freq = ds.variables['frequency'][:].data  # Hz
                 dir_orig = ds.variables['direction'][:].data  # degree
-                efth = ds.variables['efth'][:]  # m^2
+                # WW3 efth units: m²·s·rad⁻¹ == m²/Hz/rad -> convert to m²/Hz/deg for plotting
+                efth = ds.variables['efth'][:] * (np.pi / 180.0)
                 time = ds.variables['time'][:].data
                 
                 # 读取站点信息
@@ -3262,7 +3266,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     
                     cb = plt.colorbar(pcm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
                     cb.set_ticklabels(tick_labels)
-                    cb.set_label('Energy Density (m²/hz/deg)', fontsize=9)
+                    cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
                     cb.ax.tick_params(labelsize=9)
                     
                     title_str = f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}'
