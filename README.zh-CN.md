@@ -60,7 +60,7 @@ python main.py
 
 reference_data 必须下载，否则无法生成网格文件！
 
-执行下载脚本 WW3Tool/gridgen/get_reference_data. py
+执行下载脚本 WW3Tool/gridgen/get_reference_data.py
 
 或者从 OneDrive 下载： https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ
 
@@ -124,31 +124,33 @@ reference_data 必须下载，否则无法生成网格文件！
 
 通常，我们只使用风场作为强迫场即可，并且软件不允许只使用其他强迫场而不包含风场。
 
-如果一个文件内包含多种强迫场，那么会自动填充相应的按钮，并且这个文件在工作目录会命名为类似 current_level. nc ，表明其中包含的强迫场
+如果一个文件内包含多种强迫场，那么会自动填充相应的按钮，并且这个文件在工作目录会命名为类似 current_level.nc ，表明其中包含的强迫场
 
 ### 生成网格文件
 
 #### reference_data
 
-在生成网格之前，我们需要到 WW3Tool/gridgen 目录执行脚本 get_reference_data. py，这个脚本是用来下载水深数据 gebco 和 etop1、etop2，以及海岸边界数据，它会自动下载并解压到目录 reference_data。
+在生成网格之前，我们需要到 WW3Tool/gridgen 目录执行脚本 get_reference_data.py，这个脚本是用来下载水深数据 gebco 和 etop1、etop2，以及海岸边界数据，它会自动下载并解压到目录 reference_data。
 
 ![](public/resource/README.zh-CN-media/c1ffc9ab1b634c5011341174f966110e26d380b9.png)
 
 #### 一般网格
 
-运行软件，选择从 wind. nc 读取范围，点击生成网格，会调用 WW3Tool/gridgen 目录的代码生成网格文件到工作目录
+运行软件，选择从 wind.nc 读取范围，点击生成网格，会调用 WW3Tool/gridgen 目录的代码生成网格文件到工作目录
 
 DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 ![](public/resource/README.zh-CN-media/c5312abee24134d2105c86e4e54af1c69b5c36b1.png)
 
-最后在工作目录下，会多出四个文件 grid. bot 、grid. obst、grid. meta、grid. mask
+最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.meta、grid.mask
 
 #### 嵌套网格
 
 选择类型：嵌套网格
 
 ![](public/resource/README.zh-CN-media/9bb0a401caada974530ea5639de29580f2b6ab61.png)
+
+嵌套网格我们使用的是 Two-way nesting，矩形网格，球面坐标系，其他网格暂时不支持（如果你知道怎么使用其他网格，请告诉我，我会添加到软件）
 
 我们在设置页面的规定了一个：嵌套网格收缩系数，我们默认设置为 1.1 倍
 
@@ -174,7 +176,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 ![](public/resource/README.zh-CN-media/e8eb8dcef23b8278159afb0694d3f95085a78dbd.png)
 
-每个缓存文件夹下，还有 params. json 可以查看
+每个缓存文件夹下，还有 params.json 可以查看
 
 ``` json
 {
@@ -193,7 +195,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
     ],
     "ref_dir": "/Users/zxy/ocean/WW3Tool/gridgen/reference_data",
     "bathymetry": "GEBCO",
-    "coastline_precision": "最高"
+    "coastline_precision": "full"
   }
 }
 ```
@@ -258,7 +260,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 126 18 '5'
 ```
 
-points.list 的三列分别是：经度、纬度、点名称，当某个工作目录存在 points. list 文件时，打开该工作目录计算模式会自动切换到：谱空间逐点计算，并自动导入 points. list 的点
+points.list 的三列分别是：经度、纬度、点名称，当某个工作目录存在 points.list 文件时，打开该工作目录计算模式会自动切换到：谱空间逐点计算，并自动导入 points.list 的点
 
 最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
 
@@ -273,10 +275,12 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 ![](public/resource/README.zh-CN-media/737c55bb46eef47bd4d1002669e38f7739531c2b.png)
 和谱空间逐点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
 
-    WAVEWATCH III TRACK LOCATIONS DATA 
-    20250103 000000   115.4   19.7    0
-    20250103 000000   127.6   19.7    1
-    20250103 000000   127.6   15.6    2
+```
+WAVEWATCH III TRACK LOCATIONS DATA     
+20250103 000000   115.4   19.7    0
+20250103 000000   127.6   19.7    1
+20250103 000000   127.6   15.6    2
+```
 
 最后我们会使用 ww3_trnc 输出一个 ww3.2025\_
 
@@ -318,23 +322,27 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 我们会把 grid.meta 的
 
-       'RECT'  T 'NONE'
-    401      401 
-     3.00       3.00      60.00 
-    110.0000       10.0000       1.00
+```
+   'RECT'  T 'NONE'
+401      401 
+ 3.00       3.00      60.00 
+110.0000       10.0000       1.00
+```
 
 部分，转换到 ww3_grid.nml 的
 
-    &RECT_NML
-      RECT%NX           =  401
-      RECT%NY           =  401
-      RECT%SX           =  3.000000
-      RECT%SY           =  3.000000
-      RECT%SF           =  60.000000
-      RECT%X0           =  110.000000
-      RECT%Y0           =  10.000000
-      RECT%SF           =  60.000000
-    /
+```
+&RECT_NML
+   RECT%NX           =  401
+   RECT%NY           =  401
+   RECT%SX           =  3.000000
+   RECT%SY           =  3.000000
+   RECT%SF           =  60.000000
+   RECT%X0           =  110.000000
+   RECT%Y0           =  10.000000
+   RECT%SF           =  60.000000
+/
+```
 
 ------------------------------------------------------------------------
 
@@ -344,7 +352,7 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 ✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
 ```
 
-ww3_shel. nml 的 TYPE%FIELD%LIST
+ww3_shel.nml 的 TYPE%FIELD%LIST
 
 ``` swift
 &OUTPUT_TYPE_NML
@@ -352,7 +360,7 @@ ww3_shel. nml 的 TYPE%FIELD%LIST
 /
 ```
 
-ww3_ounf. nml 的 FIELD%LIST
+ww3_ounf.nml 的 FIELD%LIST
 
 ``` swift
 &FIELD_NML
@@ -366,7 +374,7 @@ ww3_ounf. nml 的 FIELD%LIST
 
 ------------------------------------------------------------------------
 
-再然后，我们修改 server. sh 文件
+再然后，我们修改 server.sh 文件
 
 ``` log
 ✅ 已更新 server.sh：-J=202501, -p=CPU6240R, -n=48, -N=1, MPI_NPROCS=48, CASENAME=202501, ST=ST2
@@ -431,7 +439,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 ------------------------------------------------------------------------
 
-然后我们修改 ww3_prnc. nml 的时间范围
+然后我们修改 ww3_prnc.nml 的时间范围
 
 ``` sh
 &FORCING_NML
@@ -446,19 +454,21 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 /
 ```
 
-然后我们根据选择的强迫场生成 ww3_prnc_current.nml ww3_prnc_level.nml，对于冰场，冰场的浓度和厚度会分成两个 ww3_prnc_ice.nml 和 ww3_prnc_ice1. nml
+然后我们根据选择的强迫场生成 ww3_prnc_current.nml ww3_prnc_level.nml，对于冰场，冰场的浓度和厚度会分成两个 ww3_prnc_ice.nml 和 ww3_prnc_ice1.nml
 
 我们会根据强迫场修改强迫场的开关，每个强迫场开关只能打开一个，但是在后续处理的时候我们会多次使用 ww3_prnc
 
 我们还修改了强迫场的文件名和强迫场变量
 
-    &FILE_NML
-      FILE%FILENAME      = 'wind.nc'
-      FILE%LONGITUDE     = 'longitude'
-      FILE%LATITUDE      = 'latitude'
-      FILE%VAR(1)        = 'u10'
-      FILE%VAR(2)        = 'v10'
-    /
+```
+&FILE_NML
+  FILE%FILENAME      = 'wind.nc'
+  FILE%LONGITUDE     = 'longitude'
+  FILE%LATITUDE      = 'latitude'
+  FILE%VAR(1)        = 'u10'
+  FILE%VAR(2)        = 'v10'
+/
+```
 
 ------------------------------------------------------------------------
 
@@ -468,13 +478,15 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 根据我们使用的强迫场，修改 ww3_shel.nml
 
-    &INPUT_NML
-      INPUT%FORCING%WINDS         = 'T'
-      INPUT%FORCING%WATER_LEVELS  = 'T'
-      INPUT%FORCING%CURRENTS      = 'T'
-      INPUT%FORCING%ICE_CONC      = 'T'
-      INPUT%FORCING%ICE_PARAM1    = 'T'
-    /
+```
+&INPUT_NML
+  INPUT%FORCING%WINDS         = 'T'
+  INPUT%FORCING%WATER_LEVELS  = 'T'
+  INPUT%FORCING%CURRENTS      = 'T'
+  INPUT%FORCING%ICE_CONC      = 'T'
+  INPUT%FORCING%ICE_PARAM1    = 'T'
+/
+```
 
 ------------------------------------------------------------------------
 
@@ -490,13 +502,15 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 ✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（航迹模式）
 ```
 
-我们还会在 ww3_shel. nml 添加
+我们还会在 ww3_shel.nml 添加
 
-    &OUTPUT_DATE_NML
-      DATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
-      DATE%TRACK          = '20250103 000000' '1800' '20250103 000000'
-      DATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
-    /
+```
+&OUTPUT_DATE_NML
+   DATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
+   DATE%TRACK          = '20250103 000000' '1800' '20250103 000000'
+   DATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
+/
+```
 
 ------------------------------------------------------------------------
 
@@ -504,13 +518,15 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 ✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
-航迹模式下我们还会修改 ww3_trnc. nml
+航迹模式下我们还会修改 ww3_trnc.nml
 
-    &TRACK_NML
-      TRACK%TIMESTART        =  '20250103 000000'
-      TRACK%TIMESTRIDE       =  '3600'
-      TRACK%TIMESPLIT        =  8
-    /
+```
+&TRACK_NML
+  TRACK%TIMESTART        =  '20250103 000000'
+  TRACK%TIMESTRIDE       =  '3600'
+  TRACK%TIMESPLIT        =  8
+/
+```
 
 ------------------------------------------------------------------------
 
@@ -579,7 +595,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 已复制 server.sh, ww3_multi.nml 到工作目录：/Users/zxy/ocean/WW3Tool/nest
 ```
 
-我们首先把 WW3Tool/public/ww3 目录的 server. sh 和 ww3_multi. nml 复制到了工作目录。
+我们首先把 WW3Tool/public/ww3 目录的 server.sh 和 ww3_multi.nml 复制到了工作目录。
 
 ![](public/resource/README.zh-CN-media/8238245873ddbc05fb1dd3597bacb88325008398.png)
 
@@ -629,7 +645,7 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 至于其他的 Log ，很容易理解，我们只是按照普通网格的方式处理了内外网格
 
-值得注意的是，我们修改了 ww3_prnc.nml：FILE%FILENAME = '../wind. nc' ，这是为了避免强迫场文件占用两倍的空间，所以指向了共同的引用。
+值得注意的是，我们修改了 ww3_prnc.nml：FILE%FILENAME = '../wind.nc' ，这是为了避免强迫场文件占用两倍的空间，所以指向了共同的引用。
 
 ### 本地运行
 
@@ -676,9 +692,9 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 自动读取网格文件的范围和精度，填充第二步，检测是否保护 coarse 和 fine 文件夹，自动切换到嵌套网格模式
 
-自动检测 points. lits 切换到点输出模式，检测到 track_i.ww3 切换到航迹模式
+自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到航迹模式
 
-自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel. nml 的计算精度，时间范围，谱分区方案
+自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel.nml 的计算精度，时间范围，谱分区方案
 
 ### 设置页面
 
@@ -709,7 +725,7 @@ JASON 数据路径就是绘图的时候用的，比如你想看模拟的结果�
 
 WW3 配置就是主页第四步的默认值，确认参数会修改 ww3_shel.nml 和 ww3_multi.nml 计算精度，ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 输出精度
 
-文件分割就是 ww3_ounf. nml, ww3_ounp. nml, ww3_trnc. nml 的 TIMESPLIT，比如你计算的时间范围是 3 个月，那么你选择月分割或年分割比较合适，如果你选择日分割，则会每天一个文件。
+文件分割就是 ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 的 TIMESPLIT，比如你计算的时间范围是 3 个月，那么你选择月分割或年分割比较合适，如果你选择日分割，则会每天一个文件。
 
 频谱参数配置、数值积分时间步长、近岸配置都是 ww3_grid.nml 的配置，在这里修改会同时修改 WW3Tool 和当前工作目录的 ww3_grid.nml （如果存在）
 
@@ -798,13 +814,13 @@ https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=dow
 
 http://tds.hycom.org/thredds/catalog/datasets/force/ncep_cfsv2/netcdf/catalog.html
 
-找到 cfsv2-sec2_2025_01hr_uv-10m. nc 注意结尾是 uv-10m 的
+找到 cfsv2-sec2_2025_01hr_uv-10m.nc 注意结尾是 uv-10m 的
 
 如果你想下载全球整年的数据点击
 
-HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcdf/cfsv2-sec2_2025_01hr_uv-10m. nc
+HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcdf/cfsv2-sec2_2025_01hr_uv-10m.nc
 
-如果你想下载指定区域指定时间范围的风场，选择点击 NetcdfSubset: //ncss. hycom. org/thredds/ncss/grid/datasets/force/ncep_cfsv2/netcdf/cfsv2-sec2_2025_01hr_uv-10m. nc
+如果你想下载指定区域指定时间范围的风场，选择点击 NetcdfSubset: //ncss. hycom. org/thredds/ncss/grid/datasets/force/ncep_cfsv2/netcdf/cfsv2-sec2_2025_01hr_uv-10m.nc
 
 打开后选择左侧的两个 wndewd 和 wndnwd ，拉到下面选择 Choose Output Format: netCDF
 
