@@ -39,7 +39,7 @@ $-------------------------------------------------------------------------$
 &GRID_INIT
   BIN_DIR = '/Users/zxy/ocean/WW3Tool/gridgen/matlab/bin'
   REF_DIR = '/Users/zxy/ocean/WW3Tool/gridgen/reference_data'
-  DATA_DIR = '/Users/zxy/ocean/WW3Tool/workSpace/2026-01-28_22-04-02'
+  DATA_DIR = '/Users/zxy/ocean/WW3Tool/workSpace/woo'
   FNAME_POLY = 'user_polygons.flag'
   FNAME = 'grid'
   FNAMEB = 'no'
@@ -159,7 +159,7 @@ $                  Used in 'compute_boundary' and 'split_boundary'
 $-------------------------------------------------------------------------$
 
 &GRID_BOUND
-  BOUNDARY = 'full'
+  BOUNDARY = 'coarse'
   READ_BOUNDARY = 1
   OPT_POLY = 0 
   MIN_DIST = 20
