@@ -49,6 +49,125 @@ except ImportError:
 sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
 
 
+def _extract_array(data):
+    """Extract a 1D numpy array from nested MATLAB-style structures."""
+    if isinstance(data, np.ndarray):
+        if data.dtype == object:
+            if data.size > 0:
+                return _extract_array(data.flat[0])
+            return np.array([])
+        return data.flatten()
+    return np.array(data).flatten()
+
+
+def _split_dateline(poly):
+    """Split polygon when it crosses the dateline (±180°)."""
+    if poly is None or len(poly) == 0:
+        return [poly]
+    lon = np.asarray(poly[:, 0]).flatten()
+    lat = np.asarray(poly[:, 1]).flatten()
+    if len(lon) < 2:
+        return [poly]
+    lonc = np.concatenate([lon, [lon[0]]])
+    latc = np.concatenate([lat, [lat[0]]])
+    dlon = np.diff(lonc)
+    cross_idx = np.where(np.abs(dlon) > 180)[0]
+    if cross_idx.size == 0:
+        return [poly]
+    nseg = len(lonc) - 1
+    nins = len(cross_idx)
+    total_len = nseg + nins
+    new_lon = np.zeros(total_len)
+    new_lat = np.zeros(total_len)
+    split_pos = np.zeros(nins, dtype=int)
+    k = 0
+    c = 0
+    for i in range(nseg):
+        x1, y1 = lonc[i], latc[i]
+        x2, y2 = lonc[i + 1], latc[i + 1]
+        new_lon[k] = x1
+        new_lat[k] = y1
+        k += 1
+        d = x2 - x1
+        if abs(d) > 180:
+            xi = 180 if d > 0 else -180
+            t = (xi - x1) / (x2 - x1)
+            yi = y1 + t * (y2 - y1)
+            new_lon[k] = xi
+            new_lat[k] = yi
+            split_pos[c] = k
+            k += 1
+            c += 1
+    new_lon = new_lon[:k]
+    new_lat = new_lat[:k]
+    polys = []
+    s = 0
+    for i in range(nins):
+        e = split_pos[i]
+        polys.append(np.column_stack([new_lon[s:e + 1], new_lat[s:e + 1]]))
+        s = e
+    polys.append(np.column_stack([new_lon[s:], new_lat[s:]]))
+    return polys
+
+
+def _normalize_boundaries(bound):
+    """Match MATLAB global handling: normalize lon range and split dateline."""
+    processed = []
+    for poly in bound:
+        if not isinstance(poly, dict):
+            continue
+        x = _extract_array(poly.get('x', []))
+        y = _extract_array(poly.get('y', []))
+        if x.size == 0 or y.size == 0:
+            continue
+        min_len = min(len(x), len(y))
+        x = x[:min_len]
+        y = y[:min_len]
+        # Force polygons to be defined between -180 and 180
+        x = np.where(x >= 180, x - 360, x)
+        east = float(np.max(x))
+        west = float(np.min(x))
+        north = float(np.max(y))
+        south = float(np.min(y))
+        base_poly = poly.copy()
+        base_poly.update({
+            'x': x,
+            'y': y,
+            'east': east,
+            'west': west,
+            'north': north,
+            'south': south,
+            'n': len(x)
+        })
+        # Split polygon if crossing dateline
+        if east > 179 and west < -179:
+            polys = _split_dateline(np.column_stack([x, y]))
+            for p in polys:
+                if p is None or len(p) == 0:
+                    continue
+                x2 = np.asarray(p[:, 0]).flatten()
+                y2 = np.asarray(p[:, 1]).flatten()
+                # Close polygon
+                if x2[0] != x2[-1] or y2[0] != y2[-1]:
+                    x2 = np.append(x2, x2[0])
+                    y2 = np.append(y2, y2[0])
+                new_poly = base_poly.copy()
+                new_poly.update({
+                    'x': x2,
+                    'y': y2,
+                    'east': float(np.max(x2)),
+                    'west': float(np.min(x2)),
+                    'north': float(np.max(y2)),
+                    'south': float(np.min(y2)),
+                    'n': len(x2),
+                    'level': 1
+                })
+                processed.append(new_poly)
+        else:
+            processed.append(base_poly)
+    return processed
+
+
 def create_grid(**kwargs):
     """
     Create a grid for WAVEWATCH III based on a rectilinear grid.
@@ -278,6 +397,10 @@ def create_grid(**kwargs):
                     print(f'  Warning: Optional polygon file not found: {fname_poly}', flush=True)
                     print('  Continuing without optional polygons...', flush=True)
                     params['opt_poly'] = 0
+            # Normalize boundaries for global handling (dateline split, lon range)
+            bound = _normalize_boundaries(bound)
+            N = len(bound)
+            print(f'  Normalized boundary polygons: {N}', flush=True)
         else:
             print(f'  Warning: Boundary file not found: {boundary_file}', flush=True)
             print('  Continuing without boundary data...', flush=True)
@@ -419,7 +542,8 @@ def create_grid(**kwargs):
     # Use actual grid point spacing (calculated from lon/lat arrays) to ensure
     # grid.meta dx/dy matches the actual grid.bot file structure
     write_ww3meta(meta_prefix, None, 'RECT', lon, lat,
-                  1.0 / depth_scale, 1.0 / obstr_scale, 1.0)
+                  1.0 / depth_scale, 1.0 / obstr_scale, 1.0,
+                  is_global_override=params['IS_GLOBAL'])
     print(f"  Written: {params['fname']}.meta", flush=True)
     print('  Done.\n', flush=True)
     

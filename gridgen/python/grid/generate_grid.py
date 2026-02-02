@@ -186,7 +186,17 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         lone_base = lon_range[1]
         
         # Check if grid domain is within base bathymetry range
-        if lats < lats_base or lats > late_base or late < lats_base or late > late_base:
+        # Allow slight overshoot at the poles due to dataset resolution
+        lat_tolerance = 0.01  # Allow 0.01 degree tolerance
+        lats_check = lats
+        late_check = late
+        # Clamp values that are very close to the boundary
+        if lats < lats_base and lats >= -90.0 and lats_base > -89.999:
+            lats_check = lats_base
+        if late > late_base and late <= 90.0 and late_base < 89.999:
+            late_check = late_base
+        if lats_check < lats_base - lat_tolerance or lats_check > late_base + lat_tolerance or \
+           late_check < lats_base - lat_tolerance or late_check > late_base + lat_tolerance:
             f.close()
             raise ValueError(f'Latitudes ({lats},{late}) beyond range ({lats_base},{late_base})')
         

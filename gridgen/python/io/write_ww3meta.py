@@ -19,7 +19,7 @@ import netCDF4
 from .read_namelist import read_namelist
 
 
-def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args):
+def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=None):
     """
     Write WW3 metadata file.
     
@@ -190,6 +190,8 @@ def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args):
         
         # Grid closure, longitude wrapping around or not
         isglobal = outgrid_nml.get('is_global', 0)
+        if is_global_override is not None:
+            isglobal = int(is_global_override)
         if isglobal == 1:
             CSTRNG = 'SMPL'
         elif isglobal == 0:
@@ -200,9 +202,10 @@ def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args):
             return 'Unrecognized Grid Closure', -1
     else:
         # When fname_nml is None, use defaults matching MATLAB create_grid.m
-        # For rectilinear grids with lon/lat coordinates, use 'T' and 'NONE'
+        # For rectilinear grids with lon/lat coordinates, use 'T' and global closure if requested
         FLAGLL = 'T'  # Spherical coordinates (lon/lat in degrees)
-        CSTRNG = 'NONE'  # No closure
+        isglobal = int(is_global_override) if is_global_override is not None else 0
+        CSTRNG = 'SMPL' if isglobal == 1 else 'NONE'
     
     # Write grid type, coordinate system, and closure
     fid.write(f"   '{gtype}'  {FLAGLL} '{CSTRNG}'\n")

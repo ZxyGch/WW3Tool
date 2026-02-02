@@ -61,6 +61,8 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
     lon_start = coord[1]
     lat_end = coord[2]
     lon_end = coord[3]
+    cross_dateline = (lon_end - lon_start) > 180
+    rect_domain = (not cross_dateline) and (len(np.unique(px)) == 2) and (len(np.unique(py)) == 2)
     
     # Definitions
     eps = 1e-5
@@ -133,8 +135,11 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
                 north_val = north_val.item() if north_val.size == 1 else north_val[0]
             
             # Quick rejection: bounding box doesn't intersect grid
-            if (west_val > lon_end or east_val < lon_start or
-                    south_val > lat_end or north_val < lat_start):
+            if cross_dateline:
+                lon_outside = (west_val > lon_end and east_val < lon_start)
+            else:
+                lon_outside = (west_val > lon_end or east_val < lon_start)
+            if lon_outside or south_val > lat_end or north_val < lat_start:
                 continue
             
             candidate_indices.append(i)
@@ -182,8 +187,11 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
                 if isinstance(north_val, np.ndarray):
                     north_val = north_val.item() if north_val.size == 1 else north_val[0]
                 
-                if (west_val > lon_end or east_val < lon_start or
-                        south_val > lat_end or north_val < lat_start):
+                if cross_dateline:
+                    lon_outside = (west_val > lon_end and east_val < lon_start)
+                else:
+                    lon_outside = (west_val > lon_end or east_val < lon_start)
+                if lon_outside or south_val > lat_end or north_val < lat_start:
                     in_grid = False
                 else:
                     in_grid = True
@@ -191,7 +199,7 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
                 lev1 = level_val
                 
                 # Determine if boundary lies completely inside the domain
-                if (west_val >= lon_start and east_val <= lon_end and
+                if rect_domain and (west_val >= lon_start and east_val <= lon_end and
                         south_val >= lat_start and north_val <= lat_end):
                     inside_grid = True
                 else:

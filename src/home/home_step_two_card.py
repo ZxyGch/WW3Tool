@@ -25,10 +25,51 @@ from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy, QDialog, QScrollArea, QFrame
 from PyQt6.QtGui import QPixmap
-from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar
+from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar, MessageBoxBase
 from setting.language_manager import tr
 from setting.config import DX, DY, LONGITUDE_WEST, LONGITUDE_EAST, LATITUDE_SORTH, LATITUDE_NORTH, MATLAB_PATH, load_config
 from .utils import create_header_card
+
+
+class _GlobalGridConfirmDialog(MessageBoxBase):
+    """全球范围确认弹窗（使用 MessageBoxBase 样式）"""
+
+    def __init__(self, parent, title, message):
+        super().__init__(parent)
+        self._confirmed = False
+
+        self.setWindowTitle(title)
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+
+        label = QLabel(message)
+        label.setWordWrap(True)
+        self.viewLayout.addWidget(label)
+
+        button_style = parent._get_button_style() if hasattr(parent, '_get_button_style') else ""
+
+        self.btn_confirm = PrimaryPushButton(tr("step2_global_grid_confirm_button", "确定"))
+        self.btn_confirm.setStyleSheet(button_style)
+        self.btn_confirm.clicked.connect(self._on_confirm)
+        self.viewLayout.addWidget(self.btn_confirm)
+
+        self.btn_cancel = PrimaryPushButton(tr("step2_global_grid_cancel_button", "取消"))
+        self.btn_cancel.setStyleSheet(button_style)
+        self.btn_cancel.clicked.connect(self._on_cancel)
+        self.viewLayout.addWidget(self.btn_cancel)
+
+    def _on_confirm(self):
+        self._confirmed = True
+        self.accept()
+
+    def _on_cancel(self):
+        self._confirmed = False
+        self.reject()
+
+    @property
+    def confirmed(self):
+        return self._confirmed
 
 
 class HomeStepTwoCard:
@@ -1359,8 +1400,81 @@ class HomeStepTwoCard:
             import traceback
             traceback.print_exc()
 
+    def _maybe_prompt_global_grid(self):
+        """当网格范围接近全球时，询问是否按全球范围生成"""
+        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        is_nested = self._is_nested_grid(grid_type)
+
+        def _get_float(edit, fallback):
+            try:
+                text = edit.text().strip()
+                return float(text) if text else float(fallback)
+            except Exception:
+                return float(fallback)
+
+        try:
+            dx_value = _get_float(self.dx_edit, DX if DX else 0.05)
+            dy_value = _get_float(self.dy_edit, DY if DY else 0.05)
+            lon_west = _get_float(self.lon_west_edit, LONGITUDE_WEST if LONGITUDE_WEST else -180.0)
+            lon_east = _get_float(self.lon_east_edit, LONGITUDE_EAST if LONGITUDE_EAST else 180.0)
+            lat_south = _get_float(self.lat_south_edit, LATITUDE_SORTH if LATITUDE_SORTH else -90.0)
+            lat_north = _get_float(self.lat_north_edit, LATITUDE_NORTH if LATITUDE_NORTH else 90.0)
+        except Exception:
+            return
+
+        if self._is_global_range(lon_west, lon_east, lat_south, lat_north):
+            return
+
+        if not self._is_near_global_range(lon_west, lon_east, lat_south, lat_north, dx_value, dy_value):
+            return
+
+        title = tr("step2_global_grid_title", "确认全球范围网格")
+        message = tr(
+            "step2_global_grid_prompt",
+            "检测到网格范围非常接近全球范围。\n是否按全球范围生成（经度 -180~180，纬度 -90~90）？"
+        )
+        dialog = _GlobalGridConfirmDialog(self, title, message)
+        dialog.exec()
+        if not dialog.confirmed:
+            return
+
+        self.lon_west_edit.setText("-180")
+        self.lon_east_edit.setText("180")
+        self.lat_south_edit.setText("-90")
+        self.lat_north_edit.setText("90")
+
+        if is_nested:
+            self.log(tr("step2_global_grid_outer_only", "✅ 已将外网格范围调整为全球范围"))
+        else:
+            self.log(tr("step2_global_grid_applied", "✅ 已将网格范围调整为全球范围"))
+
+    def _is_near_global_range(self, lon_west, lon_east, lat_south, lat_north, dx_value, dy_value):
+        """判断范围是否非常接近全球范围"""
+        lon_min = min(lon_west, lon_east)
+        lon_max = max(lon_west, lon_east)
+        lat_min = min(lat_south, lat_north)
+        lat_max = max(lat_south, lat_north)
+        tol = max(0.5, abs(dx_value), abs(dy_value))
+        lon_range = lon_max - lon_min
+        lon_close = lon_range >= 360 - tol * 2
+        lat_close = lat_min <= -90 + tol and lat_max >= 90 - tol
+        return lon_close and lat_close
+
+    def _is_global_range(self, lon_west, lon_east, lat_south, lat_north):
+        """判断是否为全球范围网格"""
+        lon_min = min(lon_west, lon_east)
+        lon_max = max(lon_west, lon_east)
+        lat_min = min(lat_south, lat_north)
+        lat_max = max(lat_south, lat_north)
+        tol = 1e-3
+        in_180 = abs(lon_min + 180) <= tol and abs(lon_max - 180) <= tol
+        in_360 = abs(lon_min - 0) <= tol and abs(lon_max - 360) <= tol
+        lat_ok = abs(lat_min + 90) <= tol and abs(lat_max - 90) <= tol
+        return lat_ok and (in_180 or in_360)
+
     def apply_and_create_grid(self):
         """应用配置并生成网格（合并两步为一步）- 在后台线程中执行"""
+        self._maybe_prompt_global_grid()
         # 禁用按钮，防止重复点击
         self.btn_create_grid.setEnabled(False)
         self.btn_create_grid.setText(tr("step2_create_grid_ing", "生成网格中..."))
@@ -1576,6 +1690,7 @@ class HomeStepTwoCard:
     def _generate_single_grid(self, output_dir, dx_value, dy_value, lon_west, lon_east, lat_south, lat_north):
         """生成单个网格的辅助函数（带缓存机制）"""
         try:
+            is_global = self._is_global_range(lon_west, lon_east, lat_south, lat_north)
             # 根据 GRIDGEN 版本选择执行方式
             current_config = load_config()
             gridgen_version = current_config.get("GRIDGEN_VERSION", "MATLAB")
@@ -1684,6 +1799,7 @@ create_grid(
             ref_dir={repr(ref_dir)},
             ref_grid={repr(ref_grid)},
             boundary={repr(boundary)},
+            IS_GLOBAL={1 if is_global else 0},
         )                
         '''
                 
@@ -1859,7 +1975,8 @@ create_grid(
                         lon_west,
                         lon_east,
                         lat_south,
-                        lat_north
+                        lat_north,
+                        is_global
                     )
                 except Exception as e:
                     self.log_signal.emit(tr("step2_update_grid_nml_failed", "⚠️ 更新 grid.nml 失败: {error}").format(error=e))
@@ -1946,7 +2063,8 @@ create_grid(
         lon_west,
         lon_east,
         lat_south,
-        lat_north
+        lat_north,
+        is_global
     ):
         """更新 MATLAB gridgen 的 grid.nml 参数"""
         if not matlab_bin_dir:
@@ -1970,6 +2088,8 @@ create_grid(
             "LON_EAST": f"{lon_east}",
             "LAT_SOUTH": f"{lat_south}",
             "LAT_NORTH": f"{lat_north}",
+            "IS_GLOBAL": f"{1 if is_global else 0}",
+            "IS_GLOBALB": f"{1 if is_global else 0}",
         }
 
         with open(grid_nml_path, "r", encoding="utf-8") as f:
