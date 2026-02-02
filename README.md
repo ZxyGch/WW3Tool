@@ -203,6 +203,36 @@ Each cache folder includes params. json:
 }
 ```
 
+
+#### Global Grid
+
+For global grids, the wind field file's range is generally not a standard global range, and we'll be prompted to generate a global grid.
+
+![](public/resource/README-media/截屏2026-02-02%2017.14.23.png)
+
+Currently, global simulations still have issues, and I know very little about this. I hope to get your help.
+
+My current approach to global grids involves modifying IS_GLOBAL = 0 to 1 in the grid.nml file of MATLAB Gridgen,
+
+and changing 'RECT' T 'NONE' to 'RECT' T 'SMPL' in the generated grid.meta.
+
+This way, in the fourth step of parameter confirmation, we'll detect 'RECT' T 'SMPL' in grid.meta. I've also modified GRID%CLOS = 'SMPL' in ww3_grid.nml.
+
+```
+&GRID_NML
+  GRID%NAME         =  'I Love ZhangXiaoPeng'
+  GRID%NML          =  'namelists.nml'
+  GRID%TYPE         =  'RECT'
+  GRID%COORD        =  'SPHE'
+  GRID%CLOS         =  'SMPL'
+  GRID%ZLIM         =  -0.1
+  GRID%DMIN         =  2.5
+/
+```
+
+
+
+
 #### MATLAB vs Python Versions
 
 We originally used the [gridgen](https://data-ww3.ifremer.fr/COURS/WAVES_SHORT_COURSE/TOOLS/GRIDGEN/) version from Ifremer. The NOAA version is at https://github.com/NOAA-EMC/gridgen.

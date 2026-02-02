@@ -210,6 +210,37 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 ![](public/resource/README.zh-CN-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)
 
+
+#### 全球网格
+
+如果是全球范围的网格，风场文件的范围一般并不是标准的全球范围，我们会弹出提示是否生成全球范围的网格。
+
+![](public/resource/README-media/截屏2026-02-02%2017.15.29.png)
+
+目前全球范围的模拟还存在问题，我对这方面了解的很少，希望得到你的帮助
+
+我目前对全球网格会修改 MATLAB Gridgen 的 gird.nml 的  IS_GLOBAL = 0 设置为 1
+
+以及生成的 grid.meta 改   'RECT'  T 'NONE'  为    'RECT'  T 'SMPL'
+
+这样在第四步的确认参数的时候，我们会检测到  grid.meta  的   'RECT'  T 'SMPL' 修改 ww3_grid.nml 的 GRID%CLOS         =  'SMPL'
+
+```
+&GRID_NML
+  GRID%NAME         =  'I Love ZhangXiaoPeng'
+  GRID%NML          =  'namelists.nml'
+  GRID%TYPE         =  'RECT'
+  GRID%COORD        =  'SPHE'
+  GRID%CLOS         =  'SMPL'
+  GRID%ZLIM         =  -0.1
+  GRID%DMIN         =  2.5
+/
+```
+
+
+
+
+
 #### gridgen 配置
 
 ![](public/resource/README.zh-CN-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)

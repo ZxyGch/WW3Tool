@@ -277,6 +277,7 @@ class ModifyWW3NML:
         # 普通网格模式：复制文件并同步 meta
         self.copy_public_files()
         self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
+        self._update_grid_closure_from_meta(self.selected_folder)
 
 
 
@@ -876,9 +877,80 @@ class ModifyWW3NML:
 
             prefix = f"{grid_label} " if grid_label else ""
             self.log(f"{prefix}{tr('step4_grid_meta_synced', '✅ 已成功同步 grid.meta 参数到 ww3_grid.nml')}")
+        except Exception as e:
+            prefix = f"{grid_label} " if grid_label else ""
+            self.log(prefix + tr("step4_grid_meta_sync_failed", "⚠️ 同步 grid.meta 到 ww3_grid.nml 失败: {error}").format(error=e))
+
+    def _update_grid_closure_from_meta(self, target_dir, grid_label=""):
+        """根据 grid.meta 设置 ww3_grid.nml 中 GRID%CLOS（全球网格用 SMPL）"""
+        if not target_dir or not isinstance(target_dir, str):
+            return
+        meta_path = os.path.join(target_dir, "grid.meta")
+        nml_path = os.path.join(target_dir, "ww3_grid.nml")
+        if not os.path.exists(meta_path) or not os.path.exists(nml_path):
+            return
+
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta_lines = f.readlines()
+        except Exception:
+            return
+
+        clos = None
+        for line in meta_lines:
+            if "RECT" in line.upper() or "CURV" in line.upper():
+                if "SMPL" in line.upper():
+                    clos = "SMPL"
+                    break
+                if "NONE" in line.upper():
+                    clos = "NONE"
+                    break
+
+        if clos is None:
+            return
+
+        try:
+            with open(nml_path, "r", encoding="utf-8") as f:
+                nml_lines = f.readlines()
+
+            new_lines = []
+            in_grid_nml = False
+            clos_updated = False
+
+            for line in nml_lines:
+                if "&GRID_NML" in line.upper():
+                    in_grid_nml = True
+                    new_lines.append(line)
+                    continue
+
+                if in_grid_nml:
+                    if "/" in line:
+                        if not clos_updated:
+                            new_lines.append(f"  GRID%CLOS         =  '{clos}'\n")
+                            clos_updated = True
+                        in_grid_nml = False
+                        new_lines.append(line)
+                        continue
+
+                    line_stripped = line.lstrip()
+                    is_comment = line_stripped.startswith('!')
+                    if not is_comment and "GRID%CLOS" in line and "=" in line:
+                        new_lines.append(f"  GRID%CLOS         =  '{clos}'\n")
+                        clos_updated = True
+                        continue
+
+                new_lines.append(line)
+
+            with open(nml_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+
+            if clos != "NONE":
+                prefix = f"[{grid_label}] " if grid_label else ""
+                self.log(prefix + tr("step4_grid_clos_updated", "✅ 已更新 ww3_grid.nml 的 GRID%CLOS：{value}").format(value=clos))
 
         except Exception as e:
-            self.log(tr("sync_failed", "❌ 同步失败：{error}").format(error=e))
+            prefix = f"[{grid_label}] " if grid_label else ""
+            self.log(prefix + tr("step4_grid_clos_update_failed", "⚠️ 更新 ww3_grid.nml 的 GRID%CLOS 失败: {error}").format(error=e))
 
 
     # ==================== WW3 参数应用 ====================
@@ -992,6 +1064,7 @@ class ModifyWW3NML:
         if has_output_scheme:
             scheme_applied = self._apply_output_scheme_to_dir(coarse_dir) or scheme_applied
         self._sync_grid_meta_to_grid_nml_in_dir(coarse_dir, grid_label="")
+        self._update_grid_closure_from_meta(coarse_dir, grid_label="")
         self._apply_ww3_params_to_dir(
             coarse_dir,
             self.shel_step_edit.text().strip(),
@@ -1022,6 +1095,7 @@ class ModifyWW3NML:
         if has_output_scheme and scheme_applied:
             self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
         self._sync_grid_meta_to_grid_nml_in_dir(fine_dir, grid_label="")
+        self._update_grid_closure_from_meta(fine_dir, grid_label="")
         inner_shel_step = self.inner_shel_step_edit.text().strip()
         inner_output_precision = self.inner_output_precision_edit.text().strip()
         self._apply_ww3_params_to_dir(fine_dir, inner_shel_step, inner_output_precision, grid_label="")
