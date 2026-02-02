@@ -1899,12 +1899,6 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             # 使用传入的阈值：能量密度低于阈值的显示为白色
             threshold = float(energy_threshold)
             
-            # 检查阈值是否大于最大值，如果是则自动调整为0（防止 minvalue > maxvalue 错误）
-            original_threshold = threshold
-            if threshold > data_max:
-                log(tr("plotting_threshold_too_high", "⚠️ 最低能量密度 ({threshold}) 大于数据最大值 ({max})，自动调整为 0").format(threshold=threshold, max=f"{data_max:.6f}"))
-                threshold = 0.0
-            
             # 生成刻度值的函数
             def generate_ticks(min_val, max_val):
                 range_val = max_val - min_val
@@ -1964,30 +1958,34 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             
             # 格式化刻度标签
             def format_tick_label(value):
+                if abs(value) < 1e-12:
+                    return '0'
                 if abs(value) < 0.01:
                     return f'{value:.2e}'
-                else:
-                    return f'{value:.2f}'
+                return f'{value:.2f}'
             
             # 绘制等高线填充图
             levels = 200
             cmap = plt.get_cmap('jet')
             cmap.set_under('white')
             
-            # 确保 vmin <= vmax（防止 minvalue > maxvalue 错误）
-            vmin_actual = min(threshold, data_max)
-            vmax_actual = data_max
-            if vmin_actual >= vmax_actual:
-                # 如果阈值大于等于最大值，使用0作为最小值
-                log(tr("plotting_threshold_ge_max", "⚠️ 阈值 ({threshold}) >= 最大值 ({max})，使用 0 作为最小值").format(threshold=threshold, max=f"{data_max:.6f}"))
-                vmin_actual = 0.0
-                if vmax_actual <= vmin_actual:
-                    # 如果所有数据都是0或nan，稍微调整范围
-                    vmax_actual = max(1e-10, abs(data_max))
+            # 若整体低于阈值，显示完整图；否则低于阈值显示为白色
+            show_full = data_max <= threshold
+            if show_full:
+                vmin_actual = data_min
+                vmax_actual = data_max
+            else:
+                vmin_actual = min(threshold, data_max)
+                vmax_actual = data_max
+                if vmin_actual >= vmax_actual:
+                    vmin_actual = 0.0
+                    if vmax_actual <= vmin_actual:
+                        vmax_actual = max(1e-10, abs(data_max))
             
             try:
+                # 使用 extend='min' 让低于阈值区域显示为白色
                 pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap, 
-                                vmin=vmin_actual, vmax=vmax_actual, extend='neither')
+                                vmin=vmin_actual, vmax=vmax_actual, extend='min')
             except ValueError as e:
                 # 捕获 minvalue must be less than or equal to maxvalue 错误
                 error_msg = str(e).lower()
@@ -1997,7 +1995,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
                     vmin_actual = 0.0
                     vmax_actual = max(data_max, 1e-10)  # 确保最大值大于0
                     pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap, 
-                                    vmin=vmin_actual, vmax=vmax_actual, extend='neither')
+                                    vmin=vmin_actual, vmax=vmax_actual, extend='min')
                 else:
                     raise
             ax.set_aspect('equal')
@@ -2018,7 +2016,10 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             cbar_ticks = cbar_ticks[cbar_ticks >= cbar_min]
             tick_labels = [format_tick_label(tick) for tick in cbar_ticks]
             
-            cb = plt.colorbar(pcm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
+            norm = matplotlib.colors.Normalize(vmin=vmin_actual, vmax=vmax_actual)
+            sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+            sm.set_array([])
+            cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
             cb.set_ticklabels(tick_labels)
             cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
             cb.ax.tick_params(labelsize=9)
@@ -2264,10 +2265,11 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
             
             # 格式化刻度标签
             def format_tick_label(value):
+                if abs(value) < 1e-12:
+                    return '0'
                 if abs(value) < 0.01:
                     return f'{value:.2e}'
-                else:
-                    return f'{value:.2f}'
+                return f'{value:.2f}'
             
             # 计算归一化颜色条刻度值的函数（参考 plot_directional_spectrum.py）
             def calculate_cbar_ticks(data_min, data_max, generate_ticks_func):
@@ -2538,18 +2540,21 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     data_min = original_data_min
                     data_max = original_data_max
                     
-                    # 检查阈值
+                    # 检查阈值：若整体低于阈值则显示完整图
                     adjusted_threshold = float(threshold)
-                    if adjusted_threshold > data_max:
-                        adjusted_threshold = 0.0
-                    
-                    # 确保 vmin <= vmax
-                    vmin_actual = min(adjusted_threshold, data_max)
-                    vmax_actual = data_max
-                    if vmin_actual >= vmax_actual:
-                        vmin_actual = 0.0
-                        if vmax_actual <= vmin_actual:
-                            vmax_actual = max(1e-10, abs(data_max))
+                    show_full = data_max <= adjusted_threshold
+                    if show_full:
+                        vmin_actual = data_min
+                        vmax_actual = data_max
+                        extend_mode = 'neither'
+                    else:
+                        vmin_actual = min(adjusted_threshold, data_max)
+                        vmax_actual = data_max
+                        extend_mode = 'min'
+                        if vmin_actual >= vmax_actual:
+                            vmin_actual = 0.0
+                            if vmax_actual <= vmin_actual:
+                                vmax_actual = max(1e-10, abs(data_max))
                     
                     # 绘制二维谱
                     fig = plt.figure(figsize=(8, 7.5), facecolor='white')
@@ -2561,7 +2566,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     
                     try:
                         pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap, 
-                                        vmin=vmin_actual, vmax=vmax_actual, extend='neither')
+                                        vmin=vmin_actual, vmax=vmax_actual, extend=extend_mode)
                     except ValueError as e:
                         error_msg = str(e).lower()
                         if "minvalue" in error_msg or "maxvalue" in error_msg or "vmin" in error_msg or "vmax" in error_msg:
@@ -2569,7 +2574,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                             vmin_actual = 0.0
                             vmax_actual = max(data_max, 1e-10)
                             pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap, 
-                                            vmin=vmin_actual, vmax=vmax_actual, extend='neither')
+                                            vmin=vmin_actual, vmax=vmax_actual, extend=extend_mode)
                         else:
                             raise
                     
@@ -2588,7 +2593,10 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     cbar_ticks = cbar_ticks[cbar_ticks >= cbar_min]
                     tick_labels = [format_tick_label(tick) for tick in cbar_ticks]
                     
-                    cb = plt.colorbar(pcm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
+                    norm = matplotlib.colors.Normalize(vmin=vmin_actual, vmax=vmax_actual)
+                    sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+                    sm.set_array([])
+                    cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
                     cb.set_ticklabels(tick_labels)
                     cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
                     cb.ax.tick_params(labelsize=9)
@@ -2873,10 +2881,11 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
             
             # 格式化刻度标签
             def format_tick_label(value):
+                if abs(value) < 1e-12:
+                    return '0'
                 if abs(value) < 0.01:
                     return f'{value:.2e}'
-                else:
-                    return f'{value:.2f}'
+                return f'{value:.2f}'
             
             # 计算归一化颜色条刻度值的函数（参考 plot_directional_spectrum.py）
             def calculate_cbar_ticks(data_min, data_max, generate_ticks_func):
@@ -3219,26 +3228,29 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     data_max = original_data_max
                     
                     adjusted_threshold = float(threshold)
-                    if adjusted_threshold > data_max:
-                        adjusted_threshold = 0.0
-                    
-                    vmin_actual = min(adjusted_threshold, data_max)
-                    vmax_actual = data_max
-                    if vmin_actual >= vmax_actual:
-                        vmin_actual = 0.0
-                        if vmax_actual <= vmin_actual:
-                            vmax_actual = max(1e-10, abs(data_max))
+                    show_full = data_max <= adjusted_threshold
+                    if show_full:
+                        vmin_actual = data_min
+                        vmax_actual = data_max
+                    else:
+                        vmin_actual = min(adjusted_threshold, data_max)
+                        vmax_actual = data_max
+                        if vmin_actual >= vmax_actual:
+                            vmin_actual = 0.0
+                            if vmax_actual <= vmin_actual:
+                                vmax_actual = max(1e-10, abs(data_max))
                     
                     fig = plt.figure(figsize=(8, 7.5), facecolor='white')
                     ax = fig.add_axes([0.08, 0.08, 0.68, 0.84])
                     
+                    # 必须 extend='min' 才能让 set_under('white') 生效
                     levels = 200
                     cmap = plt.get_cmap('jet')
                     cmap.set_under('white')
                     
                     try:
                         pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap, 
-                                        vmin=vmin_actual, vmax=vmax_actual, extend='neither')
+                                        vmin=vmin_actual, vmax=vmax_actual, extend='min')
                     except ValueError as e:
                         error_msg = str(e).lower()
                         if "minvalue" in error_msg or "maxvalue" in error_msg or "vmin" in error_msg or "vmax" in error_msg:
@@ -3246,7 +3258,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                             vmin_actual = 0.0
                             vmax_actual = max(data_max, 1e-10)
                             pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap, 
-                                            vmin=vmin_actual, vmax=vmax_actual, extend='neither')
+                                            vmin=vmin_actual, vmax=vmax_actual, extend='min')
                         else:
                             raise
                     
@@ -3264,7 +3276,10 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     cbar_ticks = cbar_ticks[cbar_ticks >= cbar_min]
                     tick_labels = [format_tick_label(tick) for tick in cbar_ticks]
                     
-                    cb = plt.colorbar(pcm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
+                    norm = matplotlib.colors.Normalize(vmin=vmin_actual, vmax=vmax_actual)
+                    sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+                    sm.set_array([])
+                    cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
                     cb.set_ticklabels(tick_labels)
                     cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
                     cb.ax.tick_params(labelsize=9)
