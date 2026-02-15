@@ -200,6 +200,8 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 }
 ```
 
+
+
 #### MATLAB 与 Python 版本
 
 我们早期使用的是 ifremer 提供的 [gridgen](https://data-ww3.ifremer.fr/COURS/WAVES_SHORT_COURSE/TOOLS/GRIDGEN/) ，NOAA 官方的代码在 https://github.com/NOAA-EMC/gridgen
@@ -209,6 +211,8 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 如果你很想使用 MATLAB 的 Gridgen（完全不建议），可以到设置页面改成 MATLAB，同时需要在设置页面配置 MATLAB 的路径。
 
 ![](public/resource/README.zh-CN-media/97efd8b27376c6df4b94d5beb47734c19ec60996.png)
+
+
 
 
 #### 全球网格

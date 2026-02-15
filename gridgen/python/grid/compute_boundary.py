@@ -62,16 +62,16 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
     lat_end = coord[2]
     lon_end = coord[3]
     cross_dateline = (lon_end - lon_start) > 180
-    rect_domain = (not cross_dateline) and (len(np.unique(px)) == 2) and (len(np.unique(py)) == 2)
-    
-    # Definitions
-    eps = 1e-5
-    MAX_SEG_LENGTH = 0.25
-    
+
     # Polygon defining the bounding grid. Bounding grid is defined in the
     # counter clockwise direction
     px = np.array([lon_start, lon_end, lon_end, lon_start, lon_start])
     py = np.array([lat_start, lat_start, lat_end, lat_end, lat_start])
+    rect_domain = (not cross_dateline) and (len(np.unique(px)) == 2) and (len(np.unique(py)) == 2)
+
+    # Definitions
+    eps = 1e-5
+    MAX_SEG_LENGTH = 0.25
     
     # Slope and intercepts for each of the 4 lines of the bounding box
     m_grid = np.zeros(4)
