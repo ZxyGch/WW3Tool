@@ -1,5 +1,22 @@
 #!/bin/bash
-set -e  # 遇到错误立即退出
+
+set -o pipefail
+ulimit -s unlimited
+
+# 本地运行使用的进程数（和原来保持一致）
+MPI_NPROCS=10
+
+# 保存当前目录为脚本根目录（假定在案例目录下执行）
+SCRIPT_ROOT="$(pwd)"
+
+# 日志文件（与 server.sh 保持一致的命名）
+RUN_LOG="$SCRIPT_ROOT/mpirun.log"
+ALL_LOG="$SCRIPT_ROOT/all.log"
+FAIL_LOG="$SCRIPT_ROOT/fail.log"
+SUCCESS_LOG="$SCRIPT_ROOT/success.log"
+
+# 清理旧标志和旧日志
+rm -f "$FAIL_LOG" "$SUCCESS_LOG" "$ALL_LOG" "$RUN_LOG"
 
 # 执行 ww3_prnc 的函数，处理多个强迫场文件
 run_prnc_with_fields() {
@@ -8,33 +25,38 @@ run_prnc_with_fields() {
         # 存在多个强迫场文件，需要依次处理
         
         # 1. 先执行一次 ww3_prnc（使用默认的 ww3_prnc.nml，通常是风场）
-        ww3_prnc
+        echo "=== Running ww3_prnc (wind) ===" | tee -a "$ALL_LOG"
+        ww3_prnc 2>&1 | tee -a "$ALL_LOG"
         
         # 2. 把 ww3_prnc.nml 改名为 ww3_prnc_wind.nml
         mv ww3_prnc.nml ww3_prnc_wind.nml
         
         # 3. 依次处理其他强迫场文件
         if [ -f "ww3_prnc_current.nml" ]; then
+            echo "=== Running ww3_prnc (current) ===" | tee -a "$ALL_LOG"
             mv ww3_prnc_current.nml ww3_prnc.nml
-            ww3_prnc
+            ww3_prnc 2>&1 | tee -a "$ALL_LOG"
             mv ww3_prnc.nml ww3_prnc_current.nml
         fi
         
         if [ -f "ww3_prnc_level.nml" ]; then
+            echo "=== Running ww3_prnc (level) ===" | tee -a "$ALL_LOG"
             mv ww3_prnc_level.nml ww3_prnc.nml
-            ww3_prnc
+            ww3_prnc 2>&1 | tee -a "$ALL_LOG"
             mv ww3_prnc.nml ww3_prnc_level.nml
         fi
         
         if [ -f "ww3_prnc_ice.nml" ]; then
+            echo "=== Running ww3_prnc (ice) ===" | tee -a "$ALL_LOG"
             mv ww3_prnc_ice.nml ww3_prnc.nml
-            ww3_prnc
+            ww3_prnc 2>&1 | tee -a "$ALL_LOG"
             mv ww3_prnc.nml ww3_prnc_ice.nml
         fi
 
         if [ -f "ww3_prnc_ice1.nml" ]; then
+            echo "=== Running ww3_prnc (ice1) ===" | tee -a "$ALL_LOG"
             mv ww3_prnc_ice1.nml ww3_prnc.nml
-            ww3_prnc
+            ww3_prnc 2>&1 | tee -a "$ALL_LOG"
             mv ww3_prnc.nml ww3_prnc_ice1.nml
         fi
         
@@ -42,23 +64,30 @@ run_prnc_with_fields() {
         mv ww3_prnc_wind.nml ww3_prnc.nml
     else
         # 只有一个 ww3_prnc.nml，直接执行
-        ww3_prnc
+        echo "=== Running ww3_prnc ===" | tee -a "$ALL_LOG"
+        ww3_prnc 2>&1 | tee -a "$ALL_LOG"
     fi
 }
 
 # 检测嵌套网格模式
 if [ -d "coarse" ] && [ -d "fine" ]; then
+    ######################################
     # 嵌套网格模式
+    ######################################
+    echo "=== Running ww3_grid (coarse) ===" | tee -a "$ALL_LOG"
     cd coarse
-    ww3_grid
+    ww3_grid 2>&1 | tee -a "$ALL_LOG"
     run_prnc_with_fields
-    ww3_strt
+    echo "=== Running ww3_strt (coarse) ===" | tee -a "$ALL_LOG"
+    ww3_strt 2>&1 | tee -a "$ALL_LOG"
     cd ..
     
+    echo "=== Running ww3_grid (fine) ===" | tee -a "$ALL_LOG"
     cd fine
-    ww3_grid
+    ww3_grid 2>&1 | tee -a "$ALL_LOG"
     run_prnc_with_fields
-    ww3_strt
+    echo "=== Running ww3_strt (fine) ===" | tee -a "$ALL_LOG"
+    ww3_strt 2>&1 | tee -a "$ALL_LOG"
     cd ..
     
     # Coarse 网格处理
@@ -69,7 +98,7 @@ if [ -d "coarse" ] && [ -d "fine" ]; then
     [ -f coarse/level.ww3 ]   && mv coarse/level.ww3   level.coarse
     [ -f coarse/ice.ww3 ]     && mv coarse/ice.ww3     ice.coarse
     [ -f coarse/ice1.ww3 ]    && mv coarse/ice1.ww3    ice1.coarse
-
+    
     # Fine 网格处理
     [ -f fine/mod_def.ww3 ]   && mv fine/mod_def.ww3   mod_def.fine
     [ -f fine/restart.ww3 ]   && mv fine/restart.ww3   restart.fine
@@ -79,37 +108,106 @@ if [ -d "coarse" ] && [ -d "fine" ]; then
     [ -f fine/ice.ww3 ]       && mv fine/ice.ww3       ice.fine
     [ -f fine/ice1.ww3 ]      && mv fine/ice1.ww3      ice1.fine
     
-    mpirun -n 10 ww3_multi
+    ######################################
+    # 运行 MPI 程序 (嵌套网格模式)
+    ######################################
+    echo "=== Running mpirun ww3_multi ===" | tee -a "$ALL_LOG"
+    mpirun -n $MPI_NPROCS ww3_multi 2>&1 | tee "$RUN_LOG"
+    rc_mpi=${PIPESTATUS[0]}
+    cat "$RUN_LOG" >> "$ALL_LOG"
+    
+    if [ $rc_mpi -ne 0 ]; then
+        cat "$ALL_LOG" > "$FAIL_LOG"
+        exit $rc_mpi
+    fi
     
     [ -f out_grd.fine ] && mv out_grd.fine fine/out_grd.ww3
     [ -f mod_def.fine ] && mv mod_def.fine fine/mod_def.ww3
     [ -f out_pnt.fine ] && mv out_pnt.fine fine/out_pnt.ww3
     
+    ######################################
+    # 导出计算结果 (嵌套网格模式)
+    ######################################
     cd fine
+    rc_export=0
     if [ -f points.list ]; then
-        ww3_ounp
+        echo "=== Running ww3_ounp (fine) ===" | tee -a "$ALL_LOG"
+        ww3_ounp 2>&1 | tee -a "$ALL_LOG"
+        rc_export=$?
     fi
 
-    if [ -f track_i.ww3 ]; then
-        ww3_trnc
+    if [ $rc_export -eq 0 ] && [ -f track_i.ww3 ]; then
+        echo "=== Running ww3_trnc (fine) ===" | tee -a "$ALL_LOG"
+        ww3_trnc 2>&1 | tee -a "$ALL_LOG"
+        rc_export=$?
     fi
     
-    ww3_ounf
+    if [ $rc_export -eq 0 ]; then
+        echo "=== Running ww3_ounf (fine) ===" | tee -a "$ALL_LOG"
+        ww3_ounf 2>&1 | tee -a "$ALL_LOG"
+        rc_export=$?
+    fi
     cd ..
-else
-    # 普通网格模式
-    ww3_grid
-    run_prnc_with_fields
-    ww3_strt
-    mpirun -n 10 ww3_shel
+    if [ $rc_export -ne 0 ]; then
+        cat "$ALL_LOG" > "$FAIL_LOG"
+        exit $rc_export
+    fi
     
+    ######################################
+    # 全部成功 (嵌套网格模式)
+    ######################################
+    cat "$ALL_LOG" > "$SUCCESS_LOG"
+else
+    ######################################
+    # 普通网格模式
+    ######################################
+    echo "=== Running ww3_grid ===" | tee -a "$ALL_LOG"
+    ww3_grid 2>&1 | tee -a "$ALL_LOG"
+    run_prnc_with_fields
+    echo "=== Running ww3_strt ===" | tee -a "$ALL_LOG"
+    ww3_strt 2>&1 | tee -a "$ALL_LOG"
+    
+    ######################################
+    # 运行 MPI 程序 (普通网格模式)
+    ######################################
+    echo "=== Running mpirun ww3_shel ===" | tee -a "$ALL_LOG"
+    mpirun -n $MPI_NPROCS ww3_shel 2>&1 | tee "$RUN_LOG"
+    rc_mpi=${PIPESTATUS[0]}
+    cat "$RUN_LOG" >> "$ALL_LOG"
+    
+    if [ $rc_mpi -ne 0 ]; then
+        cat "$ALL_LOG" > "$FAIL_LOG"
+        exit $rc_mpi
+    fi
+    
+    ######################################
+    # 导出计算结果 (普通网格模式)
+    ######################################
+    rc_export=0
     if [ -f points.list ]; then
-        ww3_ounp
+        echo "=== Running ww3_ounp ===" | tee -a "$ALL_LOG"
+        ww3_ounp 2>&1 | tee -a "$ALL_LOG"
+        rc_export=$?
     fi
 
-    if [ -f track_i.ww3 ]; then
-        ww3_trnc
+    if [ $rc_export -eq 0 ] && [ -f track_i.ww3 ]; then
+        echo "=== Running ww3_trnc ===" | tee -a "$ALL_LOG"
+        ww3_trnc 2>&1 | tee -a "$ALL_LOG"
+        rc_export=$?
     fi
 
-    ww3_ounf
+    if [ $rc_export -eq 0 ]; then
+        echo "=== Running ww3_ounf ===" | tee -a "$ALL_LOG"
+        ww3_ounf 2>&1 | tee -a "$ALL_LOG"
+        rc_export=$?
+    fi
+    if [ $rc_export -ne 0 ]; then
+        cat "$ALL_LOG" > "$FAIL_LOG"
+        exit $rc_export
+    fi
+    
+    ######################################
+    # 全部成功 (普通网格模式)
+    ######################################
+    cat "$ALL_LOG" > "$SUCCESS_LOG"
 fi

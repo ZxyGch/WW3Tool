@@ -2162,10 +2162,16 @@ class SettingsMixin:
                     self.num_n_edit.setText(KERNEL_NUM)
                 if hasattr(self, 'num_N_edit') and self.num_N_edit:
                     self.num_N_edit.setText(NODE_NUM)
+                # 使用 load_config() 获取刚保存的精度值（避免 import 的 COMPUTE_PRECISION/OUTPUT_PRECISION 仍为旧值）
+                _cfg = load_config()
                 if hasattr(self, 'shel_step_edit') and self.shel_step_edit:
-                    self.shel_step_edit.setText(COMPUTE_PRECISION)
+                    self.shel_step_edit.setText(str(_cfg.get("COMPUTE_PRECISION", DEFAULT_CONFIG.get("COMPUTE_PRECISION", "1800"))))
                 if hasattr(self, 'output_precision_edit') and self.output_precision_edit:
-                    self.output_precision_edit.setText(OUTPUT_PRECISION)
+                    self.output_precision_edit.setText(str(_cfg.get("OUTPUT_PRECISION", DEFAULT_CONFIG.get("OUTPUT_PRECISION", "3600"))))
+                if hasattr(self, 'inner_shel_step_edit') and self.inner_shel_step_edit:
+                    self.inner_shel_step_edit.setText(str(_cfg.get("COMPUTE_PRECISION", DEFAULT_CONFIG.get("COMPUTE_PRECISION", "1800"))))
+                if hasattr(self, 'inner_output_precision_edit') and self.inner_output_precision_edit:
+                    self.inner_output_precision_edit.setText(str(_cfg.get("OUTPUT_PRECISION", DEFAULT_CONFIG.get("OUTPUT_PRECISION", "3600"))))
             else:
                 InfoBar.error(
                     title="保存失败",
