@@ -930,7 +930,15 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 log_queue.put("__DONE__")
                 result_queue.put([])
                 return
-            raw = np.array(ds.variables['hs'][:])
+            raw_var = ds.variables['hs']
+            raw = np.array(raw_var[:])
+            # 处理 NetCDF 缺测值（_FillValue 如 9.96921e+36 在 float32 下仍为 finite）
+            _fv = getattr(raw_var, '_FillValue', None)
+            if _fv is not None:
+                fv = float(np.asarray(_fv).flat[0])
+                raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
+            raw = np.where(raw > 1e30, np.nan, raw)  # CF 常见大值缺测
+            raw = np.where(raw > 1e10, np.nan, raw)
             varlabel = 'Total Hs (m)'; prefix='hs'
         elif v == 2:
             if 'phs0' not in ds.variables:
@@ -939,7 +947,14 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 log_queue.put("__DONE__")
                 result_queue.put([])
                 return
-            raw = np.array(ds.variables['phs0'][:])
+            raw_var = ds.variables['phs0']
+            raw = np.array(raw_var[:])
+            _fv = getattr(raw_var, '_FillValue', None)
+            if _fv is not None:
+                fv = float(np.asarray(_fv).flat[0])
+                raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
+            raw = np.where(raw > 1e30, np.nan, raw)
+            raw = np.where(raw > 1e10, np.nan, raw)
             varlabel = 'Wind Sea Hs (m)'; prefix='phs0'
         else:
             if 'phs1' not in ds.variables:
@@ -948,7 +963,14 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 log_queue.put("__DONE__")
                 result_queue.put([])
                 return
-            raw = np.array(ds.variables['phs1'][:])
+            raw_var = ds.variables['phs1']
+            raw = np.array(raw_var[:])
+            _fv = getattr(raw_var, '_FillValue', None)
+            if _fv is not None:
+                fv = float(np.asarray(_fv).flat[0])
+                raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
+            raw = np.where(raw > 1e30, np.nan, raw)
+            raw = np.where(raw > 1e10, np.nan, raw)
             varlabel = 'Swell Hs (m)'; prefix='phs1'
 
         # 可选：读取风场（用于显示统一风速）
@@ -992,45 +1014,95 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
 
         ds.close()
 
+        # 若全部为缺测值，提前退出
+        if np.isfinite(raw).sum() == 0:
+            log(tr("plotting_all_missing", "❌ 文件中所有格点均为缺测值，请检查 WW3 输出或模拟设置"))
+            log_queue.put("__DONE__")
+            result_queue.put([])
+            return
+
+        # ------------------------
+        # 检测 SMC/非结构化网格（seapoint、cell 等）
+        # ------------------------
+        WW3_lon = np.asarray(WW3_lon).squeeze()
+        WW3_lat = np.asarray(WW3_lat).squeeze()
+        npoints = len(WW3_lon) if WW3_lon.ndim == 1 else WW3_lon.size
+        nt = len(WW3_datetime)
+        raw_shape = raw.shape
+        is_smc = (
+            (WW3_lon.ndim == 1 and WW3_lat.ndim == 1 and len(WW3_lon) == len(WW3_lat))
+            and (nt in raw_shape)
+            and (npoints in raw_shape)
+            and (raw.ndim == 2)
+        )
+        if is_smc:
+            log(tr("plotting_smc_detected", "📐 检测到 SMC/非结构化网格 ({n} 个格点)").format(n=npoints))
+            if generate_video:
+                log(tr("plotting_smc_video_skip", "⚠️ SMC 网格暂不支持视频生成，将仅输出图片"))
+                generate_video = False
+
         # ------------------------
         # 数据维度整理
         # ------------------------
-        shape = raw.shape
-        nt = len(WW3_datetime)
-        time_axes = [i for i,s in enumerate(shape) if s==nt]
-        time_axis = time_axes[0] if time_axes else 2
-
-        if time_axis==0:
-            Hs = raw.transpose(1,2,0)
-        elif time_axis==1:
-            Hs = raw.transpose(0,2,1)
-        elif time_axis==2:
-            if raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
-                Hs = raw
-            else:
-                Hs = raw.transpose(1,0,2)
+        if is_smc:
+            # SMC: raw shape (time, seapoint) -> Hs (nt, npoints)
+            Hs = np.asarray(raw, dtype=float)
+            Hs[Hs > 1e10] = np.nan
+            # 可选：点过多时抽样以加速绘图（>50000 时抽样到 50000）
+            SMC_SUBSAMPLE = 50000
+            if npoints > SMC_SUBSAMPLE:
+                rng = np.random.default_rng(42)
+                idx = rng.choice(npoints, SMC_SUBSAMPLE, replace=False)
+                idx = np.sort(idx)
+                WW3_lon = WW3_lon[idx]
+                WW3_lat = WW3_lat[idx]
+                Hs = Hs[:, idx]
+                npoints = SMC_SUBSAMPLE
+                log(tr("plotting_smc_subsampled", "📐 为加速绘图，抽样至 {n} 个格点").format(n=SMC_SUBSAMPLE))
         else:
-            Hs = raw
+            shape = raw.shape
+            time_axes = [i for i,s in enumerate(shape) if s==nt]
+            time_axis = time_axes[0] if time_axes else 2
+
+            if time_axis==0:
+                Hs = raw.transpose(1,2,0)
+            elif time_axis==1:
+                Hs = raw.transpose(0,2,1)
+            elif time_axis==2:
+                if raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+                    Hs = raw
+                else:
+                    Hs = raw.transpose(1,0,2)
+            else:
+                Hs = raw
 
         # ------------------------
         # 区域范围（先基于文件，再收缩到有数据的范围）
         # ------------------------
-        lon_min, lon_max = WW3_lon.min(), WW3_lon.max()
-        lat_min, lat_max = WW3_lat.min(), WW3_lat.max()
-        lon_idx = np.where((WW3_lon>=lon_min)&(WW3_lon<=lon_max))[0]
-        lat_idx = np.where((WW3_lat>=lat_min)&(WW3_lat<=lat_max))[0]
-        lon_sub, lat_sub = WW3_lon[lon_idx], WW3_lat[lat_idx]
+        if is_smc:
+            lon_min, lon_max = float(np.nanmin(WW3_lon)), float(np.nanmax(WW3_lon))
+            lat_min, lat_max = float(np.nanmin(WW3_lat)), float(np.nanmax(WW3_lat))
+            Hs_all = Hs.astype(float)
+            Hs_all[Hs_all > 1e10] = np.nan
+            pct = np.nanpercentile(Hs_all, CLIM_PCT)
+            vmin, vmax = 0, float(pct) if np.isfinite(pct) else 5.0
+        else:
+            lon_min, lon_max = WW3_lon.min(), WW3_lon.max()
+            lat_min, lat_max = WW3_lat.min(), WW3_lat.max()
+            lon_idx = np.where((WW3_lon>=lon_min)&(WW3_lon<=lon_max))[0]
+            lat_idx = np.where((WW3_lat>=lat_min)&(WW3_lat<=lat_max))[0]
+            lon_sub, lat_sub = WW3_lon[lon_idx], WW3_lat[lat_idx]
 
-        # ------------------------
-        # 全局波高范围
-        # ------------------------
-        Hs_all = Hs[np.ix_(lat_idx, lon_idx, range(Hs.shape[2]))].astype(float)
-        Hs_all[Hs_all>1e10] = np.nan
-        vmin, vmax = 0, np.nanpercentile(Hs_all, CLIM_PCT)
+            # ------------------------
+            # 全局波高范围
+            # ------------------------
+            Hs_all = Hs[np.ix_(lat_idx, lon_idx, range(Hs.shape[2]))].astype(float)
+            Hs_all[Hs_all>1e10] = np.nan
+            vmin, vmax = 0, np.nanpercentile(Hs_all, CLIM_PCT)
 
         # 如果显示陆地和海岸线，则不进行数据范围收缩（保持完整的地图范围）
         # 收缩到有数据的经纬度范围，避免无数据区域造成空白
-        if not show_land_coastline:
+        if not is_smc and not show_land_coastline:
             valid_all = np.isfinite(Hs_all)
             try:
                 lat_has = valid_all.any(axis=(1,2))
@@ -1053,15 +1125,16 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
 
 
         # ------------------------
-        # meshgrid 只创建一次（使用收缩后的范围）
+        # meshgrid 只创建一次（使用收缩后的范围）- 仅规则网格
         # ------------------------
-        if UPSAMPLE_FACTOR > 1:
-            lon_plot_1d = np.linspace(lon_sub[0], lon_sub[-1], len(lon_sub)*UPSAMPLE_FACTOR)
-            lat_plot_1d = np.linspace(lat_sub[0], lat_sub[-1], len(lat_sub)*UPSAMPLE_FACTOR)
-        else:
-            lon_plot_1d = lon_sub
-            lat_plot_1d = lat_sub
-        LON_plot, LAT_plot = np.meshgrid(lon_plot_1d, lat_plot_1d)
+        if not is_smc:
+            if UPSAMPLE_FACTOR > 1:
+                lon_plot_1d = np.linspace(lon_sub[0], lon_sub[-1], len(lon_sub)*UPSAMPLE_FACTOR)
+                lat_plot_1d = np.linspace(lat_sub[0], lat_sub[-1], len(lat_sub)*UPSAMPLE_FACTOR)
+            else:
+                lon_plot_1d = lon_sub
+                lat_plot_1d = lat_sub
+            LON_plot, LAT_plot = np.meshgrid(lon_plot_1d, lat_plot_1d)
 
         # ------------------------
         # 生成目标时间并预计算最近索引
@@ -1204,27 +1277,38 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         gl.xlocator = FixedLocator(lon_ticks)
         gl.ylocator = FixedLocator(lat_ticks)
 
-        # 创建一次 pcolormesh（使用网格边界，避免可视范围内出现空白边缘）
-        def _calc_edges(arr):
-            # arr 为单调数组
-            mid = (arr[:-1] + arr[1:]) / 2.0
-            first = arr[0] - (arr[1] - arr[0]) / 2.0
-            last = arr[-1] + (arr[-1] - arr[-2]) / 2.0
-            return np.concatenate([[first], mid, [last]])
+        # 创建绘图对象：规则网格用 pcolormesh，SMC 用 tricontourf（在循环内绘制）
+        if is_smc:
+            from matplotlib.tri import Triangulation
+            # 移除无效点以便 Triangulation 正常工作
+            smc_valid = np.isfinite(WW3_lon) & np.isfinite(WW3_lat) & (np.abs(WW3_lon) <= 360) & (np.abs(WW3_lat) <= 90)
+            lon_tri = WW3_lon[smc_valid].astype(np.float64)
+            lat_tri = WW3_lat[smc_valid].astype(np.float64)
+            tri = Triangulation(lon_tri, lat_tri)
+            Hs_smc = Hs[:, smc_valid]  # (nt, n_valid)
+            pcm = None
+            sm = plt.cm.ScalarMappable(cmap=cm.turbo, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+            sm.set_array([])
+            cb = fig.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06, aspect=40)
+            cb.set_label(varlabel)
+        else:
+            def _calc_edges(arr):
+                mid = (arr[:-1] + arr[1:]) / 2.0
+                first = arr[0] - (arr[1] - arr[0]) / 2.0
+                last = arr[-1] + (arr[-1] - arr[-2]) / 2.0
+                return np.concatenate([[first], mid, [last]])
 
-        lon_edges = _calc_edges(lon_plot_1d)
-        lat_edges = _calc_edges(lat_plot_1d)
+            lon_edges = _calc_edges(lon_plot_1d)
+            lat_edges = _calc_edges(lat_plot_1d)
 
-        Hs_init = np.zeros((len(lat_plot_1d), len(lon_plot_1d)))
-        pcm = ax.pcolormesh(lon_edges, lat_edges, Hs_init,
-                            transform=ccrs.PlateCarree(),
-                            shading='auto', cmap=cm.turbo,
-                            vmin=vmin, vmax=vmax)
+            Hs_init = np.zeros((len(lat_plot_1d), len(lon_plot_1d)))
+            pcm = ax.pcolormesh(lon_edges, lat_edges, Hs_init,
+                                transform=ccrs.PlateCarree(),
+                                shading='auto', cmap=cm.turbo,
+                                vmin=vmin, vmax=vmax)
 
-        # 紧凑的颜色条，避免额外留白
-        # 将颜色条与主图拉开距离，避免过于贴近
-        cb = fig.colorbar(pcm, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06, aspect=40)
-        cb.set_label(varlabel)
+            cb = fig.colorbar(pcm, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06, aspect=40)
+            cb.set_label(varlabel)
 
         # ======================================================
         #               循环输出（只更新数据 + 存图）
@@ -1236,6 +1320,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         num = 0
         total = len(targets)
 
+        smc_tcf = None  # SMC 时保存上一帧的 tricontourf，用于移除
         for idx, (tid, t_target) in enumerate(zip(target_ids, targets)):
             # 每10张图片更新一次进度
             if (idx + 1) % 10 == 0 or idx == 0:
@@ -1245,8 +1330,12 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 else:
                     log(tr("plotting_progress_images", "📊 进度: {current}/{total} ({percent}%) - 已生成 {generated} 张图片").format(current=idx + 1, total=total, percent=progress_pct, generated=num))
 
-            Hs_now = Hs[np.ix_(lat_idx, lon_idx, [tid])][:,:,0].astype(float)
-            Hs_now[Hs_now>1e10] = np.nan
+            if is_smc:
+                Hs_now = Hs_smc[tid, :].astype(float)
+                Hs_now[Hs_now > 1e10] = np.nan
+            else:
+                Hs_now = Hs[np.ix_(lat_idx, lon_idx, [tid])][:,:,0].astype(float)
+                Hs_now[Hs_now>1e10] = np.nan
 
             # 如果有效数据比例过低，跳过这一帧，避免大片空白
             valid_mask = np.isfinite(Hs_now)
@@ -1255,24 +1344,21 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 log(tr("plotting_skip_frame_low_data", "⚠️  时刻 {time} 有效数据仅 {ratio}% ，跳过绘制以避免空白").format(time=t_target, ratio=f"{valid_ratio*100:.1f}"))  # type: ignore[name-defined]
                 continue
 
-            # 不再根据有效数据调整 extent，保持固定轴范围，避免掩码尺寸不匹配
-
-            # 如果有效数据比例过低，跳过这一帧，避免大片空白
-            valid_mask = np.isfinite(Hs_now)
-            valid_ratio = valid_mask.sum() / valid_mask.size if valid_mask.size > 0 else 0
-            if valid_ratio < 0.02:
-                log(tr("plotting_skip_frame_low_data", "⚠️  时刻 {time} 有效数据仅 {ratio}% ，跳过绘制以避免空白").format(time=t_target, ratio=f"{valid_ratio*100:.1f}"))  # type: ignore[name-defined]
-                continue
-
-            # 保持固定轴范围，不再按有效范围动态调整，避免掩码尺寸不匹配
-
-            # 超快速上采样（cv2 比 scipy 快 5～20 倍）
-            if UPSAMPLE_FACTOR > 1:
-                Hs_now = cv2.resize(Hs_now, (len(lon_plot_1d), len(lat_plot_1d)),
-                                    interpolation=cv2.INTER_LINEAR)
-
-            # 更新 pcolormesh 数据（关键加速）
-            pcm.set_array(Hs_now.ravel())
+            if is_smc:
+                # 移除上一帧的 tricontourf
+                if smc_tcf is not None:
+                    for c in smc_tcf.collections:
+                        c.remove()
+                Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
+                smc_tcf = ax.tricontourf(tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
+                                         cmap=cm.turbo, vmin=vmin, vmax=vmax)
+            else:
+                # 超快速上采样（cv2 比 scipy 快 5～20 倍）
+                if UPSAMPLE_FACTOR > 1:
+                    Hs_now = cv2.resize(Hs_now, (len(lon_plot_1d), len(lat_plot_1d)),
+                                        interpolation=cv2.INTER_LINEAR)
+                # 更新 pcolormesh 数据（关键加速）
+                pcm.set_array(Hs_now.ravel())
 
             # 标题更新：若输入风速，则在原有信息后追加风速；否则保持原逻辑
             time_str = t_target.strftime('%Y-%m-%d %H:%M UTC')
@@ -1280,7 +1366,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
             if manual_wind is not None:
                 wind_info = f" | Wind {manual_wind:.1f} m/s"
             else:
-                if u10_data is not None:
+                if u10_data is not None and not is_smc:
                     u_now = u10_data[np.ix_(lat_idx, lon_idx, [tid])][:, :, 0]
                     if v10_data is not None:
                         v_now = v10_data[np.ix_(lat_idx, lon_idx, [tid])][:, :, 0]
@@ -1454,10 +1540,24 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             ref = datetime(1990,1,1)
             WW3_datetime = np.array([ref + timedelta(days=float(t)) for t in WW3_time_var[:]])
         
-        # 读取波高数据
-        raw = np.array(ds.variables['hs'][:])
+        # 读取波高数据（含 NetCDF _FillValue 处理）
+        raw_var = ds.variables['hs']
+        raw = np.array(raw_var[:])
+        _fv = getattr(raw_var, '_FillValue', None)
+        if _fv is not None:
+            fv = float(np.asarray(_fv).flat[0])
+            raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
+        raw = np.where(raw > 1e30, np.nan, raw)
+        raw = np.where(raw > 1e10, np.nan, raw)
         varlabel = 'Total Hs (m)'
         prefix = 'contour_hs'
+
+        if np.isfinite(raw).sum() == 0:
+            log(tr("plotting_all_missing", "❌ 文件中所有格点均为缺测值，请检查 WW3 输出或模拟设置"))
+            ds.close()
+            log_queue.put("__DONE__")
+            result_queue.put([])
+            return
         
         # 读取风场数据
         u10_data = None
@@ -1500,39 +1600,70 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
         
         ds.close()
         
-        # 数据维度整理
-        shape = raw.shape
+        # 检测 SMC/非结构化网格
+        WW3_lon = np.asarray(WW3_lon).squeeze()
+        WW3_lat = np.asarray(WW3_lat).squeeze()
+        npoints = len(WW3_lon) if WW3_lon.ndim == 1 else WW3_lon.size
         nt = len(WW3_datetime)
-        time_axes = [i for i,s in enumerate(shape) if s==nt]
-        time_axis = time_axes[0] if time_axes else 2
+        is_smc = (
+            (WW3_lon.ndim == 1 and WW3_lat.ndim == 1 and len(WW3_lon) == len(WW3_lat))
+            and (nt in raw.shape)
+            and (npoints in raw.shape)
+            and (raw.ndim == 2)
+        )
+        if is_smc:
+            log(tr("plotting_smc_detected", "📐 检测到 SMC/非结构化网格 ({n} 个格点)").format(n=npoints))
+            SMC_SUBSAMPLE = 50000
+            if npoints > SMC_SUBSAMPLE:
+                rng = np.random.default_rng(42)
+                idx = rng.choice(npoints, SMC_SUBSAMPLE, replace=False)
+                idx = np.sort(idx)
+                WW3_lon = WW3_lon[idx]
+                WW3_lat = WW3_lat[idx]
+                raw = raw[:, idx]
+                npoints = SMC_SUBSAMPLE
         
-        if time_axis==0:
-            Hs = raw.transpose(1,2,0)
-        elif time_axis==1:
-            Hs = raw.transpose(0,2,1)
-        elif time_axis==2:
-            if raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
-                Hs = raw
-            else:
-                Hs = raw.transpose(1,0,2)
+        # 数据维度整理
+        if is_smc:
+            Hs = np.asarray(raw, dtype=float)
+            Hs[Hs > 1e10] = np.nan
         else:
-            Hs = raw
+            shape = raw.shape
+            time_axes = [i for i,s in enumerate(shape) if s==nt]
+            time_axis = time_axes[0] if time_axes else 2
+            if time_axis==0:
+                Hs = raw.transpose(1,2,0)
+            elif time_axis==1:
+                Hs = raw.transpose(0,2,1)
+            elif time_axis==2:
+                if raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+                    Hs = raw
+                else:
+                    Hs = raw.transpose(1,0,2)
+            else:
+                Hs = raw
         
         # 区域范围（先基于文件，再收缩到有数据的范围）
-        lon_min, lon_max = WW3_lon.min(), WW3_lon.max()
-        lat_min, lat_max = WW3_lat.min(), WW3_lat.max()
-        lon_idx = np.where((WW3_lon>=lon_min)&(WW3_lon<=lon_max))[0]
-        lat_idx = np.where((WW3_lat>=lat_min)&(WW3_lat<=lat_max))[0]
-        lon_sub, lat_sub = WW3_lon[lon_idx], WW3_lat[lat_idx]
-        
-        # 全局波高范围（使用与波高图相同的CLIM_PCT）
-        Hs_all = Hs[np.ix_(lat_idx, lon_idx, range(Hs.shape[2]))].astype(float)
-        Hs_all[Hs_all>1e10] = np.nan
-        vmin, vmax = 0, np.nanpercentile(Hs_all, CLIM_PCT)
+        if is_smc:
+            lon_min, lon_max = float(np.nanmin(WW3_lon)), float(np.nanmax(WW3_lon))
+            lat_min, lat_max = float(np.nanmin(WW3_lat)), float(np.nanmax(WW3_lat))
+            Hs_all = Hs.astype(float)
+            Hs_all[Hs_all > 1e10] = np.nan
+            pct = np.nanpercentile(Hs_all, CLIM_PCT)
+            vmin, vmax = 0, float(pct) if np.isfinite(pct) else 5.0
+        else:
+            lon_min, lon_max = WW3_lon.min(), WW3_lon.max()
+            lat_min, lat_max = WW3_lat.min(), WW3_lat.max()
+            lon_idx = np.where((WW3_lon>=lon_min)&(WW3_lon<=lon_max))[0]
+            lat_idx = np.where((WW3_lat>=lat_min)&(WW3_lat<=lat_max))[0]
+            lon_sub, lat_sub = WW3_lon[lon_idx], WW3_lat[lat_idx]
+            Hs_all = Hs[np.ix_(lat_idx, lon_idx, range(Hs.shape[2]))].astype(float)
+            Hs_all[Hs_all>1e10] = np.nan
+            vmin, vmax = 0, np.nanpercentile(Hs_all, CLIM_PCT)
         
         # 如果显示陆地和海岸线，则不进行数据范围收缩（保持完整的地图范围）
         # 收缩到有数据的经纬度范围，避免无数据区域造成空白
-        if not show_land_coastline:
+        if not is_smc and not show_land_coastline:
             valid_all = np.isfinite(Hs_all)
             try:
                 lat_has = valid_all.any(axis=(1,2))
@@ -1553,14 +1684,22 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             except Exception as e:
                 log(tr("plotting_data_range_shrink_failed", "⚠️ 数据范围收缩失败，使用原始范围: {error}").format(error=e))
    
-        # 创建网格（使用与波高图相同的UPSAMPLE_FACTOR）
-        if UPSAMPLE_FACTOR > 1:
-            lon_plot_1d = np.linspace(lon_sub[0], lon_sub[-1], len(lon_sub)*UPSAMPLE_FACTOR)
-            lat_plot_1d = np.linspace(lat_sub[0], lat_sub[-1], len(lat_sub)*UPSAMPLE_FACTOR)
+        # 创建网格（使用与波高图相同的UPSAMPLE_FACTOR）- 仅规则网格
+        if not is_smc:
+            if UPSAMPLE_FACTOR > 1:
+                lon_plot_1d = np.linspace(lon_sub[0], lon_sub[-1], len(lon_sub)*UPSAMPLE_FACTOR)
+                lat_plot_1d = np.linspace(lat_sub[0], lat_sub[-1], len(lat_sub)*UPSAMPLE_FACTOR)
+            else:
+                lon_plot_1d = lon_sub
+                lat_plot_1d = lat_sub
+            LON_plot_base, LAT_plot_base = np.meshgrid(lon_plot_1d, lat_plot_1d)
         else:
-            lon_plot_1d = lon_sub
-            lat_plot_1d = lat_sub
-        LON_plot_base, LAT_plot_base = np.meshgrid(lon_plot_1d, lat_plot_1d)
+            from matplotlib.tri import Triangulation
+            smc_valid = np.isfinite(WW3_lon) & np.isfinite(WW3_lat) & (np.abs(WW3_lon) <= 360) & (np.abs(WW3_lat) <= 90)
+            lon_tri = WW3_lon[smc_valid].astype(np.float64)
+            lat_tri = WW3_lat[smc_valid].astype(np.float64)
+            tri_contour = Triangulation(lon_tri, lat_tri)
+            Hs_contour_smc = Hs[:, smc_valid]
         
         # 生成目标时间
         start_time, end_time = WW3_datetime[0], WW3_datetime[-1]
@@ -1641,7 +1780,10 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 progress_pct = int((idx + 1) / total * 100)
                 log(tr("plotting_progress_contour", "📊 进度: {current}/{total} ({percent}%) - 已生成 {generated} 张等高线图").format(current=idx + 1, total=total, percent=progress_pct, generated=num))
             
-            Hs_now_raw = Hs[np.ix_(lat_idx, lon_idx, [tid])][:,:,0].astype(float)
+            if is_smc:
+                Hs_now_raw = Hs_contour_smc[tid, :].astype(float)
+            else:
+                Hs_now_raw = Hs[np.ix_(lat_idx, lon_idx, [tid])][:,:,0].astype(float)
             Hs_now_raw[Hs_now_raw>1e10] = np.nan
             
             # 如果有效数据比例过低，跳过
@@ -1650,12 +1792,15 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             if valid_ratio < 0.02:
                 continue
             
-            # 对数据进行插值（使用与波高图相同的UPSAMPLE_FACTOR）
-            if UPSAMPLE_FACTOR > 1:
-                from scipy.ndimage import zoom as sp_zoom
-                Hs_now = sp_zoom(Hs_now_raw, UPSAMPLE_FACTOR, order=1, mode='nearest')
-            else:
+            if is_smc:
                 Hs_now = Hs_now_raw
+            else:
+                # 对数据进行插值（使用与波高图相同的UPSAMPLE_FACTOR）
+                if UPSAMPLE_FACTOR > 1:
+                    from scipy.ndimage import zoom as sp_zoom
+                    Hs_now = sp_zoom(Hs_now_raw, UPSAMPLE_FACTOR, order=1, mode='nearest')
+                else:
+                    Hs_now = Hs_now_raw
             
             fig = plt.figure(figsize=FIGSIZE)
             ax = plt.axes(projection=ccrs.PlateCarree())
@@ -1700,14 +1845,20 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             gl.xlocator = FixedLocator(lon_ticks)
             gl.ylocator = FixedLocator(lat_ticks)
             
-            LON_plot, LAT_plot = LON_plot_base, LAT_plot_base
-            
             # 绘制波高图作为底图
-            pcm = ax.pcolormesh(LON_plot, LAT_plot, Hs_now,
-                                transform=ccrs.PlateCarree(),
-                                shading='auto', cmap=cm.turbo,
-                                vmin=vmin, vmax=vmax,
-                                zorder=1)
+            if is_smc:
+                Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
+                pcm = ax.tricontourf(tri_contour, Hs_plot, levels=20,
+                                     transform=ccrs.PlateCarree(),
+                                     cmap=cm.turbo, vmin=vmin, vmax=vmax,
+                                     zorder=1)
+            else:
+                LON_plot, LAT_plot = LON_plot_base, LAT_plot_base
+                pcm = ax.pcolormesh(LON_plot, LAT_plot, Hs_now,
+                                    transform=ccrs.PlateCarree(),
+                                    shading='auto', cmap=cm.turbo,
+                                    vmin=vmin, vmax=vmax,
+                                    zorder=1)
             
             # 添加陆地和海岸线（如果启用）
             if show_land_coastline:
@@ -1730,9 +1881,14 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 vmax_rounded = np.ceil(vmax * 2) / 2
             contour_levels_all = np.arange(vmin_rounded, vmax_rounded + step/2, step)
             contour_levels = contour_levels_all[contour_levels_all <= vmax]
-            cs = ax.contour(LON_plot, LAT_plot, Hs_now, levels=contour_levels,
-                            transform=ccrs.PlateCarree(), colors='black', linewidths=0.8,
-                            zorder=3)
+            if is_smc:
+                cs = ax.tricontour(tri_contour, Hs_plot, levels=contour_levels,
+                                   transform=ccrs.PlateCarree(), colors='black', linewidths=0.8,
+                                   zorder=3)
+            else:
+                cs = ax.contour(LON_plot, LAT_plot, Hs_now, levels=contour_levels,
+                                transform=ccrs.PlateCarree(), colors='black', linewidths=0.8,
+                                zorder=3)
             
             if vmax < 0.5:
                 label_fmt = '%.2f'

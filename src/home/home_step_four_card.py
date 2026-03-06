@@ -13,7 +13,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, CheckBox
 from setting.language_manager import tr
-from setting.config import load_config, ST_OPTIONS, CPU_GROUP, DEFAULT_CPU, KERNEL_NUM, NODE_NUM, COMPUTE_PRECISION, OUTPUT_PRECISION
+from setting.config import load_config, ST_OPTIONS, CPU_GROUP, DEFAULT_CPU, KERNEL_NUM, NODE_NUM, DEFAULT_CONFIG
 from .utils import create_header_card
 
 
@@ -521,10 +521,15 @@ class HomeStepFourCard:
 
         outer_precision_row = 0
 
+        # 从配置读取默认计算/输出精度（设置页 WW3 配置）
+        _cfg = load_config()
+        _compute_prec = str(_cfg.get("COMPUTE_PRECISION", DEFAULT_CONFIG.get("COMPUTE_PRECISION", "1800")))
+        _output_prec = str(_cfg.get("OUTPUT_PRECISION", DEFAULT_CONFIG.get("OUTPUT_PRECISION", "3600")))
+
         # 外网格计算精度
         outer_precision_grid.addWidget(QLabel(tr("step4_compute_precision", "计算精度 (秒):")), outer_precision_row, 0)
         self.shel_step_edit = LineEdit()
-        self.shel_step_edit.setText(COMPUTE_PRECISION)
+        self.shel_step_edit.setText(_compute_prec)
         self.shel_step_edit.setStyleSheet(input_style)
         outer_precision_grid.addWidget(self.shel_step_edit, outer_precision_row, 1)
         outer_precision_row += 1
@@ -532,7 +537,7 @@ class HomeStepFourCard:
         # 外网格输出精度
         outer_precision_grid.addWidget(QLabel(tr("step4_output_precision", "输出精度 (秒):")), outer_precision_row, 0)
         self.output_precision_edit = LineEdit()
-        self.output_precision_edit.setText(OUTPUT_PRECISION)
+        self.output_precision_edit.setText(_output_prec)
         self.output_precision_edit.setStyleSheet(input_style)
         outer_precision_grid.addWidget(self.output_precision_edit, outer_precision_row, 1)
 
@@ -622,7 +627,7 @@ class HomeStepFourCard:
         # 内网格计算精度
         inner_precision_grid.addWidget(QLabel(tr("step4_compute_precision", "计算精度 (秒):")), inner_precision_row, 0)
         self.inner_shel_step_edit = LineEdit()
-        self.inner_shel_step_edit.setText(COMPUTE_PRECISION)
+        self.inner_shel_step_edit.setText(_compute_prec)
         self.inner_shel_step_edit.setStyleSheet(input_style)
         inner_precision_grid.addWidget(self.inner_shel_step_edit, inner_precision_row, 1)
         inner_precision_row += 1
@@ -630,7 +635,7 @@ class HomeStepFourCard:
         # 内网格输出精度
         inner_precision_grid.addWidget(QLabel(tr("step4_output_precision", "输出精度 (秒):")), inner_precision_row, 0)
         self.inner_output_precision_edit = LineEdit()
-        self.inner_output_precision_edit.setText(OUTPUT_PRECISION)
+        self.inner_output_precision_edit.setText(_output_prec)
         self.inner_output_precision_edit.setStyleSheet(input_style)
         inner_precision_grid.addWidget(self.inner_output_precision_edit, inner_precision_row, 1)
 
