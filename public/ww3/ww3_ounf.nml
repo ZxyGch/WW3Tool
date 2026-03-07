@@ -100,6 +100,57 @@
 /
 
 ! -------------------------------------------------------------------- !
+! Define the content of the output file via SMC_NML namelist
+!
+! * For SMC grids, IX0, IXN, IY0 and IYN from FILE_NML are not used.
+!   Two types of output are available:
+! *   TYPE=1: Flat 1D "seapoint" array of grid cells.
+! *   TYPE=2: Re-gridded regular grid with cell sizes being an integer
+! *           multiple of the smallest SMC grid cells size.
+!
+! * Note that the first/last longitudes and latitudes will be adjusted
+!  to snap to the underlying SMC grid edges. CELFAC is only used for
+!  type 2 output and defines the output cell sizes as an integer
+!  multiple of the smallest SMC Grid cell size. CELFAC should be a
+!  power of 2, e.g: 1,2,4,8,16, etc...
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     SMC%TYPE          = 1              ! SMC Grid type (1 or 2)
+!     SMC%SXO           = -999.9         ! First longitude
+!     SMC%EXO           = -999.9         ! Last longitude
+!     SMC%SYO           = -999.9         ! First latitude
+!     SMC%EYO           = -999.9         ! Last latitude
+!     SMC%CELFAC        = 1              ! Cell size factor (SMCTYPE=2 only)
+!     SMC%NOVAL         = UNDEF          ! Fill value for wet cells with no data
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 SMC_NML namelist 定义输出文件内容（SMC 网格）
+!
+! * 对于 SMC 网格，FILE_NML 中的 IX0、IXN、IY0 和 IYN 不使用。
+!   支持两种输出类型：
+! *   TYPE=1：平铺的一维“海点”数组输出。
+! *   TYPE=2：重新栅格化的规则网格输出，单元大小为最小 SMC 网格单元的整数倍。
+!
+! * 注意首末经纬度会调整到 SMC 网格边界。CELFAC 仅用于
+!   TYPE=2 输出，并定义输出单元大小为最小 SMC 单元大小的整数倍。
+!   CELFAC 应为 2 的幂，例如 1,2,4,8,16 等。
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     SMC%TYPE          = 1              ! SMC 网格类型（1 或 2）
+!     SMC%SXO           = -999.9         ! 起始经度
+!     SMC%EXO           = -999.9         ! 结束经度
+!     SMC%SYO           = -999.9         ! 起始纬度
+!     SMC%EYO           = -999.9         ! 结束纬度
+!     SMC%CELFAC        = 1              ! 单元大小因子（仅 SMCTYPE=2）
+!     SMC%NOVAL         = UNDEF          ! 无数据湿点的填充值
+! -------------------------------------------------------------------- !
+!&SMC_NML
+!/
+
+! -------------------------------------------------------------------- !
 ! WAVEWATCH III - end of namelist                                      !
 ! -------------------------------------------------------------------- !
 !

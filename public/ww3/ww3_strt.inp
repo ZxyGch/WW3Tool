@@ -2,6 +2,8 @@ $ -------------------------------------------------------------------- $
 $ WAVEWATCH III Initial conditions input file                          $
 $--------------------------------------------------------------------- $
 $ type of initial field ITYPE .
+$ WAVEWATCH III 初始条件输入文件
+$ 初始场类型 ITYPE
 $
     3
 $
@@ -10,6 +12,10 @@ $ Gaussian in frequency and space, cos type in direction.
 $ - fp and spread (Hz), mean direction (degr., oceanographic
 $    convention) and cosine power, Xm and spread (degr. or m) Ym and
 $    spread (degr. or m), Hmax (m) (Example for lon-lat grid in degr.).
+$ 频率与空间为高斯分布，方向为余弦型分布。
+$ - fp 与其扩散（Hz）、平均方向（度，海洋学约定）及余弦幂，
+$   Xm 与其扩散（度或米）、Ym 与其扩散（度或米）、Hmax（米）
+$   （经纬度网格示例，单位为度）。
 $
 $   0.10  0.01  270. 2  1. 0.5 1. 0.5 2.5
 $   0.10  0.01  270. 2  0. 1000. 1. 1000. 2.5
@@ -22,6 +28,11 @@ $ - alfa, peak freq. (Hz), mean direction (degr., oceanographical
 $   convention), gamma, sigA, sigB, Xm and spread (degr. or m) Ym and
 $   spread (degr. or m)  (Example for lon-lat grid in degr.).
 $   alfa, sigA, sigB give default values if less than or equal to 0.
+$ JONSWAP 频谱，Hasselmann 等（1980）方向分布。
+$ - alfa、峰值频率（Hz）、平均方向（度，海洋学约定）、gamma、
+$   sigA、sigB、Xm 与其扩散（度或米）、Ym 与其扩散（度或米）
+$   （经纬度网格示例，单位为度）。
+$   当 alfa、sigA、sigB 小于等于 0 时使用默认值。
 $
 $   0.0081  0.1  270.  1.0 0. 0. 1. 100. 1. 100.
 $
@@ -31,11 +42,17 @@ $ - No additional data, the local spectrum is calculated using the
 $   local wind speed and direction, using the spatial grid size as
 $   fetch, and assuring that the spectrum is within the discrete
 $   frequency range.
+$ 受风程限制的 JONSWAP
+$ - 无额外数据，局地谱使用局地风速与风向计算，
+$   以空间网格尺寸作为风程，并保证谱落在离散频率范围内。
 $
 $ ITYPE = 4 ---------------------------------------------------------- $
 $ User-defined spectrum
 $ - Scale factor., defaults to 1 if less than or equal 0.
 $ - Spectrum F(f,theta) (single read statement)
+$ 用户自定义谱
+$ - 缩放因子，小于等于 0 时默认值为 1。
+$ - 频谱 F(f,theta)（单条读入语句）
 $
 $ -0.1
 $  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
@@ -66,13 +83,18 @@ $
 $ ITYPE = 5 ---------------------------------------------------------- $
 $ Starting from calm conditions.
 $ - No additional data.
+$ 从静水条件开始。
+$ - 无额外数据。
 $
 $ ITYPE = 6 ---------------------------------------------------------- $
 $ Similar to ITYPE = 3, but with manually specified fetch.
 $ - assumed fetch (m):
+$ 与 ITYPE = 3 类似，但手动指定风程。
+$ - 设定风程（m）：
 $ 
 $ 5000
 $ 
 $ -------------------------------------------------------------------- $
 $ End of input file                                                    $
 $ -------------------------------------------------------------------- $
+$ 输入文件结束
