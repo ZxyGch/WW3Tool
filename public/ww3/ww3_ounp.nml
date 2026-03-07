@@ -20,6 +20,22 @@
 !     POINT%TYPE                 = 1                  ! [0=inventory | 1=spectra | 2=mean param | 3=source terms]
 !     POINT%DIMORDER             = T                  ! [time,station=T | station,time=F]
 ! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 POINT_NML namelist 定义要后处理的输出场
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     POINT%TIMESTART            = '19000101 000000'  ! 输出场的开始日期
+!     POINT%TIMESTRIDE           = '0'                ! 输出场的时间步长
+!     POINT%TIMECOUNT            = '1000000000'       ! 时间步数
+!     POINT%TIMESPLIT            = 6                  ! [0(无日期),4(年),6(月),8(日),10(小时)]
+!     POINT%LIST                 = 'all'              ! 点索引列表 ['all'|'1 2 3']
+!     POINT%SAMEFILE             = T                  ! 所有点输出到同一文件
+!     POINT%BUFFER               = 150                ! 每次处理的点数量
+!     POINT%TYPE                 = 1                  ! [0=清单 | 1=谱 | 2=平均参数 | 3=源项]
+!     POINT%DIMORDER             = T                  ! [time,station=T | station,time=F]
+! -------------------------------------------------------------------- !
 &POINT_NML
   POINT%TIMESTART        =  '20221203 000000'
   POINT%TIMESTRIDE       =  '3600'
@@ -41,6 +57,15 @@
 !     FILE%PREFIX        = 'ww3.'            ! Prefix for output file name
 !     FILE%NETCDF        = 3                 ! Netcdf version [3|4]
 ! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FILE_NML namelist 定义输出文件内容
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FILE%PREFIX        = 'ww3.'            ! 输出文件名前缀
+!     FILE%NETCDF        = 3                 ! Netcdf 版本 [3|4]
+! -------------------------------------------------------------------- !
 &FILE_NML
   FILE%PREFIX        = 'ww3.'
   FILE%NETCDF        = 4
@@ -53,6 +78,14 @@
 ! * namelist must be terminated with /
 ! * definitions & defaults:
 !            No additional input, the above time range is ignored.
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 0：文件清单
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!            无需额外输入，上述时间范围将被忽略。
 ! -------------------------------------------------------------------- !
 
 
@@ -94,6 +127,43 @@
 !     SPECTRA%OUTPUT_FAC    = 0            ! Output factor (0=normalized)
 !     SPECTRA%TYPE          = 4            ! [2 = SHORT, 3 = it depends , 4 = REAL]
 ! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 1：谱输出（通过 SPECTRA_NML）
+!
+! 1-D 谱表内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率 - 线性对数尺度（XFR 因子）
+!   - ffp、f、th1m、sth1m、alpha：1D 谱参数
+!   - dpt、ust、wnd、wnddir：平均参数
+!
+! 转换文件内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率 - 线性对数尺度（XFR 因子）
+!   - 频率1：单位 Hz，频带下界频率
+!   - 频率2：单位 Hz，频带上界频率
+!   - 方向：单位度，向向约定，原点在东方，三角序
+!   - efth(time,station,frequency,direction)：2D 谱密度
+!   - dpt、wnd、wnddir、cur、curdir：平均参数
+!
+! 谱分区内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - npart：分区数量
+!   - hs、tp、lm、th1m、sth1m、ws、tm10、t01、t02：分区参数
+!   - dpt、wnd、wnddir、cur、curdir：平均参数
+!
+! * SCALE_FAC 和 OUTPUT_FAC 只对打印图（OUTPUT=1）生效
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     SPECTRA%OUTPUT        = 3            ! 1: 打印图
+!                                          ! 2: 1-D 谱表
+!                                          ! 3: 转换文件
+!                                          ! 4: 谱分区
+!     SPECTRA%SCALE_FAC     = 1            ! 缩放因子（-1=禁用）
+!     SPECTRA%OUTPUT_FAC    = 0            ! 输出因子（0=归一化）
+!     SPECTRA%TYPE          = 4            ! [2 = SHORT, 3 = 取决于, 4 = REAL]
+! -------------------------------------------------------------------- !
 &SPECTRA_NML
   SPECTRA%OUTPUT        = 3
   SPECTRA%SCALE_FAC     = 1
@@ -131,6 +201,37 @@
 !                                          ! 4: Nondimensional pars. (U10)
 !                                          ! 5: Validation table
 !                                          ! 6: WMO standard output
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 2：平均参数（通过 PARAM_NML）
+!
+! 强迫参数内容：
+! - dpt、wnd、wnddir、cur、curdir
+!
+! 平均波参数内容：
+! - hs、lm、tr、th1p、sth1p、fp、th1m、sth1m
+!
+! 无量纲参数（U*）内容：
+! - ust、efst、fpst、cd、alpha
+!
+! 无量纲参数（U10）内容：
+! - wnd、efst、fpst、cd、alpha
+!
+! 验证表内容：
+! - wnd、wnddir、hs、hsst、cpu、cmu、ast
+!
+! WMO 标准输出内容：
+! - wnd、wnddir、hs、tp
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     PARAM%OUTPUT      = 4                ! 1: 强迫参数
+!                                          ! 2: 平均波参数
+!                                          ! 3: 无量纲参数（U*）
+!                                          ! 4: 无量纲参数（U10）
+!                                          ! 5: 验证表
+!                                          ! 6: WMO 标准输出
 ! -------------------------------------------------------------------- !
 &PARAM_NML
 /
@@ -192,6 +293,70 @@
 !                                                          1 : Nondimensional in terms of U10
 !                                                          2 : Nondimensional in terms of U*
 !                                                          3-5: like 0-2 with f normalized with fp.
+!     SOURCE%SPECTRUM      = T             ! [T|F]
+!     SOURCE%INPUT         = T             ! [T|F]
+!     SOURCE%INTERACTIONS  = T             ! [T|F]
+!     SOURCE%DISSIPATION   = T             ! [T|F]
+!     SOURCE%BOTTOM        = T             ! [T|F]
+!     SOURCE%ICE           = T             ! [T|F]
+!     SOURCE%TOTAL         = T             ! [T|F]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 3：源项（通过 SOURCE_NML）
+!
+! 1-D S(f) 表内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率
+!   - ef(频率)   : 1D 谱密度
+!   - Sin(频率)  : 输入源项
+!   - Snl(频率)  : 非线性交互源项
+!   - Sds(频率)  : 耗散源项
+!   - Sbt(频率)  : 底摩擦源项
+!   - Sice(频率) : 冰源项
+!   - Stot(频率) : 总源项
+!   - dpt、ust、wnd：平均参数
+!
+! 1-D 逆时间尺度表（1/T = S/F）内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率
+!   - ef(频率)    : 1D 谱密度
+!   - tini(频率)  : 输入逆时间尺度源项
+!   - tnli(频率)  : 非线性交互逆时间尺度源项
+!   - tdsi(频率)  : 耗散逆时间尺度源项
+!   - tbti(频率)  : 底摩擦逆时间尺度源项
+!   - ticei(频率) : 冰逆时间尺度源项
+!   - ttoti(频率) : 总逆时间尺度源项
+!   - dpt、ust、wnd：平均参数
+!
+! 转换文件内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率 - 线性对数尺度（XFR 因子）
+!   - 频率1：单位 Hz，频带下界频率
+!   - 频率2：单位 Hz，频带上界频率
+!   - 方向：单位度，向向约定，原点在东方，三角序
+!   - efth(频率,方向) : 2D 谱密度
+!   - Sin(频率,方向)  : 输入源项
+!   - Snl(频率,方向)  : 非线性交互源项
+!   - Sds(频率,方向)  : 耗散源项
+!   - Sbt(频率,方向)  : 底摩擦源项
+!   - Sice(频率,方向) : 冰源项
+!   - Stot(频率,方向) : 总源项
+!   - dpt、wnd、wnddir、cur、curdir、ust：平均参数
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     SOURCE%OUTPUT         = 4            ! 1: 打印图
+!                                          ! 2: 1-D S(f) 表
+!                                          ! 3: 1-D 逆时间尺度表 (1/T = S/F)
+!                                          ! 4: 转换文件
+!     SOURCE%SCALE_FAC     = 0             ! 缩放因子（-1=禁用）
+!     SOURCE%OUTPUT_FAC    = 0             ! 输出因子（0=归一化）
+!     SOURCE%TABLE_FAC     = 0             ! 表因子
+!                                                          0 : 量纲
+!                                                          1 : 以 U10 归一化
+!                                                          2 : 以 U* 归一化
+!                                                          3-5: 类似 0-2，f 用 fp 归一化
 !     SOURCE%SPECTRUM      = T             ! [T|F]
 !     SOURCE%INPUT         = T             ! [T|F]
 !     SOURCE%INTERACTIONS  = T             ! [T|F]

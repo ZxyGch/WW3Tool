@@ -280,6 +280,60 @@
 /
 
 ! -------------------------------------------------------------------- !
+! Define homogeneous input via HOMOG_COUNT_NML and HOMOG_INPUT_NML namelist
+!
+! * the number of each homogeneous input is defined by HOMOG_COUNT
+! * the total number of homogeneous input is automatically calculated
+! * the homogeneous input must start from index 1 to N
+! * if VALUE1 is equal 0, then the homogeneous input is desactivated
+! * NAME can only be MOV
+! * each homogeneous input is defined over a maximum of 3 values detailled below :
+!     - MOV is defined by speed and direction
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     HOMOG_COUNT%N_MOV             =  0
+!
+!     HOMOG_INPUT(I)%NAME           =  'unset'
+!     HOMOG_INPUT(I)%DATE           =  '19680606 000000'
+!     HOMOG_INPUT(I)%VALUE1         =  0
+!     HOMOG_INPUT(I)%VALUE2         =  0
+!     HOMOG_INPUT(I)%VALUE3         =  0
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 HOMOG_COUNT_NML 和 HOMOG_INPUT_NML namelist 定义均匀输入
+!
+! * 每类均匀输入的数量由 HOMOG_COUNT 定义
+! * 均匀输入的总数将自动计算
+! * 均匀输入索引必须从 1 到 N
+! * 如果 VALUE1 等于 0，则该均匀输入被禁用
+! * NAME 只能为 MOV
+! * 每个均匀输入最多由 3 个值定义，详见如下：
+!     - MOV 由速度和方向定义
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     HOMOG_COUNT%N_MOV             =  0
+!
+!     HOMOG_INPUT(I)%NAME           =  'unset'
+!     HOMOG_INPUT(I)%DATE           =  '19680606 000000'
+!     HOMOG_INPUT(I)%VALUE1         =  0
+!     HOMOG_INPUT(I)%VALUE2         =  0
+!     HOMOG_INPUT(I)%VALUE3         =  0
+! -------------------------------------------------------------------- !
+!&HOMOG_COUNT_NML
+!  HOMOG_COUNT%N_MOV         = 1
+!/
+!
+!&HOMOG_INPUT_NML
+!  HOMOG_INPUT(1)%NAME       = 'MOV'
+!  HOMOG_INPUT(1)%DATE       ='20100610 000000'
+!  HOMOG_INPUT(1)%VALUE1     = 5.
+!  HOMOG_INPUT(1)%VALUE2     = 90.
+!/
+
+! -------------------------------------------------------------------- !
 ! WAVEWATCH III - end of namelist                                      !
 ! -------------------------------------------------------------------- !
 !
