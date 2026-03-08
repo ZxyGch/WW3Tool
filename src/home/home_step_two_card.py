@@ -22,13 +22,91 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from netCDF4 import Dataset
 
 from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy, QDialog, QScrollArea, QFrame
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QDesktopServices
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar, MessageBoxBase
 from setting.language_manager import tr
 from setting.config import DX, DY, LONGITUDE_WEST, LONGITUDE_EAST, LATITUDE_SORTH, LATITUDE_NORTH, MATLAB_PATH, load_config
 from .utils import create_header_card
+
+
+# reference_data 目录下必须存在的文件（生成网格前检测）
+REFERENCE_DATA_REQUIRED_FILES = [
+    "coastal_bound_coarse.mat",
+    "coastal_bound_full.mat",
+    "coastal_bound_high.mat",
+    "coastal_bound_inter.mat",
+    "coastal_bound_low.mat",
+    "optional_coastal_polygons.mat",
+    "user_polygons.flag",
+    "etopo1.nc",
+    "etopo2.nc",
+    "gebco.nc",
+]
+
+# reference_data 手动下载说明链接与路径提示
+REFERENCE_DATA_ONEDRIVE_URL = "https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ"
+REFERENCE_DATA_BAIDU_URL = "https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch"
+
+
+class _ReferenceDataMissingDialog(MessageBoxBase):
+    """reference_data 缺失提示弹窗：提示下载或手动放置到指定路径"""
+
+    def __init__(self, parent, ref_dir, missing_list, on_download_clicked=None):
+        super().__init__(parent)
+        self._on_download_clicked = on_download_clicked
+        self.setWindowTitle(tr("step2_ref_data_missing_title", "缺失 reference_data 文件"))
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+
+        msg1 = tr(
+            "step2_ref_data_missing_msg1",
+            "生成网格需要 reference_data 文件夹及指定文件，当前缺失或路径不存在。"
+        )
+        label1 = QLabel(msg1)
+        label1.setWordWrap(True)
+        self.viewLayout.addWidget(label1)
+
+        button_style = parent._get_button_style() if hasattr(parent, "_get_button_style") else ""
+        self.btn_download = PrimaryPushButton(tr("step2_ref_data_ok", "下载"))
+        self.btn_download.setStyleSheet(button_style)
+        self.btn_download.clicked.connect(self._on_download)
+        self.viewLayout.addWidget(self.btn_download)
+
+        msg2 = tr(
+            "step2_ref_data_missing_msg2",
+            "若下载过慢或失败，可选择手动下载并解压到指定路径。"
+        )
+        path_hint = tr("step2_ref_data_path_hint", "指定路径：")
+        path_text = ref_dir if ref_dir else "WW3Tool/gridgen/reference_data"
+        manual_hint = tr(
+            "step2_ref_data_manual_hint",
+            "手动下载后请将压缩包内文件放到上述路径。"
+        )
+        rest_msg = f"{msg2}\n\n{path_hint}\n{path_text}\n\n{manual_hint}"
+        label2 = QLabel(rest_msg)
+        label2.setWordWrap(True)
+        self.viewLayout.addWidget(label2)
+
+        self.btn_onedrive = PrimaryPushButton(tr("step2_ref_data_open_onedrive", "打开 OneDrive 下载链接"))
+        self.btn_onedrive.setStyleSheet(button_style)
+        self.btn_onedrive.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_ONEDRIVE_URL)))
+        self.viewLayout.addWidget(self.btn_onedrive)
+        self.btn_baidu = PrimaryPushButton(tr("step2_ref_data_open_baidu", "打开百度网盘下载链接"))
+        self.btn_baidu.setStyleSheet(button_style)
+        self.btn_baidu.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_BAIDU_URL)))
+        self.viewLayout.addWidget(self.btn_baidu)
+        self.btn_cancel = PrimaryPushButton(tr("step2_ref_data_cancel", "取消"))
+        self.btn_cancel.setStyleSheet(button_style)
+        self.btn_cancel.clicked.connect(self.reject)
+        self.viewLayout.addWidget(self.btn_cancel)
+
+    def _on_download(self):
+        if callable(self._on_download_clicked):
+            self._on_download_clicked()
+        self.accept()
 
 
 class _GlobalGridConfirmDialog(MessageBoxBase):
@@ -898,6 +976,91 @@ class HomeStepTwoCard:
         ref_dir = os.path.normpath(os.path.abspath(ref_dir))
         return ref_dir
 
+    def _check_reference_data(self):
+        """检测 reference_data 目录及必需文件是否存在。返回 (是否通过, 缺失文件列表, 参考数据目录路径)。"""
+        ref_dir = self._get_reference_data_path()
+        if not ref_dir or not os.path.isdir(ref_dir):
+            return False, list(REFERENCE_DATA_REQUIRED_FILES), ref_dir or ""
+        missing = [
+            f for f in REFERENCE_DATA_REQUIRED_FILES
+            if not os.path.isfile(os.path.join(ref_dir, f))
+        ]
+        return len(missing) == 0, missing, ref_dir
+
+    def _run_get_reference_data(self):
+        """在后台线程中执行 gridgen/get_reference_data.py 下载参考数据，实时输出到 log，完成后在主线程提示。"""
+        ref_dir = self._get_reference_data_path()
+        gridgen_dir = os.path.dirname(ref_dir) if ref_dir else self._get_gridgen_path()
+        script_path = os.path.join(gridgen_dir, "get_reference_data.py")
+        if not os.path.isfile(script_path):
+            QtCore.QTimer.singleShot(0, lambda: self._show_ref_data_result(False, tr("step2_ref_data_script_not_found", "未找到 get_reference_data.py：{path}").format(path=script_path)))
+            return
+
+        log_signal = getattr(self, "log_signal", None)
+
+        def _run():
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, "-u", script_path],
+                    cwd=gridgen_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                if log_signal:
+                    log_signal.emit(tr("step2_ref_data_started", "正在执行 get_reference_data.py 下载参考数据…"))
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line and log_signal:
+                        log_signal.emit(line)
+                proc.wait()
+                ok = proc.returncode == 0
+                msg = tr("step2_ref_data_done", "下载完成") if ok else tr("step2_ref_data_failed", "下载失败，返回码：{code}").format(code=proc.returncode)
+            except subprocess.TimeoutExpired:
+                ok = False
+                msg = tr("step2_ref_data_timeout", "下载超时")
+            except Exception as e:
+                ok = False
+                msg = str(e)
+            QtCore.QTimer.singleShot(0, lambda: self._show_ref_data_result(ok, msg))
+
+        threading.Thread(target=_run, daemon=True).start()
+        try:
+            InfoBar.info(
+                title=tr("tip", "提示"),
+                content=tr("step2_ref_data_started", "正在执行 get_reference_data.py 下载参考数据…"),
+                duration=3000,
+                parent=self,
+            )
+        except Exception:
+            pass
+
+    def _show_ref_data_result(self, success, message):
+        """在主线程显示 reference_data 下载结果（日志 + InfoBar）。"""
+        if hasattr(self, "log_signal") and self.log_signal:
+            if success:
+                self.log_signal.emit(tr("step2_ref_data_done", "✅ reference_data 下载完成"))
+            else:
+                self.log_signal.emit(tr("step2_ref_data_failed_log", "❌ reference_data 下载失败：{msg}").format(msg=message))
+        try:
+            if success:
+                InfoBar.success(
+                    title=tr("tip", "提示"),
+                    content=tr("step2_ref_data_done_toast", "reference_data 下载完成，可重新点击「生成网格」"),
+                    duration=4000,
+                    parent=self,
+                )
+            else:
+                InfoBar.warning(
+                    title=tr("tip", "提示"),
+                    content=message[:200] + ("…" if len(message) > 200 else ""),
+                    duration=5000,
+                    parent=self,
+                )
+        except Exception:
+            pass
+
     def _get_grid_cache_dir(self):
         """获取网格缓存目录（gridgen/cache）"""
         gridgen_path = self._get_gridgen_path()
@@ -1474,6 +1637,11 @@ class HomeStepTwoCard:
 
     def apply_and_create_grid(self):
         """应用配置并生成网格（合并两步为一步）- 在后台线程中执行"""
+        ok, missing_list, ref_dir = self._check_reference_data()
+        if not ok:
+            dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
+            dlg.exec()
+            return
         self._maybe_prompt_global_grid()
         # 禁用按钮，防止重复点击
         self.btn_create_grid.setEnabled(False)
