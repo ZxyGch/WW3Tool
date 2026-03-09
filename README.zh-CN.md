@@ -56,17 +56,7 @@ python main.py
 
 **注意：我们还需要下载 reference_data ，在下面有下载方法**
 
-## gridgen/reference_data
 
-reference_data 必须下载，否则无法生成网格文件！
-
-执行下载脚本 WW3Tool/gridgen/get_reference_data.py
-
-或者从 OneDrive 下载： https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ
-
-或者从百度网盘下载：https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch
-
-**最后放到 WW3Tool/gridgen/reference_data**
 
 ## 环境配置
 
@@ -126,13 +116,24 @@ reference_data 必须下载，否则无法生成网格文件！
 
 如果一个文件内包含多种强迫场，那么会自动填充相应的按钮，并且这个文件在工作目录会命名为类似 current_level.nc ，表明其中包含的强迫场
 
+
+
 ### 生成网格文件
 
 #### reference_data
 
+reference_data 必须下载，否则无法生成网格文件！
+
 在生成网格之前，我们需要到 WW3Tool/gridgen 目录执行脚本 get_reference_data.py，这个脚本是用来下载水深数据 gebco 和 etop1、etop2，以及海岸边界数据，它会自动下载并解压到目录 reference_data。
 
+![](public/resource/README-media/截屏2026-03-09%2015.44.35.png)
+
+点击下载，会自动执行下载脚本 WW3Tool/gridgen/get_reference_data. py，这是官方的下载链接，如果这个下载无法完成或者太慢，可以选择 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ) 或[百度网盘](https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch)下载。
+
+**手动下载的 reference_data 最后解压到 WW3Tool/gridgen/reference_data**
+
 ![](public/resource/README.zh-CN-media/c1ffc9ab1b634c5011341174f966110e26d380b9.png)
+
 
 #### 一般网格
 
@@ -260,6 +261,10 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 - 水深数据：有三种数据 gebco、etop1、etop2 ，通常我们使用 gebco ，因为精度高，etop2 次之，etop1 最低
 
 - 海岸边界精度：通常我们选择最高精度
+
+
+
+
 
 ### 选择计算模式
 
