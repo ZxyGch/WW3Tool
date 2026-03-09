@@ -57,19 +57,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-**Note: We also need to download gridgen/reference_data. The download instructions are provided in the below.**
 
-## gridgen/reference_data
-
-reference_data must be downloaded, otherwise grid generation will fail.
-
-Run the download script: WW3Tool/gridgen/get_reference_data.py
-
-Or download from OneDrive: https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ
-
-Or download from Baidu Netdisk: https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch
-
-**Finally place it under WW3Tool/gridgen/reference_data**
 
 ## Environment
 
@@ -133,7 +121,16 @@ If a single file contains multiple forcing fields, the related buttons are auto-
 
 #### reference_data
 
+The reference_data is mandatory; otherwise, grid files cannot be generated.
+
 Before generating grids, run get_reference_data.py in WW3Tool/gridgen to download bathymetry data (gebco, etop1, etop2) and coastline boundaries. It downloads and extracts into reference_data.
+
+![](public/resource/README-media/截屏2026-03-09%2015.50.19.png)
+
+Click "Download" to automatically execute the download script: WW3Tool/gridgen/get_reference_data. py. This uses the official download link. If the download fails or is too slow, you can use the following alternative mirrors:  [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ) or [BaiduNetdisk](https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch).
+
+**For manual downloads, extract the contents to the directory: WW3Tool/gridgen/reference_data.**
+
 
 ![](public/resource/README-media/c1ffc9ab1b634c5011341174f966110e26d380b9.png)
 
