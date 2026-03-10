@@ -861,4 +861,3 @@ class Style:
         """根据当前主题更新日志区域的边框样式"""
         self._update_textedit_style(self.log_text)
 
-

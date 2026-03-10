@@ -118,4 +118,3 @@ class Log:
         except Exception as e:
             print(f"清空日志失败: {e}")
 
-

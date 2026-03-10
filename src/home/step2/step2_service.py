@@ -7,6 +7,7 @@ import sys
 import json
 import glob
 import shutil
+import re
 import subprocess
 import threading
 import platform
@@ -21,12 +22,131 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from netCDF4 import Dataset
 
 from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy, QDialog, QScrollArea, QFrame
-from PyQt6.QtGui import QPixmap
-from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar
+from PyQt6.QtGui import QPixmap, QDesktopServices
+from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar, MessageBoxBase
 from setting.language_manager import tr
 from setting.config import DX, DY, LONGITUDE_WEST, LONGITUDE_EAST, LATITUDE_SORTH, LATITUDE_NORTH, MATLAB_PATH, load_config
+
+
+# reference_data 目录下必须存在的文件（生成网格前检测）
+REFERENCE_DATA_REQUIRED_FILES = [
+    "coastal_bound_coarse.mat",
+    "coastal_bound_full.mat",
+    "coastal_bound_high.mat",
+    "coastal_bound_inter.mat",
+    "coastal_bound_low.mat",
+    "optional_coastal_polygons.mat",
+    "user_polygons.flag",
+    "etopo1.nc",
+    "etopo2.nc",
+    "gebco.nc",
+]
+
+# reference_data 手动下载说明链接与路径提示
+REFERENCE_DATA_ONEDRIVE_URL = "https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ"
+REFERENCE_DATA_BAIDU_URL = "https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch"
+
+
+class _ReferenceDataMissingDialog(MessageBoxBase):
+    """reference_data 缺失提示弹窗：提示下载或手动放置到指定路径"""
+
+    def __init__(self, parent, ref_dir, missing_list, on_download_clicked=None):
+        super().__init__(parent)
+        self._on_download_clicked = on_download_clicked
+        self.setWindowTitle(tr("step2_ref_data_missing_title", "缺失 reference_data 文件"))
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+
+        msg1 = tr(
+            "step2_ref_data_missing_msg1",
+            "生成网格需要 reference_data 文件夹及指定文件，当前缺失或路径不存在。"
+        )
+        label1 = QLabel(msg1)
+        label1.setWordWrap(True)
+        self.viewLayout.addWidget(label1)
+
+        button_style = parent._get_button_style() if hasattr(parent, "_get_button_style") else ""
+        self.btn_download = PrimaryPushButton(tr("step2_ref_data_ok", "下载"))
+        self.btn_download.setStyleSheet(button_style)
+        self.btn_download.clicked.connect(self._on_download)
+        self.viewLayout.addWidget(self.btn_download)
+
+        msg2 = tr(
+            "step2_ref_data_missing_msg2",
+            "若下载过慢或失败，可选择手动下载并解压到指定路径。"
+        )
+        path_hint = tr("step2_ref_data_path_hint", "指定路径：")
+        path_text = ref_dir if ref_dir else "WW3Tool/gridgen/reference_data"
+        manual_hint = tr(
+            "step2_ref_data_manual_hint",
+            "手动下载后请将压缩包内文件放到上述路径。"
+        )
+        rest_msg = f"{msg2}\n\n{path_hint}\n{path_text}\n\n{manual_hint}"
+        label2 = QLabel(rest_msg)
+        label2.setWordWrap(True)
+        self.viewLayout.addWidget(label2)
+
+        self.btn_onedrive = PrimaryPushButton(tr("step2_ref_data_open_onedrive", "打开 OneDrive 下载链接"))
+        self.btn_onedrive.setStyleSheet(button_style)
+        self.btn_onedrive.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_ONEDRIVE_URL)))
+        self.viewLayout.addWidget(self.btn_onedrive)
+        self.btn_baidu = PrimaryPushButton(tr("step2_ref_data_open_baidu", "打开百度网盘下载链接"))
+        self.btn_baidu.setStyleSheet(button_style)
+        self.btn_baidu.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_BAIDU_URL)))
+        self.viewLayout.addWidget(self.btn_baidu)
+        self.btn_cancel = PrimaryPushButton(tr("step2_ref_data_cancel", "取消"))
+        self.btn_cancel.setStyleSheet(button_style)
+        self.btn_cancel.clicked.connect(self.reject)
+        self.viewLayout.addWidget(self.btn_cancel)
+
+    def _on_download(self):
+        if callable(self._on_download_clicked):
+            self._on_download_clicked()
+        self.accept()
+
+
+class _GlobalGridConfirmDialog(MessageBoxBase):
+    """全球范围确认弹窗（使用 MessageBoxBase 样式）"""
+
+    def __init__(self, parent, title, message):
+        super().__init__(parent)
+        self._confirmed = False
+
+        self.setWindowTitle(title)
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+
+        label = QLabel(message)
+        label.setWordWrap(True)
+        self.viewLayout.addWidget(label)
+
+        button_style = parent._get_button_style() if hasattr(parent, '_get_button_style') else ""
+
+        self.btn_confirm = PrimaryPushButton(tr("step2_global_grid_confirm_button", "确定"))
+        self.btn_confirm.setStyleSheet(button_style)
+        self.btn_confirm.clicked.connect(self._on_confirm)
+        self.viewLayout.addWidget(self.btn_confirm)
+
+        self.btn_cancel = PrimaryPushButton(tr("step2_global_grid_cancel_button", "取消"))
+        self.btn_cancel.setStyleSheet(button_style)
+        self.btn_cancel.clicked.connect(self._on_cancel)
+        self.viewLayout.addWidget(self.btn_cancel)
+
+    def _on_confirm(self):
+        self._confirmed = True
+        self.accept()
+
+    def _on_cancel(self):
+        self._confirmed = False
+        self.reject()
+
+    @property
+    def confirmed(self):
+        return self._confirmed
 
 
 class StepTwoServiceMixin:
@@ -442,6 +562,91 @@ class StepTwoServiceMixin:
         ref_dir = os.path.normpath(os.path.abspath(ref_dir))
         return ref_dir
 
+    def _check_reference_data(self):
+        """检测 reference_data 目录及必需文件是否存在。返回 (是否通过, 缺失文件列表, 参考数据目录路径)。"""
+        ref_dir = self._get_reference_data_path()
+        if not ref_dir or not os.path.isdir(ref_dir):
+            return False, list(REFERENCE_DATA_REQUIRED_FILES), ref_dir or ""
+        missing = [
+            f for f in REFERENCE_DATA_REQUIRED_FILES
+            if not os.path.isfile(os.path.join(ref_dir, f))
+        ]
+        return len(missing) == 0, missing, ref_dir
+
+    def _run_get_reference_data(self):
+        """在后台线程中执行 gridgen/get_reference_data.py 下载参考数据，实时输出到 log，完成后在主线程提示。"""
+        ref_dir = self._get_reference_data_path()
+        gridgen_dir = os.path.dirname(ref_dir) if ref_dir else self._get_gridgen_path()
+        script_path = os.path.join(gridgen_dir, "get_reference_data.py")
+        if not os.path.isfile(script_path):
+            QtCore.QTimer.singleShot(0, lambda: self._show_ref_data_result(False, tr("step2_ref_data_script_not_found", "未找到 get_reference_data.py：{path}").format(path=script_path)))
+            return
+
+        log_signal = getattr(self, "log_signal", None)
+
+        def _run():
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, "-u", script_path],
+                    cwd=gridgen_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                if log_signal:
+                    log_signal.emit(tr("step2_ref_data_started", "正在执行 get_reference_data.py 下载参考数据…"))
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line and log_signal:
+                        log_signal.emit(line)
+                proc.wait()
+                ok = proc.returncode == 0
+                msg = tr("step2_ref_data_done", "下载完成") if ok else tr("step2_ref_data_failed", "下载失败，返回码：{code}").format(code=proc.returncode)
+            except subprocess.TimeoutExpired:
+                ok = False
+                msg = tr("step2_ref_data_timeout", "下载超时")
+            except Exception as e:
+                ok = False
+                msg = str(e)
+            QtCore.QTimer.singleShot(0, lambda: self._show_ref_data_result(ok, msg))
+
+        threading.Thread(target=_run, daemon=True).start()
+        try:
+            InfoBar.info(
+                title=tr("tip", "提示"),
+                content=tr("step2_ref_data_started", "正在执行 get_reference_data.py 下载参考数据…"),
+                duration=3000,
+                parent=self,
+            )
+        except Exception:
+            pass
+
+    def _show_ref_data_result(self, success, message):
+        """在主线程显示 reference_data 下载结果（日志 + InfoBar）。"""
+        if hasattr(self, "log_signal") and self.log_signal:
+            if success:
+                self.log_signal.emit(tr("step2_ref_data_done", "✅ reference_data 下载完成"))
+            else:
+                self.log_signal.emit(tr("step2_ref_data_failed_log", "❌ reference_data 下载失败：{msg}").format(msg=message))
+        try:
+            if success:
+                InfoBar.success(
+                    title=tr("tip", "提示"),
+                    content=tr("step2_ref_data_done_toast", "reference_data 下载完成，可重新点击「生成网格」"),
+                    duration=4000,
+                    parent=self,
+                )
+            else:
+                InfoBar.warning(
+                    title=tr("tip", "提示"),
+                    content=message[:200] + ("…" if len(message) > 200 else ""),
+                    duration=5000,
+                    parent=self,
+                )
+        except Exception:
+            pass
+
     def _get_grid_cache_dir(self):
         """获取网格缓存目录（gridgen/cache）"""
         gridgen_path = self._get_gridgen_path()
@@ -534,6 +739,74 @@ class StepTwoServiceMixin:
                 dst = os.path.join(output_dir, f)
                 shutil.copy2(src, dst)
 
+    def _validate_grid_files(self, output_dir, max_retries=3, retry_delay=1.0):
+        """验证生成的网格文件是否完整，如果文件不完整则等待并重试"""
+        import time
+        
+        grid_bot_path = os.path.join(output_dir, "grid.bot")
+        grid_meta_path = os.path.join(output_dir, "grid.meta")
+        
+        for _ in range(5):
+            if os.path.exists(grid_bot_path) and os.path.exists(grid_meta_path):
+                break
+            time.sleep(1.0)
+        
+        if not os.path.exists(grid_bot_path):
+            return False, tr("step2_grid_bot_not_exists", "grid.bot 文件不存在")
+        
+        if not os.path.exists(grid_meta_path):
+            return False, tr("step2_grid_meta_not_exists", "grid.meta 文件不存在，无法验证")
+        
+        Nx, Ny = None, None
+        try:
+            with open(grid_meta_path, 'r') as f:
+                lines = f.readlines()
+                for i, line in enumerate(lines):
+                    if "'RECT'" in line or '"RECT"' in line:
+                        if i + 1 < len(lines):
+                            values = lines[i + 1].split()
+                            if len(values) >= 2:
+                                Nx = int(float(values[0]))
+                                Ny = int(float(values[1]))
+                                break
+        except Exception as e:
+            return False, tr("step2_read_grid_meta_failed", "读取 grid.meta 失败: {error}").format(error=e)
+        
+        if Nx is None or Ny is None:
+            return False, tr("step2_cannot_read_nx_ny", "无法从 grid.meta 读取 Nx, Ny")
+        
+        for retry in range(max_retries):
+            try:
+                if retry > 0:
+                    time.sleep(retry_delay)
+                
+                data = []
+                with open(grid_bot_path, 'r') as fid:
+                    for line in fid:
+                        line = line.strip()
+                        if line:
+                            values = [int(x) for x in line.split()]
+                            if len(values) > 0:
+                                data.append(values)
+                
+                if len(data) < Ny:
+                    if retry < max_retries - 1:
+                        continue
+                    return False, tr("step2_grid_bot_rows_insufficient", "grid.bot 文件行数不足: 实际 {actual} 行，预期 {expected} 行（可能是 dxdy > 0.05 导致的文件写入不完整）").format(actual=len(data), expected=Ny)
+                
+                for i, row in enumerate(data[:Ny]):
+                    if len(row) != Nx:
+                        if retry < max_retries - 1:
+                            break
+                        return False, tr("step2_grid_bot_cols_incorrect", "grid.bot 第 {row} 行列数不正确: 实际 {actual} 列，预期 {expected} 列").format(row=i+1, actual=len(row), expected=Nx)
+                else:
+                    return True, tr("step2_grid_validation_passed", "网格文件验证通过: {nx}x{ny}，文件包含 {rows} 行").format(nx=Nx, ny=Ny, rows=len(data))
+            except Exception as e:
+                if retry < max_retries - 1:
+                    continue
+                return False, tr("step2_grid_bot_validation_error", "验证 grid.bot 文件时出错: {error}").format(error=e)
+        
+        return False, tr("step2_grid_bot_validation_failed", "grid.bot 文件验证失败（重试 {retries} 次后仍不完整）").format(retries=max_retries)
 
     def _scale_grid(self, lon_w, lon_e, lat_s, lat_n, dx, dy, scale=1, grid_type='outer'):
         """
@@ -868,8 +1141,148 @@ class StepTwoServiceMixin:
             import traceback
             traceback.print_exc()
 
+    def _maybe_prompt_global_grid(self):
+        """当网格范围接近全球时，询问是否按全球范围生成"""
+        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        is_nested = self._is_nested_grid(grid_type)
+
+        def _get_float(edit, fallback):
+            try:
+                text = edit.text().strip()
+                return float(text) if text else float(fallback)
+            except Exception:
+                return float(fallback)
+
+        try:
+            dx_value = _get_float(self.dx_edit, DX if DX else 0.05)
+            dy_value = _get_float(self.dy_edit, DY if DY else 0.05)
+            lon_west = _get_float(self.lon_west_edit, LONGITUDE_WEST if LONGITUDE_WEST else -180.0)
+            lon_east = _get_float(self.lon_east_edit, LONGITUDE_EAST if LONGITUDE_EAST else 180.0)
+            lat_south = _get_float(self.lat_south_edit, LATITUDE_SORTH if LATITUDE_SORTH else -90.0)
+            lat_north = _get_float(self.lat_north_edit, LATITUDE_NORTH if LATITUDE_NORTH else 90.0)
+        except Exception:
+            return
+
+        if self._is_global_range(lon_west, lon_east, lat_south, lat_north):
+            return
+
+        if not self._is_near_global_range(lon_west, lon_east, lat_south, lat_north, dx_value, dy_value):
+            return
+
+        title = tr("step2_global_grid_title", "确认全球范围网格")
+        message = tr(
+            "step2_global_grid_prompt",
+            "检测到网格范围非常接近全球范围。\n是否按全球范围生成（经度 -180~180，纬度 -90~90）？"
+        )
+        dialog = _GlobalGridConfirmDialog(self, title, message)
+        dialog.exec()
+        if not dialog.confirmed:
+            return
+
+        self.lon_west_edit.setText("-180")
+        self.lon_east_edit.setText("180")
+        self.lat_south_edit.setText("-90")
+        self.lat_north_edit.setText("90")
+
+        if is_nested:
+            self.log(tr("step2_global_grid_outer_only", "✅ 已将外网格范围调整为全球范围"))
+        else:
+            self.log(tr("step2_global_grid_applied", "✅ 已将网格范围调整为全球范围"))
+
+    def _is_near_global_range(self, lon_west, lon_east, lat_south, lat_north, dx_value, dy_value):
+        """判断范围是否非常接近全球范围"""
+        lon_min = min(lon_west, lon_east)
+        lon_max = max(lon_west, lon_east)
+        lat_min = min(lat_south, lat_north)
+        lat_max = max(lat_south, lat_north)
+        tol = max(0.5, abs(dx_value), abs(dy_value))
+        lon_range = lon_max - lon_min
+        lon_close = lon_range >= 360 - tol * 2
+        lat_close = lat_min <= -90 + tol and lat_max >= 90 - tol
+        return lon_close and lat_close
+
+    def _is_global_range(self, lon_west, lon_east, lat_south, lat_north):
+        """判断是否为全球范围网格"""
+        lon_min = min(lon_west, lon_east)
+        lon_max = max(lon_west, lon_east)
+        lat_min = min(lat_south, lat_north)
+        lat_max = max(lat_south, lat_north)
+        tol = 1e-3
+        in_180 = abs(lon_min + 180) <= tol and abs(lon_max - 180) <= tol
+        in_360 = abs(lon_min - 0) <= tol and abs(lon_max - 360) <= tol
+        lat_ok = abs(lat_min + 90) <= tol and abs(lat_max - 90) <= tol
+        return lat_ok and (in_180 or in_360)
+
+    def _update_matlab_grid_nml(
+        self,
+        matlab_bin_dir,
+        output_dir,
+        ref_dir,
+        ref_grid,
+        boundary,
+        dx_value,
+        dy_value,
+        lon_west,
+        lon_east,
+        lat_south,
+        lat_north,
+        is_global
+    ):
+        """更新 MATLAB gridgen 的 grid.nml 参数"""
+        if not matlab_bin_dir:
+            return
+        grid_nml_path = os.path.join(matlab_bin_dir, "bin", "grid.nml")
+        if not os.path.exists(grid_nml_path):
+            return
+
+        def to_posix(path_value):
+            return os.path.abspath(os.path.normpath(path_value)).replace("\\", "/")
+
+        replacements = {
+            "BIN_DIR": f"'{to_posix(os.path.join(matlab_bin_dir, 'bin'))}'",
+            "REF_DIR": f"'{to_posix(ref_dir)}'",
+            "DATA_DIR": f"'{to_posix(output_dir)}'",
+            "REF_GRID": f"'{ref_grid}'",
+            "BOUNDARY": f"'{boundary}'",
+            "DX": f"{dx_value}",
+            "DY": f"{dy_value}",
+            "LON_WEST": f"{lon_west}",
+            "LON_EAST": f"{lon_east}",
+            "LAT_SOUTH": f"{lat_south}",
+            "LAT_NORTH": f"{lat_north}",
+            "IS_GLOBAL": f"{1 if is_global else 0}",
+            "IS_GLOBALB": f"{1 if is_global else 0}",
+        }
+
+        with open(grid_nml_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        new_lines = []
+        for line in lines:
+            line_stripped = line.lstrip()
+            if line_stripped.startswith("$") or line_stripped.startswith("!"):
+                new_lines.append(line)
+                continue
+            updated = False
+            for key, value in replacements.items():
+                if re.match(rf"^\s*{re.escape(key)}\s*=", line):
+                    new_lines.append(f"  {key} = {value}\n")
+                    updated = True
+                    break
+            if not updated:
+                new_lines.append(line)
+
+        with open(grid_nml_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+
     def apply_and_create_grid(self):
         """应用配置并生成网格（合并两步为一步）- 在后台线程中执行"""
+        ok, missing_list, ref_dir = self._check_reference_data()
+        if not ok:
+            dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
+            dlg.exec()
+            return
+        self._maybe_prompt_global_grid()
         # 禁用按钮，防止重复点击
         self.btn_create_grid.setEnabled(False)
         self.btn_create_grid.setText(tr("step2_create_grid_ing", "生成网格中..."))
@@ -899,9 +1312,41 @@ class StepTwoServiceMixin:
 
         # 检查网格类型
         grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        is_nested = self._is_nested_grid(grid_type)
+
+        # 经纬度不能为空（不允许空值生成网格）
+        def _is_empty_edit(edit):
+            try:
+                return not edit.text().strip()
+            except Exception:
+                return True
+
+        missing_fields = []
+        if _is_empty_edit(self.lon_west_edit):
+            missing_fields.append(tr("step2_lon_west", "西经:"))
+        if _is_empty_edit(self.lon_east_edit):
+            missing_fields.append(tr("step2_lon_east", "东经:"))
+        if _is_empty_edit(self.lat_south_edit):
+            missing_fields.append(tr("step2_lat_south", "南纬:"))
+        if _is_empty_edit(self.lat_north_edit):
+            missing_fields.append(tr("step2_lat_north", "北纬:"))
+
+        if is_nested:
+            if _is_empty_edit(self.inner_lon_west_edit):
+                missing_fields.append(tr("step2_lon_west", "西经:") + tr("step2_inner_params", "内网格参数"))
+            if _is_empty_edit(self.inner_lon_east_edit):
+                missing_fields.append(tr("step2_lon_east", "东经:") + tr("step2_inner_params", "内网格参数"))
+            if _is_empty_edit(self.inner_lat_south_edit):
+                missing_fields.append(tr("step2_lat_south", "南纬:") + tr("step2_inner_params", "内网格参数"))
+            if _is_empty_edit(self.inner_lat_north_edit):
+                missing_fields.append(tr("step2_lat_north", "北纬:") + tr("step2_inner_params", "内网格参数"))
+
+        if missing_fields:
+            self.log_signal.emit(tr("step2_latlon_empty_blocked", "❌ 经纬度不能为空，缺少：{fields}").format(fields=", ".join(missing_fields)))
+            return
 
         # 如果是嵌套网格，需要分别生成外网格和内网格
-        if self._is_nested_grid(grid_type):
+        if is_nested:
             # 创建coarse和fine文件夹
             coarse_dir = os.path.join(self.selected_folder, "coarse")
             fine_dir = os.path.join(self.selected_folder, "fine")
@@ -1053,6 +1498,7 @@ class StepTwoServiceMixin:
     def _generate_single_grid(self, output_dir, dx_value, dy_value, lon_west, lon_east, lat_south, lat_north):
         """生成单个网格的辅助函数（带缓存机制）"""
         try:
+            is_global = self._is_global_range(lon_west, lon_east, lat_south, lat_north)
             # 根据 GRIDGEN 版本选择执行方式
             current_config = load_config()
             gridgen_version = current_config.get("GRIDGEN_VERSION", "MATLAB")
@@ -1081,7 +1527,6 @@ class StepTwoServiceMixin:
             self.log_signal.emit(tr("step2_params", "   参数: dx={dx}, dy={dy}").format(dx=dx_value, dy=dy_value))
             self.log_signal.emit(tr("step2_lon_range", "   经度范围: [{min}, {max}]").format(min=lon_west, max=lon_east))
             self.log_signal.emit(tr("step2_lat_range", "   纬度范围: [{min}, {max}]").format(min=lat_south, max=lat_north))
-            self.log_signal.emit(tr("step2_output_dir", "   输出目录: {dir}").format(dir=output_dir_norm))
 
             # 从配置中读取水深数据和海岸边界精度
             bathymetry_config = current_config.get("BATHYMETRY", "GEBCO")
@@ -1095,23 +1540,35 @@ class StepTwoServiceMixin:
             }
             ref_grid = bathymetry_map.get(bathymetry_config.upper(), "gebco")
             
-            # 转换海岸边界精度：最高/高/中/低 -> full/high/inter/low
-            # 支持翻译后的文本
+            # 转换海岸边界精度
             full_text = tr("step2_coastline_precision_full", "最高")
             high_text = tr("step2_coastline_precision_high", "高")
             inter_text = tr("step2_coastline_precision_inter", "中")
             low_text = tr("step2_coastline_precision_low", "低")
+            coarse_text = tr("coastline_coarse", "粗")
             coastline_map = {
                 full_text: "full",
-                "最高": "full",  # 保持向后兼容
                 high_text: "high",
-                "高": "high",  # 保持向后兼容
                 inter_text: "inter",
-                "中": "inter",  # 保持向后兼容
                 low_text: "low",
-                "低": "low"  # 保持向后兼容
+                coarse_text: "coarse",
+                "最高": "full",
+                "高": "high",
+                "中": "inter",
+                "低": "low",
+                "粗": "coarse",
+                "Highest": "full",
+                "High": "high",
+                "Medium": "inter",
+                "Low": "low",
+                "Coarse": "coarse",
+                "full": "full",
+                "high": "high",
+                "inter": "inter",
+                "low": "low",
+                "coarse": "coarse"
             }
-            boundary = coastline_map.get(coastline_precision_config, "full")
+            boundary = coastline_map.get(str(coastline_precision_config), "full")
             
             # 检查缓存（使用原始配置值）
             cache_key = self._get_grid_cache_key(dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config)
@@ -1143,6 +1600,7 @@ create_grid(
             ref_dir={repr(ref_dir)},
             ref_grid={repr(ref_grid)},
             boundary={repr(boundary)},
+            IS_GLOBAL={1 if is_global else 0},
         )                
         '''
                 
@@ -1258,39 +1716,74 @@ create_grid(
                 }
                 ref_grid = bathymetry_map.get(bathymetry_config.upper(), "gebco")
                 
-                # 转换海岸边界精度：最高/高/中/低 -> full/high/inter/low
-                # 支持翻译后的文本
+                # 转换海岸边界精度
                 full_text = tr("step2_coastline_precision_full", "最高")
                 high_text = tr("step2_coastline_precision_high", "高")
                 inter_text = tr("step2_coastline_precision_inter", "中")
                 low_text = tr("step2_coastline_precision_low", "低")
+                coarse_text = tr("coastline_coarse", "粗")
                 coastline_map = {
                     full_text: "full",
-                    "最高": "full",  # 保持向后兼容
+                    "最高": "full",
                     high_text: "high",
-                    "高": "high",  # 保持向后兼容
+                    "高": "high",
                     inter_text: "inter",
-                    "中": "inter",  # 保持向后兼容
+                    "中": "inter",
                     low_text: "low",
-                    "低": "low"  # 保持向后兼容
+                    "低": "low",
+                    coarse_text: "coarse",
+                    "粗": "coarse",
+                    "full": "full",
+                    "high": "high",
+                    "inter": "inter",
+                    "low": "low",
+                    "coarse": "coarse",
                 }
                 boundary = coastline_map.get(coastline_precision_config, "full")
                 
-                # 构建 MATLAB 命令，直接调用 create_grid 并传入参数
-                # 注意：MATLAB 的路径需要使用正斜杠（MATLAB 在 Windows 上也支持正斜杠）
+                boundary_file = os.path.join(ref_dir, f"coastal_bound_{boundary}.mat")
+                if not os.path.exists(boundary_file):
+                    self.log_signal.emit(
+                        tr(
+                            "step2_boundary_file_missing",
+                            "❌ 未找到边界文件：{path}（精度: {boundary}），请先准备对应的 coastal_bound_*.mat 或降低精度"
+                        ).format(path=boundary_file, boundary=boundary)
+                    )
+                    return False
+
+                # 构建 MATLAB 命令
                 matlab_bin_dir = matlab_bin_dir_norm.replace('\\', '/') if matlab_bin_dir_norm else None
+                matlab_bin_scripts = None
+                if matlab_bin_dir_norm:
+                    matlab_bin_scripts = os.path.join(matlab_bin_dir_norm, "bin")
+                matlab_bin_scripts_posix = matlab_bin_scripts.replace('\\', '/') if matlab_bin_scripts else None
                 matlab_out_dir = output_dir_norm.replace('\\', '/')
+
+                # 同步 grid.nml 参数（MATLAB 版本）
+                try:
+                    self._update_matlab_grid_nml(
+                        matlab_bin_dir_norm,
+                        output_dir_norm,
+                        ref_dir,
+                        ref_grid,
+                        boundary,
+                        dx_value,
+                        dy_value,
+                        lon_west,
+                        lon_east,
+                        lat_south,
+                        lat_north,
+                        is_global
+                    )
+                except Exception as e:
+                    self.log_signal.emit(tr("step2_update_grid_nml_failed", "⚠️ 更新 grid.nml 失败: {error}").format(error=e))
                 
                 matlab_cmd = (
                     f"warning('off', 'all'); "
                     f"feature('DefaultCharacterSet', 'UTF8'); "
-                    f"addpath('{matlab_bin_dir}'); "
-                    f"create_grid('dx', {dx_value}, 'dy', {dy_value}, "
-                    f"'lon_range', [{lon_west}, {lon_east}], "
-                    f"'lat_range', [{lat_south}, {lat_north}], "
-                    f"'out_dir', '{matlab_out_dir}', "
-                    f"'ref_grid', '{ref_grid}', "
-                    f"'boundary', '{boundary}');"
+                    f"addpath('{matlab_bin_scripts_posix}'); "
+                    f"cd('{matlab_bin_scripts_posix}'); "
+                    f"create_grid('grid.nml');"
                 )
                 
                 cmd = [matlab_path]
@@ -1322,7 +1815,6 @@ create_grid(
                         continue
                     if 'WARNING: package sun.awt.X11' in line or 'not in java.desktop' in line:
                         continue
-                    # Filter MATLAB macOS IPC socket warning (harmless warning)
                     if 'Command `service` threw an exception' in line or 'Path length for IPC socket' in line:
                         continue
                     if line.strip():
@@ -1334,18 +1826,6 @@ create_grid(
                 
                 if ret == 0:
                     self.log_signal.emit(tr("step2_matlab_complete", "✅ MATLAB 版 gridgen 执行完成！"))
-                    
-                    # 验证生成的文件是否完整
-                    is_valid, msg = self._validate_grid_files(output_dir_norm)
-                    if not is_valid:
-                        self.log_signal.emit(tr("step2_grid_validation_failed", "❌ 网格文件验证失败: {msg}").format(msg=msg))
-                        insufficient_rows_text = tr("step2_insufficient_rows", "行数不足")
-                        if "dxdy > 0.05" in msg or insufficient_rows_text in msg or "行数不足" in msg:
-                            self.log_signal.emit(tr("step2_dxdy_large_warning", "⚠️ 这可能是由于 dxdy > 0.05 导致的文件写入不完整问题"))
-                            self.log_signal.emit(tr("step2_dxdy_large_suggestion", "💡 建议：请检查 create_grid 脚本是否正确处理了较大的 dxdy 值"))
-                        return False
-                    else:
-                        self.log_signal.emit(tr("step2_grid_validation_success", "✅ {msg}").format(msg=msg))
                     
                     # 保存到缓存（使用原始配置值）
                     try:

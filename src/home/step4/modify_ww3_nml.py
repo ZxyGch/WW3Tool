@@ -621,9 +621,10 @@ class ModifyWW3NML:
         
         # 如果为空，使用默认路径 ./public/ww3/server.sh（相对于项目根目录）
         if not server_script_path:
-            # __file__ 是 main/home/modify_ww3_nml.py，需要回到项目根目录
-            script_dir = os.path.dirname(os.path.abspath(__file__))  # main/home
-            main_dir = os.path.dirname(script_dir)  # main
+            # __file__ 是 main/home/step4/modify_ww3_nml.py，需要回到项目根目录
+            script_dir = os.path.dirname(os.path.abspath(__file__))  # home/step4
+            home_dir = os.path.dirname(script_dir)  # home
+            main_dir = os.path.dirname(home_dir)  # main
             project_root = os.path.dirname(main_dir)  # 项目根目录
             server_script_path = os.path.normpath(os.path.join(project_root, "public", "ww3", "server.sh"))
         else:
@@ -990,9 +991,10 @@ class ModifyWW3NML:
             
             # 如果为空，使用默认路径 ./public/ww3/server.sh（相对于项目根目录）
             if not server_script_path:
-                # __file__ 是 main/home/modify_ww3_nml.py，需要回到项目根目录
-                script_dir = os.path.dirname(os.path.abspath(__file__))  # main/home
-                main_dir = os.path.dirname(script_dir)  # main
+                # __file__ 是 main/home/step4/modify_ww3_nml.py，需要回到项目根目录
+                script_dir = os.path.dirname(os.path.abspath(__file__))  # home/step4
+                home_dir = os.path.dirname(script_dir)  # home
+                main_dir = os.path.dirname(home_dir)  # main
                 project_root = os.path.dirname(main_dir)  # 项目根目录
                 server_script_path = os.path.normpath(os.path.join(project_root, "public", "ww3", "server.sh"))
             else:
@@ -1667,7 +1669,7 @@ class ModifyWW3NML:
                 if not alltype_field_list_value:
                     from setting.config import load_config
                     config = load_config()
-                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
                     public_ww3_dir = config.get("PUBLIC_WW3_PATH", os.path.join(project_root, "public", "ww3"))
                     shel_path = os.path.join(public_ww3_dir, "ww3_shel.nml")
                     alltype_field_list_value = self._read_type_field_list_from_shel(shel_path)
