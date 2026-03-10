@@ -16,7 +16,7 @@ from setting.language_manager import load_language_from_config
 from setting.config import reload_config
 
 # 导入UI组件
-from public.work_folder_dialog import WorkFolderDialog
+from common.work_folder_dialog import WorkFolderDialog
 
 # 导入主窗口
 from window import MainWindow

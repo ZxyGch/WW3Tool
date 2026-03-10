@@ -70,21 +70,21 @@ from setting.config import *
 from setting.language_manager import tr
 from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make_wave_maps_worker, _make_contour_maps_worker, _generate_all_spectrum_worker, _generate_selected_spectrum_worker
 
-from public.style import Style
-from public.log import Log
+from common.style import Style
+from common.log import Log
 from plot.file_tool import FileOpsMixin
 from home.step1.step1_ui import HomeStepOneCard
-from home.home_step_two_card import HomeStepTwoCard
+from home.step2.step2_ui import HomeStepTwoCard
 
 from tool.window_jason3 import Jason3Mixin
-from home.modify_ww3_nml import ModifyWW3NML
-from setting.settings import SettingsMixin
-from public.navigation_button import NavigationMixin
+from home.step4.modify_ww3_nml import ModifyWW3NML
+from setting.settings_ui import SettingsMixin
+from common.navigation_button import NavigationMixin
 
-from home.home_step_three_card import HomeStepThreeCard
-from home.home_step_four_card import HomeStepFourCard
+from home.step3.step3_ui import HomeStepThreeCard
+from home.step4.step4_ui import HomeStepFourCard
 from home.home_local_run import HomeLocalRun
-from home.home_step_five_card import HomeStepFiveCard
+from home.step5.step5_ui import HomeStepFiveCard
 from home.step6.step6_ui import HomeStepSixCard
 from plot.plot import PlotMixin
 

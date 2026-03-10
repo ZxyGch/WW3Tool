@@ -56,7 +56,7 @@ QRadioButton = QtWidgets.QRadioButton
 QButtonGroup = QtWidgets.QButtonGroup
 QSpinBox = QtWidgets.QSpinBox
 from setting.config import *
-from public.work_folder_dialog import WorkFolderDialog
+from common.work_folder_dialog import WorkFolderDialog
 from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make_wave_maps_worker
 
 class NavigationMixin:
@@ -895,5 +895,4 @@ class NavigationMixin:
         self.log(tr("current_workdir", "📂 当前工作目录：{path}").format(path=self.selected_folder))
         self._list_directory_contents(self.selected_folder)
         self.log("=" * 70)
-
 
