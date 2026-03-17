@@ -45,6 +45,7 @@ REFERENCE_DATA_REQUIRED_FILES = [
 ]
 
 # reference_data 手动下载说明链接与路径提示
+REFERENCE_DATA_YDRAY_URL = "https://ydray.com/get/t/u17737629592553JcSjd881f85029a1qm"
 REFERENCE_DATA_ONEDRIVE_URL = "https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ"
 REFERENCE_DATA_BAIDU_URL = "https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch"
 
@@ -76,18 +77,37 @@ class _ReferenceDataMissingDialog(MessageBoxBase):
 
         msg2 = tr(
             "step2_ref_data_missing_msg2",
-            "若下载过慢或失败，可选择手动下载并解压到指定路径。"
+            "If download is slow or fails, you can download manually using the buttons below."
         )
-        path_hint = tr("step2_ref_data_path_hint", "指定路径：")
-        path_text = ref_dir if ref_dir else "WW3Tool/gridgen/reference_data"
         manual_hint = tr(
             "step2_ref_data_manual_hint",
-            "手动下载后请将压缩包内文件放到上述路径。"
+            "After manual download, place the extracted files in the path below."
         )
-        rest_msg = f"{msg2}\n\n{path_hint}\n{path_text}\n\n{manual_hint}"
-        label2 = QLabel(rest_msg)
+        label2 = QLabel(f"{msg2}\n\n{manual_hint}")
         label2.setWordWrap(True)
+        # 允许选择和复制文字
+        label2.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
         self.viewLayout.addWidget(label2)
+
+        # 固定展示可复制的参考数据路径
+        ref_path_label = QLabel("/Users/zxy/ocean/WW3Tool/gridgen/reference_data")
+        ref_path_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        ref_path_label.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace; margin-bottom: 8px;"
+        )
+        self.viewLayout.addWidget(ref_path_label)
+
+        self.btn_ydray = PrimaryPushButton(tr("step2_ref_data_open_ydray", "打开 YDRAY 下载链接"))
+        self.btn_ydray.setStyleSheet(button_style)
+        self.btn_ydray.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_YDRAY_URL)))
+        self.viewLayout.addWidget(self.btn_ydray)
 
         self.btn_onedrive = PrimaryPushButton(tr("step2_ref_data_open_onedrive", "打开 OneDrive 下载链接"))
         self.btn_onedrive.setStyleSheet(button_style)
