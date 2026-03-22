@@ -1,110 +1,162 @@
-# Project Name
-Unstructured mesh generation for WW3 using JIGSSAW.
-# Description
-Mesh generation script capable of creating unstructured meshes for WW3 global modeling. The tool leverages JIGSAWPY (https://github.com/dengwirda/jigsaw-python) for efficient triangulation.
-Main changes include:
-Implementation of the ocn_ww3.py to create uniform and variable unstructured mesh for global WW3 model.
-This tool is under active development, with future work focused on variable unstructured mesh generation.
+# Unstructured mesh generation for WAVEWATCH III (JIGSAW)
 
-**常用网格参数说明（配置项、单位、推荐组合）：** 见 [`MESH_PARAMS.md`](MESH_PARAMS.md)。
+**Languages:** [English](README.md) · [简体中文](README.zh-CN.md)
 
-**JSON 配置：** 仓库提供 [`config.json`](config.json)。使用 `python3 ocn_ww3.py --config config.json` 或 `ocn_ww3_regional.py --config config.json` 时，程序从 JSON 读取间距等参数，并**固定**输出 **`grid.msh`**（Jigsaw）与 **`grid.ww3`**（WW3）。`window_mask.py` 仍使用 `config.ini`。
+## Description
 
-# Installation
+Mesh generation for unstructured WW3 grids. The workflow uses **JIGSAW** via [jigsaw-python](https://github.com/dengwirda/jigsaw-python) for triangulation.
 
-## 1- Install jigsawpy (https://github.com/dengwirda/jigsaw-python)
+Main capabilities:
 
-## 2- you need following packages:
-- scipy
-- packaging
-- netcdf4
-- imageio
-- scikit-image
-- tifffile
-- certifi
-- cftime
-- network
-- pillow
-- setuptools
+- **`ocn_ww3.py`** — global mesh (uniform or variable resolution).
+- **`ocn_ww3_regional.py`** — regional lat–lon box with stereographic projection and DEM subset for spacing.
 
-## 3- clone the repo
-- $git clone https://github.com/NOAA-EMC/WW3-tools
-- $cd WW3-tools/unst_msh_gen
+The tool is under active development; future work includes richer variable-resolution workflows.
 
-## 4- get the DEM and make sure it is in the WW3-tools/unst_msh_gen directory
-- $wget https://github.com/dengwirda/dem/releases/download/v0.1.1/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip
-- $unzip *.zip
- 
-# Usage
-## 5- run the script inside of WW3-tools/unst_msh_gen:
+**Spacing parameters (options, units, suggested combinations):** see [`MESH_PARAMS.md`](MESH_PARAMS.md).
 
-- modify config.init:
-- Specify the DEM netcdf file using the 'dem_file' in "DataFiles" section.
-- For uniform resolution 'hmax' = 'hmin' = 'hshr' = 'hfun_max' and 'nwave' = 0 in "Spacing" section.
-- To include or exclude Black-Sea change 'black_sea' in "CommandLineArg" section to:
-- 	3 will have the Black Sea and the connections.
-- 	2 will have the Balck sea as a seperate basin.
-- 	1 will exclude the Black sea
-- you can specify the mesh name (jigsaw format or ww3 format) using 'mesh_file' and 'ww3_mesh_file'in "MeshSetting" section 
+**JSON config:** the repo provides [`config.json`](config.json). With  
+`python3 ocn_ww3.py --config config.json` or `python3 ocn_ww3_regional.py --config config.json`,  
+spacing and related fields are read from JSON and outputs are **fixed** to **`grid.msh`** (JIGSAW) and **`grid.ww3`** (WW3).  
+`window_mask.py` still uses **`config.ini`**.
 
-- $python3 ocn_ww3.py --config config.ini
-- $python3 ocn_ww3.py --config config.json  (fixed output: `grid.msh`, `grid.ww3`)
+---
 
-### Regional lat–lon box (high resolution)
+## Installation
 
-For a **bounded** domain (e.g. 110–130°E, 10–30°N), copy and edit `config_regional.ini` (`[Regional]` + `[Spacing]`), then run:
+### 1. Install jigsaw-python
 
-- `$python3 ocn_ww3_regional.py --config config_regional.ini`
-- `$python3 ocn_ww3_regional.py --config config.json` (needs `"regional": { ... }` in JSON; output `grid.msh` / `grid.ww3`)
+Follow [jigsaw-python](https://github.com/dengwirda/jigsaw-python) (build the native library with CMake where required).
 
-This uses stereographic projection and a DEM subset for spacing; bathymetry on the mesh still comes from the full DEM via `inject_dem`. On macOS, use a **Debug** JIGSAW build if `marche` fails with `**input error**` (Release `-ffinite-math-only` vs `infinity()` checks).
+### 2. Python packages
 
-NOTE: the output will be gmsh format which will be used by WW3 (specified by 'ww3_mesh_file')
+Typical installs (see also `jigsaw-python/requirements.txt`):
 
-NOTE: The output mesh will have -180:180 longitude, you can convert this by unisg ShiftMesh.py script, to 0:360 longitude.
-	input_file_path: your jigsaw mesh in gmsh format with -18:180 long
-	output_file_path: shifted mesh in gmsh format with 0:360 long
+- numpy  
+- scipy  
+- packaging  
+- netCDF4  
+- imageio  
+- scikit-image  
+- tifffile  
+- certifi  
+- cftime  
+- pillow  
+- setuptools  
 
+`window_mask.py` / regional extras may need **geopandas** and other GIS stack packages.
 
-## 6- Using variable mode:
+### 3. Clone / layout
 
-- modify config.ini
-- To create a mesh with finer resolution near the US coastlines you can define different region in json format (east coast, west coast and golf od Mexico, Purto Rico, and Hawaii); use the 'window_file' in the "DataFiles" section to specify the windows.
+Example (upstream layout):
 
-NOTE: hshr is the shoreline resolution which can be smaller than the hmin which is defined globally.
+```bash
+git clone https://github.com/NOAA-EMC/WW3-tools
+cd WW3-tools/unst_msh_gen
+```
 
-- window_mask.py can read shapefiles in json format as well and assign user defined resolution (scale) to each polygon; use the 'shape_file' in the "DataFiles" to specify the shapefiles.
+In **WW3Tool**, this folder lives under `gridgen/unst_msh_gen/`.
 
-NOTE: You can create multiple shapefiles using QGIS or ArcGIS and save them in ./Shapefiles directory and assign different resolution (scale) to each polygone.
+### 4. DEM (bathymetry NetCDF)
 
-NOTE: You can define different background mesh based on lat location in the window_mask.py via config.init
-		
-NOTE: for the background mesh you can define different resolution (for eaxmple, the globe is divided to three regions based on latitude and corresponding resolutions) in "Scalingsettings" of the config.ini as;
+Download a compatible DEM (e.g. RTopo/GEBCO blend) and place it where `dem_file` in config points to. Example:
 
-- upper_bound = 50          # Lattitude that starts the upper section (ie lat > upper_bound) 
-- middle_bound = -20        # Determines the boundary between the upper  and middle sections.  The middle section is for upper_bound > lat > middle_bound
-- lower_bound = -90         # Boundary of lowest section, likely -90,   Lower section is:   middle_bound > lat > lower_bound
-    	 
-- scale_north = 9           # mesh resolution  in km for upper section ( lat > upper_bound )
-- scale_middle = 20         # mesh resolution in km for  middle section for middle_bound < lat < upper_boun
-- #Mesh resolution of the lower section is linear from scale_south_upper to scale_south_upper
-- scale_south_upper = 30    # km resolution for upper south/lower section 
-- scale_south_lower = 9     # km mesh resolution at lower south/lower section 
+```bash
+wget https://github.com/dengwirda/dem/releases/download/v0.1.1/RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip
+unzip *.zip
+```
 
-- $python3 window_mask.py --config config.ini
-	
-NOTE: The output will be "wmask.nc" file which will have the mesh spacing info.
+---
 
+## Usage
 
-NOTE:To create the variable mesh based on mesh spacing file "wmask.nc", in the config.ini change the mask_file = wmask.nc
+### Global: `ocn_ww3.py`
 
-- $python3 ocn_ww3.py --config config.ini
+Edit **`config.ini`** (or use **`config.json`** as below):
 
+- **DataFiles:** set `dem_file` to your bathymetry NetCDF.  
+- **Spacing:** for **uniform** resolution set `hmax` = `hmin` = `hshr` = `hfun_hmax` (see `[MeshSettings]`) and `nwav` = 0.  
+- **CommandLineArg — `black_sea`:**  
+  - `3` — Black Sea included with connections  
+  - `2` — Black Sea as a separate basin  
+  - `1` — Black Sea excluded  
+- **MeshSetting:** optional `mesh_file` (JIGSAW) and `ww3_mesh_file` (WW3/Gmsh-style) names.
 
-## 7- Plotting the mesh info:
+Run:
 
-- `plot_msh.py` reads Gmsh-format `grid.msh` / `grid.ww3` (default: `./grid.ww3`). Map extent is taken from the node lon/lat bounding box (with a small margin); use `--extent` to override.
-- Example: `python3 plot_msh.py --descriptor myrun` or `python3 plot_msh.py --filename grid.msh --descriptor myrun --margin-deg 0.5`
+```bash
+python3 ocn_ww3.py --config config.ini
+python3 ocn_ww3.py --config config.json   # outputs: grid.msh, grid.ww3
+```
+
+### Regional lat–lon box
+
+For a **bounded** domain (e.g. 110–130°E, 10–30°N), copy and edit **`config_regional.ini`** (`[Regional]` + `[Spacing]`), or use **`config.json`** with a `"regional": { ... }` block.
+
+```bash
+python3 ocn_ww3_regional.py --config config_regional.ini
+python3 ocn_ww3_regional.py --config config.json
+```
+
+Stereographic projection and a DEM **subset** drive spacing; bathymetry on the final mesh still uses the full DEM via **`inject_dem`**.
+
+**macOS:** if **`marche`** fails with `**input error**`, try a **Debug** build of JIGSAW (Release may use `-ffinite-math-only`, which conflicts with `infinity()` checks).
+
+**Output:** WW3 uses the mesh specified by `ww3_mesh_file` (Gmsh-compatible format).
+
+**Longitude:** output uses **−180…180°**. To convert to **0…360°**, use **`ShiftMesh.py`**:
+
+- `input_file_path` — mesh with −180…180° longitude  
+- `output_file_path` — mesh with 0…360° longitude  
+
+---
+
+### Variable resolution (`window_mask.py` + mask)
+
+Edit **`config.ini`**:
+
+- For **finer mesh near US coasts** (or other regions), define windows in JSON and set **`window_file`** under **DataFiles**.  
+
+**Note:** `hshr` is **shoreline** spacing and may be **smaller** than global `hmin`.
+
+- **`window_mask.py`** can read shapefiles (as JSON) and assign a **scale** per polygon; set **`shape_file`** in **DataFiles**.  
+- You can build polygons in QGIS/ArcGIS, place them under `./Shapefiles`, and assign different resolutions per polygon.  
+- Background resolution by latitude bands can be set in **`window_mask.py`** via **`config.ini`**, section **`ScalingSettings`**:
+
+| Key | Meaning |
+|-----|--------|
+| `upper_bound` | Latitude (°N) above which the “north” band applies |
+| `middle_bound` | Boundary between middle and south bands; middle = between `middle_bound` and `upper_bound` |
+| `lower_bound` | South edge of domain (often −90°); south band = between `lower_bound` and `middle_bound` |
+| `scale_north` | Spacing (km) for lat > `upper_bound` |
+| `scale_middle` | Spacing (km) for `middle_bound` < lat < `upper_bound` |
+| `scale_south_upper` / `scale_south_lower` | South-band spacing (km) varies linearly between these |
+
+Run:
+
+```bash
+python3 window_mask.py --config config.ini
+```
+
+Output: **`wmask.nc`** (mesh spacing field).
+
+To drive **`ocn_ww3.py`** from that spacing, set **`mask_file = wmask.nc`** in **`config.ini`**, then:
+
+```bash
+python3 ocn_ww3.py --config config.ini
+```
+
+---
+
+### Plotting
+
+- **`plot_msh.py`** reads Gmsh-style **`grid.msh`** / **`grid.ww3`** (default `./grid.ww3`). Extent follows the node bounding box (with margin); override with **`--extent`**.  
+- Examples:  
+  `python3 plot_msh.py --descriptor myrun`  
+  `python3 plot_msh.py --filename grid.msh --descriptor myrun --margin-deg 0.5`
+
+---
 
 ## Contributing
-This is ongoing effort by Ali Salimi-Tarazouj with the great help of Darren Engwirda, JIGSAW developer.
+
+Ongoing work by Ali Salimi-Tarazouj with major support from Darren Engwirda (JIGSAW).
