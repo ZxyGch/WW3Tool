@@ -25,6 +25,8 @@ import locale
 import matplotlib
 matplotlib.use('QtAgg')  # 使用 Qt 后端（兼容 PyQt6）
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
+from matplotlib.collections import LineCollection
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -61,9 +63,87 @@ from setting.config import *
 from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make_wave_maps_worker
 from setting.language_manager import tr
 from ..utils import create_header_card
+from ..step2.step2_service import StepTwoServiceMixin
 
 class StepThreeServiceMixin:
     """第三步相关的业务逻辑 Mixin"""
+
+    def _is_step2_unstructured_mesh(self) -> bool:
+        ut = tr("step2_mesh_type_unstructured", "非结构网格")
+        return getattr(self, "mesh_type_var", "") == ut
+
+    def _needs_unstructured_triangulation_check(self) -> bool:
+        """非结构 + 非嵌套时，选点/填点需落在三角网内（与 grid.ww3 一致）。"""
+        if not self._is_step2_unstructured_mesh():
+            return False
+        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        gt = getattr(self, "grid_type_var", "")
+        return not (gt == nested_text or gt == "嵌套网格")
+
+    @staticmethod
+    def _normalize_lon_for_unstructured_ww3(lon: float) -> float:
+        x = float(lon)
+        if x > 180.0:
+            x -= 360.0
+        return x
+
+    def _load_unstructured_ww3_pick_context(self, folder: str | None = None):
+        """读取 grid.ww3，构建 TriFinder；失败返回 None。"""
+        folder = folder or getattr(self, "selected_folder", None)
+        if not folder:
+            return None
+        path = os.path.join(folder, "grid.ww3")
+        if not os.path.isfile(path):
+            return None
+        try:
+            from ..step2.grid_viz_worker import read_gmsh_ww3, unst_triangulation_mask
+
+            xy, _depth, ect = read_gmsh_ww3(path)
+            if ect.size == 0:
+                return None
+            tri_mask = unst_triangulation_mask(xy, ect)
+            triang = mtri.Triangulation(xy[:, 0], xy[:, 1], triangles=ect, mask=tri_mask)
+            finder = triang.get_trifinder()
+            return {
+                "path": path,
+                "xy": xy,
+                "ect": ect,
+                "tri_mask": tri_mask,
+                "triang": triang,
+                "finder": finder,
+            }
+        except Exception:
+            return None
+
+    def _lon_lat_in_unstructured_mesh(self, lon: float, lat: float, pick_ctx=None, folder: str | None = None) -> bool:
+        ctx = pick_ctx if pick_ctx is not None else self._load_unstructured_ww3_pick_context(folder)
+        if ctx is None:
+            return False
+        x = self._normalize_lon_for_unstructured_ww3(lon)
+        try:
+            idx = ctx["finder"](x, float(lat))
+        except Exception:
+            return False
+        return idx is not None and int(idx) >= 0
+
+    def _warn_if_outside_unstructured_mesh(
+        self, lon_float: float, lat_float: float, title_key: str, title_default: str
+    ) -> bool:
+        """若需校验且点不在非结构网内则弹窗并返回 False。"""
+        if not self._needs_unstructured_triangulation_check():
+            return True
+        if self._lon_lat_in_unstructured_mesh(lon_float, lat_float):
+            return True
+        InfoBar.warning(
+            title=tr(title_key, title_default),
+            content=tr(
+                "step3_point_outside_unstructured_mesh",
+                "点位 ({lon}, {lat}) 不在非结构网格覆盖范围内",
+            ).format(lon=f"{lon_float:.4f}", lat=f"{lat_float:.4f}"),
+            duration=3500,
+            parent=self,
+        )
+        return False
 
     def _set_cpu(self, cpu):
         """设置 CPU 选择"""
@@ -74,40 +154,56 @@ class StepThreeServiceMixin:
         self.st_var = st
 
     def _read_grid_meta_bounds(self):
-        """读取grid.meta文件并返回经纬度范围（支持嵌套网格模式）"""
-        if not hasattr(self, 'selected_folder') or not self.selected_folder:
+        """按第二步当前网格类型读取范围，不跨类型回退：非结构仅 grid.ww3，结构化仅 grid.meta。"""
+        if not hasattr(self, "selected_folder") or not self.selected_folder:
             return None
-        
-        # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+
+        folder = self.selected_folder
+
+        if self._is_step2_unstructured_mesh():
+            ww3_path = os.path.join(folder, "grid.ww3")
+            if not os.path.isfile(ww3_path):
+                return None
+            return StepTwoServiceMixin._parse_grid_ww3_lon_lat_bounds(ww3_path)
+
+        grid_type = getattr(self, "grid_type_var", tr("step2_grid_type_normal", "普通网格"))
         nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
-        
+        is_nested_grid = grid_type == nested_text or grid_type == "嵌套网格"
+
         if is_nested_grid:
-            # 嵌套网格模式：读取 coarse 和 fine 的范围，合并为并集
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
-            
+            coarse_dir = os.path.join(folder, "coarse")
+            fine_dir = os.path.join(folder, "fine")
             coarse_bounds = self._read_single_grid_meta_bounds(coarse_dir)
             fine_bounds = self._read_single_grid_meta_bounds(fine_dir)
-            
-            if not coarse_bounds and not fine_bounds:
+            if not coarse_bounds or not fine_bounds:
                 return None
-            elif not coarse_bounds:
-                return fine_bounds
-            elif not fine_bounds:
-                return coarse_bounds
-            else:
-                # 合并两个网格的范围（取并集）
-                return {
-                    'lon_min': min(coarse_bounds['lon_min'], fine_bounds['lon_min']),
-                    'lon_max': max(coarse_bounds['lon_max'], fine_bounds['lon_max']),
-                    'lat_min': min(coarse_bounds['lat_min'], fine_bounds['lat_min']),
-                    'lat_max': max(coarse_bounds['lat_max'], fine_bounds['lat_max'])
-                }
-        else:
-            # 普通网格模式：读取工作目录下的 grid.meta
-            return self._read_single_grid_meta_bounds(self.selected_folder)
+            return {
+                "lon_min": min(coarse_bounds["lon_min"], fine_bounds["lon_min"]),
+                "lon_max": max(coarse_bounds["lon_max"], fine_bounds["lon_max"]),
+                "lat_min": min(coarse_bounds["lat_min"], fine_bounds["lat_min"]),
+                "lat_max": max(coarse_bounds["lat_max"], fine_bounds["lat_max"]),
+            }
+
+        return self._read_single_grid_meta_bounds(folder)
+
+    def _message_missing_grid_bounds_for_current_mode(self) -> str:
+        """当前模式下缺少对应网格文件时的说明文案。"""
+        if self._is_step2_unstructured_mesh():
+            return tr(
+                "step3_cannot_read_ww3_bounds",
+                "无法读取非结构网格范围，请确保工作目录下存在有效的 grid.ww3",
+            )
+        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        gt = getattr(self, "grid_type_var", "")
+        if gt == nested_text or gt == "嵌套网格":
+            return tr(
+                "step3_missing_nested_grid_meta",
+                "当前为嵌套结构化网格，请确保 coarse 与 fine 目录下均存在有效的 grid.meta",
+            )
+        return tr(
+            "step3_missing_regular_grid_meta",
+            "当前为结构化网格，请确保工作目录下存在有效的 grid.meta",
+        )
 
     def _read_single_grid_meta_bounds(self, target_dir):
         """读取指定目录下的grid.meta文件并返回经纬度范围"""
@@ -310,25 +406,36 @@ class StepThreeServiceMixin:
                     )
                     return
                 
-                # 检查点位是否在地图文件范围内
+                # 检查点位是否在地图文件范围内（须与当前网格类型对应的文件）
                 bounds = self._read_grid_meta_bounds()
-                if bounds:
-                    if not (bounds['lon_min'] <= lon_float <= bounds['lon_max']):
-                        InfoBar.warning(
-                            title=tr("step3_add_failed", "添加失败"),
-                            content=tr("step3_lon_out_of_range", "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]").format(lon=f"{lon_float:.4f}", lon_min=f"{bounds['lon_min']:.4f}", lon_max=f"{bounds['lon_max']:.4f}"),
-                            duration=3000,
-                            parent=self
-                        )
-                        return
-                    if not (bounds['lat_min'] <= lat_float <= bounds['lat_max']):
-                        InfoBar.warning(
-                            title=tr("step3_add_failed", "添加失败"),
-                            content=tr("step3_lat_out_of_range", "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]").format(lat=f"{lat_float:.4f}", lat_min=f"{bounds['lat_min']:.4f}", lat_max=f"{bounds['lat_max']:.4f}"),
-                            duration=3000,
-                            parent=self
-                        )
-                        return
+                if not bounds:
+                    InfoBar.warning(
+                        title=tr("step3_add_failed", "添加失败"),
+                        content=self._message_missing_grid_bounds_for_current_mode(),
+                        duration=3500,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lon_min"] <= lon_float <= bounds["lon_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_add_failed", "添加失败"),
+                        content=tr("step3_lon_out_of_range", "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]").format(lon=f"{lon_float:.4f}", lon_min=f"{bounds['lon_min']:.4f}", lon_max=f"{bounds['lon_max']:.4f}"),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lat_min"] <= lat_float <= bounds["lat_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_add_failed", "添加失败"),
+                        content=tr("step3_lat_out_of_range", "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]").format(lat=f"{lat_float:.4f}", lat_min=f"{bounds['lat_min']:.4f}", lat_max=f"{bounds['lat_max']:.4f}"),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not self._warn_if_outside_unstructured_mesh(
+                    lon_float, lat_float, "step3_add_failed", "添加失败"
+                ):
+                    return
 
                 # 检查名称是否已存在（跳过表头行，从第1行开始检查）
                 for i in range(1, self.spectral_points_table.rowCount()):
@@ -514,6 +621,50 @@ class StepThreeServiceMixin:
                     )
                     return
 
+                bounds = self._read_grid_meta_bounds()
+                if not bounds:
+                    InfoBar.warning(
+                        title=tr("step3_edit_failed", "修改失败"),
+                        content=self._message_missing_grid_bounds_for_current_mode(),
+                        duration=3500,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lon_min"] <= lon_float <= bounds["lon_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_edit_failed", "修改失败"),
+                        content=tr(
+                            "step3_lon_out_of_range",
+                            "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]",
+                        ).format(
+                            lon=f"{lon_float:.4f}",
+                            lon_min=f"{bounds['lon_min']:.4f}",
+                            lon_max=f"{bounds['lon_max']:.4f}",
+                        ),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lat_min"] <= lat_float <= bounds["lat_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_edit_failed", "修改失败"),
+                        content=tr(
+                            "step3_lat_out_of_range",
+                            "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]",
+                        ).format(
+                            lat=f"{lat_float:.4f}",
+                            lat_min=f"{bounds['lat_min']:.4f}",
+                            lat_max=f"{bounds['lat_max']:.4f}",
+                        ),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not self._warn_if_outside_unstructured_mesh(
+                    lon_float, lat_float, "step3_edit_failed", "修改失败"
+                ):
+                    return
+
                 # 检查名称是否已存在（排除当前行和表头行）
                 for i in range(1, self.spectral_points_table.rowCount()):
                     if i == current_row:
@@ -626,25 +777,27 @@ class StepThreeServiceMixin:
             )
             return
         
-        # 获取地图范围
+        # 获取地图范围（仅当前模式对应文件，不跨类型）
         bounds = self._read_grid_meta_bounds()
         if not bounds:
             InfoBar.warning(
                 title=tr("step3_display_failed", "显示失败"),
-                content=tr("step3_cannot_read_map_range", "无法读取地图范围，请确保grid.meta文件存在"),
-                duration=3000,
-                parent=self
+                content=self._message_missing_grid_bounds_for_current_mode(),
+                duration=3500,
+                parent=self,
             )
             return
+        unst_show_ctx = None
+        if self._needs_unstructured_triangulation_check():
+            unst_show_ctx = self._load_unstructured_ww3_pick_context()
         
         # 计算显示范围（包含所有点位和地图范围）
         lons = [p['lon'] for p in points]
         lats = [p['lat'] for p in points]
-        
-        lon_min = min(min(lons), bounds['lon_min'])
-        lon_max = max(max(lons), bounds['lon_max'])
-        lat_min = min(min(lats), bounds['lat_min'])
-        lat_max = max(max(lats), bounds['lat_max'])
+        lon_min = min(min(lons), bounds["lon_min"])
+        lon_max = max(max(lons), bounds["lon_max"])
+        lat_min = min(min(lats), bounds["lat_min"])
+        lat_max = max(max(lats), bounds["lat_max"])
         
         # 添加边距
         lon_range = lon_max - lon_min
@@ -679,11 +832,50 @@ class StepThreeServiceMixin:
         ax.add_feature(cfeature.LAND, facecolor="#f0f0f0")
         ax.coastlines(resolution='10m', linewidth=0.6)
         
-        # 绘制地图范围边界
-        bounds_lon = [bounds['lon_min'], bounds['lon_max'], bounds['lon_max'], bounds['lon_min'], bounds['lon_min']]
-        bounds_lat = [bounds['lat_min'], bounds['lat_min'], bounds['lat_max'], bounds['lat_max'], bounds['lat_min']]
-        ax.plot(bounds_lon, bounds_lat, transform=ccrs.PlateCarree(), 
-                color='blue', linewidth=2, linestyle='--', label=tr("step3_map_range_label", "地图范围"))
+        # 绘制地图范围边界（非结构：三角网轮廓；否则矩形）
+        if unst_show_ctx is not None:
+            from ..step2.grid_viz_worker import unst_wireframe_segments
+
+            segs, _ = unst_wireframe_segments(
+                unst_show_ctx["xy"],
+                unst_show_ctx["ect"],
+                unst_show_ctx["tri_mask"],
+                80000,
+            )
+            if segs.size:
+                lc = LineCollection(
+                    segs,
+                    colors="steelblue",
+                    linewidths=0.5,
+                    alpha=0.9,
+                    transform=ccrs.PlateCarree(),
+                    label=tr("step3_unstructured_mesh_outline", "非结构网格"),
+                )
+                ax.add_collection(lc)
+        elif bounds:
+            bounds_lon = [
+                bounds["lon_min"],
+                bounds["lon_max"],
+                bounds["lon_max"],
+                bounds["lon_min"],
+                bounds["lon_min"],
+            ]
+            bounds_lat = [
+                bounds["lat_min"],
+                bounds["lat_min"],
+                bounds["lat_max"],
+                bounds["lat_max"],
+                bounds["lat_min"],
+            ]
+            ax.plot(
+                bounds_lon,
+                bounds_lat,
+                transform=ccrs.PlateCarree(),
+                color="blue",
+                linewidth=2,
+                linestyle="--",
+                label=tr("step3_map_range_label", "地图范围"),
+            )
         
         # 绘制点位
         for i, point in enumerate(points):
@@ -768,39 +960,69 @@ class StepThreeServiceMixin:
             import warnings
             warnings.filterwarnings('ignore', category=UserWarning, module='cartopy')
         
-        # 获取地图范围
+        grid_type = getattr(self, "grid_type_var", tr("step2_grid_type_normal", "普通网格"))
+        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        is_nested_grid = grid_type == nested_text or grid_type == "嵌套网格"
+
         bounds = self._read_grid_meta_bounds()
         if not bounds:
             InfoBar.warning(
                 title=tr("step3_select_failed", "选点失败"),
-                content=tr("step3_cannot_read_map_range", "无法读取地图范围，请确保grid.meta文件存在"),
-                duration=3000,
-                parent=self
+                content=self._message_missing_grid_bounds_for_current_mode(),
+                duration=3500,
+                parent=self,
             )
             return
-        
+
+        mesh_pick_ctx = None
+        if not is_nested_grid and self._needs_unstructured_triangulation_check():
+            mesh_pick_ctx = self._load_unstructured_ww3_pick_context()
+            if mesh_pick_ctx is None:
+                InfoBar.warning(
+                    title=tr("step3_select_failed", "选点失败"),
+                    content=tr(
+                        "step3_cannot_read_ww3_bounds",
+                        "无法读取非结构网格范围，请确保工作目录下存在有效的 grid.ww3",
+                    ),
+                    duration=3500,
+                    parent=self,
+                )
+                return
+
         # 计算显示范围（添加边距）
-        lon_range = bounds['lon_max'] - bounds['lon_min']
-        lat_range = bounds['lat_max'] - bounds['lat_min']
-        margin_lon = max(lon_range * 0.1, 2.0)
-        margin_lat = max(lat_range * 0.1, 2.0)
-        
-        display_lon_min = bounds['lon_min'] - margin_lon
-        display_lon_max = bounds['lon_max'] + margin_lon
-        display_lat_min = bounds['lat_min'] - margin_lat
-        display_lat_max = bounds['lat_max'] + margin_lat
-        
+        if mesh_pick_ctx is not None:
+            from ..step2.grid_viz_worker import unst_extent_from_xy
+
+            ext = unst_extent_from_xy(mesh_pick_ctx["xy"])
+            lon_range = ext[1] - ext[0]
+            lat_range = ext[3] - ext[2]
+            margin_lon = max(lon_range * 0.1, 0.5)
+            margin_lat = max(lat_range * 0.1, 0.5)
+            display_lon_min = ext[0] - margin_lon
+            display_lon_max = ext[1] + margin_lon
+            display_lat_min = ext[2] - margin_lat
+            display_lat_max = ext[3] + margin_lat
+            ref_lon_max = ext[1]
+        else:
+            lon_range = bounds["lon_max"] - bounds["lon_min"]
+            lat_range = bounds["lat_max"] - bounds["lat_min"]
+            margin_lon = max(lon_range * 0.1, 2.0)
+            margin_lat = max(lat_range * 0.1, 2.0)
+            display_lon_min = bounds["lon_min"] - margin_lon
+            display_lon_max = bounds["lon_max"] + margin_lon
+            display_lat_min = bounds["lat_min"] - margin_lat
+            display_lat_max = bounds["lat_max"] + margin_lat
+            ref_lon_max = bounds["lon_max"]
+
         # 使用PlateCarree投影，简化坐标转换
-        # 这样可以避免复杂的坐标转换问题
         proj = ccrs.PlateCarree()
-        
-        # 调整显示范围（如果需要）
+
         if display_lon_max > 180:
-            margin = display_lon_max - bounds['lon_max']
+            margin = display_lon_max - ref_lon_max
             display_lon_max = min(180.0 + margin, 185.0)
-        elif bounds['lon_max'] >= 179:
-            margin = display_lon_max - bounds['lon_max']
-            display_lon_max = min(180.0, bounds['lon_max'] + margin)
+        elif ref_lon_max >= 179:
+            margin = display_lon_max - ref_lon_max
+            display_lon_max = min(180.0, ref_lon_max + margin)
         
         # 创建地图
         fig = plt.figure(figsize=(12, 10), dpi=100)
@@ -813,11 +1035,6 @@ class StepThreeServiceMixin:
         ax.coastlines(resolution='10m', linewidth=0.6)
         
         # 绘制地图范围边界
-        # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
-        
         if is_nested_grid:
             # 嵌套网格模式：绘制外网格和内网格的边界
             coarse_dir = os.path.join(self.selected_folder, "coarse")
@@ -847,8 +1064,27 @@ class StepThreeServiceMixin:
                            fine_bounds['lat_min']]
                 ax.plot(fine_lon, fine_lat, transform=ccrs.PlateCarree(), 
                        color='red', linewidth=2, linestyle='--', label=tr("step3_inner_grid_range_label", "内网格范围"))
+        elif mesh_pick_ctx is not None:
+            from ..step2.grid_viz_worker import unst_wireframe_segments
+
+            segs, _ = unst_wireframe_segments(
+                mesh_pick_ctx["xy"],
+                mesh_pick_ctx["ect"],
+                mesh_pick_ctx["tri_mask"],
+                80000,
+            )
+            if segs.size:
+                lc = LineCollection(
+                    segs,
+                    colors="steelblue",
+                    linewidths=0.45,
+                    alpha=0.9,
+                    transform=ccrs.PlateCarree(),
+                    label=tr("step3_unstructured_mesh_outline", "非结构网格"),
+                )
+                ax.add_collection(lc)
         else:
-            # 普通网格模式：绘制单个网格边界
+            # 结构化普通网格：矩形范围
             bounds_lon = [bounds['lon_min'], bounds['lon_max'], bounds['lon_max'], bounds['lon_min'], bounds['lon_min']]
             bounds_lat = [bounds['lat_min'], bounds['lat_min'], bounds['lat_max'], bounds['lat_max'], bounds['lat_min']]
             ax.plot(bounds_lon, bounds_lat, transform=ccrs.PlateCarree(), 
@@ -1009,11 +1245,7 @@ class StepThreeServiceMixin:
             if np.isnan(lon) or np.isnan(lat) or np.isinf(lon) or np.isinf(lat):
                 return
             
-            # 检查是否在地图范围内（嵌套网格模式下，检查是否在任一网格范围内）
-            grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-            nested_text = tr("step2_grid_type_nested", "嵌套网格")
-            is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
-            
+            # 检查是否在地图范围内（嵌套 / 非结构三角网 / 矩形）
             if is_nested_grid:
                 # 嵌套网格模式：检查是否在外网格或内网格范围内
                 coarse_dir = os.path.join(self.selected_folder, "coarse")
@@ -1041,8 +1273,19 @@ class StepThreeServiceMixin:
                         parent=self
                     )
                     return
+            elif mesh_pick_ctx is not None:
+                if not self._lon_lat_in_unstructured_mesh(lon, lat, pick_ctx=mesh_pick_ctx):
+                    InfoBar.warning(
+                        title=tr("step3_select_failed", "选点失败"),
+                        content=tr(
+                            "step3_point_outside_unstructured_mesh",
+                            "点位 ({lon}, {lat}) 不在非结构网格覆盖范围内",
+                        ).format(lon=f"{lon:.4f}", lat=f"{lat:.4f}"),
+                        duration=3500,
+                        parent=self,
+                    )
+                    return
             else:
-                # 普通网格模式：检查是否在网格范围内
                 if not (bounds['lon_min'] <= lon <= bounds['lon_max'] and 
                        bounds['lat_min'] <= lat <= bounds['lat_max']):
                     InfoBar.warning(
@@ -1441,27 +1684,66 @@ class StepThreeServiceMixin:
             )
             return
         
-        # 检查地图范围（如果可用）
+        # 检查地图范围与非结构三角网（须与当前模式一致）
         bounds = self._read_grid_meta_bounds()
-        if bounds:
-            valid_points = []
-            for point in imported_points:
-                if (bounds['lon_min'] <= point['lon'] <= bounds['lon_max'] and
-                    bounds['lat_min'] <= point['lat'] <= bounds['lat_max']):
-                    valid_points.append(point)
-                else:
-                    self.log(tr("step3_point_out_of_range_skipped", "⚠️ 点位 {name} ({lon}, {lat}) 不在地图范围内，已跳过").format(name=point['name'], lon=f"{point['lon']:.4f}", lat=f"{point['lat']:.4f}"))
-            
-            if not valid_points:
+        if not bounds:
+            InfoBar.warning(
+                title=tr("step3_import_failed", "导入失败"),
+                content=self._message_missing_grid_bounds_for_current_mode(),
+                duration=3500,
+                parent=self,
+            )
+            return
+        pick_ctx = None
+        if self._needs_unstructured_triangulation_check():
+            pick_ctx = self._load_unstructured_ww3_pick_context()
+            if pick_ctx is None:
                 InfoBar.warning(
                     title=tr("step3_import_failed", "导入失败"),
-                    content=tr("step3_all_points_out_of_range", "所有点位都不在地图范围内"),
-                    duration=3000,
-                    parent=self
+                    content=tr(
+                        "step3_cannot_read_ww3_bounds",
+                        "无法读取非结构网格范围，请确保工作目录下存在有效的 grid.ww3",
+                    ),
+                    duration=3500,
+                    parent=self,
                 )
                 return
-            imported_points = valid_points
-        
+
+        valid_points = []
+        for point in imported_points:
+            lonp, latp = point["lon"], point["lat"]
+            if not (
+                bounds["lon_min"] <= lonp <= bounds["lon_max"]
+                and bounds["lat_min"] <= latp <= bounds["lat_max"]
+            ):
+                self.log(
+                    tr(
+                        "step3_point_out_of_range_skipped",
+                        "⚠️ 点位 {name} ({lon}, {lat}) 不在地图范围内，已跳过",
+                    ).format(name=point["name"], lon=f"{lonp:.4f}", lat=f"{latp:.4f}")
+                )
+                continue
+            if pick_ctx is not None:
+                if not self._lon_lat_in_unstructured_mesh(lonp, latp, pick_ctx=pick_ctx):
+                    self.log(
+                        tr(
+                            "step3_point_outside_unstructured_skipped",
+                            "⚠️ 点位 {name} ({lon}, {lat}) 不在非结构网格覆盖范围内，已跳过",
+                        ).format(name=point["name"], lon=f"{lonp:.4f}", lat=f"{latp:.4f}")
+                    )
+                    continue
+            valid_points.append(point)
+
+        if not valid_points:
+            InfoBar.warning(
+                title=tr("step3_import_failed", "导入失败"),
+                content=tr("step3_all_points_out_of_range", "所有点位都不在地图范围内"),
+                duration=3000,
+                parent=self,
+            )
+            return
+        imported_points = valid_points
+
         # 添加到表格
         added_count = 0
         for point in imported_points:
@@ -1711,6 +1993,53 @@ class StepThreeServiceMixin:
             if not imported_points:
                 if not silent:
                     self.log(tr("no_valid_points_in_list", "⚠️ points.list 文件中没有有效的点位数据"))
+                return
+
+            bounds_pl = self._read_grid_meta_bounds()
+            if not bounds_pl:
+                if not silent:
+                    self.log(
+                        tr(
+                            "step3_points_list_skip_missing_grid",
+                            "⚠️ {detail}，已跳过从 points.list 自动导入点位",
+                        ).format(detail=self._message_missing_grid_bounds_for_current_mode())
+                    )
+                return
+            pick_ctx_pl = (
+                self._load_unstructured_ww3_pick_context()
+                if self._needs_unstructured_triangulation_check()
+                else None
+            )
+            if self._needs_unstructured_triangulation_check() and pick_ctx_pl is None:
+                if not silent:
+                    self.log(
+                        tr(
+                            "step3_points_list_skip_no_ww3",
+                            "⚠️ 非结构网格下无法读取 grid.ww3，已跳过从 points.list 自动导入点位",
+                        )
+                    )
+                return
+            filtered_pl = []
+            for point in imported_points:
+                lonp, latp = point["lon"], point["lat"]
+                if not (
+                    bounds_pl["lon_min"] <= lonp <= bounds_pl["lon_max"]
+                    and bounds_pl["lat_min"] <= latp <= bounds_pl["lat_max"]
+                ):
+                    continue
+                if pick_ctx_pl is not None:
+                    if not self._lon_lat_in_unstructured_mesh(lonp, latp, pick_ctx=pick_ctx_pl):
+                        continue
+                filtered_pl.append(point)
+            imported_points = filtered_pl
+            if not imported_points:
+                if not silent:
+                    self.log(
+                        tr(
+                            "step3_points_list_all_filtered",
+                            "⚠️ points.list 中无落在当前网格范围内的点位，未导入",
+                        )
+                    )
                 return
             
             # 清空表格中已有的点位（保留表头）
@@ -2013,25 +2342,36 @@ class StepThreeServiceMixin:
                     )
                     return
                 
-                # 检查点位是否在地图文件范围内
+                # 检查点位是否在地图文件范围内（须与当前网格类型对应的文件）
                 bounds = self._read_grid_meta_bounds()
-                if bounds:
-                    if not (bounds['lon_min'] <= lon_float <= bounds['lon_max']):
-                        InfoBar.warning(
-                            title=tr("step3_add_failed", "添加失败"),
-                            content=tr("step3_lon_out_of_range", "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]").format(lon=f"{lon_float:.4f}", lon_min=f"{bounds['lon_min']:.4f}", lon_max=f"{bounds['lon_max']:.4f}"),
-                            duration=3000,
-                            parent=self
-                        )
-                        return
-                    if not (bounds['lat_min'] <= lat_float <= bounds['lat_max']):
-                        InfoBar.warning(
-                            title=tr("step3_add_failed", "添加失败"),
-                            content=tr("step3_lat_out_of_range", "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]").format(lat=f"{lat_float:.4f}", lat_min=f"{bounds['lat_min']:.4f}", lat_max=f"{bounds['lat_max']:.4f}"),
-                            duration=3000,
-                            parent=self
-                        )
-                        return
+                if not bounds:
+                    InfoBar.warning(
+                        title=tr("step3_add_failed", "添加失败"),
+                        content=self._message_missing_grid_bounds_for_current_mode(),
+                        duration=3500,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lon_min"] <= lon_float <= bounds["lon_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_add_failed", "添加失败"),
+                        content=tr("step3_lon_out_of_range", "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]").format(lon=f"{lon_float:.4f}", lon_min=f"{bounds['lon_min']:.4f}", lon_max=f"{bounds['lon_max']:.4f}"),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lat_min"] <= lat_float <= bounds["lat_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_add_failed", "添加失败"),
+                        content=tr("step3_lat_out_of_range", "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]").format(lat=f"{lat_float:.4f}", lat_min=f"{bounds['lat_min']:.4f}", lat_max=f"{bounds['lat_max']:.4f}"),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not self._warn_if_outside_unstructured_mesh(
+                    lon_float, lat_float, "step3_add_failed", "添加失败"
+                ):
+                    return
 
                 # 检查名称是否已存在（跳过表头行，从第1行开始检查）
                 for i in range(1, self.track_points_table.rowCount()):
@@ -2213,25 +2553,36 @@ class StepThreeServiceMixin:
                     )
                     return
                 
-                # 检查点位是否在地图文件范围内
+                # 检查点位是否在地图文件范围内（须与当前网格类型对应的文件）
                 bounds = self._read_grid_meta_bounds()
-                if bounds:
-                    if not (bounds['lon_min'] <= lon_float <= bounds['lon_max']):
-                        InfoBar.warning(
-                            title=tr("step3_edit_failed", "修改失败"),
-                            content=tr("step3_lon_out_of_range", "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]").format(lon=f"{lon_float:.4f}", lon_min=f"{bounds['lon_min']:.4f}", lon_max=f"{bounds['lon_max']:.4f}"),
-                            duration=3000,
-                            parent=self
-                        )
-                        return
-                    if not (bounds['lat_min'] <= lat_float <= bounds['lat_max']):
-                        InfoBar.warning(
-                            title=tr("step3_edit_failed", "修改失败"),
-                            content=tr("step3_lat_out_of_range", "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]").format(lat=f"{lat_float:.4f}", lat_min=f"{bounds['lat_min']:.4f}", lat_max=f"{bounds['lat_max']:.4f}"),
-                            duration=3000,
-                            parent=self
-                        )
-                        return
+                if not bounds:
+                    InfoBar.warning(
+                        title=tr("step3_edit_failed", "修改失败"),
+                        content=self._message_missing_grid_bounds_for_current_mode(),
+                        duration=3500,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lon_min"] <= lon_float <= bounds["lon_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_edit_failed", "修改失败"),
+                        content=tr("step3_lon_out_of_range", "经度 {lon} 不在地图范围内 [{lon_min}, {lon_max}]").format(lon=f"{lon_float:.4f}", lon_min=f"{bounds['lon_min']:.4f}", lon_max=f"{bounds['lon_max']:.4f}"),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not (bounds["lat_min"] <= lat_float <= bounds["lat_max"]):
+                    InfoBar.warning(
+                        title=tr("step3_edit_failed", "修改失败"),
+                        content=tr("step3_lat_out_of_range", "纬度 {lat} 不在地图范围内 [{lat_min}, {lat_max}]").format(lat=f"{lat_float:.4f}", lat_min=f"{bounds['lat_min']:.4f}", lat_max=f"{bounds['lat_max']:.4f}"),
+                        duration=3000,
+                        parent=self,
+                    )
+                    return
+                if not self._warn_if_outside_unstructured_mesh(
+                    lon_float, lat_float, "step3_edit_failed", "修改失败"
+                ):
+                    return
 
                 # 检查名称是否已存在（跳过表头行和当前行）
                 for i in range(1, self.track_points_table.rowCount()):
@@ -2453,6 +2804,32 @@ class StepThreeServiceMixin:
                 )
                 return
         
+        bounds_t = self._read_grid_meta_bounds()
+        if not bounds_t:
+            InfoBar.warning(
+                title=tr("step3_import_failed", "导入失败"),
+                content=self._message_missing_grid_bounds_for_current_mode(),
+                duration=3500,
+                parent=self,
+            )
+            return
+        pick_t = (
+            self._load_unstructured_ww3_pick_context()
+            if self._needs_unstructured_triangulation_check()
+            else None
+        )
+        if self._needs_unstructured_triangulation_check() and pick_t is None:
+            InfoBar.warning(
+                title=tr("step3_import_failed", "导入失败"),
+                content=tr(
+                    "step3_cannot_read_ww3_bounds",
+                    "无法读取非结构网格范围，请确保工作目录下存在有效的 grid.ww3",
+                ),
+                duration=3500,
+                parent=self,
+            )
+            return
+
         try:
             imported_count = 0
             with open(track_file, 'r', encoding='utf-8') as f:
@@ -2496,6 +2873,29 @@ class StepThreeServiceMixin:
                             if hasattr(self, 'log'):
                                 self.log(tr("lat_out_of_range_skipped", "⚠️ 第 {line} 行：纬度 {lat} 超出范围，已跳过").format(line=line_num, lat=lat))
                             continue
+
+                        if not (
+                            bounds_t["lon_min"] <= lon <= bounds_t["lon_max"]
+                            and bounds_t["lat_min"] <= lat <= bounds_t["lat_max"]
+                        ):
+                            if hasattr(self, "log"):
+                                self.log(
+                                    tr(
+                                        "step3_track_line_out_of_bounds_skipped",
+                                        "⚠️ 第 {line} 行：点位不在地图范围内，已跳过",
+                                    ).format(line=line_num)
+                                )
+                            continue
+                        if pick_t is not None:
+                            if not self._lon_lat_in_unstructured_mesh(lon, lat, pick_ctx=pick_t):
+                                if hasattr(self, "log"):
+                                    self.log(
+                                        tr(
+                                            "step3_track_line_outside_unst_skipped",
+                                            "⚠️ 第 {line} 行：点位不在非结构网格覆盖范围内，已跳过",
+                                        ).format(line=line_num)
+                                    )
+                                continue
                         
                         # 检查名称是否已存在
                         name_exists = False

@@ -8,6 +8,11 @@ from urllib.request import urlretrieve
 
 GSHHS_URL = "ftp://polar.ncep.noaa.gov/waves/gridgen/gridgen_addit.tar.gz"
 GEBCO_URL = "https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2025/sub_ice_topography_bathymetry/netcdf/gebco_2025_sub_ice_topo.zip"
+# RTopo + GEBCO 混合 DEM（约 60″），供 unst_msh_gen 等非结构网格使用；来源：dengwirda/dem releases
+RTOPO_ZIP_URL = (
+    "https://github.com/dengwirda/dem/releases/download/v0.1.1/"
+    "RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip"
+)
 
 
 def _reporthook(block_num: int, block_size: int, total_size: int, name: str = "") -> None:
@@ -41,23 +46,24 @@ def main() -> None:
 
     gshhs_archive = root / "gridgen_addit.tar.gz"
     gebco_archive = root / "gebco_2025_sub_ice_topo.zip"
+    rtopo_archive = root / "RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip"
 
     # Download GSHHS coastline data
-    print("Step 1/4: 下载 GSHHS 海岸线数据...", flush=True)
+    print("Step 1/6: 下载 GSHHS 海岸线数据...", flush=True)
     download(GSHHS_URL, gshhs_archive, "gridgen_addit.tar.gz")
 
     # Extract GSHHS
-    print("Step 2/4: 解压 GSHHS 海岸线数据...", flush=True)
+    print("Step 2/6: 解压 GSHHS 海岸线数据...", flush=True)
     with tarfile.open(gshhs_archive, "r:gz") as tar:
         tar.extractall(ref_dir)
     print("  GSHHS 解压完成", flush=True)
 
     # Download GEBCO 2025 bathymetry data
-    print("Step 3/4: 下载 GEBCO 水深数据...", flush=True)
+    print("Step 3/6: 下载 GEBCO 水深数据...", flush=True)
     download(GEBCO_URL, gebco_archive, "gebco_2025_sub_ice_topo.zip")
 
     # Extract GEBCO
-    print("Step 4/4: 解压 GEBCO 并重命名...", flush=True)
+    print("Step 4/6: 解压 GEBCO 并重命名...", flush=True)
     with zipfile.ZipFile(gebco_archive, "r") as zf:
         zf.extractall(ref_dir)
     src = ref_dir / "gebco_2025_sub_ice_topo.nc"
@@ -65,6 +71,16 @@ def main() -> None:
     if src.exists():
         src.replace(dst)
         print("  已重命名为 gebco.nc", flush=True)
+
+    # Download RTopo DEM (for unstructured mesh / WW3Tool unst_msh_gen)
+    print("Step 5/6: 下载 RTopo DEM (RTopo_2_0_4_GEBCO_v2023_60sec_pixel)...", flush=True)
+    download(RTOPO_ZIP_URL, rtopo_archive, "RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip")
+
+    print("Step 6/6: 解压 RTopo DEM 到 reference_data...", flush=True)
+    with zipfile.ZipFile(rtopo_archive, "r") as zf:
+        zf.extractall(ref_dir)
+    print("  RTopo 解压完成", flush=True)
+
     print("Reference data 下载与解压全部完成。", flush=True)
     print(f"路径: {ref_dir}", flush=True)
 

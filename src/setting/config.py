@@ -1,3 +1,4 @@
+import copy
 import os
 import json
 
@@ -16,16 +17,115 @@ os.makedirs(PUBLIC_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(PUBLIC_DIR, "config.json")
 
 
+def get_project_gridgen_path():
+    """固定为项目根目录下的 gridgen/，不再从设置或 GRIDGEN_PATH 配置项覆盖。"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.dirname(script_dir)
+    project_root = os.path.dirname(src_dir)
+    return os.path.normpath(os.path.join(project_root, "gridgen"))
+
+
+# gridgen/unst_msh_gen/config.json 默认值（与仓库内 config.json 一致）
+UNST_MSH_GEN_CONFIG_DEFAULTS = {
+    "spacing": {
+        "hmax": 100.0,
+        "hshr": 20.0,
+        "hmin": 20.0,
+        "nwav": 400,
+        "dhdx": 0.05,
+    },
+    "mesh_settings": {"hfun_hmax": 100.0},
+    "data": {
+        "dem_file": "../reference_data/RTopo_2_0_4_GEBCO_v2024_60sec_pixel.nc",
+        "mask_file": "",
+    },
+    "command_line_args": {"black_sea": 3},
+    "regional": {
+        "lon_min": 110.0,
+        "lon_max": 130.0,
+        "lat_min": 10.0,
+        "lat_max": 30.0,
+        "margin_deg": 1.0,
+        "edge_segments": 64,
+        "stereo_lon": 120.0,
+        "stereo_lat": 20.0,
+    },
+}
+
+
+def get_unst_msh_gen_config_path():
+    return os.path.normpath(
+        os.path.join(get_project_gridgen_path(), "unst_msh_gen", "config.json")
+    )
+
+
+def _deep_merge_unst_dict(base, override):
+    for k, v in override.items():
+        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+            _deep_merge_unst_dict(base[k], v)
+        else:
+            base[k] = v
+
+
+def load_unst_msh_gen_config():
+    """读取 unst_msh_gen/config.json，与默认结构合并。失败时返回默认副本。"""
+    data = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
+    path = get_unst_msh_gen_config_path()
+    if not os.path.isfile(path):
+        return data
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            user = json.load(f)
+        if isinstance(user, dict):
+            _deep_merge_unst_dict(data, user)
+    except Exception:
+        pass
+    return data
+
+
+def save_unst_msh_gen_config(updates):
+    """将 updates 合并写入 unst_msh_gen/config.json。不修改 regional 中的 lon_min/lon_max/lat_min/lat_max。"""
+    path = get_unst_msh_gen_config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                full = json.load(f)
+        except Exception:
+            full = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
+    else:
+        full = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
+    for key, default_section in UNST_MSH_GEN_CONFIG_DEFAULTS.items():
+        if key not in full:
+            full[key] = copy.deepcopy(default_section)
+        elif isinstance(default_section, dict):
+            for sk, sv in default_section.items():
+                full[key].setdefault(sk, sv)
+    for section in ("spacing", "mesh_settings", "data", "command_line_args"):
+        if section in updates and updates[section]:
+            full.setdefault(section, {})
+            full[section].update(updates[section])
+    if "regional" in updates and updates["regional"]:
+        reg = full.setdefault("regional", {})
+        skip = {"lon_min", "lon_max", "lat_min", "lat_max"}
+        for k, v in updates["regional"].items():
+            if k not in skip:
+                reg[k] = v
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(full, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
 # ==================== 默认配置值 ====================
 DEFAULT_CONFIG = {
     # ---------- 路径配置 ----------
     # MATLAB 可执行文件的完整路径
     "MATLAB_PATH": "/Applications/MATLAB_R2024a.app/bin/matlab",
 
-    # GridGen 工具目录路径（用于生成 WW3 网格）
-    "GRIDGEN_PATH": os.path.join(os.path.dirname(os.getcwd()), "gridgen"),
+    # 已废弃：保留键以兼容旧 config.json；实际目录见 get_project_gridgen_path()
+    "GRIDGEN_PATH": "",
 
-    # 参考数据路径（用于网格生成时的参考数据，为空则使用 GRIDGEN_PATH/reference_data）
+    # 参考数据路径（用于网格生成时的参考数据，为空则使用项目 gridgen/reference_data）
     "REFERENCE_DATA_PATH": "",
 
     # GridGen 版本类型（"MATLAB" 或 "Python"）
@@ -298,17 +398,8 @@ def reload_config():
     else:
         MATLAB_PATH = matlab_path
     
-    gridgen_path = _config.get("GRIDGEN_PATH", "").strip()
-    # 如果 gridgen 路径为空，使用默认值 ../gridgen（相对于项目根目录）
-    if not gridgen_path:
-        # __file__ 是 main/setting/config.py，需要回到项目根目录
-        script_dir = os.path.dirname(os.path.abspath(__file__))  # main/setting
-        main_dir = os.path.dirname(script_dir)  # main
-        project_root = os.path.dirname(main_dir)  # 项目根目录
-        gridgen_path = os.path.join(project_root, "gridgen")
-    # 规范化路径
-    GRIDGEN_PATH = os.path.normpath(gridgen_path) if gridgen_path else gridgen_path
-    GRIDGEN_BIN_PATH = os.path.normpath(os.path.join(GRIDGEN_PATH, "matlab")) if GRIDGEN_PATH else None  # 根据 GRIDGEN_PATH 计算
+    GRIDGEN_PATH = get_project_gridgen_path()
+    GRIDGEN_BIN_PATH = os.path.normpath(os.path.join(GRIDGEN_PATH, "matlab"))
     
     DX = _config.get("DX", DEFAULT_CONFIG["DX"])
     DY = _config.get("DY", DEFAULT_CONFIG["DY"])

@@ -1,0 +1,6 @@
+# Dependencies for ocn_ww3.py / ocn_ww3_regional.py (spacing.py uses scikit-image)
+scikit-image
+netCDF4
+numpy
+scipy
+packaging

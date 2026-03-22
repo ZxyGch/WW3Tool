@@ -39,7 +39,7 @@ import cv2
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import QEvent, Qt
 QSplitter = QtWidgets.QSplitter
-from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme, PlainTextEdit
+from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme, PlainTextEdit, MessageBox
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget, CheckBox
 from PyQt6.QtGui import QColor, QIcon
 from qfluentwidgets import MessageBoxBase
@@ -87,6 +87,7 @@ from home.home_local_run import HomeLocalRun
 from home.step5.step5_ui import HomeStepFiveCard
 from home.step6.step6_ui import HomeStepSixCard
 from plot.plot import PlotMixin
+from home.utils import create_header_card
 
 
 class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeStepTwoCard, Jason3Mixin, ModifyWW3NML, SettingsMixin, NavigationMixin, HomeStepThreeCard, HomeStepFourCard, HomeLocalRun, HomeStepFiveCard, HomeStepSixCard, PlotMixin):
@@ -539,17 +540,228 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         tools_title = QLabel(tr("tools", "常用工具"))
         tools_title.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
         tools_content_layout.addWidget(tools_title)
-        
-        # 这里可以添加工具按钮或内容
-        # 暂时添加一个占位标签
-        tools_placeholder = QLabel(tr("tools_placeholder", "工具内容将显示在这里"))
-        tools_placeholder.setStyleSheet("padding: 20px; color: #888888;")
-        tools_content_layout.addWidget(tools_placeholder)
+
+        clean_card, clean_layout = create_header_card(
+            tools_content_widget,
+            tr("tools_clean_workdir_card_title", "清理工作目录"),
+        )
+
+        btn_style = self._get_button_style() if hasattr(self, "_get_button_style") else ""
+        btn_policy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        self.tools_clean_all_btn = PrimaryPushButton(
+            tr("tools_clean_workdir_all", "清空所有文件")
+        )
+        self.tools_clean_all_btn.setStyleSheet(btn_style)
+        self.tools_clean_all_btn.setSizePolicy(btn_policy)
+        self.tools_clean_all_btn.clicked.connect(self._tools_clean_workdir_all)
+        self.tools_clean_run_btn = PrimaryPushButton(
+            tr("tools_clean_workdir_run_files", "清空运行文件 (.ww3 .log .bin)")
+        )
+        self.tools_clean_run_btn.setStyleSheet(btn_style)
+        self.tools_clean_run_btn.setSizePolicy(btn_policy)
+        self.tools_clean_run_btn.clicked.connect(self._tools_clean_workdir_run_files)
+        clean_layout.addWidget(self.tools_clean_all_btn)
+        clean_layout.addWidget(self.tools_clean_run_btn)
+        # HeaderCardWidget 的内容区必须用 viewLayout 挂载子布局，否则控件不会显示（与第一步卡片一致）
+        clean_card.viewLayout.setContentsMargins(11, 10, 11, 12)
+        clean_card.viewLayout.addLayout(clean_layout)
+        tools_content_layout.addWidget(clean_card)
         
         tools_scroll_area.setWidget(tools_content_widget)
         tools_layout.addWidget(tools_scroll_area)
         
         return tools_content
+
+    def _tools_workdir_path(self):
+        folder = getattr(self, "selected_folder", None)
+        if not folder or not str(folder).strip():
+            return None
+        return os.path.abspath(os.path.normpath(str(folder).strip()))
+
+    @staticmethod
+    def _tools_delete_all_under(workdir: str) -> tuple[int, list[str]]:
+        """删除 workdir 下所有文件与空子目录（不删除 workdir 本身）。"""
+        errors: list[str] = []
+        removed = 0
+        for root, dirs, files in os.walk(workdir, topdown=False, followlinks=False):
+            for name in files:
+                path = os.path.join(root, name)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError as e:
+                    errors.append(f"{path}: {e}")
+            for name in dirs:
+                path = os.path.join(root, name)
+                try:
+                    os.rmdir(path)
+                except OSError as e:
+                    errors.append(f"{path}: {e}")
+        return removed, errors
+
+    @staticmethod
+    def _tools_should_remove_run_artifact(filename: str) -> bool:
+        lower = filename.lower()
+        if lower.endswith(".log") or lower.endswith(".bin"):
+            return True
+        if lower.endswith(".ww3"):
+            return lower != "grid.ww3"
+        return False
+
+    @staticmethod
+    def _tools_delete_run_artifacts_under(workdir: str) -> tuple[int, list[str]]:
+        errors: list[str] = []
+        removed = 0
+        for root, _dirs, files in os.walk(workdir, topdown=True, followlinks=False):
+            for name in files:
+                if not MainWindow._tools_should_remove_run_artifact(name):
+                    continue
+                path = os.path.join(root, name)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError as e:
+                    errors.append(f"{path}: {e}")
+        return removed, errors
+
+    def _tools_clean_workdir_all(self):
+        workdir = self._tools_workdir_path()
+        if not workdir:
+            InfoBar.warning(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_no_workdir", "请先选择工作目录。"),
+                duration=4000,
+                parent=self,
+            )
+            return
+        if not os.path.isdir(workdir):
+            InfoBar.warning(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_not_exists", "工作目录不存在：{path}").format(path=workdir),
+                duration=5000,
+                parent=self,
+            )
+            return
+        msg_box = MessageBox(
+            tr("tools_clean_confirm_all_title", "确认清空工作目录"),
+            tr(
+                "tools_clean_confirm_all_content",
+                "将删除该目录下的所有文件与子文件夹（目录本身保留）。此操作不可恢复。\n\n{path}",
+            ).format(path=workdir),
+            self,
+        )
+        if not msg_box.exec():
+            return
+        try:
+            removed, errors = self._tools_delete_all_under(workdir)
+        except Exception as e:
+            InfoBar.error(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_failed", "清理失败：{error}").format(error=str(e)),
+                duration=6000,
+                parent=self,
+            )
+            self.log(tr("tools_clean_failed", "清理失败：{error}").format(error=str(e)))
+            return
+        if errors:
+            self.log(
+                tr("tools_clean_partial_errors", "⚠️ 部分项目未能删除（共 {n} 个错误）").format(n=len(errors))
+            )
+            for line in errors[:20]:
+                self.log(f"   {line}")
+            if len(errors) > 20:
+                self.log("   …")
+        self.log(
+            tr("tools_clean_done_all", "🗑️ 已清空工作目录内文件（删除 {n} 个文件）：{path}").format(
+                n=removed, path=workdir
+            )
+        )
+        InfoBar.success(
+            title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+            content=tr("tools_clean_done_all_short", "已删除 {n} 个文件").format(n=removed),
+            duration=4000,
+            parent=self,
+        )
+        if hasattr(self, "_list_directory_contents"):
+            try:
+                self._list_directory_contents()
+            except Exception:
+                pass
+
+    def _tools_clean_workdir_run_files(self):
+        workdir = self._tools_workdir_path()
+        if not workdir:
+            InfoBar.warning(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_no_workdir", "请先选择工作目录。"),
+                duration=4000,
+                parent=self,
+            )
+            return
+        if not os.path.isdir(workdir):
+            InfoBar.warning(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_not_exists", "工作目录不存在：{path}").format(path=workdir),
+                duration=5000,
+                parent=self,
+            )
+            return
+        msg_box = MessageBox(
+            tr("tools_clean_confirm_run_title", "确认清理运行文件"),
+            tr(
+                "tools_clean_confirm_run_content",
+                "将删除 .ww3（保留 grid.ww3）、.log、.bin。此操作不可恢复。\n\n{path}",
+            ).format(path=workdir),
+            self,
+        )
+        if not msg_box.exec():
+            return
+        try:
+            removed, errors = self._tools_delete_run_artifacts_under(workdir)
+        except Exception as e:
+            InfoBar.error(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_failed", "清理失败：{error}").format(error=str(e)),
+                duration=6000,
+                parent=self,
+            )
+            self.log(tr("tools_clean_failed", "清理失败：{error}").format(error=str(e)))
+            return
+        if errors:
+            self.log(
+                tr("tools_clean_partial_errors", "⚠️ 部分项目未能删除（共 {n} 个错误）").format(n=len(errors))
+            )
+            for line in errors[:20]:
+                self.log(f"   {line}")
+            if len(errors) > 20:
+                self.log("   …")
+        if removed == 0:
+            InfoBar.info(
+                title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+                content=tr("tools_clean_nothing_run", "未找到需清理的运行文件。"),
+                duration=4000,
+                parent=self,
+            )
+            return
+        self.log(
+            tr(
+                "tools_clean_done_run",
+                "🗑️ 已清理运行文件（保留 grid.ww3），共删除 {n} 个文件：{path}",
+            ).format(n=removed, path=workdir)
+        )
+        InfoBar.success(
+            title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+            content=tr("tools_clean_done_run_short", "已删除 {n} 个运行文件").format(n=removed),
+            duration=4000,
+            parent=self,
+        )
+        if hasattr(self, "_list_directory_contents"):
+            try:
+                self._list_directory_contents()
+            except Exception:
+                pass
 
     def _initialize_work_directory(self, selected_folder):
         """
@@ -604,6 +816,9 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         # 检测并自动切换到嵌套网格模式（如果存在coarse和fine文件夹）
         if hasattr(self, '_check_and_switch_to_nested_grid'):
             self._check_and_switch_to_nested_grid()
+        # 第二步：已有网格产物时禁用「网格」下拉（矩形/非结构等）
+        if hasattr(self, '_refresh_step2_mesh_type_combo_enabled'):
+            QtCore.QTimer.singleShot(0, self._refresh_step2_mesh_type_combo_enabled)
         
         # 检测并自动切换到航迹模式（如果存在track_i.ww3文件）
         if hasattr(self, '_check_and_switch_to_track_mode'):

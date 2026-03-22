@@ -546,7 +546,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_card_layout.setSpacing(5)
             grid_card_layout.setContentsMargins(0, 0, 0, 0)
 
-            # 路径设置（MATLAB、GRIDGEN、Reference Data）- 放在最上面
+            # 路径设置（MATLAB、Reference Data）- 放在最上面
             matlab_label = QLabel(tr("matlab_path", "MATLAB 路径:"))
             self.matlab_label = matlab_label  # 保存引用以便后续更新
             grid_card_layout.addWidget(matlab_label)
@@ -565,30 +565,6 @@ class SettingsMixin(SettingsServiceMixin):
             matlab_row.addWidget(btn_choose_matlab)
             grid_card_layout.addLayout(matlab_row)
 
-            gridgen_label = QLabel(tr("gridgen_path", "GRIDGEN 路径:"))
-            self.gridgen_label = gridgen_label  # 保存引用以便后续更新
-            grid_card_layout.addWidget(gridgen_label)
-            gridgen_row = QHBoxLayout()
-            self.settings_gridgen_edit = LineEdit()
-            self.settings_gridgen_edit.setPlaceholderText(f"{tr('default_path', '默认路径')}：WW3Tool/gridgen")
-            gridgen_path = current_config.get("GRIDGEN_PATH", "").strip()
-            # 计算默认路径（用于比较，不显示在输入框中）
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            default_gridgen_path = os.path.normpath(os.path.join(os.path.dirname(script_dir), "gridgen"))
-            # 如果配置为空或等于默认路径，输入框显示为空（不显示默认路径）
-            if not gridgen_path or os.path.normpath(gridgen_path) == default_gridgen_path:
-                gridgen_path = ""  # 输入框显示为空
-            else:
-                gridgen_path = os.path.normpath(gridgen_path)  # 规范化路径（Windows 上会转换为反斜杠格式）
-            self.settings_gridgen_edit.setText(gridgen_path)
-            self.settings_gridgen_edit.setStyleSheet(input_style)
-            gridgen_row.addWidget(self.settings_gridgen_edit, 1)
-            btn_choose_gridgen = PrimaryPushButton(tr("select", "选择"))
-            btn_choose_gridgen.setStyleSheet(button_style)
-            btn_choose_gridgen.clicked.connect(lambda: self._choose_gridgen_path())
-            gridgen_row.addWidget(btn_choose_gridgen)
-            grid_card_layout.addLayout(gridgen_row)
-
             reference_data_label = QLabel(tr("reference_data_path", "Reference Data 路径:"))
             self.reference_data_label = reference_data_label  # 保存引用以便后续更新
             grid_card_layout.addWidget(reference_data_label)
@@ -596,15 +572,10 @@ class SettingsMixin(SettingsServiceMixin):
             self.settings_reference_data_edit = LineEdit()
             self.settings_reference_data_edit.setPlaceholderText(f"{tr('default_path', '默认路径')}：WW3Tool/gridgen/reference_data")
             reference_data_path = current_config.get("REFERENCE_DATA_PATH", "").strip()
-            # 计算默认路径（用于比较，不显示在输入框中）
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            default_gridgen_path = os.path.normpath(os.path.join(os.path.dirname(script_dir), "gridgen"))
-            default_reference_data_path = os.path.join(default_gridgen_path, "reference_data")
-            # 如果配置为空或等于默认路径，输入框显示为空（不显示默认路径）
             if not reference_data_path:
-                reference_data_path = ""  # 输入框显示为空
+                reference_data_path = ""
             else:
-                reference_data_path = os.path.normpath(reference_data_path)  # 规范化路径（Windows 上会转换为反斜杠格式）
+                reference_data_path = os.path.normpath(reference_data_path)
             self.settings_reference_data_edit.setText(reference_data_path)
             self.settings_reference_data_edit.setStyleSheet(input_style)
             reference_data_row.addWidget(self.settings_reference_data_edit, 1)
@@ -753,6 +724,76 @@ class SettingsMixin(SettingsServiceMixin):
             grid_card.viewLayout.setContentsMargins(11, 10, 11, 12)
             grid_card.viewLayout.addLayout(grid_card_layout)
             settings_layout.addWidget(grid_card)
+
+            # === 非结构化三角网格（unst_msh_gen/config.json）===
+            unst_mesh_card = HeaderCardWidget(settings_content)
+            self.unst_mesh_card = unst_mesh_card
+            unst_mesh_card.setTitle(tr("unst_mesh_config_card", "非结构化三角网格配置"))
+            unst_mesh_card.setStyleSheet("""
+                HeaderCardWidget QLabel {
+                    font-weight: normal;
+                    margin-left: 0px;
+                    padding-left: 0px;
+                }
+            """)
+            unst_mesh_card.headerLayout.setContentsMargins(11, 10, 11, 12)
+            unst_mesh_layout = QVBoxLayout()
+            unst_mesh_layout.setSpacing(5)
+            unst_mesh_layout.setContentsMargins(0, 0, 0, 0)
+            unst_grid = QGridLayout()
+            unst_grid.setColumnStretch(1, 1)
+            unst_grid.setSpacing(5)
+
+            unst_cfg = load_unst_msh_gen_config()
+            sp = unst_cfg.get("spacing", {})
+            reg = unst_cfg.get("regional", {})
+            d0 = UNST_MSH_GEN_CONFIG_DEFAULTS
+
+            def _row(line: int, label_widget, edit_widget, col_span_edit=1):
+                unst_grid.addWidget(label_widget, line, 0)
+                unst_grid.addWidget(edit_widget, line, 1, 1, col_span_edit)
+
+            self.unst_l_spacing_hmax = QLabel(tr("unst_spacing_hmax", "深水尺度（km）"))
+            self.settings_unst_spacing_hmax_edit = LineEdit()
+            self.settings_unst_spacing_hmax_edit.setText(str(sp.get("hmax", d0["spacing"]["hmax"])))
+            self.settings_unst_spacing_hmax_edit.setStyleSheet(input_style)
+            _row(0, self.unst_l_spacing_hmax, self.settings_unst_spacing_hmax_edit)
+
+            self.unst_l_spacing_hshr = QLabel(tr("unst_spacing_hshr", "近岸尺度（km）"))
+            self.settings_unst_spacing_hshr_edit = LineEdit()
+            self.settings_unst_spacing_hshr_edit.setText(str(sp.get("hshr", d0["spacing"]["hshr"])))
+            self.settings_unst_spacing_hshr_edit.setStyleSheet(input_style)
+            _row(1, self.unst_l_spacing_hshr, self.settings_unst_spacing_hshr_edit)
+
+            self.unst_l_spacing_dhdx = QLabel(tr("unst_spacing_dhdx", "水深梯度"))
+            self.settings_unst_spacing_dhdx_edit = LineEdit()
+            self.settings_unst_spacing_dhdx_edit.setText(str(sp.get("dhdx", d0["spacing"]["dhdx"])))
+            self.settings_unst_spacing_dhdx_edit.setStyleSheet(input_style)
+            _row(2, self.unst_l_spacing_dhdx, self.settings_unst_spacing_dhdx_edit)
+
+            self.unst_l_spacing_nwav = QLabel(tr("unst_spacing_nwav", "浅水按波长加密（填 0 关闭）"))
+            self.settings_unst_spacing_nwav_edit = LineEdit()
+            self.settings_unst_spacing_nwav_edit.setText(str(sp.get("nwav", d0["spacing"]["nwav"])))
+            self.settings_unst_spacing_nwav_edit.setStyleSheet(input_style)
+            _row(3, self.unst_l_spacing_nwav, self.settings_unst_spacing_nwav_edit)
+
+            self.unst_l_reg_margin = QLabel(tr("unst_regional_margin_deg", "区域外扩边距（度）"))
+            self.settings_unst_regional_margin_deg_edit = LineEdit()
+            self.settings_unst_regional_margin_deg_edit.setText(str(reg.get("margin_deg", d0["regional"]["margin_deg"])))
+            self.settings_unst_regional_margin_deg_edit.setStyleSheet(input_style)
+            _row(4, self.unst_l_reg_margin, self.settings_unst_regional_margin_deg_edit)
+
+            self.unst_l_reg_edge_seg = QLabel(tr("unst_regional_edge_segments", "矩形边界折线段数（越大越光顺）"))
+            self.settings_unst_regional_edge_segments_edit = LineEdit()
+            self.settings_unst_regional_edge_segments_edit.setText(str(reg.get("edge_segments", d0["regional"]["edge_segments"])))
+            self.settings_unst_regional_edge_segments_edit.setStyleSheet(input_style)
+            _row(5, self.unst_l_reg_edge_seg, self.settings_unst_regional_edge_segments_edit)
+
+            unst_mesh_layout.addLayout(unst_grid)
+
+            unst_mesh_card.viewLayout.setContentsMargins(11, 10, 11, 12)
+            unst_mesh_card.viewLayout.addLayout(unst_mesh_layout)
+            settings_layout.addWidget(unst_mesh_card)
 
             # === Slurm 配置 ===
             compute_card = HeaderCardWidget(settings_content)

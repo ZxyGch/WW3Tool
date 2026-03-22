@@ -278,7 +278,7 @@ def create_grid(**kwargs):
     # Force unbuffered output for real-time logging
     sys.stdout.flush()
     print('=' * 70, flush=True)
-    title = 'WAVEWATCH III Grid Generator Python Version'
+    title = 'Rectangular Grid Generation By Gridgen Python Version'
     print(' ' * ((70 - len(title))) + title, flush=True)
     print('=' * 70, flush=True)
     print(f"Grid name: {params['fname']}", flush=True)

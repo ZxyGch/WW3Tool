@@ -67,6 +67,49 @@ from setting.language_manager import tr
 class SettingsServiceMixin:
     """设置相关的业务逻辑 Mixin"""
 
+    @staticmethod
+    def _unst_parse_float(text, fallback):
+        try:
+            return float(str(text).strip())
+        except (ValueError, TypeError):
+            return fallback
+
+    @staticmethod
+    def _unst_parse_int(text, fallback):
+        try:
+            return int(float(str(text).strip()))
+        except (ValueError, TypeError):
+            return fallback
+
+    def _save_unst_msh_gen_config_from_ui(self):
+        """将设置页中的非结构网格项写入 gridgen/unst_msh_gen/config.json（不改动 regional 经纬度）。"""
+        if not hasattr(self, "settings_unst_spacing_hmax_edit"):
+            return
+        from setting.config import save_unst_msh_gen_config, load_unst_msh_gen_config
+
+        cur = load_unst_msh_gen_config()
+        sp0 = cur["spacing"]
+        rg0 = cur["regional"]
+        hmax_v = self._unst_parse_float(self.settings_unst_spacing_hmax_edit.text(), sp0["hmax"])
+        hshr_v = self._unst_parse_float(self.settings_unst_spacing_hshr_edit.text(), sp0["hshr"])
+        updates = {
+            "spacing": {
+                "hmax": hmax_v,
+                "hshr": hshr_v,
+                "hmin": hshr_v,
+                "nwav": self._unst_parse_int(self.settings_unst_spacing_nwav_edit.text(), sp0["nwav"]),
+                "dhdx": self._unst_parse_float(self.settings_unst_spacing_dhdx_edit.text(), sp0["dhdx"]),
+            },
+            "mesh_settings": {
+                "hfun_hmax": hmax_v,
+            },
+            "regional": {
+                "margin_deg": self._unst_parse_float(self.settings_unst_regional_margin_deg_edit.text(), rg0["margin_deg"]),
+                "edge_segments": self._unst_parse_int(self.settings_unst_regional_edge_segments_edit.text(), rg0["edge_segments"]),
+            },
+        }
+        save_unst_msh_gen_config(updates)
+
     def _choose_matlab_path(self):
         """选择 MATLAB 路径"""
         start = self.settings_matlab_edit.text().strip() if hasattr(self, 'settings_matlab_edit') else ""
@@ -100,43 +143,13 @@ class SettingsServiceMixin:
             self.settings_matlab_edit.setText(path)
 
 
-    def _choose_gridgen_path(self):
-        """选择 GRIDGEN 路径"""
-        start = self.settings_gridgen_edit.text().strip() if hasattr(self, 'settings_gridgen_edit') else ""
-        if not start or not os.path.exists(start):
-            # 如果配置路径不存在，优先使用默认的相对路径
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            default_path = os.path.join(os.path.dirname(script_dir), "gridgen")
-            if os.path.exists(default_path):
-                start = default_path
-            else:
-                # 如果默认路径也不存在，使用当前用户的主目录
-                start = os.path.expanduser("~")
-
-        # 规范化起始路径（Windows 上会转换为反斜杠格式）
-        start = os.path.normpath(start)
-
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "选择 GRIDGEN 目录",
-            start,
-            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks
-        )
-
-        if path:
-            # 规范化返回的路径（Windows 上会转换为反斜杠格式，如 C:\Users\atomg）
-            path = os.path.normpath(path)
-            self.settings_gridgen_edit.setText(path)
-
-
     def _choose_reference_data_path(self):
         """选择 Reference Data 路径"""
         start = self.settings_reference_data_edit.text().strip() if hasattr(self, 'settings_reference_data_edit') else ""
         if not start or not os.path.exists(start):
-            # 如果配置路径不存在，优先使用默认的相对路径
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            default_gridgen_path = os.path.join(os.path.dirname(script_dir), "gridgen")
-            default_path = os.path.join(default_gridgen_path, "reference_data")
+            from setting.config import get_project_gridgen_path
+
+            default_path = os.path.join(get_project_gridgen_path(), "reference_data")
             if os.path.exists(default_path):
                 start = default_path
             else:
@@ -301,7 +314,6 @@ class SettingsServiceMixin:
         # LineEdit 控件：使用 textChanged 信号
         line_edits = [
             self.settings_matlab_edit,
-            self.settings_gridgen_edit,
             self.settings_ww3bin_edit,
             self.settings_jason_edit,
             self.settings_workdir_edit,
@@ -323,6 +335,17 @@ class SettingsServiceMixin:
         # 添加 reference_data_edit（如果存在）
         if hasattr(self, 'settings_reference_data_edit'):
             line_edits.append(self.settings_reference_data_edit)
+        _unst_edits = [
+            "settings_unst_spacing_hmax_edit",
+            "settings_unst_spacing_hshr_edit",
+            "settings_unst_spacing_nwav_edit",
+            "settings_unst_spacing_dhdx_edit",
+            "settings_unst_regional_margin_deg_edit",
+            "settings_unst_regional_edge_segments_edit",
+        ]
+        for _name in _unst_edits:
+            if hasattr(self, _name):
+                line_edits.append(getattr(self, _name))
         for line_edit in line_edits:
             if hasattr(line_edit, 'textChanged'):
                 line_edit.textChanged.connect(self._save_settings)
@@ -475,14 +498,6 @@ class SettingsServiceMixin:
             
             # 主题和运行方式将在 config.update() 中直接从 ComboBox 获取值
             # 收集所有设置值
-            gridgen_path = self.settings_gridgen_edit.text().strip()
-            # 如果 gridgen 路径为空，保存为空字符串（不保存默认路径）
-            # 实际使用时会在 config.py 中处理默认值
-            if gridgen_path:
-                gridgen_path = os.path.normpath(gridgen_path)  # 规范化路径（Windows 上会转换为反斜杠格式）
-            else:
-                gridgen_path = ""  # 保存为空字符串
-
             reference_data_path = self.settings_reference_data_edit.text().strip() if hasattr(self, 'settings_reference_data_edit') else ""
             # 如果 reference_data 路径为空，保存为空字符串（不保存默认路径）
             # 实际使用时会在代码中处理默认值
@@ -506,7 +521,7 @@ class SettingsServiceMixin:
             # 更新需要保存的设置
             config.update({
                 "MATLAB_PATH": matlab_path,
-                "GRIDGEN_PATH": gridgen_path,
+                "GRIDGEN_PATH": "",
                 "REFERENCE_DATA_PATH": reference_data_path,
                 "GRIDGEN_VERSION": self.settings_gridgen_version_combo.currentText() if hasattr(self, 'settings_gridgen_version_combo') else "MATLAB",
                 "DX": self.settings_dx_edit.text().strip(),
@@ -591,6 +606,11 @@ class SettingsServiceMixin:
             if save_config(config):
                 # 重新加载配置并更新全局变量
                 reload_config()
+
+                try:
+                    self._save_unst_msh_gen_config_from_ui()
+                except Exception:
+                    pass
 
                 # 更新 public/ww3 和当前工作目录的 ww3_ounf.nml（只更新 FIELD%TIMESPLIT）
                 try:
@@ -1841,7 +1861,6 @@ class SettingsServiceMixin:
             # 更新各个标签文本
             labels_to_update = [
                 ("matlab_label", "matlab_path", "MATLAB 路径:"),
-                ("gridgen_label", "gridgen_path", "GRIDGEN 路径:"),
                 ("reference_data_label", "reference_data_path", "Reference Data 路径:"),
                 ("ww3bin_label", "ww3bin_path", "默认 WW3BIN 路径:"),
                 ("forcing_field_dir_label", "forcing_field_dir_path", "默认打开的强迫场文件的目录:"),
@@ -1855,6 +1874,22 @@ class SettingsServiceMixin:
                     label = getattr(self, attr_name)
                     if label:
                         label.setText(tr(tr_key, default))
+
+            if hasattr(self, "unst_mesh_card"):
+                self.unst_mesh_card.setTitle(tr("unst_mesh_config_card", "非结构化三角网格配置"))
+            _unst_lbls = [
+                ("unst_l_spacing_hmax", "unst_spacing_hmax", "深水尺度（km）"),
+                ("unst_l_spacing_hshr", "unst_spacing_hshr", "近岸尺度（km）"),
+                ("unst_l_spacing_dhdx", "unst_spacing_dhdx", "水深梯度"),
+                ("unst_l_spacing_nwav", "unst_spacing_nwav", "浅水按波长加密（填 0 关闭）"),
+                ("unst_l_reg_margin", "unst_regional_margin_deg", "区域外扩边距（度）"),
+                ("unst_l_reg_edge_seg", "unst_regional_edge_segments", "矩形边界折线段数（越大越光顺）"),
+            ]
+            for attr_name, tr_key, default in _unst_lbls:
+                if hasattr(self, attr_name):
+                    lb = getattr(self, attr_name)
+                    if lb:
+                        lb.setText(tr(tr_key, default))
             
             # 更新其他卡片标题和标签
             # 注意：这里只更新设置页面中可以直接访问的控件

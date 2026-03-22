@@ -15,6 +15,14 @@ import netCDF4 as nc
 from datetime import datetime, timedelta
 import cv2
 from setting.language_manager import tr
+from .workers_utils import (
+    ww3_resolve_lon_lat_names,
+    ww3_prepare_lon_lat_1d,
+    ww3_is_pointwise_grid,
+    ww3_try_pointwise_timeseries,
+    ww3_try_mesh_triangles,
+    remove_tricontourf_artist,
+)
 
 
 def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_queue,
@@ -95,17 +103,46 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         os.makedirs(photo_folder, exist_ok=True)
 
         ds = nc.Dataset(ncfile)
-        WW3_lon = np.array(ds.variables['longitude'][:])
-        WW3_lat = np.array(ds.variables['latitude'][:])
-        WW3_time_var = ds.variables['time']
+        available_vars = list(ds.variables.keys())
+        lon_name, lat_name = ww3_resolve_lon_lat_names(ds)
+        if not lon_name or not lat_name:
+            log(
+                tr(
+                    "plotting_missing_lon_lat_variables",
+                    "❌ 无法识别经度/纬度变量（需 longitude/lon、latitude/lat 等）。可用变量: {vars}",
+                ).format(vars=", ".join(available_vars))
+            )
+            ds.close()
+            log_queue.put("__DONE__")
+            result_queue.put([])
+            return
+
+        WW3_time_var = ds.variables["time"]
 
         # 时间
         try:
             WW3_datetime = num2date(WW3_time_var[:], WW3_time_var.units)
             WW3_datetime = np.array([datetime.utcfromtimestamp(dt.timestamp()) for dt in WW3_datetime])
-        except:
-            ref = datetime(1990,1,1)
+        except Exception:
+            ref = datetime(1990, 1, 1)
             WW3_datetime = np.array([ref + timedelta(days=float(t)) for t in WW3_time_var[:]])
+        nt = len(WW3_datetime)
+
+        WW3_lon = np.array(ds.variables[lon_name][:])
+        WW3_lat = np.array(ds.variables[lat_name][:])
+        try:
+            WW3_lon, WW3_lat = ww3_prepare_lon_lat_1d(WW3_lon, WW3_lat, nt)
+        except Exception as e:
+            log(
+                tr(
+                    "plotting_lon_lat_prepare_failed",
+                    "❌ 经纬度坐标形状无法解析: {error}",
+                ).format(error=e)
+            )
+            ds.close()
+            log_queue.put("__DONE__")
+            result_queue.put([])
+            return
 
         # 检查可用的变量
         available_vars = list(ds.variables.keys())
@@ -161,46 +198,66 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
             raw = np.where(raw > 1e10, np.nan, raw)
             varlabel = 'Swell Hs (m)'; prefix='phs1'
 
-        # 可选：读取风场（用于显示统一风速）
-        u10_data = None
-        v10_data = None
-        if 'u10' in ds.variables:
-            u_raw = np.array(ds.variables['u10'][:])
-            time_axes_u = [i for i, s in enumerate(u_raw.shape) if s == len(WW3_datetime)]
-            time_axis_u = time_axes_u[0] if time_axes_u else 0
-            if time_axis_u == 0:
-                u10_data = u_raw.transpose(1, 2, 0)
-            elif time_axis_u == 1:
-                u10_data = u_raw.transpose(0, 2, 1)
-            elif time_axis_u == 2:
-                if u_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
-                    u10_data = u_raw
-                else:
-                    u10_data = u_raw.transpose(1, 0, 2)
-            else:
-                u10_data = u_raw
-            u10_data = u10_data.astype(float)
-            u10_data[u10_data > 1e10] = np.nan
+        # 非结构网格 / SMC：hs 为 (time, node) 或 (node, time)；关闭文件前检测并读取三角连通表
+        is_pointwise, Hs_pw = ww3_is_pointwise_grid(WW3_lon, WW3_lat, raw, nt)
+        n_points_full = int(np.asarray(WW3_lon).ravel().size)
+        mesh_tri_global = ww3_try_mesh_triangles(ds, n_points_full) if is_pointwise else None
 
-        if 'v10' in ds.variables:
-            v_raw = np.array(ds.variables['v10'][:])
-            time_axes_v = [i for i, s in enumerate(v_raw.shape) if s == len(WW3_datetime)]
-            time_axis_v = time_axes_v[0] if time_axes_v else 0
-            if time_axis_v == 0:
-                v10_data = v_raw.transpose(1, 2, 0)
-            elif time_axis_v == 1:
-                v10_data = v_raw.transpose(0, 2, 1)
-            elif time_axis_v == 2:
-                if v_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
-                    v10_data = v_raw
-                else:
-                    v10_data = v_raw.transpose(1, 0, 2)
-            else:
-                v10_data = v_raw
-            v10_data = v10_data.astype(float)
-            v10_data[v10_data > 1e10] = np.nan
+        u_raw_wind = np.array(ds.variables["u10"][:]) if "u10" in ds.variables else None
+        v_raw_wind = np.array(ds.variables["v10"][:]) if "v10" in ds.variables else None
 
         ds.close()
+
+        u10_data = None
+        v10_data = None
+        u10_pw = None
+        v10_pw = None
+        if not is_pointwise:
+            if u_raw_wind is not None:
+                u_raw = u_raw_wind
+                time_axes_u = [i for i, s in enumerate(u_raw.shape) if s == len(WW3_datetime)]
+                time_axis_u = time_axes_u[0] if time_axes_u else 0
+                if time_axis_u == 0:
+                    u10_data = u_raw.transpose(1, 2, 0)
+                elif time_axis_u == 1:
+                    u10_data = u_raw.transpose(0, 2, 1)
+                elif time_axis_u == 2:
+                    if u_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+                        u10_data = u_raw
+                    else:
+                        u10_data = u_raw.transpose(1, 0, 2)
+                else:
+                    u10_data = u_raw
+                u10_data = u10_data.astype(float)
+                u10_data[u10_data > 1e10] = np.nan
+            if v_raw_wind is not None:
+                v_raw = v_raw_wind
+                time_axes_v = [i for i, s in enumerate(v_raw.shape) if s == len(WW3_datetime)]
+                time_axis_v = time_axes_v[0] if time_axes_v else 0
+                if time_axis_v == 0:
+                    v10_data = v_raw.transpose(1, 2, 0)
+                elif time_axis_v == 1:
+                    v10_data = v_raw.transpose(0, 2, 1)
+                elif time_axis_v == 2:
+                    if v_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+                        v10_data = v_raw
+                    else:
+                        v10_data = v_raw.transpose(1, 0, 2)
+                else:
+                    v10_data = v_raw
+                v10_data = v10_data.astype(float)
+                v10_data[v10_data > 1e10] = np.nan
+        else:
+            if u_raw_wind is not None:
+                u10_pw = ww3_try_pointwise_timeseries(u_raw_wind, nt, n_points_full)
+                if u10_pw is not None:
+                    u10_pw = u10_pw.astype(float)
+                    u10_pw[u10_pw > 1e10] = np.nan
+            if v_raw_wind is not None:
+                v10_pw = ww3_try_pointwise_timeseries(v_raw_wind, nt, n_points_full)
+                if v10_pw is not None:
+                    v10_pw = v10_pw.astype(float)
+                    v10_pw[v10_pw > 1e10] = np.nan
 
         # 若全部为缺测值，提前退出
         if np.isfinite(raw).sum() == 0:
@@ -210,21 +267,19 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
             return
 
         # ------------------------
-        # 检测 SMC/非结构化网格（seapoint、cell 等）
+        # 点序列网格（非结构 UNST / SMC 等）：已在上文 ww3_is_pointwise_grid 判定
         # ------------------------
         WW3_lon = np.asarray(WW3_lon).squeeze()
         WW3_lat = np.asarray(WW3_lat).squeeze()
         npoints = len(WW3_lon) if WW3_lon.ndim == 1 else WW3_lon.size
-        nt = len(WW3_datetime)
-        raw_shape = raw.shape
-        is_smc = (
-            (WW3_lon.ndim == 1 and WW3_lat.ndim == 1 and len(WW3_lon) == len(WW3_lat))
-            and (nt in raw_shape)
-            and (npoints in raw_shape)
-            and (raw.ndim == 2)
-        )
-        if is_smc:
-            log(tr("plotting_smc_detected", "📐 检测到 SMC/非结构化网格 ({n} 个格点)").format(n=npoints))
+        mesh_tri_use = mesh_tri_global
+        if is_pointwise:
+            log(
+                tr(
+                    "plotting_unst_pointwise_detected",
+                    "📐 检测到非结构/点序列网格 ({n} 个节点)，维度 (time×node) 或 (node×time) 已对齐",
+                ).format(n=npoints)
+            )
             if generate_video:
                 log(tr("plotting_smc_video_skip", "⚠️ SMC 网格暂不支持视频生成，将仅输出图片"))
                 generate_video = False
@@ -232,11 +287,9 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         # ------------------------
         # 数据维度整理
         # ------------------------
-        if is_smc:
-            # SMC: raw shape (time, seapoint) -> Hs (nt, npoints)
-            Hs = np.asarray(raw, dtype=float)
+        if is_pointwise:
+            Hs = np.asarray(Hs_pw, dtype=float)
             Hs[Hs > 1e10] = np.nan
-            # 可选：点过多时抽样以加速绘图（>50000 时抽样到 50000）
             SMC_SUBSAMPLE = 50000
             if npoints > SMC_SUBSAMPLE:
                 rng = np.random.default_rng(42)
@@ -245,29 +298,34 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 WW3_lon = WW3_lon[idx]
                 WW3_lat = WW3_lat[idx]
                 Hs = Hs[:, idx]
+                mesh_tri_use = None
+                if u10_pw is not None:
+                    u10_pw = u10_pw[:, idx]
+                if v10_pw is not None:
+                    v10_pw = v10_pw[:, idx]
                 npoints = SMC_SUBSAMPLE
                 log(tr("plotting_smc_subsampled", "📐 为加速绘图，抽样至 {n} 个格点").format(n=SMC_SUBSAMPLE))
         else:
             shape = raw.shape
-            time_axes = [i for i,s in enumerate(shape) if s==nt]
+            time_axes = [i for i, s in enumerate(shape) if s == nt]
             time_axis = time_axes[0] if time_axes else 2
 
-            if time_axis==0:
-                Hs = raw.transpose(1,2,0)
-            elif time_axis==1:
-                Hs = raw.transpose(0,2,1)
-            elif time_axis==2:
+            if time_axis == 0:
+                Hs = raw.transpose(1, 2, 0)
+            elif time_axis == 1:
+                Hs = raw.transpose(0, 2, 1)
+            elif time_axis == 2:
                 if raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
                     Hs = raw
                 else:
-                    Hs = raw.transpose(1,0,2)
+                    Hs = raw.transpose(1, 0, 2)
             else:
                 Hs = raw
 
         # ------------------------
         # 区域范围（先基于文件，再收缩到有数据的范围）
         # ------------------------
-        if is_smc:
+        if is_pointwise:
             lon_min, lon_max = float(np.nanmin(WW3_lon)), float(np.nanmax(WW3_lon))
             lat_min, lat_max = float(np.nanmin(WW3_lat)), float(np.nanmax(WW3_lat))
             Hs_all = Hs.astype(float)
@@ -290,7 +348,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
 
         # 如果显示陆地和海岸线，则不进行数据范围收缩（保持完整的地图范围）
         # 收缩到有数据的经纬度范围，避免无数据区域造成空白
-        if not is_smc and not show_land_coastline:
+        if not is_pointwise and not show_land_coastline:
             valid_all = np.isfinite(Hs_all)
             try:
                 lat_has = valid_all.any(axis=(1,2))
@@ -315,7 +373,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         # ------------------------
         # meshgrid 只创建一次（使用收缩后的范围）- 仅规则网格
         # ------------------------
-        if not is_smc:
+        if not is_pointwise:
             if UPSAMPLE_FACTOR > 1:
                 lon_plot_1d = np.linspace(lon_sub[0], lon_sub[-1], len(lon_sub)*UPSAMPLE_FACTOR)
                 lat_plot_1d = np.linspace(lat_sub[0], lat_sub[-1], len(lat_sub)*UPSAMPLE_FACTOR)
@@ -465,15 +523,37 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         gl.xlocator = FixedLocator(lon_ticks)
         gl.ylocator = FixedLocator(lat_ticks)
 
-        # 创建绘图对象：规则网格用 pcolormesh，SMC 用 tricontourf（在循环内绘制）
-        if is_smc:
+        # 创建绘图对象：规则网格用 pcolormesh，点序列网格用 tricontourf（在循环内绘制）
+        if is_pointwise:
             from matplotlib.tri import Triangulation
-            # 移除无效点以便 Triangulation 正常工作
-            smc_valid = np.isfinite(WW3_lon) & np.isfinite(WW3_lat) & (np.abs(WW3_lon) <= 360) & (np.abs(WW3_lat) <= 90)
-            lon_tri = WW3_lon[smc_valid].astype(np.float64)
-            lat_tri = WW3_lat[smc_valid].astype(np.float64)
-            tri = Triangulation(lon_tri, lat_tri)
-            Hs_smc = Hs[:, smc_valid]  # (nt, n_valid)
+
+            lon_full = WW3_lon.astype(np.float64)
+            lat_full = WW3_lat.astype(np.float64)
+            tri = None
+            Hs_smc = None
+            if mesh_tri_use is not None:
+                try:
+                    tri = Triangulation(lon_full, lat_full, triangles=mesh_tri_use)
+                    Hs_smc = Hs
+                except Exception as e:
+                    log(
+                        tr(
+                            "plotting_tri_mesh_fallback",
+                            "⚠️ NetCDF 三角连通无法用于绘图，改用 Delaunay: {error}",
+                        ).format(error=e)
+                    )
+                    tri = None
+            if tri is None:
+                smc_valid = (
+                    np.isfinite(WW3_lon)
+                    & np.isfinite(WW3_lat)
+                    & (np.abs(WW3_lon) <= 360)
+                    & (np.abs(WW3_lat) <= 90)
+                )
+                lon_tri = WW3_lon[smc_valid].astype(np.float64)
+                lat_tri = WW3_lat[smc_valid].astype(np.float64)
+                tri = Triangulation(lon_tri, lat_tri)
+                Hs_smc = Hs[:, smc_valid]
             pcm = None
             sm = plt.cm.ScalarMappable(cmap=cm.turbo, norm=plt.Normalize(vmin=vmin, vmax=vmax))
             sm.set_array([])
@@ -518,7 +598,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 else:
                     log(tr("plotting_progress_images", "📊 进度: {current}/{total} ({percent}%) - 已生成 {generated} 张图片").format(current=idx + 1, total=total, percent=progress_pct, generated=num))
 
-            if is_smc:
+            if is_pointwise:
                 Hs_now = Hs_smc[tid, :].astype(float)
                 Hs_now[Hs_now > 1e10] = np.nan
             else:
@@ -532,11 +612,9 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 log(tr("plotting_skip_frame_low_data", "⚠️  时刻 {time} 有效数据仅 {ratio}% ，跳过绘制以避免空白").format(time=t_target, ratio=f"{valid_ratio*100:.1f}"))  # type: ignore[name-defined]
                 continue
 
-            if is_smc:
-                # 移除上一帧的 tricontourf
-                if smc_tcf is not None:
-                    for c in smc_tcf.collections:
-                        c.remove()
+            if is_pointwise:
+                # 移除上一帧的 tricontourf（兼容无 .collections 的 matplotlib）
+                remove_tricontourf_artist(smc_tcf)
                 Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
                 smc_tcf = ax.tricontourf(tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
                                          cmap=cm.turbo, vmin=vmin, vmax=vmax)
@@ -554,7 +632,14 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
             if manual_wind is not None:
                 wind_info = f" | Wind {manual_wind:.1f} m/s"
             else:
-                if u10_data is not None and not is_smc:
+                if is_pointwise and u10_pw is not None:
+                    u_now = u10_pw[tid]
+                    v_now = v10_pw[tid] if v10_pw is not None else np.zeros_like(u_now)
+                    wind_speed_now = np.sqrt(u_now ** 2 + v_now ** 2)
+                    if np.nanmax(wind_speed_now) - np.nanmin(wind_speed_now) < 1e-6:
+                        ws = float(np.nanmean(wind_speed_now))
+                        wind_info = f" | Wind {ws:.1f} m/s (uniform)"
+                elif u10_data is not None and not is_pointwise:
                     u_now = u10_data[np.ix_(lat_idx, lon_idx, [tid])][:, :, 0]
                     if v10_data is not None:
                         v_now = v10_data[np.ix_(lat_idx, lon_idx, [tid])][:, :, 0]
@@ -716,29 +801,56 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 return
             ncfile = nc_files[0]
         ds = nc.Dataset(ncfile)
-        WW3_lon = np.array(ds.variables['longitude'][:])
-        WW3_lat = np.array(ds.variables['latitude'][:])
-        WW3_time_var = ds.variables['time']
-        
-        # 时间
+        available_vars = list(ds.variables.keys())
+        lon_name, lat_name = ww3_resolve_lon_lat_names(ds)
+        if not lon_name or not lat_name:
+            log(
+                tr(
+                    "plotting_missing_lon_lat_variables",
+                    "❌ 无法识别经度/纬度变量（需 longitude/lon、latitude/lat 等）。可用变量: {vars}",
+                ).format(vars=", ".join(available_vars))
+            )
+            ds.close()
+            log_queue.put("__DONE__")
+            result_queue.put([])
+            return
+
+        WW3_time_var = ds.variables["time"]
         try:
             WW3_datetime = num2date(WW3_time_var[:], WW3_time_var.units)
             WW3_datetime = np.array([datetime.utcfromtimestamp(dt.timestamp()) for dt in WW3_datetime])
-        except:
-            ref = datetime(1990,1,1)
+        except Exception:
+            ref = datetime(1990, 1, 1)
             WW3_datetime = np.array([ref + timedelta(days=float(t)) for t in WW3_time_var[:]])
-        
+        nt = len(WW3_datetime)
+
+        WW3_lon = np.array(ds.variables[lon_name][:])
+        WW3_lat = np.array(ds.variables[lat_name][:])
+        try:
+            WW3_lon, WW3_lat = ww3_prepare_lon_lat_1d(WW3_lon, WW3_lat, nt)
+        except Exception as e:
+            log(
+                tr(
+                    "plotting_lon_lat_prepare_failed",
+                    "❌ 经纬度坐标形状无法解析: {error}",
+                ).format(error=e)
+            )
+            ds.close()
+            log_queue.put("__DONE__")
+            result_queue.put([])
+            return
+
         # 读取波高数据（含 NetCDF _FillValue 处理）
-        raw_var = ds.variables['hs']
+        raw_var = ds.variables["hs"]
         raw = np.array(raw_var[:])
-        _fv = getattr(raw_var, '_FillValue', None)
+        _fv = getattr(raw_var, "_FillValue", None)
         if _fv is not None:
             fv = float(np.asarray(_fv).flat[0])
             raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
         raw = np.where(raw > 1e30, np.nan, raw)
         raw = np.where(raw > 1e10, np.nan, raw)
-        varlabel = 'Total Hs (m)'
-        prefix = 'contour_hs'
+        varlabel = "Total Hs (m)"
+        prefix = "contour_hs"
 
         if np.isfinite(raw).sum() == 0:
             log(tr("plotting_all_missing", "❌ 文件中所有格点均为缺测值，请检查 WW3 输出或模拟设置"))
@@ -746,61 +858,80 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             log_queue.put("__DONE__")
             result_queue.put([])
             return
-        
-        # 读取风场数据
+
+        is_pointwise, Hs_pw = ww3_is_pointwise_grid(WW3_lon, WW3_lat, raw, nt)
+        n_points_full = int(np.asarray(WW3_lon).ravel().size)
+        mesh_tri_global = ww3_try_mesh_triangles(ds, n_points_full) if is_pointwise else None
+
+        u_raw_wind = np.array(ds.variables["u10"][:]) if "u10" in ds.variables else None
+        v_raw_wind = np.array(ds.variables["v10"][:]) if "v10" in ds.variables else None
+
+        ds.close()
+
         u10_data = None
         v10_data = None
-        if 'u10' in ds.variables:
-            u_raw = np.array(ds.variables['u10'][:])
-            time_axes_u = [i for i, s in enumerate(u_raw.shape) if s == len(WW3_datetime)]
-            time_axis_u = time_axes_u[0] if time_axes_u else 0
-            if time_axis_u == 0:
-                u10_data = u_raw.transpose(1, 2, 0)
-            elif time_axis_u == 1:
-                u10_data = u_raw.transpose(0, 2, 1)
-            elif time_axis_u == 2:
-                if u_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+        u10_pw = None
+        v10_pw = None
+        if not is_pointwise:
+            if u_raw_wind is not None:
+                u_raw = u_raw_wind
+                time_axes_u = [i for i, s in enumerate(u_raw.shape) if s == len(WW3_datetime)]
+                time_axis_u = time_axes_u[0] if time_axes_u else 0
+                if time_axis_u == 0:
+                    u10_data = u_raw.transpose(1, 2, 0)
+                elif time_axis_u == 1:
+                    u10_data = u_raw.transpose(0, 2, 1)
+                elif time_axis_u == 2:
+                    if u_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+                        u10_data = u_raw
+                    else:
+                        u10_data = u_raw.transpose(1, 0, 2)
+                else:
                     u10_data = u_raw
+                u10_data = u10_data.astype(float)
+                u10_data[u10_data > 1e10] = np.nan
+            if v_raw_wind is not None:
+                v_raw = v_raw_wind
+                time_axes_v = [i for i, s in enumerate(v_raw.shape) if s == len(WW3_datetime)]
+                time_axis_v = time_axes_v[0] if time_axes_v else 0
+                if time_axis_v == 0:
+                    v10_data = v_raw.transpose(1, 2, 0)
+                elif time_axis_v == 1:
+                    v10_data = v_raw.transpose(0, 2, 1)
+                elif time_axis_v == 2:
+                    if v_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
+                        v10_data = v_raw
+                    else:
+                        v10_data = v_raw.transpose(1, 0, 2)
                 else:
-                    u10_data = u_raw.transpose(1, 0, 2)
-            else:
-                u10_data = u_raw
-            u10_data = u10_data.astype(float)
-            u10_data[u10_data > 1e10] = np.nan
-        
-        if 'v10' in ds.variables:
-            v_raw = np.array(ds.variables['v10'][:])
-            time_axes_v = [i for i, s in enumerate(v_raw.shape) if s == len(WW3_datetime)]
-            time_axis_v = time_axes_v[0] if time_axes_v else 0
-            if time_axis_v == 0:
-                v10_data = v_raw.transpose(1, 2, 0)
-            elif time_axis_v == 1:
-                v10_data = v_raw.transpose(0, 2, 1)
-            elif time_axis_v == 2:
-                if v_raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
                     v10_data = v_raw
-                else:
-                    v10_data = v_raw.transpose(1, 0, 2)
-            else:
-                v10_data = v_raw
-            v10_data = v10_data.astype(float)
-            v10_data[v10_data > 1e10] = np.nan
-        
-        ds.close()
-        
-        # 检测 SMC/非结构化网格
+                v10_data = v10_data.astype(float)
+                v10_data[v10_data > 1e10] = np.nan
+        else:
+            if u_raw_wind is not None:
+                u10_pw = ww3_try_pointwise_timeseries(u_raw_wind, nt, n_points_full)
+                if u10_pw is not None:
+                    u10_pw = u10_pw.astype(float)
+                    u10_pw[u10_pw > 1e10] = np.nan
+            if v_raw_wind is not None:
+                v10_pw = ww3_try_pointwise_timeseries(v_raw_wind, nt, n_points_full)
+                if v10_pw is not None:
+                    v10_pw = v10_pw.astype(float)
+                    v10_pw[v10_pw > 1e10] = np.nan
+
         WW3_lon = np.asarray(WW3_lon).squeeze()
         WW3_lat = np.asarray(WW3_lat).squeeze()
         npoints = len(WW3_lon) if WW3_lon.ndim == 1 else WW3_lon.size
-        nt = len(WW3_datetime)
-        is_smc = (
-            (WW3_lon.ndim == 1 and WW3_lat.ndim == 1 and len(WW3_lon) == len(WW3_lat))
-            and (nt in raw.shape)
-            and (npoints in raw.shape)
-            and (raw.ndim == 2)
-        )
-        if is_smc:
-            log(tr("plotting_smc_detected", "📐 检测到 SMC/非结构化网格 ({n} 个格点)").format(n=npoints))
+        mesh_tri_use = mesh_tri_global
+        if is_pointwise:
+            log(
+                tr(
+                    "plotting_unst_pointwise_detected",
+                    "📐 检测到非结构/点序列网格 ({n} 个节点)，维度 (time×node) 或 (node×time) 已对齐",
+                ).format(n=npoints)
+            )
+            Hs = np.asarray(Hs_pw, dtype=float)
+            Hs[Hs > 1e10] = np.nan
             SMC_SUBSAMPLE = 50000
             if npoints > SMC_SUBSAMPLE:
                 rng = np.random.default_rng(42)
@@ -808,31 +939,32 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 idx = np.sort(idx)
                 WW3_lon = WW3_lon[idx]
                 WW3_lat = WW3_lat[idx]
-                raw = raw[:, idx]
+                Hs = Hs[:, idx]
+                mesh_tri_use = None
+                if u10_pw is not None:
+                    u10_pw = u10_pw[:, idx]
+                if v10_pw is not None:
+                    v10_pw = v10_pw[:, idx]
                 npoints = SMC_SUBSAMPLE
-        
-        # 数据维度整理
-        if is_smc:
-            Hs = np.asarray(raw, dtype=float)
-            Hs[Hs > 1e10] = np.nan
+                log(tr("plotting_smc_subsampled", "📐 为加速绘图，抽样至 {n} 个格点").format(n=SMC_SUBSAMPLE))
         else:
             shape = raw.shape
-            time_axes = [i for i,s in enumerate(shape) if s==nt]
+            time_axes = [i for i, s in enumerate(shape) if s == nt]
             time_axis = time_axes[0] if time_axes else 2
-            if time_axis==0:
-                Hs = raw.transpose(1,2,0)
-            elif time_axis==1:
-                Hs = raw.transpose(0,2,1)
-            elif time_axis==2:
+            if time_axis == 0:
+                Hs = raw.transpose(1, 2, 0)
+            elif time_axis == 1:
+                Hs = raw.transpose(0, 2, 1)
+            elif time_axis == 2:
                 if raw.shape[:2] == (len(WW3_lat), len(WW3_lon)):
                     Hs = raw
                 else:
-                    Hs = raw.transpose(1,0,2)
+                    Hs = raw.transpose(1, 0, 2)
             else:
                 Hs = raw
         
         # 区域范围（先基于文件，再收缩到有数据的范围）
-        if is_smc:
+        if is_pointwise:
             lon_min, lon_max = float(np.nanmin(WW3_lon)), float(np.nanmax(WW3_lon))
             lat_min, lat_max = float(np.nanmin(WW3_lat)), float(np.nanmax(WW3_lat))
             Hs_all = Hs.astype(float)
@@ -851,7 +983,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
         
         # 如果显示陆地和海岸线，则不进行数据范围收缩（保持完整的地图范围）
         # 收缩到有数据的经纬度范围，避免无数据区域造成空白
-        if not is_smc and not show_land_coastline:
+        if not is_pointwise and not show_land_coastline:
             valid_all = np.isfinite(Hs_all)
             try:
                 lat_has = valid_all.any(axis=(1,2))
@@ -873,7 +1005,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 log(tr("plotting_data_range_shrink_failed", "⚠️ 数据范围收缩失败，使用原始范围: {error}").format(error=e))
    
         # 创建网格（使用与波高图相同的UPSAMPLE_FACTOR）- 仅规则网格
-        if not is_smc:
+        if not is_pointwise:
             if UPSAMPLE_FACTOR > 1:
                 lon_plot_1d = np.linspace(lon_sub[0], lon_sub[-1], len(lon_sub)*UPSAMPLE_FACTOR)
                 lat_plot_1d = np.linspace(lat_sub[0], lat_sub[-1], len(lat_sub)*UPSAMPLE_FACTOR)
@@ -881,13 +1013,38 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 lon_plot_1d = lon_sub
                 lat_plot_1d = lat_sub
             LON_plot_base, LAT_plot_base = np.meshgrid(lon_plot_1d, lat_plot_1d)
+            tri_contour = None
+            Hs_contour_smc = None
         else:
             from matplotlib.tri import Triangulation
-            smc_valid = np.isfinite(WW3_lon) & np.isfinite(WW3_lat) & (np.abs(WW3_lon) <= 360) & (np.abs(WW3_lat) <= 90)
-            lon_tri = WW3_lon[smc_valid].astype(np.float64)
-            lat_tri = WW3_lat[smc_valid].astype(np.float64)
-            tri_contour = Triangulation(lon_tri, lat_tri)
-            Hs_contour_smc = Hs[:, smc_valid]
+
+            lon_full = WW3_lon.astype(np.float64)
+            lat_full = WW3_lat.astype(np.float64)
+            tri_contour = None
+            Hs_contour_smc = None
+            if mesh_tri_use is not None:
+                try:
+                    tri_contour = Triangulation(lon_full, lat_full, triangles=mesh_tri_use)
+                    Hs_contour_smc = Hs
+                except Exception as e:
+                    log(
+                        tr(
+                            "plotting_tri_mesh_fallback",
+                            "⚠️ NetCDF 三角连通无法用于绘图，改用 Delaunay: {error}",
+                        ).format(error=e)
+                    )
+                    tri_contour = None
+            if tri_contour is None:
+                smc_valid = (
+                    np.isfinite(WW3_lon)
+                    & np.isfinite(WW3_lat)
+                    & (np.abs(WW3_lon) <= 360)
+                    & (np.abs(WW3_lat) <= 90)
+                )
+                lon_tri = WW3_lon[smc_valid].astype(np.float64)
+                lat_tri = WW3_lat[smc_valid].astype(np.float64)
+                tri_contour = Triangulation(lon_tri, lat_tri)
+                Hs_contour_smc = Hs[:, smc_valid]
         
         # 生成目标时间
         start_time, end_time = WW3_datetime[0], WW3_datetime[-1]
@@ -968,7 +1125,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 progress_pct = int((idx + 1) / total * 100)
                 log(tr("plotting_progress_contour", "📊 进度: {current}/{total} ({percent}%) - 已生成 {generated} 张等高线图").format(current=idx + 1, total=total, percent=progress_pct, generated=num))
             
-            if is_smc:
+            if is_pointwise:
                 Hs_now_raw = Hs_contour_smc[tid, :].astype(float)
             else:
                 Hs_now_raw = Hs[np.ix_(lat_idx, lon_idx, [tid])][:,:,0].astype(float)
@@ -980,7 +1137,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             if valid_ratio < 0.02:
                 continue
             
-            if is_smc:
+            if is_pointwise:
                 Hs_now = Hs_now_raw
             else:
                 # 对数据进行插值（使用与波高图相同的UPSAMPLE_FACTOR）
@@ -1034,7 +1191,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             gl.ylocator = FixedLocator(lat_ticks)
             
             # 绘制波高图作为底图
-            if is_smc:
+            if is_pointwise:
                 Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
                 pcm = ax.tricontourf(tri_contour, Hs_plot, levels=20,
                                      transform=ccrs.PlateCarree(),
@@ -1069,7 +1226,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                 vmax_rounded = np.ceil(vmax * 2) / 2
             contour_levels_all = np.arange(vmin_rounded, vmax_rounded + step/2, step)
             contour_levels = contour_levels_all[contour_levels_all <= vmax]
-            if is_smc:
+            if is_pointwise:
                 cs = ax.tricontour(tri_contour, Hs_plot, levels=contour_levels,
                                    transform=ccrs.PlateCarree(), colors='black', linewidths=0.8,
                                    zorder=3)
@@ -1110,7 +1267,14 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             if manual_wind is not None:
                 wind_info = f" | Wind {manual_wind:.1f} m/s"
             else:
-                if u10_data is not None:
+                if is_pointwise and u10_pw is not None:
+                    u_now = u10_pw[tid]
+                    v_now = v10_pw[tid] if v10_pw is not None else np.zeros_like(u_now)
+                    wind_speed_now = np.sqrt(u_now ** 2 + v_now ** 2)
+                    if np.nanmax(wind_speed_now) - np.nanmin(wind_speed_now) < 1e-6:
+                        ws = float(np.nanmean(wind_speed_now))
+                        wind_info = f" | Wind {ws:.1f} m/s (uniform)"
+                elif u10_data is not None and not is_pointwise:
                     u_now = u10_data[np.ix_(lat_idx, lon_idx, [tid])][:, :, 0]
                     if v10_data is not None:
                         v_now = v10_data[np.ix_(lat_idx, lon_idx, [tid])][:, :, 0]

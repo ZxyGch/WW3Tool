@@ -7,27 +7,51 @@ import sys
 import json
 import glob
 import shutil
+import tempfile
 import re
 import subprocess
 import threading
+import zipfile
+from urllib.request import urlretrieve
 import platform
 import warnings
 import numpy as np
-import matplotlib
-matplotlib.use('QtAgg')
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from netCDF4 import Dataset
 
 from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy, QDialog, QScrollArea, QFrame
-from PyQt6.QtGui import QPixmap, QDesktopServices
+from PyQt6.QtCore import Qt, QUrl, QMetaObject, pyqtSlot, QProcess
+from PyQt6.QtWidgets import (
+    QLabel,
+    QVBoxLayout,
+    QGridLayout,
+    QHBoxLayout,
+    QWidget,
+    QSizePolicy,
+    QDialog,
+    QScrollArea,
+    QFrame,
+    QApplication,
+    QStackedWidget,
+    QProgressBar,
+)
+from PyQt6.QtGui import QPixmap, QDesktopServices, QShortcut, QKeySequence
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar, MessageBoxBase
 from setting.language_manager import tr
-from setting.config import DX, DY, LONGITUDE_WEST, LONGITUDE_EAST, LATITUDE_SORTH, LATITUDE_NORTH, MATLAB_PATH, load_config
+from setting.config import (
+    DX,
+    DY,
+    LONGITUDE_WEST,
+    LONGITUDE_EAST,
+    LATITUDE_SORTH,
+    LATITUDE_NORTH,
+    MATLAB_PATH,
+    load_config,
+    get_project_gridgen_path,
+)
+from .grid_viz_worker import VIZ_PREFIX, cache_is_current, cached_image_paths
+
+
+REGION_MAP_WORKER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "region_map_worker.py")
 
 
 # reference_data 目录下必须存在的文件（生成网格前检测）
@@ -45,9 +69,9 @@ REFERENCE_DATA_REQUIRED_FILES = [
 ]
 
 # reference_data 手动下载说明链接与路径提示
-REFERENCE_DATA_YDRAY_URL = "https://ydray.com/get/t/u17737629592553JcSjd881f85029a1qm"
-REFERENCE_DATA_ONEDRIVE_URL = "https://tiangongeducn-my.sharepoint.com/:u:/g/personal/1911650207_tiangong_edu_cn/IQBGfWxOrWNlQphTeWCh-7AjAR-dtNWp7guSVhiyUH4dCW8?e=BdDBqQ"
-REFERENCE_DATA_BAIDU_URL = "https://pan.baidu.com/s/1ec8DMcv8bp6MzNnFBkbAPA?pwd=ktch"
+REFERENCE_DATA_YDRAY_URL = "https://ydray.com/get/t/u17741446196277XguE91036edeefddAV"
+REFERENCE_DATA_ONEDRIVE_URL = "https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9"
+REFERENCE_DATA_BAIDU_URL = "https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48"
 
 
 class _ReferenceDataMissingDialog(MessageBoxBase):
@@ -94,7 +118,7 @@ class _ReferenceDataMissingDialog(MessageBoxBase):
         self.viewLayout.addWidget(label2)
 
         # 固定展示可复制的参考数据路径
-        ref_path_label = QLabel("/Users/zxy/ocean/WW3Tool/gridgen/reference_data")
+        ref_path_label = QLabel(ref_dir)
         ref_path_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
             | Qt.TextInteractionFlag.TextSelectableByKeyboard
@@ -169,8 +193,322 @@ class _GlobalGridConfirmDialog(MessageBoxBase):
         return self._confirmed
 
 
+class _ScaledMapLabel(QLabel):
+    """高分辨率地图缩放到可用区域（保持宽高比、居中），避免滚动条。"""
+
+    def __init__(self, full_pixmap: QPixmap, parent=None):
+        super().__init__(parent)
+        self._full = full_pixmap
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(1, 1)
+        self.setScaledContents(False)
+
+    def sizeHint(self):
+        return QtCore.QSize(320, 240)
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(1, 1)
+
+    def _device_pixel_ratio(self) -> float:
+        wh = self.window().windowHandle()
+        if wh is not None:
+            return float(wh.devicePixelRatio())
+        scr = self.screen()
+        if scr is not None:
+            return float(scr.devicePixelRatio())
+        return 1.0
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_scale()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(0, self._apply_scale)
+
+    def _apply_scale(self):
+        if self._full is None or self._full.isNull():
+            return
+        r = self.contentsRect()
+        if r.width() < 2 or r.height() < 2:
+            return
+        dpr = max(1.0, self._device_pixel_ratio())
+        tw = max(2, int(round(r.width() * dpr)))
+        th = max(2, int(round(r.height() * dpr)))
+        scaled = self._full.scaled(
+            QtCore.QSize(tw, th),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        scaled.setDevicePixelRatio(dpr)
+        QLabel.setPixmap(self, scaled)
+
+
+class _RegionMapDialog(MessageBoxBase):
+    """第二步「查看地图」：先显示加载，再显示子进程生成的地图；Esc/点遮罩关闭。"""
+
+    def __init__(self, parent, *, map_aspect_wh: float | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("")
+        self._map_aspect_wh = float(map_aspect_wh) if map_aspect_wh and map_aspect_wh > 0 else 4.0 / 3.0
+        self._kill_external_cb = None
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+
+        self._stack = QStackedWidget()
+        self._stack.setMinimumSize(320, 240)
+        self._stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        loading_w = QWidget()
+        loading_layout = QVBoxLayout(loading_w)
+        loading_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._loading_label = QLabel(tr("step2_region_map_loading", "正在生成地图…"))
+        self._loading_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._loading_label.setWordWrap(True)
+        loading_layout.addWidget(self._loading_label)
+        self._loading_bar = QProgressBar()
+        self._loading_bar.setRange(0, 0)
+        self._loading_bar.setFixedWidth(280)
+        loading_layout.addWidget(self._loading_bar, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._stack.addWidget(loading_w)
+
+        self._content_host = QWidget()
+        self._content_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._content_layout = QVBoxLayout(self._content_host)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
+        self._stack.addWidget(self._content_host)
+        self._stack.setCurrentIndex(0)
+
+        self.viewLayout.addWidget(self._stack, 1)
+
+        esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc.activated.connect(self._close_dialog)
+
+        if hasattr(self, "setClosableOnMaskClicked"):
+            self.setClosableOnMaskClicked(True)
+
+    def set_kill_callback(self, cb):
+        self._kill_external_cb = cb
+
+    def show_map_content(self, map_widget: QWidget):
+        while self._content_layout.count():
+            item = self._content_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        map_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._content_layout.addWidget(map_widget, 1)
+        self._stack.setCurrentIndex(1)
+        if isinstance(map_widget, _ScaledMapLabel):
+            QtCore.QTimer.singleShot(0, map_widget._apply_scale)
+        QtCore.QTimer.singleShot(0, self._refine_region_map_card_size)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._region_map_refine_pass = 0
+        QtCore.QTimer.singleShot(0, self._fit_to_parent_window)
+
+    def reject(self):
+        """遮罩点击会调 reject；绕过 MaskDialogBase.done 渐隐以防 exec 不返回。"""
+        if callable(self._kill_external_cb):
+            self._kill_external_cb()
+            self._kill_external_cb = None
+        QDialog.done(self, int(QDialog.DialogCode.Rejected))
+
+    def _close_dialog(self):
+        if callable(self._kill_external_cb):
+            self._kill_external_cb()
+            self._kill_external_cb = None
+        QDialog.done(self, int(QDialog.DialogCode.Accepted))
+
+    def closeEvent(self, event):
+        if callable(self._kill_external_cb):
+            self._kill_external_cb()
+            self._kill_external_cb = None
+        super().closeEvent(event)
+
+    def _region_map_avail_rect(self):
+        """主窗口可用区域（逻辑像素），用于嵌入地图卡片。"""
+        parent = self.parentWidget()
+        ratio_w, ratio_h = 0.90, 0.82
+        if parent is not None and parent.isVisible():
+            pr = parent.frameGeometry()
+            return int(pr.width() * ratio_w), int(pr.height() * ratio_h)
+        screen = QApplication.primaryScreen()
+        ag = screen.availableGeometry() if screen is not None else None
+        if ag is not None:
+            return int(ag.width() * 0.88), int(ag.height() * 0.82)
+        return 1000, 760
+
+    def _fit_to_parent_window(self):
+        """卡片先按可用区域与地图纵横比占位；标题栏与边距会吃掉高度，再由 _refine 按实际内容区修正。"""
+        avail_w, avail_h = self._region_map_avail_rect()
+        min_w, min_h = 400, 300
+        max_w, max_h = 1920, 1080
+        a = float(np.clip(self._map_aspect_wh, 0.2, 14.0))
+        if avail_w / max(avail_h, 1) > a:
+            dh = avail_h
+            dw = int(round(dh * a))
+        else:
+            dw = avail_w
+            dh = int(round(dw / a))
+
+        dw = max(min_w, min(dw, max_w))
+        dh = max(min_h, min(dh, max_h))
+        card = getattr(self, "widget", None)
+        if card is not None:
+            card.setFixedSize(dw, dh)
+            card.updateGeometry()
+        else:
+            self.resize(dw, dh)
+        QtCore.QTimer.singleShot(0, self._refine_region_map_card_size)
+
+    def _refine_region_map_card_size(self):
+        """按 MessageBox 标题栏与边距，使 _stack 可视区宽高比与地图 PNG 一致，消除上下/左右大块留白。"""
+        card = getattr(self, "widget", None)
+        if card is None:
+            return
+        self._region_map_refine_pass = getattr(self, "_region_map_refine_pass", 0) + 1
+        if self._region_map_refine_pass > 5:
+            return
+
+        avail_w, avail_h = self._region_map_avail_rect()
+        min_w, min_h = 400, 300
+        max_w, max_h = 1920, 1080
+        a = float(np.clip(self._map_aspect_wh, 0.2, 14.0))
+
+        cw = max(0, card.width() - self._stack.width())
+        ch = max(0, card.height() - self._stack.height())
+        iw_max = max(80, avail_w - cw)
+        ih_max = max(80, avail_h - ch)
+
+        if iw_max / max(ih_max, 1) > a:
+            ih = ih_max
+            iw = min(iw_max, int(round(ih * a)))
+        else:
+            iw = iw_max
+            ih = min(ih_max, int(round(iw / max(a, 1e-6))))
+
+        dw = max(min_w, min(iw + cw, max_w))
+        dh = max(min_h, min(ih + ch, max_h))
+
+        if abs(dw - card.width()) > 1 or abs(dh - card.height()) > 1:
+            card.setFixedSize(dw, dh)
+            card.updateGeometry()
+            QtCore.QTimer.singleShot(0, self._refine_region_map_card_size)
+
+
 class StepTwoServiceMixin:
     """第二步相关的业务逻辑 Mixin"""
+
+    def _cleanup_region_map_temp_files(self):
+        for p in getattr(self, "_region_map_temp_paths", None) or []:
+            try:
+                if p and os.path.isfile(p):
+                    os.remove(p)
+            except OSError:
+                pass
+
+    def _kill_region_map_process(self):
+        p = getattr(self, "_region_map_proc", None)
+        if p is not None and p.state() != QProcess.ProcessState.NotRunning:
+            p.kill()
+            p.waitForFinished(3000)
+        self._region_map_proc = None
+
+    def _on_region_map_process_finished(self, exit_code, exit_status):
+        dlg = getattr(self, "_region_map_dialog", None)
+        png_path = getattr(self, "_region_map_out_png", None)
+        proc = self.sender()
+        err_txt = ""
+        if proc is not None:
+            err_txt = bytes(proc.readAllStandardError()).decode("utf-8", errors="replace").strip()
+        self._region_map_proc = None
+
+        if dlg is None:
+            self._cleanup_region_map_temp_files()
+            return
+
+        if exit_code != 0:
+            self._cleanup_region_map_temp_files()
+            msg = err_txt or tr("step2_region_map_render_failed", "地图渲染失败")
+            if len(msg) > 800:
+                msg = msg[:800] + "…"
+            InfoBar.warning(
+                title=tr("step2_region_map_error_title", "查看地图"),
+                content=msg,
+                duration=5000,
+                parent=self,
+            )
+            dlg.reject()
+            return
+
+        if not png_path or not os.path.isfile(png_path):
+            self._cleanup_region_map_temp_files()
+            InfoBar.warning(
+                title=tr("step2_region_map_error_title", "查看地图"),
+                content=tr("step2_region_map_png_missing", "未生成地图图片"),
+                duration=4000,
+                parent=self,
+            )
+            dlg.reject()
+            return
+
+        pm = QPixmap(png_path)
+        if pm.isNull():
+            self._cleanup_region_map_temp_files()
+            InfoBar.warning(
+                title=tr("step2_region_map_error_title", "查看地图"),
+                content=tr("step2_region_map_png_invalid", "无法加载地图图片"),
+                duration=4000,
+                parent=self,
+            )
+            dlg.reject()
+            return
+
+        map_lbl = _ScaledMapLabel(pm)
+        dlg.show_map_content(map_lbl)
+
+        ctx = getattr(self, "_region_map_log_ctx", None) or {}
+        if ctx.get("is_nested"):
+            self.log(tr("step2_nested_map_displayed", "📍 已显示嵌套网格地图"))
+            self.log(
+                tr(
+                    "step2_outer_grid_range",
+                    "   外网格: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]",
+                ).format(
+                    lon_min=f"{ctx['outer_lon_min']:.2f}",
+                    lon_max=f"{ctx['outer_lon_max']:.2f}",
+                    lat_min=f"{ctx['outer_lat_min']:.2f}",
+                    lat_max=f"{ctx['outer_lat_max']:.2f}",
+                )
+            )
+            self.log(
+                tr(
+                    "step2_inner_grid_range",
+                    "   内网格: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]",
+                ).format(
+                    lon_min=f"{ctx['inner_lon_min']:.2f}",
+                    lon_max=f"{ctx['inner_lon_max']:.2f}",
+                    lat_min=f"{ctx['inner_lat_min']:.2f}",
+                    lat_max=f"{ctx['inner_lat_max']:.2f}",
+                )
+            )
+        else:
+            self.log(
+                tr(
+                    "step2_map_range_displayed",
+                    "📍 已显示地图范围: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]",
+                ).format(
+                    lon_min=f"{ctx['outer_lon_min']:.2f}",
+                    lon_max=f"{ctx['outer_lon_max']:.2f}",
+                    lat_min=f"{ctx['outer_lat_min']:.2f}",
+                    lat_max=f"{ctx['outer_lat_max']:.2f}",
+                )
+            )
     
     def _check_and_switch_to_nested_grid(self):
         """检测工作目录中是否存在coarse和fine文件夹，如果存在则自动切换到嵌套网格模式"""
@@ -211,12 +549,150 @@ class StepTwoServiceMixin:
             if hasattr(self, "_set_step2_grid_type"):
                 self._set_step2_grid_type(normal_text)
 
+    @staticmethod
+    def _parse_grid_ww3_lon_lat_bounds(ww3_path):
+        """从 Gmsh 文本格式 grid.ww3 的 $Nodes 段读取结点经纬度包围盒。"""
+        try:
+            lons = []
+            lats = []
+            with open(ww3_path, encoding="utf-8", errors="ignore") as f:
+                in_nodes = False
+                n_expected = None
+                n_read = 0
+                for raw in f:
+                    line = raw.strip()
+                    if line == "$Nodes":
+                        in_nodes = True
+                        n_expected = None
+                        n_read = 0
+                        continue
+                    if in_nodes and line == "$EndNodes":
+                        break
+                    if not in_nodes:
+                        continue
+                    if n_expected is None:
+                        parts = line.split()
+                        if not parts:
+                            continue
+                        try:
+                            n_expected = int(parts[0])
+                        except ValueError:
+                            n_expected = 0
+                        continue
+                    if n_read >= n_expected:
+                        break
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        try:
+                            lons.append(float(parts[1]))
+                            lats.append(float(parts[2]))
+                            n_read += 1
+                        except ValueError:
+                            pass
+            if not lons:
+                return None
+            return {
+                "lon_min": min(lons),
+                "lon_max": max(lons),
+                "lat_min": min(lats),
+                "lat_max": max(lats),
+            }
+        except Exception:
+            return None
 
+    @staticmethod
+    def _format_unst_num_for_edit(v):
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return None
+        s = f"{x:.8f}".rstrip("0").rstrip(".")
+        return s if s else "0"
 
+    def _step2_apply_unstructured_from_grid_ww3(self, ww3_path):
+        """检测到 grid.ww3：切到非结构网格、普通网格类型，并填充经纬度与 spacing（优先 unst_msh_gen_config.json）。"""
+        if not hasattr(self, "mesh_type_combo"):
+            return
+        utext = tr("step2_mesh_type_unstructured", "非结构网格")
+        normal_text = tr("step2_grid_type_normal", "普通网格")
+
+        if hasattr(self, "_set_step2_grid_type"):
+            self._set_step2_grid_type(normal_text, skip_block_check=True)
+
+        self.mesh_type_combo.blockSignals(True)
+        self.mesh_type_combo.setCurrentText(utext)
+        self.mesh_type_combo.blockSignals(False)
+        self.mesh_type_var = utext
+
+        if hasattr(self, "unst_spacing_widget"):
+            self.unst_spacing_widget.setVisible(True)
+        if hasattr(self, "_update_step2_grid_type_row_visibility"):
+            self._update_step2_grid_type_row_visibility()
+        if hasattr(self, "_update_step2_dx_dy_visibility"):
+            self._update_step2_dx_dy_visibility()
+        if hasattr(self, "_refresh_step2_mesh_type_combo_enabled"):
+            self._refresh_step2_mesh_type_combo_enabled()
+
+        folder = self.selected_folder
+        cfg_path = os.path.join(folder, "unst_msh_gen_config.json")
+        reg = None
+        spacing = None
+        if os.path.isfile(cfg_path):
+            try:
+                with open(cfg_path, encoding="utf-8") as cf:
+                    cj = json.load(cf)
+                r0 = cj.get("regional")
+                reg = r0 if isinstance(r0, dict) else None
+                sp0 = cj.get("spacing")
+                spacing = sp0 if isinstance(sp0, dict) else None
+            except Exception:
+                reg = None
+                spacing = None
+
+        if spacing and hasattr(self, "unst_hmax_edit"):
+            for key, edit_attr in (
+                ("hmax", "unst_hmax_edit"),
+                ("hshr", "unst_hshr_edit"),
+                ("dhdx", "unst_dhdx_edit"),
+            ):
+                if key in spacing:
+                    s = self._format_unst_num_for_edit(spacing[key])
+                    if s is not None:
+                        getattr(self, edit_attr).setText(s)
+
+        lon_w = lon_e = lat_s = lat_n = None
+        if reg and all(k in reg for k in ("lon_min", "lon_max", "lat_min", "lat_max")):
+            try:
+                lon_w = float(reg["lon_min"])
+                lon_e = float(reg["lon_max"])
+                lat_s = float(reg["lat_min"])
+                lat_n = float(reg["lat_max"])
+            except (TypeError, ValueError):
+                lon_w = lon_e = lat_s = lat_n = None
+
+        if lon_w is None:
+            b = self._parse_grid_ww3_lon_lat_bounds(ww3_path)
+            if b:
+                lon_w, lon_e = b["lon_min"], b["lon_max"]
+                lat_s, lat_n = b["lat_min"], b["lat_max"]
+
+        if lon_w is not None and hasattr(self, "lon_west_edit"):
+            self.lon_west_edit.setText(f"{lon_w:.4f}")
+            self.lon_east_edit.setText(f"{lon_e:.4f}")
+            self.lat_south_edit.setText(f"{lat_s:.4f}")
+            self.lat_north_edit.setText(f"{lat_n:.4f}")
+
+        if hasattr(self, "log"):
+            self.log(tr("step2_unst_auto_from_ww3", "📐 检测到 grid.ww3，已切换为非结构网格并读取范围与参数"))
 
     def _load_grid_info_to_step2(self):
         """读取当前工作目录的网格文件范围和精度，填充到第二步的输入框"""
         if not self.selected_folder:
+            return
+
+        ww3_path = os.path.join(self.selected_folder, "grid.ww3")
+        if os.path.isfile(ww3_path) and os.path.getsize(ww3_path) > 0:
+            self._step2_apply_unstructured_from_grid_ww3(ww3_path)
             return
 
         # 检查是否是嵌套网格模式（通过检查目录结构）
@@ -348,186 +824,146 @@ class StepTwoServiceMixin:
                     chinese_font = font
                     break
 
-            if chinese_font:
-                plt.rcParams['font.sans-serif'] = [chinese_font]
-                plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
-            else:
-                # 如果没有找到中文字体，使用默认字体但禁用警告
+            if not chinese_font:
                 warnings.filterwarnings('ignore', category=UserWarning, module='cartopy')
         except Exception:
-            # 如果设置字体失败，忽略错误继续执行
             warnings.filterwarnings('ignore', category=UserWarning, module='cartopy')
 
-        # 创建新窗口显示地图
-        map_window = QDialog(self)
-        if is_nested:
-            map_window.setWindowTitle(tr("step3_nested_map_title", "嵌套网格地图"))
-        else:
-            map_window.setWindowTitle(tr("step3_region_map_title", "指定区域地图"))
-        map_window.resize(1100, 900)
-
-        layout = QVBoxLayout(map_window)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # 创建 matplotlib 图形
-        # 保存原始显示范围（包括边距）
+        # 计算显示范围与纵横比；实际绘图在子进程 region_map_worker 中执行（Agg），避免阻塞 UI
         original_display_lon_max = display_lon_max
         original_display_lon_min = display_lon_min
-        
-        # 计算原始网格的经度范围（不包括边距）
+
         original_lon_max = outer_lon_max if not is_nested else max(outer_lon_max, inner_lon_max)
         original_lon_min = outer_lon_min if not is_nested else min(outer_lon_min, inner_lon_min)
-        
-        # 判断是否需要处理经度超过 180 的情况
-        # 只有当整个范围都超过 180 时，才转换为 -180 到 180 范围
-        # 如果范围跨过 180 度经线（最小值 < 180，最大值 > 180），需要特殊处理
+
         if original_lon_min > 180 and original_lon_max > 180:
-            # 整个范围都超过 180，转换为 -180 到 180 范围
-            # 例如：190 ~ 200 转换为 -170 ~ -160
             original_lon_max = original_lon_max - 360
             original_lon_min = original_lon_min - 360
             display_lon_max = display_lon_max - 360
             display_lon_min = display_lon_min - 360
         elif original_lon_max > 180 and original_lon_min <= 180:
-            # 范围跨过 180 度经线（例如：110 ~ 190）
-            # 严格限制显示范围，只显示到 180 度，不显示超过 180 的部分
-            # 限制最大经度为 180，但保留边距（最多到 180 + 边距，但不超过 182）
             original_lon_max = 180.0
-            # 计算边距（基于原始网格范围）
-            grid_lon_max = outer_lon_max if not is_nested else max(outer_lon_max, inner_lon_max)
-            margin = 2.0  # 固定边距为 2 度
-            # 严格限制显示范围，最多显示到 180 + 边距，但不超过 182
+            margin = 2.0
             display_lon_max = min(180.0 + margin, 182.0)
-        
-        # 计算中心经纬度，用于投影
-        lon_center = (display_lon_min + display_lon_max) / 2.0
-        lat_center = (display_lat_min + display_lat_max) / 2.0
-        
-        # 判断是否需要显示美洲：只有当经度范围包含西半球（负值）时，才使用 central_longitude=180
-        # 对于纯东半球范围，使用默认投影，避免经度偏移
+
         if display_lon_min < 0 or display_lon_max < 0 or original_lon_min < 0 or original_lon_max < 0:
-            # 包含西半球，使用 Mercator 投影，central_longitude=180 使美洲显示在东边
-            proj = ccrs.Mercator(central_longitude=180)
+            central_lon = 180
         else:
-            # 纯东半球，使用 Mercator 投影（central_longitude=0），避免经度偏移
-            # Mercator 投影可以减少高纬度压缩，但需要设置合适的纬度范围
-            proj = ccrs.Mercator(central_longitude=0)
-            # 限制显示范围，确保不显示西半球（美洲）
-            # 如果显示范围（包括边距）超过 180，允许显示到 180 + 边距
+            central_lon = 0
             if original_display_lon_max > 180:
-                # 计算边距
                 margin = original_display_lon_max - original_lon_max
-                # 保留边距，但限制最大显示范围为 180 + 边距（最多到 185）
                 display_lon_max = min(180.0 + margin, 185.0)
-            # 如果原始经度范围接近 180，稍微缩小范围，避免显示整个地球
             elif original_lon_max >= 179:
-                # 如果原始范围接近 180，限制显示范围，但保留边距
                 margin = original_display_lon_max - original_lon_max
                 display_lon_max = min(180.0, original_lon_max + margin)
-        
-        fig = plt.figure(figsize=(10, 8), dpi=100)
-        ax = fig.add_subplot(1, 1, 1, projection=proj)
-        # 不设置 equal aspect，避免高纬度地区被压缩
-        # ax.set_aspect('equal', adjustable='box')
 
-        # 设置画图范围（显示更大的范围，包含内外网格）
-        # Mercator 投影需要使用 PlateCarree 坐标系传入经纬度
-        ax.set_extent([display_lon_min, display_lon_max, display_lat_min, display_lat_max], crs=ccrs.PlateCarree())
+        lat_center = (display_lat_min + display_lat_max) / 2.0
+        lon_span = max(float(display_lon_max - display_lon_min), 1e-6)
+        lat_span = max(float(display_lat_max - display_lat_min), 1e-6)
+        cos_ref = max(abs(np.cos(np.radians(lat_center))), 0.08)
+        map_aspect_wh = float(np.clip((lon_span * cos_ref) / lat_span, 0.2, 14.0))
 
-        # 添加地图特征
-        ax.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")  # 海色
-        ax.add_feature(cfeature.LAND, facecolor="#e6e6e6")   # 陆地色
-        ax.coastlines(resolution='10m', linewidth=0.5)       # 海岸线
-
-        # 如果是嵌套模式，绘制内外网格的虚线框
-        # 矩形框需要使用 PlateCarree 坐标系，cartopy 会自动转换到投影坐标系
-        plate_carree = ccrs.PlateCarree()
-        if is_nested:
-            # 绘制外网格虚线框（红色）
-            outer_rect = plt.Rectangle(
-                (outer_lon_min, outer_lat_min),
-                outer_lon_max - outer_lon_min,
-                outer_lat_max - outer_lat_min,
-                linewidth=1.0,
-                edgecolor='red',
-                facecolor='none',
-                linestyle='--',
-                transform=plate_carree,
-                label=tr("step3_outer_grid_label", "外网格")
-            )
-            ax.add_patch(outer_rect)
-
-            # 绘制内网格虚线框（蓝色）
-            inner_rect = plt.Rectangle(
-                (inner_lon_min, inner_lat_min),
-                inner_lon_max - inner_lon_min,
-                inner_lat_max - inner_lat_min,
-                linewidth=1.0,
-                edgecolor='blue',
-                facecolor='none',
-                linestyle='--',
-                transform=plate_carree,
-                label=tr("step3_inner_grid_label", "内网格")
-            )
-            ax.add_patch(inner_rect)
-            
-            # 添加图例
-            ax.legend(loc='upper right', fontsize=10)
+        # 略小英寸尺寸可明显减少像素量、加快子进程渲染；界面侧会按比例放大
+        fig_base = 8.0
+        fig_min_side = 3.5
+        if map_aspect_wh >= 1.0:
+            fig_w = max(fig_base, fig_min_side * map_aspect_wh)
+            fig_h = fig_w / map_aspect_wh
         else:
-            # 普通模式，绘制外网格虚线框
-            outer_rect = plt.Rectangle(
-                (outer_lon_min, outer_lat_min),
-                outer_lon_max - outer_lon_min,
-                outer_lat_max - outer_lat_min,
-                linewidth=1.0,
-                edgecolor='red',
-                facecolor='none',
-                linestyle='--',
-                transform=plate_carree,
-                label=tr("step2_map_range_label", "网格范围")
-            )
-            ax.add_patch(outer_rect)
-            ax.legend(loc='upper right', fontsize=10)
+            fig_h = max(fig_base, fig_min_side / map_aspect_wh)
+            fig_w = fig_h * map_aspect_wh
 
-        # 添加网格线（设置字体以避免中文警告）
-        gl = ax.gridlines(
-            draw_labels=True,
-            linewidth=0.8,
-            color='gray',
-            alpha=0.7,
-            linestyle='--'
-        )
-        gl.right_labels = False
-        gl.top_labels = False
+        scr = self.screen()
+        dpr = float(scr.devicePixelRatio()) if scr is not None else 1.0
+        # 导出 DPI 随屏幕缩放；上限略降以缩短 savefig 时间，界面仍按 devicePixelRatio 缩放
+        map_dpi = int(round(100 * max(1.0, dpr)))
+        map_dpi = min(max(map_dpi, 96), 200)
 
-        # 如果设置了中文字体，应用到网格标签
+        cfg = {
+            "display_extent": [display_lon_min, display_lon_max, display_lat_min, display_lat_max],
+            "central_longitude": central_lon,
+            "is_nested": bool(is_nested),
+            "outer_rect": [outer_lon_min, outer_lon_max, outer_lat_min, outer_lat_max],
+            "fig_width_in": float(fig_w),
+            "fig_height_in": float(fig_h),
+            "dpi": map_dpi,
+        }
+        if is_nested:
+            cfg["inner_rect"] = [inner_lon_min, inner_lon_max, inner_lat_min, inner_lat_max]
+            cfg["label_outer"] = tr("step3_outer_grid_label", "外网格")
+            cfg["label_inner"] = tr("step3_inner_grid_label", "内网格")
+        else:
+            cfg["label_single"] = tr("step2_map_range_label", "网格范围")
         if chinese_font:
-            try:
-                gl.xlabel_style = {'fontname': chinese_font}
-                gl.ylabel_style = {'fontname': chinese_font}
-            except:
-                pass
+            cfg["chinese_font"] = chinese_font
 
-        # 设置标题（使用已配置的字体）
-        title = tr("step3_nested_map_title", "嵌套网格地图") if is_nested else tr("step3_region_map_title", "指定区域地图")
-        plt.title(title, fontsize=18, fontweight="bold")
+        if not os.path.isfile(REGION_MAP_WORKER_SCRIPT):
+            InfoBar.warning(
+                title=tr("step2_region_map_error_title", "查看地图"),
+                content=tr("step2_region_map_worker_missing", "未找到 region_map_worker.py"),
+                duration=4000,
+                parent=self,
+            )
+            return
 
-        # 创建 canvas 并添加到窗口
-        canvas = FigureCanvas(fig)
-        layout.addWidget(canvas)
+        cfg_fd, cfg_path = tempfile.mkstemp(suffix=".json", prefix="ww3tool_region_map_")
+        png_fd, png_path = tempfile.mkstemp(suffix=".png", prefix="ww3tool_region_map_")
+        os.close(cfg_fd)
+        os.close(png_fd)
+        try:
+            with open(cfg_path, "w", encoding="utf-8") as cf:
+                json.dump(cfg, cf, ensure_ascii=False, indent=0)
+        except Exception as e:
+            for p in (cfg_path, png_path):
+                try:
+                    if os.path.isfile(p):
+                        os.remove(p)
+                except OSError:
+                    pass
+            InfoBar.warning(
+                title=tr("step2_region_map_error_title", "查看地图"),
+                content=str(e),
+                duration=4000,
+                parent=self,
+            )
+            return
 
-        # 显示窗口
-        map_window.exec()
+        self._region_map_temp_paths = [cfg_path, png_path]
+        self._region_map_out_png = png_path
+        self._region_map_log_ctx = {
+            "is_nested": is_nested,
+            "outer_lon_min": outer_lon_min,
+            "outer_lon_max": outer_lon_max,
+            "outer_lat_min": outer_lat_min,
+            "outer_lat_max": outer_lat_max,
+            "inner_lon_min": inner_lon_min,
+            "inner_lon_max": inner_lon_max,
+            "inner_lat_min": inner_lat_min,
+            "inner_lat_max": inner_lat_max,
+        }
 
-        # 清理资源
-        plt.close(fig)
+        map_window = _RegionMapDialog(self, map_aspect_wh=map_aspect_wh)
+        self._region_map_dialog = map_window
 
-        if is_nested:
-            self.log(tr("step2_nested_map_displayed", "📍 已显示嵌套网格地图"))
-            self.log(tr("step2_outer_grid_range", "   外网格: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]").format(lon_min=f"{outer_lon_min:.2f}", lon_max=f"{outer_lon_max:.2f}", lat_min=f"{outer_lat_min:.2f}", lat_max=f"{outer_lat_max:.2f}"))
-            self.log(tr("step2_inner_grid_range", "   内网格: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]").format(lon_min=f"{inner_lon_min:.2f}", lon_max=f"{inner_lon_max:.2f}", lat_min=f"{inner_lat_min:.2f}", lat_max=f"{inner_lat_max:.2f}"))
-        else:
-            self.log(tr("step2_map_range_displayed", "📍 已显示地图范围: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]").format(lon_min=f"{outer_lon_min:.2f}", lon_max=f"{outer_lon_max:.2f}", lat_min=f"{outer_lat_min:.2f}", lat_max=f"{outer_lat_max:.2f}"))
+        def _kill():
+            self._kill_region_map_process()
+
+        map_window.set_kill_callback(_kill)
+
+        proc = QProcess(self)
+        self._region_map_proc = proc
+        proc.finished.connect(self._on_region_map_process_finished)
+        proc.start(sys.executable, [REGION_MAP_WORKER_SCRIPT, cfg_path, png_path])
+
+        try:
+            map_window.exec()
+        finally:
+            self._cleanup_region_map_temp_files()
+            self._region_map_dialog = None
+            self._region_map_proc = None
+            self._region_map_out_png = None
+            self._region_map_temp_paths = []
+            self._region_map_log_ctx = None
 
     # ========== 工具函数 ==========
     def _is_nested_grid(self, grid_type):
@@ -537,22 +973,11 @@ class StepTwoServiceMixin:
 
     # ========== 辅助函数（路径、缓存相关）==========
     def _get_gridgen_path(self):
-        """动态获取 GRIDGEN_PATH（从配置文件读取最新值）"""
-        config = load_config()
-        gridgen_path = config.get("GRIDGEN_PATH", "").strip()
-        # 如果 gridgen 路径为空，使用默认值 ../gridgen（相对于项目根目录）
-        if not gridgen_path:
-            # __file__ 是 main/home/step2/step2_service.py，需要回到项目根目录
-            script_dir = os.path.dirname(os.path.abspath(__file__))  # main/home/step2
-            home_dir = os.path.dirname(script_dir)  # main/home
-            main_dir = os.path.dirname(home_dir)  # main
-            project_root = os.path.dirname(main_dir)  # 项目根目录
-            gridgen_path = os.path.join(project_root, "gridgen")
-        # 规范化路径
-        return os.path.normpath(gridgen_path) if gridgen_path else gridgen_path
+        """gridgen 根目录固定为项目下的 gridgen/，与设置无关。"""
+        return get_project_gridgen_path()
 
     def _get_gridgen_bin_path(self):
-        """动态获取 GRIDGEN_BIN_PATH（根据 GRIDGEN_PATH 计算）"""
+        """动态获取 GRIDGEN_BIN_PATH（项目 gridgen/matlab）。"""
         gridgen_path = self._get_gridgen_path()
         return os.path.normpath(os.path.join(gridgen_path, "matlab")) if gridgen_path else None
 
@@ -568,7 +993,7 @@ class StepTwoServiceMixin:
             if os.path.isabs(ref_data_path):
                 ref_dir = ref_data_path
             else:
-                # 如果是相对路径，相对于 GRIDGEN_PATH
+                # 如果是相对路径，相对于项目 gridgen 根目录
                 ref_dir = os.path.join(gridgen_path, ref_data_path)
         else:
             # 如果配置为空，使用默认路径
@@ -582,6 +1007,457 @@ class StepTwoServiceMixin:
         ref_dir = os.path.normpath(os.path.abspath(ref_dir))
         return ref_dir
 
+    def _get_unst_msh_gen_dir(self):
+        """gridgen/unst_msh_gen 目录（JIGSAW 非结构网格工程）。"""
+        return os.path.normpath(os.path.join(self._get_gridgen_path(), "unst_msh_gen"))
+
+    @staticmethod
+    def _unst_jigsaw_shared_lib_basename():
+        """jigsaw-python 安装后动态库文件名（与 jigsawpy/libsaw.py 一致）。"""
+        s = platform.system()
+        if s == "Windows":
+            return "jigsaw.dll"
+        if s == "Darwin":
+            return "libjigsaw.dylib"
+        return "libjigsaw.so"
+
+    def _unst_jigsaw_lib_path(self, unst_dir):
+        return os.path.join(
+            unst_dir,
+            "jigsaw-python",
+            "jigsawpy",
+            "_lib",
+            self._unst_jigsaw_shared_lib_basename(),
+        )
+
+    def _is_jigsaw_library_built(self, unst_dir):
+        """JIGSAW 是否已编译到 jigsawpy/_lib（jigsawpy 通过 ctypes 加载该库）。"""
+        p = self._unst_jigsaw_lib_path(unst_dir)
+        try:
+            return os.path.isfile(p) and os.path.getsize(p) > 0
+        except OSError:
+            return False
+
+    def _ensure_jigsaw_built(self, unst_dir):
+        """若无动态库则在 jigsaw-python 目录执行 build.py（cmake）；成功返回 True。"""
+        if self._is_jigsaw_library_built(unst_dir):
+            return True
+        jig_root = os.path.join(unst_dir, "jigsaw-python")
+        build_py = os.path.join(jig_root, "build.py")
+        ext_src = os.path.join(jig_root, "external", "jigsaw")
+        if not os.path.isfile(build_py):
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_build_script_missing",
+                    "❌ 未找到 JIGSAW 编译脚本：{path}",
+                ).format(path=build_py)
+            )
+            return False
+        if not os.path.isdir(ext_src):
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_external_missing",
+                    "❌ 未找到 JIGSAW 源码目录：{path}（请确认 jigsaw-python 子模块/目录完整）",
+                ).format(path=ext_src)
+            )
+            return False
+        if not shutil.which("cmake"):
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_cmake_missing_log",
+                    "❌ 未在 PATH 中找到 cmake，无法自动编译 JIGSAW。请安装 CMake 或 Xcode Command Line Tools（macOS）后重试。",
+                )
+            )
+            return False
+        self.log_signal.emit(
+            tr(
+                "step2_jigsaw_building",
+                "🔧 未检测到 JIGSAW 动态库（{lib}），正在 jigsaw-python 下执行 build.py 编译（可能需要数分钟）…",
+            ).format(lib=self._unst_jigsaw_shared_lib_basename())
+        )
+        argv = [sys.executable, "-u", "build.py"]
+        bt = (os.environ.get("WW3TOOL_JIGSAW_CMAKE_BUILD_TYPE") or "").strip()
+        if bt:
+            argv.extend(["--cmake-build-type", bt])
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_build_type_env",
+                    "   使用环境变量 WW3TOOL_JIGSAW_CMAKE_BUILD_TYPE={bt}（例如 macOS 可试 Debug）",
+                ).format(bt=bt)
+            )
+        try:
+            ret = self._stream_subprocess_to_log(argv, cwd=jig_root, env=os.environ.copy())
+        except Exception as e:
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_build_exception",
+                    "❌ JIGSAW 编译过程异常：{err}",
+                ).format(err=e)
+            )
+            return False
+        if ret != 0:
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_build_failed_code",
+                    "❌ JIGSAW 编译失败，退出码：{code}。可在终端进入 jigsaw-python 目录手动执行：python3 build.py",
+                ).format(code=ret)
+            )
+            return False
+        if not self._is_jigsaw_library_built(unst_dir):
+            self.log_signal.emit(
+                tr(
+                    "step2_jigsaw_build_no_lib",
+                    "❌ 编译结束仍未找到 {lib}，请检查 jigsaw-python/build.py 输出或手动编译。",
+                ).format(lib=self._unst_jigsaw_shared_lib_basename())
+            )
+            return False
+        self.log_signal.emit(tr("step2_jigsaw_build_ok", "✅ JIGSAW 动态库已就绪。"))
+        return True
+
+    def _is_step2_unstructured_mesh(self):
+        """当前第二步是否选择「非结构网格」。"""
+        ut = tr("step2_mesh_type_unstructured", "非结构网格")
+        return getattr(self, "mesh_type_var", "") == ut
+
+    def _get_unst_dem_file(self):
+        """
+        解析非结构网格所需的 DEM（NetCDF，需含 lon/lat/bed_elevation 等，见 unst_msh_gen）。
+        优先 public/config.json 的 UNST_DEM_FILE；否则使用 unst_msh_gen/config.json 中的 dem_file（相对路径相对 unst_msh_gen）。
+        """
+        cfg = load_config()
+        custom = (cfg.get("UNST_DEM_FILE") or "").strip()
+        gridgen_root = self._get_gridgen_path()
+        if custom:
+            path = custom if os.path.isabs(custom) else os.path.normpath(os.path.join(gridgen_root, custom))
+            return path if os.path.isfile(path) else None
+        unst_dir = self._get_unst_msh_gen_dir()
+        tpl = os.path.join(unst_dir, "config.json")
+        if not os.path.isfile(tpl):
+            return None
+        try:
+            with open(tpl, encoding="utf-8") as f:
+                raw = json.load(f)
+            dem_rel = (raw.get("data") or {}).get("dem_file") or ""
+            dem_rel = str(dem_rel).strip()
+            if not dem_rel:
+                return None
+            if os.path.isabs(dem_rel):
+                return dem_rel if os.path.isfile(dem_rel) else None
+            abs_dem = os.path.normpath(os.path.join(unst_dir, dem_rel))
+            return abs_dem if os.path.isfile(abs_dem) else None
+        except Exception:
+            return None
+
+    def _check_unst_mesh_prerequisites(self):
+        """非结构网格生成前的环境检查。返回 (ok, err_msg)。"""
+        unst_dir = self._get_unst_msh_gen_dir()
+        if not os.path.isdir(unst_dir):
+            return False, tr(
+                "step2_unst_dir_missing",
+                "未找到 unst_msh_gen 目录：{path}（请确认项目内 gridgen/unst_msh_gen 是否存在）",
+            ).format(path=unst_dir)
+        for name in ("ocn_ww3.py", "ocn_ww3_regional.py", "config_loader.py", "spacing.py"):
+            p = os.path.join(unst_dir, name)
+            if not os.path.isfile(p):
+                return False, tr(
+                    "step2_unst_incomplete",
+                    "unst_msh_gen 不完整，缺少：{name}",
+                ).format(name=name)
+        dem = self._get_unst_dem_file()
+        if not dem:
+            return False, tr(
+                "step2_unst_dem_missing",
+                "未找到非结构网格 DEM（NetCDF）。请在 public/config.json 中设置 UNST_DEM_FILE 为绝对路径，"
+                "或将 DEM 放到 unst_msh_gen/config.json 里 dem_file 所指向的位置（相对路径相对于 unst_msh_gen）。",
+            )
+        # 与 gridgen/python 相同：子进程用 sys.executable，须在该环境中装好 scikit-image
+        try:
+            r = subprocess.run(
+                [sys.executable, "-c", "import skimage.filters, skimage.measure"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except Exception as e:
+            return False, tr(
+                "step2_unst_skimage_check_failed",
+                "检测 scikit-image 失败：{err}",
+            ).format(err=e)
+        if r.returncode != 0:
+            return False, tr(
+                "step2_unst_skimage_missing",
+                "当前用于生成网格的 Python 未安装 scikit-image（unst_msh_gen/spacing.py 需要）。\n"
+                "请在终端执行（与启动本程序的解释器一致）：\n{cmd}",
+            ).format(cmd=f"{sys.executable} -m pip install scikit-image")
+        # JIGSAW：jigsawpy 依赖 _lib 下动态库；未编译时生成步骤会运行 build.py，此处要求已安装 cmake
+        if not self._is_jigsaw_library_built(unst_dir):
+            if not shutil.which("cmake"):
+                return False, tr(
+                    "step2_jigsaw_cmake_required",
+                    "未检测到 JIGSAW 动态库（{lib}），且系统 PATH 中无 cmake，无法在生成时自动编译。\n"
+                    "请安装 CMake（Windows/Linux）或 Xcode Command Line Tools（macOS：xcode-select --install），\n"
+                    "或先在目录 jigsaw-python 下手动执行：python3 build.py",
+                ).format(lib=self._unst_jigsaw_shared_lib_basename())
+        return True, ""
+
+    def _build_unst_msh_gen_config_dict(self, lon_west, lon_east, lat_south, lat_north, is_global):
+        """基于 unst_msh_gen/config.json 模板与界面 spacing/范围生成运行用 JSON 对象。"""
+        unst_dir = self._get_unst_msh_gen_dir()
+        tpl_path = os.path.join(unst_dir, "config.json")
+        with open(tpl_path, encoding="utf-8") as f:
+            raw = json.load(f)
+
+        def _f(edit, default):
+            try:
+                t = edit.text().strip()
+                return float(t) if t else float(default)
+            except Exception:
+                return float(default)
+
+        def _f_attr(attr, default):
+            ed = getattr(self, attr, None)
+            return _f(ed, default) if ed is not None else float(default)
+
+        hmax = _f_attr("unst_hmax_edit", raw.get("spacing", {}).get("hmax", 100.0))
+        hshr = _f_attr("unst_hshr_edit", raw.get("spacing", {}).get("hshr", 20.0))
+        dhdx = _f_attr("unst_dhdx_edit", raw.get("spacing", {}).get("dhdx", 0.05))
+        hmin = hshr
+
+        spacing = dict(raw.get("spacing") or {})
+        spacing["hmax"] = hmax
+        spacing["hmin"] = hmin
+        spacing["hshr"] = hshr
+        spacing["dhdx"] = dhdx
+        raw["spacing"] = spacing
+
+        mesh_s = dict(raw.get("mesh_settings") or {})
+        mesh_s["hfun_hmax"] = float(hmax)
+        raw["mesh_settings"] = mesh_s
+
+        data = dict(raw.get("data") or {})
+        dem = self._get_unst_dem_file()
+        if not dem:
+            raise FileNotFoundError("unst DEM")
+        data["dem_file"] = dem
+        raw["data"] = data
+
+        lon_lo, lon_hi = min(lon_west, lon_east), max(lon_west, lon_east)
+        lat_lo, lat_hi = min(lat_south, lat_north), max(lat_south, lat_north)
+        if is_global:
+            raw.pop("regional", None)
+        else:
+            reg = dict(raw.get("regional") or {})
+            reg["lon_min"] = float(lon_lo)
+            reg["lon_max"] = float(lon_hi)
+            reg["lat_min"] = float(lat_lo)
+            reg["lat_max"] = float(lat_hi)
+            reg["margin_deg"] = float(reg.get("margin_deg", 1.0))
+            reg["edge_segments"] = int(reg.get("edge_segments", 64))
+            mid_lon = 0.5 * (lon_lo + lon_hi)
+            mid_lat = 0.5 * (lat_lo + lat_hi)
+            reg["stereo_lon"] = float(mid_lon)
+            reg["stereo_lat"] = float(mid_lat)
+            raw["regional"] = reg
+        return raw
+
+    def _stream_subprocess_to_log(self, argv, cwd, env):
+        """运行子进程并将 stdout/stderr 打到 log_signal，返回 returncode。"""
+        from queue import Queue, Empty
+
+        proc = subprocess.Popen(
+            argv,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+        output_queue = Queue()
+        read_finished = threading.Event()
+
+        def read_output_thread():
+            try:
+                for line in iter(proc.stdout.readline, ""):
+                    line_stripped = line.rstrip()
+                    if line_stripped:
+                        output_queue.put(line_stripped)
+                remaining = proc.stdout.read()
+                if remaining:
+                    for ln in remaining.splitlines():
+                        if ln.strip():
+                            output_queue.put(ln.strip())
+            finally:
+                read_finished.set()
+
+        reader_thread = threading.Thread(target=read_output_thread, daemon=True)
+        reader_thread.start()
+        while not read_finished.is_set() or not output_queue.empty():
+            try:
+                line = output_queue.get(timeout=0.05)
+                self.log_signal.emit(line)
+            except Empty:
+                pass
+        reader_thread.join(timeout=2)
+        proc.wait()
+        return proc.returncode
+
+    def _run_unstructured_mesh_generation(self, lon_west, lon_east, lat_south, lat_north):
+        """在临时目录调用 unst_msh_gen，成功后仅将 grid.ww3 复制到工作目录。"""
+        output_dir = os.path.abspath(os.path.normpath(self.selected_folder))
+        os.makedirs(output_dir, exist_ok=True)
+        unst_dir = self._get_unst_msh_gen_dir()
+        if not self._ensure_jigsaw_built(unst_dir):
+            return False
+        is_global = self._is_global_range(lon_west, lon_east, lat_south, lat_north)
+
+        try:
+            cfg_obj = self._build_unst_msh_gen_config_dict(
+                lon_west, lon_east, lat_south, lat_north, is_global
+            )
+        except Exception as e:
+            self.log_signal.emit(
+                tr("step2_unst_config_build_failed", "❌ 非结构网格配置生成失败：{err}").format(err=e)
+            )
+            return False
+
+        cfg_name = "unst_msh_gen_config.json"
+        cache_key = self._get_unst_mesh_cache_key(cfg_obj, is_global)
+        unst_cache_dir = self._check_unst_mesh_cache(cache_key)
+
+        sp = cfg_obj.get("spacing") or {}
+        self.log_signal.emit(
+            tr(
+                "step2_unst_params",
+                "   参数: hmax={hmax}, hmin={hmin}, hshr={hshr}, dhdx={dhdx}",
+            ).format(
+                hmax=sp.get("hmax", ""),
+                hmin=sp.get("hmin", ""),
+                hshr=sp.get("hshr", ""),
+                dhdx=sp.get("dhdx", ""),
+            )
+        )
+        self.log_signal.emit(
+            tr("step2_lon_range", "   经度范围: [{min}, {max}]").format(min=lon_west, max=lon_east)
+        )
+        self.log_signal.emit(
+            tr("step2_lat_range", "   纬度范围: [{min}, {max}]").format(min=lat_south, max=lat_north)
+        )
+
+        if unst_cache_dir:
+            self.log_signal.emit(
+                tr(
+                    "step2_unst_cache_found",
+                    "✅ 找到匹配的非结构网格缓存，已复制 grid.ww3 与配置到工作目录。",
+                )
+            )
+            try:
+                self._load_unst_mesh_from_cache(unst_cache_dir, output_dir)
+                cfg_out = os.path.join(output_dir, cfg_name)
+                with open(cfg_out, "w", encoding="utf-8") as f:
+                    json.dump(cfg_obj, f, indent=2, ensure_ascii=False)
+                    f.write("\n")
+            except Exception as e:
+                self.log_signal.emit(
+                    tr("step2_unst_cache_copy_failed", "❌ 从缓存复制失败：{err}").format(err=e)
+                )
+                return False
+            return True
+
+        self.log_signal.emit(tr("step2_cache_not_found", "🔄 未找到匹配的缓存，开始生成新网格..."))
+
+        tmpdir = tempfile.mkdtemp(prefix="ww3tool_unst_")
+        cfg_path = os.path.join(tmpdir, cfg_name)
+        try:
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                json.dump(cfg_obj, f, indent=2)
+                f.write("\n")
+        except Exception as e:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            self.log_signal.emit(
+                tr("step2_unst_config_write_failed", "❌ 无法写入配置文件：{path} — {err}").format(
+                    path=cfg_path, err=e
+                )
+            )
+            return False
+
+        unst_dir_norm = os.path.normpath(os.path.abspath(unst_dir))
+        jig_py = os.path.normpath(os.path.join(unst_dir_norm, "jigsaw-python"))
+
+        if is_global:
+            script = os.path.join(unst_dir_norm, "ocn_ww3.py")
+        else:
+            script = os.path.join(unst_dir_norm, "ocn_ww3_regional.py")
+
+        # 与 gridgen/python 一致：sys.executable + -u -c，在代码里 sys.path.insert，env 仅 PYTHONUNBUFFERED
+        script_bn = os.path.basename(script)
+        python_script = f"""
+import sys
+import runpy
+sys.path.insert(0, {repr(jig_py)})
+sys.path.insert(0, {repr(unst_dir_norm)})
+sys.argv = [{repr(script_bn)}, "--config", {repr(cfg_path)}]
+runpy.run_path({repr(script)}, run_name="__main__")
+"""
+
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+
+        argv = [sys.executable, "-u", "-c", python_script]
+
+        ret = 1
+        try:
+            try:
+                ret = self._stream_subprocess_to_log(argv, cwd=tmpdir, env=env)
+            except Exception as e:
+                self.log_signal.emit(tr("step2_python_error", "❌ 执行 Python 版 gridgen 出错: {error}").format(error=e))
+                import traceback
+
+                for line in traceback.format_exc().splitlines():
+                    self.log_signal.emit(line)
+                ret = 1
+
+            if ret != 0:
+                self.log_signal.emit(
+                    tr("step2_python_failed", "❌ Python 版 gridgen 执行失败，返回码: {code}").format(code=ret)
+                )
+                return False
+
+            src_ww3 = os.path.join(tmpdir, "grid.ww3")
+            dst_ww3 = os.path.join(output_dir, "grid.ww3")
+            if os.path.isfile(src_ww3) and os.path.getsize(src_ww3) > 0:
+                shutil.copy2(src_ww3, dst_ww3)
+                try:
+                    shutil.copy2(cfg_path, os.path.join(output_dir, cfg_name))
+                except Exception:
+                    pass
+                try:
+                    self._save_unst_mesh_to_cache(cache_key, src_ww3, cfg_obj)
+                    self.log_signal.emit(
+                        tr(
+                            "step2_unst_cache_saved",
+                            "✅ 已保存非结构网格到缓存（键 {key}…）",
+                        ).format(key=cache_key[:12])
+                    )
+                except Exception as cache_error:
+                    self.log_signal.emit(
+                        tr("step2_cache_save_failed", "⚠️ 保存缓存失败: {error}").format(error=cache_error)
+                    )
+                self.log_signal.emit(
+                    tr("step2_unst_mesh_complete", "✅ 非结构化三角网格生成完成！")
+                )
+                return True
+
+            msh_path = os.path.join(tmpdir, "grid.msh")
+            if os.path.isfile(msh_path) and os.path.getsize(msh_path) > 0:
+                self.log_signal.emit(tr("step2_grid_create_failed", "错误：网格创建失败"))
+                return False
+
+            self.log_signal.emit(tr("step2_grid_create_failed", "错误：网格创建失败"))
+            return False
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def _check_reference_data(self):
         """检测 reference_data 目录及必需文件是否存在。返回 (是否通过, 缺失文件列表, 参考数据目录路径)。"""
         ref_dir = self._get_reference_data_path()
@@ -594,38 +1470,116 @@ class StepTwoServiceMixin:
         return len(missing) == 0, missing, ref_dir
 
     def _run_get_reference_data(self):
-        """在后台线程中执行 gridgen/get_reference_data.py 下载参考数据，实时输出到 log，完成后在主线程提示。"""
+        """
+        从 GitHub Release「data」资源下载 reference_data 分卷 part_aa…part_ad，
+        按顺序二进制拼接（等价于 shell: cat part_aa part_ab part_ac part_ad > reference_data.zip），
+        再解压到 gridgen/reference_data（或配置的 REFERENCE_DATA_PATH）。
+        """
         ref_dir = self._get_reference_data_path()
-        gridgen_dir = os.path.dirname(ref_dir) if ref_dir else self._get_gridgen_path()
-        script_path = os.path.join(gridgen_dir, "get_reference_data.py")
-        if not os.path.isfile(script_path):
-            QtCore.QTimer.singleShot(0, lambda: self._show_ref_data_result(False, tr("step2_ref_data_script_not_found", "未找到 get_reference_data.py：{path}").format(path=script_path)))
+        work_dir = os.path.dirname(ref_dir) if ref_dir else self._get_gridgen_path()
+        if not work_dir:
+            QtCore.QTimer.singleShot(
+                0,
+                lambda: self._show_ref_data_result(
+                    False,
+                    tr("step2_ref_data_no_workdir", "无法确定参考数据所在目录，请检查 REFERENCE_DATA_PATH 配置。"),
+                ),
+            )
             return
+
+        part_urls = [
+            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_aa",
+            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_ab",
+            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_ac",
+            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_ad",
+        ]
+        part_names = ["part_aa", "part_ab", "part_ac", "part_ad"]
+        zip_path = os.path.join(work_dir, "reference_data.zip")
 
         log_signal = getattr(self, "log_signal", None)
 
+        def _ref_dl_reporthook(name: str):
+            def _hook(block_num: int, block_size: int, total_size: int) -> None:
+                if not log_signal:
+                    return
+                downloaded = block_num * block_size
+                if total_size <= 0:
+                    if block_num % 200 == 0 or block_num < 3:
+                        mb = downloaded / (1024 * 1024)
+                        log_signal.emit(f"  [{name}] " + tr("step2_ref_data_dl_mb", "已下载: {mb:.1f} MB").format(mb=mb))
+                    return
+                downloaded = min(downloaded, total_size)
+                pct = 100.0 * downloaded / total_size
+                mb_d = downloaded / (1024 * 1024)
+                mb_t = total_size / (1024 * 1024)
+                prev_pct = (block_num - 1) * block_size * 100.0 / total_size if block_num else 0
+                if block_num == 0 or pct >= 99.5 or int(pct // 5) > int(prev_pct // 5):
+                    log_signal.emit(
+                        f"  [{name}] "
+                        + tr(
+                            "step2_ref_data_dl_pct",
+                            "进度: {pct:.1f}% ({mb_d:.1f} / {mb_t:.1f} MB)",
+                        ).format(pct=pct, mb_d=mb_d, mb_t=mb_t)
+                    )
+
+            return _hook
+
         def _run():
+            ok = False
+            msg = ""
             try:
-                proc = subprocess.Popen(
-                    [sys.executable, "-u", script_path],
-                    cwd=gridgen_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                )
+                os.makedirs(work_dir, exist_ok=True)
+
                 if log_signal:
-                    log_signal.emit(tr("step2_ref_data_started", "正在执行 get_reference_data.py 下载参考数据…"))
-                for line in proc.stdout:
-                    line = line.rstrip()
-                    if line and log_signal:
-                        log_signal.emit(line)
-                proc.wait()
-                ok = proc.returncode == 0
-                msg = tr("step2_ref_data_done", "下载完成") if ok else tr("step2_ref_data_failed", "下载失败，返回码：{code}").format(code=proc.returncode)
-            except subprocess.TimeoutExpired:
-                ok = False
-                msg = tr("step2_ref_data_timeout", "下载超时")
+                    log_signal.emit(tr("step2_ref_data_started", "正在从 GitHub 下载 reference_data 分卷…"))
+
+                for url, pname in zip(part_urls, part_names):
+                    dest_part = os.path.join(work_dir, pname)
+                    if log_signal:
+                        log_signal.emit(tr("step2_ref_data_dl_part", "下载分卷：{name}").format(name=pname))
+                    urlretrieve(url, dest_part, _ref_dl_reporthook(pname))
+
+                if log_signal:
+                    log_signal.emit(tr("step2_ref_data_merge", "正在合并分卷为 reference_data.zip…"))
+                # 固定顺序拼接，等价于: cat part_aa part_ab part_ac part_ad > reference_data.zip
+                with open(zip_path, "wb") as out_zip:
+                    for pname in part_names:
+                        part_path = os.path.join(work_dir, pname)
+                        if not os.path.isfile(part_path) or os.path.getsize(part_path) == 0:
+                            raise OSError(tr("step2_ref_data_part_missing", "分卷缺失或为空：{name}").format(name=pname))
+                        with open(part_path, "rb") as inf:
+                            shutil.copyfileobj(inf, out_zip)
+
+                if log_signal:
+                    log_signal.emit(tr("step2_ref_data_unzip", "正在解压到 reference_data 目录…"))
+                with zipfile.ZipFile(zip_path, "r") as zf:
+                    file_members = [
+                        n for n in zf.namelist() if n.strip() and not n.endswith("/")
+                    ]
+                    if not file_members:
+                        raise OSError(
+                            tr("step2_ref_data_zip_empty", "reference_data.zip 内无有效文件")
+                        )
+                    top_roots = {n.split("/")[0] for n in file_members}
+                    # zip 内仅有 reference_data/ 前缀时解压到 gridgen（得到 …/reference_data/…）
+                    if len(top_roots) == 1 and next(iter(top_roots)) == "reference_data":
+                        zf.extractall(work_dir)
+                    else:
+                        os.makedirs(ref_dir, exist_ok=True)
+                        zf.extractall(ref_dir)
+
+                for pname in part_names:
+                    try:
+                        os.remove(os.path.join(work_dir, pname))
+                    except OSError:
+                        pass
+                try:
+                    os.remove(zip_path)
+                except OSError:
+                    pass
+
+                ok = True
+                msg = tr("step2_ref_data_done", "下载完成")
             except Exception as e:
                 ok = False
                 msg = str(e)
@@ -635,7 +1589,7 @@ class StepTwoServiceMixin:
         try:
             InfoBar.info(
                 title=tr("tip", "提示"),
-                content=tr("step2_ref_data_started", "正在执行 get_reference_data.py 下载参考数据…"),
+                content=tr("step2_ref_data_started", "正在从 GitHub 下载 reference_data 分卷…"),
                 duration=3000,
                 parent=self,
             )
@@ -758,6 +1712,51 @@ class StepTwoServiceMixin:
             if os.path.exists(src):
                 dst = os.path.join(output_dir, f)
                 shutil.copy2(src, dst)
+
+    def _get_unst_mesh_cache_key(self, cfg_obj: dict, is_global: bool) -> str:
+        """非结构网格缓存键：完整配置 + DEM 文件签名（mtime/size），避免 DEM 更新仍误命中。"""
+        import hashlib
+
+        dem_path = (cfg_obj.get("data") or {}).get("dem_file") or ""
+        dem_path = os.path.normpath(os.path.abspath(str(dem_path)))
+        dem_sig = [0, 0]
+        if os.path.isfile(dem_path):
+            st = os.stat(dem_path)
+            dem_sig = [int(st.st_mtime_ns), int(st.st_size)]
+        bundle = {
+            "cfg": cfg_obj,
+            "dem_path": dem_path.replace("\\", "/"),
+            "dem_sig": dem_sig,
+            "is_global": bool(is_global),
+        }
+        try:
+            params_str = json.dumps(bundle, sort_keys=True, separators=(",", ":"))
+        except TypeError:
+            params_str = json.dumps(bundle, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(params_str.encode("utf-8")).hexdigest()
+
+    def _check_unst_mesh_cache(self, cache_key: str):
+        """若存在有效 grid.ww3 则返回缓存目录路径，否则 None。"""
+        if not cache_key:
+            return None
+        base = os.path.join(self._get_grid_cache_dir(), "unst", cache_key)
+        ww3 = os.path.join(base, "grid.ww3")
+        if os.path.isfile(ww3) and os.path.getsize(ww3) > 0:
+            return base
+        return None
+
+    def _save_unst_mesh_to_cache(self, cache_key: str, src_grid_ww3: str, cfg_obj: dict) -> None:
+        base = os.path.join(self._get_grid_cache_dir(), "unst", cache_key)
+        if os.path.isdir(base):
+            shutil.rmtree(base)
+        os.makedirs(base, exist_ok=True)
+        shutil.copy2(src_grid_ww3, os.path.join(base, "grid.ww3"))
+        meta = {"cache_key": cache_key, "cfg": cfg_obj}
+        with open(os.path.join(base, "params.json"), "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
+
+    def _load_unst_mesh_from_cache(self, cache_path: str, output_dir: str) -> None:
+        shutil.copy2(os.path.join(cache_path, "grid.ww3"), os.path.join(output_dir, "grid.ww3"))
 
     def _validate_grid_files(self, output_dir, max_retries=3, retry_delay=1.0):
         """验证生成的网格文件是否完整，如果文件不完整则等待并重试"""
@@ -1297,11 +2296,25 @@ class StepTwoServiceMixin:
 
     def apply_and_create_grid(self):
         """应用配置并生成网格（合并两步为一步）- 在后台线程中执行"""
-        ok, missing_list, ref_dir = self._check_reference_data()
-        if not ok:
-            dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
-            dlg.exec()
-            return
+        if self._is_step2_unstructured_mesh():
+            unst_ok, unst_err = self._check_unst_mesh_prerequisites()
+            if not unst_ok:
+                try:
+                    InfoBar.warning(
+                        title=tr("tip", "提示"),
+                        content=unst_err,
+                        duration=6000,
+                        parent=self,
+                    )
+                except Exception:
+                    pass
+                return
+        else:
+            ok, missing_list, ref_dir = self._check_reference_data()
+            if not ok:
+                dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
+                dlg.exec()
+                return
         self._maybe_prompt_global_grid()
         # 禁用按钮，防止重复点击
         self.btn_create_grid.setEnabled(False)
@@ -1323,6 +2336,8 @@ class StepTwoServiceMixin:
         """恢复生成网格按钮状态（在主线程中执行）"""
         self.btn_create_grid.setEnabled(True)
         self.btn_create_grid.setText(tr("step2_create_grid", "生成网格"))
+        if hasattr(self, "_refresh_step2_mesh_type_combo_enabled"):
+            self._refresh_step2_mesh_type_combo_enabled()
 
     def run_create_grid(self):
         """执行网格生成（MATLAB 或 Python 版本）并动态输出日志（在后台线程中执行）"""
@@ -1363,6 +2378,21 @@ class StepTwoServiceMixin:
 
         if missing_fields:
             self.log_signal.emit(tr("step2_latlon_empty_blocked", "❌ 经纬度不能为空，缺少：{fields}").format(fields=", ".join(missing_fields)))
+            return
+
+        # 非结构网格：使用 gridgen/unst_msh_gen（JIGSAW / ocn_ww3*）
+        if self._is_step2_unstructured_mesh():
+            try:
+                lon_w = float(self.lon_west_edit.text().strip())
+                lon_e = float(self.lon_east_edit.text().strip())
+                lat_s = float(self.lat_south_edit.text().strip())
+                lat_n = float(self.lat_north_edit.text().strip())
+            except (ValueError, AttributeError):
+                self.log_signal.emit(
+                    tr("step2_unst_latlon_invalid", "❌ 经纬度格式无效，请输入有效数字。")
+                )
+                return
+            self._run_unstructured_mesh_generation(lon_w, lon_e, lat_s, lat_n)
             return
 
         # 如果是嵌套网格，需要分别生成外网格和内网格
@@ -1867,164 +2897,355 @@ create_grid(
                 self.log_signal.emit(line)
             return False
 
+    @staticmethod
+    def _grid_viz_package_src_dir():
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    def _emit_grid_viz_log(self, msg: str) -> None:
+        sig = getattr(self, "log_signal", None)
+        if sig is not None:
+            sig.emit(msg)
+
+    def _prepare_visualize_grid_busy(self, viz_name: str) -> None:
+        """开始后台可视化：日志 + 禁用按钮（与「生成网格」一致）。"""
+        self.log(
+            tr(
+                "step2_grid_viz_worker_start",
+                "🖼️ {name}：子进程生成网格图中…",
+            ).format(name=viz_name)
+        )
+        if hasattr(self, "btn_visualize_grid"):
+            self.btn_visualize_grid.setEnabled(False)
+            self.btn_visualize_grid.setText(tr("step8_generating", "生成中..."))
+
+    def _restore_visualize_grid_button(self) -> None:
+        if hasattr(self, "btn_visualize_grid"):
+            self.btn_visualize_grid.setEnabled(True)
+            self.btn_visualize_grid.setText(tr("step2_visualize_grid", "网格可视化"))
+
+    def _start_grid_viz_background(self, target, args: tuple, viz_name: str) -> None:
+        self._prepare_visualize_grid_busy(viz_name)
+
+        def _run():
+            try:
+                target(*args)
+            finally:
+                QtCore.QTimer.singleShot(0, self._restore_visualize_grid_button)
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _grid_viz_spawn_worker(self, grid_dir_abs: str, mode: str, log_fn=None) -> dict:
+        src = self._grid_viz_package_src_dir()
+        env = os.environ.copy()
+        prev = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = src + (os.pathsep + prev if prev else "")
+        cmd = [
+            sys.executable,
+            "-u",
+            "-m",
+            "home.step2.grid_viz_worker",
+            "--mode",
+            mode,
+            "--grid-dir",
+            grid_dir_abs,
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+        result_json = None
+        if proc.stdout:
+            for raw in iter(proc.stdout.readline, ""):
+                line = raw.rstrip()
+                if line.startswith(f"{VIZ_PREFIX}\t"):
+                    parts = line.split("\t", 2)
+                    if len(parts) >= 3 and parts[1] == "LOG":
+                        if log_fn and parts[2].strip():
+                            log_fn(parts[2])
+                        continue
+                    if len(parts) >= 3 and parts[1] == "RESULT":
+                        result_json = parts[2]
+            proc.stdout.close()
+        proc.wait()
+        if result_json:
+            try:
+                return json.loads(result_json)
+            except json.JSONDecodeError:
+                return {
+                    "ok": False,
+                    "error": "invalid RESULT json from grid viz worker",
+                    "images": [],
+                    "photo_dir": "",
+                }
+        return {
+            "ok": False,
+            "error": f"grid viz worker exit {proc.returncode}",
+            "images": [],
+            "photo_dir": "",
+        }
+
+    def _grid_viz_run_one(self, grid_dir: str, mode: str, grid_name: str) -> dict:
+        """在后台线程中调用：缓存命中则跳过子进程。"""
+        grid_dir_abs = os.path.abspath(os.path.normpath(grid_dir))
+        if cache_is_current(grid_dir_abs, mode):
+            photo_dir = os.path.join(grid_dir_abs, "photo", "grid")
+            paths = [p for p in cached_image_paths(grid_dir_abs, mode) if os.path.isfile(p)]
+            return {"ok": True, "skipped": True, "images": paths, "photo_dir": photo_dir}
+        return self._grid_viz_spawn_worker(grid_dir_abs, mode, log_fn=self._emit_grid_viz_log)
+
+    def _grid_viz_show_on_main(self, image_paths, grid_name: str, photo_dir: str, *, from_cache: bool = False) -> None:
+        existing = [p for p in image_paths if os.path.isfile(p)]
+        if not existing:
+            self.log(tr("step2_grid_viz_no_images", "❌ 未找到可视化图片。"))
+            return
+        try:
+            self._show_images_in_drawer(existing)
+        except AttributeError:
+            suffix = f" - {grid_name}" if grid_name else ""
+            self._show_images_window(existing, title_suffix=suffix)
+        if not from_cache:
+            self.log(tr("step2_grid_viz_done", "✅ 网格可视化已生成。"))
+
+    def _schedule_grid_viz_show_on_main(
+        self, imgs, grid_name: str, photo_dir: str, *, from_cache: bool = False
+    ) -> None:
+        """从后台线程调用：切回主线程再打开抽屉（避免 QTimer 在非 GUI 线程失效）。"""
+        self._grid_viz_pending_show = (imgs, grid_name, photo_dir, from_cache)
+        QMetaObject.invokeMethod(
+            self,
+            "_grid_viz_flush_pending_show",
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    @pyqtSlot()
+    def _grid_viz_flush_pending_show(self):
+        p = getattr(self, "_grid_viz_pending_show", None)
+        if not p:
+            return
+        imgs, gname, pdir, from_cache = (p + (False,))[:4]
+        self._grid_viz_show_on_main(imgs, gname, pdir, from_cache=from_cache)
+        self._grid_viz_pending_show = None
+
+    def _schedule_grid_viz_show_nested(self, imgs, work_root: str, *, from_cache: bool = False) -> None:
+        self._grid_viz_pending_nested = (imgs, work_root, from_cache)
+        QMetaObject.invokeMethod(
+            self,
+            "_grid_viz_flush_pending_nested",
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    @pyqtSlot()
+    def _grid_viz_flush_pending_nested(self):
+        p = getattr(self, "_grid_viz_pending_nested", None)
+        if not p:
+            return
+        imgs, work_root, from_cache = (p + (False,))[:3]
+        self._grid_viz_show_nested_done(imgs, work_root, from_cache=from_cache)
+        self._grid_viz_pending_nested = None
+
+    def _grid_viz_thread_single(self, grid_dir_abs: str, mode: str, grid_name: str) -> None:
+        try:
+            res = self._grid_viz_run_one(grid_dir_abs, mode, grid_name)
+            if not res.get("ok"):
+                err = res.get("error") or "unknown"
+                self._emit_grid_viz_log(
+                    tr(
+                        "step2_visualization_failed",
+                        "❌ {grid_name}可视化网格文件失败: {error}",
+                    ).format(grid_name=grid_name, error=err)
+                )
+                return
+            imgs = res.get("images") or []
+            pdir = res.get("photo_dir") or os.path.join(grid_dir_abs, "photo", "grid")
+            from_cache = bool(res.get("skipped"))
+            if from_cache:
+                self._emit_grid_viz_log(
+                    tr("step2_grid_viz_cache_hit", "📎 {name}：网格未变，使用已缓存的图片。").format(
+                        name=grid_name
+                    )
+                )
+            self._schedule_grid_viz_show_on_main(imgs, grid_name, pdir, from_cache=from_cache)
+        except Exception as e:
+            self._emit_grid_viz_log(
+                tr(
+                    "step2_visualization_failed",
+                    "❌ {grid_name}可视化网格文件失败: {error}",
+                ).format(grid_name=grid_name, error=e)
+            )
+
+    def _grid_viz_show_nested_done(self, image_paths, _work_root: str, *, from_cache: bool = False) -> None:
+        existing = [p for p in image_paths if os.path.isfile(p)]
+        if not existing:
+            self.log(tr("step2_grid_viz_no_images", "❌ 未找到可视化图片。"))
+            return
+        try:
+            self._show_images_in_drawer(existing)
+        except AttributeError:
+            self._show_images_window(existing, title_suffix="")
+        if not from_cache:
+            self.log(tr("step2_grid_viz_done", "✅ 网格可视化已生成。"))
+
+    def _grid_viz_thread_nested(self, coarse_dir: str, fine_dir: str, work_root: str) -> None:
+        try:
+            n1 = tr("step2_outer_grid_title", "外网格（coarse）")
+            n2 = tr("step2_inner_grid_title", "内网格（fine）")
+            r1 = self._grid_viz_run_one(coarse_dir, "structured", n1)
+            if not r1.get("ok"):
+                self._emit_grid_viz_log(
+                    tr(
+                        "step2_visualization_failed",
+                        "❌ {grid_name}可视化网格文件失败: {error}",
+                    ).format(grid_name=n1, error=r1.get("error", "unknown"))
+                )
+                return
+            r2 = self._grid_viz_run_one(fine_dir, "structured", n2)
+            if not r2.get("ok"):
+                self._emit_grid_viz_log(
+                    tr(
+                        "step2_visualization_failed",
+                        "❌ {grid_name}可视化网格文件失败: {error}",
+                    ).format(grid_name=n2, error=r2.get("error", "unknown"))
+                )
+                return
+            imgs = (r1.get("images") or []) + (r2.get("images") or [])
+            both_cached = bool(r1.get("skipped")) and bool(r2.get("skipped"))
+            if both_cached:
+                self._emit_grid_viz_log(
+                    tr("step2_grid_viz_cache_hit", "📎 {name}：网格未变，使用已缓存的图片。").format(
+                        name=tr("step2_nested_grid_label", "嵌套网格")
+                    )
+                )
+            self._schedule_grid_viz_show_nested(imgs, work_root, from_cache=both_cached)
+        except Exception as e:
+            self._emit_grid_viz_log(
+                tr(
+                    "step2_visualization_failed",
+                    "❌ {grid_name}可视化网格文件失败: {error}",
+                ).format(grid_name=tr("step2_nested_grid_label", "嵌套网格"), error=e)
+            )
+
     def visualize_grid_files(self):
-        """可视化网格文件：读取四个文件并生成可视化图片"""
+        """可视化网格：子进程绘图 + photo/grid 缓存；含 bathymetry 与网格结构图。"""
         if not self.selected_folder or not isinstance(self.selected_folder, str):
             self.log(tr("step2_please_select_folder", "❌ 请先选择或创建文件夹！"))
             return
 
-        # 检查网格类型
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        grid_type = getattr(self, "grid_type_var", tr("step2_grid_type_normal", "普通网格"))
 
-        # 如果是嵌套网格，需要分别可视化外网格和内网格
         if self._is_nested_grid(grid_type):
             coarse_dir = os.path.join(self.selected_folder, "coarse")
             fine_dir = os.path.join(self.selected_folder, "fine")
-
             if not os.path.isdir(coarse_dir) or not os.path.isdir(fine_dir):
                 self.log(tr("step2_coarse_fine_not_found", "❌ 未找到 coarse 或 fine 文件夹，请先生成嵌套网格"))
                 return
-
-            self._visualize_single_grid(coarse_dir, tr("step2_outer_grid_title", "外网格（coarse）"))
-
-            # 可视化内网格（fine）
-            self.log("")
-            self._visualize_single_grid(fine_dir, tr("step2_inner_grid_title", "内网格（fine）"))
-
-            self.log("")
-            self.log("=" * 60)
-            self.log(tr("step2_nested_grid_visualization_complete", "✅ 嵌套网格可视化完成！"))
-            self.log("=" * 60)
+            for sub, gname in (
+                (coarse_dir, tr("step2_outer_grid_title", "外网格（coarse）")),
+                (fine_dir, tr("step2_inner_grid_title", "内网格（fine）")),
+            ):
+                gf = {
+                    "meta": os.path.join(sub, "grid.meta"),
+                    "bot": os.path.join(sub, "grid.bot"),
+                    "mask": os.path.join(sub, "grid.mask"),
+                    "obst": os.path.join(sub, "grid.obst"),
+                }
+                missing = [k for k, p in gf.items() if not os.path.isfile(p)]
+                if missing:
+                    miss = ", ".join(f"grid.{m}" for m in missing)
+                    self.log(
+                        tr(
+                            "step2_grid_missing_files",
+                            "❌ {grid_name}缺少必要的网格文件: {missing_files}",
+                        ).format(grid_name=gname, missing_files=miss)
+                    )
+                    self.log(tr("step2_please_generate_grid", "   请先执行生成网格操作"))
+                    return
+            wr = os.path.abspath(self.selected_folder)
+            self._start_grid_viz_background(
+                self._grid_viz_thread_nested,
+                (os.path.abspath(coarse_dir), os.path.abspath(fine_dir), wr),
+                tr("step2_nested_grid_label", "嵌套网格"),
+            )
             return
 
-        # 普通网格：保持原有逻辑
-        self._visualize_single_grid(self.selected_folder, tr("step2_grid_type_normal", "普通网格"))
+        ww3_path = os.path.join(self.selected_folder, "grid.ww3")
+        meta_path = os.path.join(self.selected_folder, "grid.meta")
+        use_unst_viz = self._is_step2_unstructured_mesh() or (
+            os.path.isfile(ww3_path) and not os.path.isfile(meta_path)
+        )
+        if use_unst_viz:
+            if not os.path.isfile(ww3_path):
+                self.log(
+                    tr(
+                        "step2_unst_ww3_missing_viz",
+                        "❌ 未找到 grid.ww3，请先生成非结构网格",
+                    )
+                )
+                return
+            grid_dir_abs = os.path.abspath(self.selected_folder)
+            gname = tr("step2_grid_type_normal", "普通网格")
+            if cache_is_current(grid_dir_abs, "unst"):
+                paths = [p for p in cached_image_paths(grid_dir_abs, "unst") if os.path.isfile(p)]
+                if paths:
+                    pdir = os.path.join(grid_dir_abs, "photo", "grid")
+                    self.log(
+                        tr(
+                            "step2_grid_viz_cache_hit",
+                            "📎 {name}：网格未变，使用已缓存的图片。",
+                        ).format(name=gname)
+                    )
+                    self._grid_viz_show_on_main(paths, gname, pdir, from_cache=True)
+                    return
+            self._start_grid_viz_background(
+                self._grid_viz_thread_single,
+                (grid_dir_abs, "unst", gname),
+                gname,
+            )
+            return
 
-    def _visualize_single_grid(self, grid_dir, grid_name=""):
-        """可视化单个网格目录的文件"""
-        photo_dir = os.path.join(grid_dir, "photo", "grid")
-        os.makedirs(photo_dir, exist_ok=True)
-
-        # 检查文件是否存在
-        grid_files = {
-            'meta': os.path.join(grid_dir, 'grid.meta'),
-            'bot': os.path.join(grid_dir, 'grid.bot'),
-            'mask': os.path.join(grid_dir, 'grid.mask'),
-            'obst': os.path.join(grid_dir, 'grid.obst')
+        gf = {
+            "meta": os.path.join(self.selected_folder, "grid.meta"),
+            "bot": os.path.join(self.selected_folder, "grid.bot"),
+            "mask": os.path.join(self.selected_folder, "grid.mask"),
+            "obst": os.path.join(self.selected_folder, "grid.obst"),
         }
-
-        missing_files = [name for name, path in grid_files.items() if not os.path.exists(path)]
-        if missing_files:
-            missing_files_str = ', '.join([f'grid.{name}' for name in missing_files])
-            self.log(tr("step2_grid_missing_files", "❌ {grid_name}缺少必要的网格文件: {missing_files}").format(grid_name=grid_name, missing_files=missing_files_str))
+        missing = [k for k, p in gf.items() if not os.path.isfile(p)]
+        if missing:
+            miss = ", ".join(f"grid.{m}" for m in missing)
+            self.log(
+                tr(
+                    "step2_grid_missing_files",
+                    "❌ {grid_name}缺少必要的网格文件: {missing_files}",
+                ).format(
+                    grid_name=tr("step2_grid_type_normal", "普通网格"),
+                    missing_files=miss,
+                )
+            )
             self.log(tr("step2_please_generate_grid", "   请先执行生成网格操作"))
             return
 
-        try:
-            # 1. 读取 meta 文件获取经纬度信息
-            lon, lat = self._read_ww3meta(grid_files['meta'])
-            if lon is None or lat is None:
-                self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
+        grid_dir_abs = os.path.abspath(self.selected_folder)
+        gname = tr("step2_grid_type_normal", "普通网格")
+        if cache_is_current(grid_dir_abs, "structured"):
+            paths = [p for p in cached_image_paths(grid_dir_abs, "structured") if os.path.isfile(p)]
+            if paths:
+                pdir = os.path.join(grid_dir_abs, "photo", "grid")
+                self.log(
+                    tr(
+                        "step2_grid_viz_cache_hit",
+                        "📎 {name}：网格未变，使用已缓存的图片。",
+                    ).format(name=gname)
+                )
+                self._grid_viz_show_on_main(paths, gname, pdir, from_cache=True)
                 return
-
-            Ny, Nx = lon.shape
-
-            # 2. 读取并可视化各个文件（参考 MATLAB create_grid.m 的实现）
-            # 2.1 先读取 mask（用于标记陆地位置）
-            mask = self._read_ww3file(grid_files['mask'], Nx, Ny)
-            if mask is None:
-                self.log(tr("step2_cannot_read_mask", "   ⚠️ 警告: 无法读取 mask 文件，将跳过陆地标记"))
-                loc = None
-            else:
-                loc = (mask == 0)  # 陆地位置（mask == 0），参考 MATLAB: loc = m4 == 0
-
-            # 2.2 可视化 bathymetry (grid.bot)
-            # 参考 MATLAB: figure(1); loc = m4 == 0; d2 = depth; d2(loc) = NaN; pcolor(...); shading interp;
-            depth = self._read_ww3file(grid_files['bot'], Nx, Ny)
-            if depth is not None:
-                # 转换为实际深度（除以 scale = 1000）
-                depth = depth.astype(float) / 1000.0
-                # 将陆地位置设为 NaN（参考 MATLAB: d2(loc) = NaN）
-                if loc is not None:
-                    # 检查 depth 和 loc 的形状是否匹配
-                    if depth.shape == loc.shape:
-                        depth[loc] = np.nan
-                    else:
-                        # 如果形状不匹配，只对重叠部分应用索引
-                        min_rows = min(depth.shape[0], loc.shape[0])
-                        min_cols = min(depth.shape[1], loc.shape[1])
-                        depth[:min_rows, :min_cols][loc[:min_rows, :min_cols]] = np.nan
-                        self.log(tr("step2_shape_mismatch_depth", "   ⚠️ 警告: depth 形状 {depth_shape} 与 mask 形状 {mask_shape} 不匹配，已调整").format(depth_shape=depth.shape, mask_shape=loc.shape))
-                # 深度数据保持原样（负数表示海平面以下，不需要取绝对值）
-                valid_depth = depth[~np.isnan(depth)]
-                # 深度范围检查（静默处理）
-
-                self._plot_grid_data(lon, lat, depth, 'Bathymetry',
-                                   os.path.join(photo_dir, 'grid_bathymetry.png'),
-                                   cmap='jet', shading='interp')
-
-            # 2.3 可视化 mask (grid.mask)
-            # 参考 MATLAB: figure(2); pcolor(lon, lat, m4); shading flat;
-            if mask is not None:
-                self._plot_grid_data(lon, lat, mask, 'Final Land-Sea Mask',
-                                   os.path.join(photo_dir, 'grid_mask.png'),
-                                   cmap='jet', shading='flat')
-
-            # 2.4 可视化 obstruction (grid.obst)
-            # 参考 MATLAB: figure(3/4); d2 = sx1/sy1; d2(loc) = NaN; pcolor(...); shading flat;
-            sx, sy = self._read_ww3obstr(grid_files['obst'], Nx, Ny)
-            if sx is not None and sy is not None:
-                sx = sx.astype(float) / 100.0  # 转换为实际值（除以 scale）
-                sy = sy.astype(float) / 100.0
-
-                # 将陆地位置设为 NaN（参考 MATLAB: d2(loc) = NaN）
-                if loc is not None:
-                    # 检查 sx/sy 和 loc 的形状是否匹配
-                    if sx.shape == loc.shape and sy.shape == loc.shape:
-                        sx[loc] = np.nan
-                        sy[loc] = np.nan
-                    else:
-                        # 如果形状不匹配，只对重叠部分应用索引
-                        min_rows = min(sx.shape[0], loc.shape[0])
-                        min_cols = min(sx.shape[1], loc.shape[1])
-                        sx[:min_rows, :min_cols][loc[:min_rows, :min_cols]] = np.nan
-                        sy[:min_rows, :min_cols][loc[:min_rows, :min_cols]] = np.nan
-                        self.log(tr("step2_shape_mismatch_sx_sy", "   ⚠️ 警告: sx/sy 形状 {sx_shape} 与 mask 形状 {mask_shape} 不匹配，已调整").format(sx_shape=sx.shape, mask_shape=loc.shape))
-
-                # X 方向障碍物
-                self._plot_grid_data(lon, lat, sx, 'Sx Obstruction',
-                                   os.path.join(photo_dir, 'grid_obstruction_x.png'),
-                                   cmap='jet', shading='flat')
-
-                # Y 方向障碍物
-                self._plot_grid_data(lon, lat, sy, 'Sy Obstruction',
-                                   os.path.join(photo_dir, 'grid_obstruction_y.png'),
-                                   cmap='jet', shading='flat')
-
-            # 显示所有生成的图片
-            image_files = [
-                os.path.join(photo_dir, 'grid_bathymetry.png'),
-                os.path.join(photo_dir, 'grid_mask.png'),
-                os.path.join(photo_dir, 'grid_obstruction_x.png'),
-                os.path.join(photo_dir, 'grid_obstruction_y.png')
-            ]
-            # 只显示存在的图片
-            existing_images = [f for f in image_files if os.path.exists(f)]
-            if existing_images:
-                # 使用抽屉显示图片（与风场图一致）
-                try:
-                    self._show_images_in_drawer(existing_images)
-                except AttributeError:
-                    # 如果抽屉方法不存在，回退到弹窗
-                    title_suffix = f" - {grid_name}" if grid_name else ""
-                    self._show_images_window(existing_images, title_suffix=title_suffix)
-                self.log(tr("step2_grid_visualization_complete", "✅ {grid_name}可视化完成，图片已保存到: {photo_dir}").format(grid_name=grid_name, photo_dir=photo_dir))
-
-        except Exception as e:
-            self.log(tr("step2_visualization_failed", "❌ {grid_name}可视化网格文件失败: {error}").format(grid_name=grid_name, error=e))
-            import traceback
-            for line in traceback.format_exc().splitlines():
-                self.log(line)
+        self._start_grid_viz_background(
+            self._grid_viz_thread_single,
+            (grid_dir_abs, "structured", gname),
+            gname,
+        )
 
     def _show_images_window(self, image_files, title_suffix=""):
         """在一个窗口中显示多张图片"""
@@ -2224,71 +3445,3 @@ create_grid(
             import traceback
             traceback.print_exc()
             return None, None
-
-    def _plot_grid_data(self, lon, lat, data, title, output_path, cmap='jet', vmin=None, vmax=None,
-                        shading='flat', use_mask=True):
-        """
-        绘制网格数据并保存为图片（参考 MATLAB create_grid.m 的实现）
-
-        参数:
-        - shading: 'flat' 或 'interp'（参考 MATLAB 的 shading 命令）
-        - use_mask: 是否使用地图投影（False 时使用简单的 2D 绘图，更接近 MATLAB）
-        """
-        try:
-            # 参考 MATLAB: 使用简单的 2D 绘图，不使用地图投影
-            # 这样可以更接近 MATLAB 的 pcolor 效果
-            fig, ax = plt.subplots(figsize=(12, 8))
-
-            # 设置数据范围
-            if vmin is None:
-                vmin = np.nanmin(data)
-            if vmax is None:
-                vmax = np.nanmax(data)
-
-            # 参考 MATLAB: 使用 pcolor（在 Python 中使用 pcolormesh）
-            # 对于 shading='flat'，pcolormesh 需要坐标比数据大1
-            # 对于 shading='interp'/'gouraud'，可以使用相同维度
-            if shading == 'interp' or shading == 'gouraud':
-                # 对于 bathymetry，使用插值着色（gouraud 对应 MATLAB 的 shading interp）
-                im = ax.pcolormesh(lon, lat, data, cmap=cmap, vmin=vmin, vmax=vmax, shading='gouraud')
-            else:
-                # 对于 mask 和 obstruction，使用 flat 着色
-                # 需要调整坐标：为每个维度添加一个边界点
-                Ny, Nx = data.shape
-                # 计算网格间距
-                if Nx > 1:
-                    dx = (lon[0, -1] - lon[0, 0]) / (Nx - 1)
-                    lon_edges = np.linspace(lon[0, 0] - dx/2, lon[0, -1] + dx/2, Nx + 1)
-                else:
-                    lon_edges = np.array([lon[0, 0] - 0.025, lon[0, 0] + 0.025])
-
-                if Ny > 1:
-                    dy = (lat[-1, 0] - lat[0, 0]) / (Ny - 1)
-                    lat_edges = np.linspace(lat[0, 0] - dy/2, lat[-1, 0] + dy/2, Ny + 1)
-                else:
-                    lat_edges = np.array([lat[0, 0] - 0.025, lat[0, 0] + 0.025])
-
-                lon_grid, lat_grid = np.meshgrid(lon_edges, lat_edges)
-                im = ax.pcolormesh(lon_grid, lat_grid, data, cmap=cmap, vmin=vmin, vmax=vmax, shading='flat')
-
-            # 设置标题和标签（参考 MATLAB）
-            ax.set_title(title, fontsize=14, fontweight='bold')
-            ax.set_xlabel(tr("step2_map_longitude", "经度"), fontsize=12)
-            ax.set_ylabel(tr("step2_map_latitude", "纬度"), fontsize=12)
-
-            # 参考 MATLAB: axis equal（保持纵横比）
-            ax.set_aspect('equal', adjustable='box')
-
-            # 添加颜色条（参考 MATLAB: colorbar）
-            cbar = plt.colorbar(im, ax=ax)
-            cbar.set_label(title, fontsize=10)
-
-            # 保存图片
-            plt.tight_layout()
-            plt.savefig(output_path, dpi=150, bbox_inches='tight')
-            plt.close(fig)
-
-        except Exception as e:
-            self.log(tr("step2_draw_image_failed", "❌ 绘制图片失败 ({title}): {error}").format(title=title, error=e))
-            import traceback
-            traceback.print_exc()

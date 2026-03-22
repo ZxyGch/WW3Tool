@@ -274,10 +274,167 @@ class ModifyWW3NML:
         if grid_type == nested_text or grid_type == "嵌套网格":
             return
 
-        # 普通网格模式：复制文件并同步 meta
+        # 普通网格模式：复制文件并同步 meta（非结构网格则改写 ww3_grid.nml / namelists.nml）
         self.copy_public_files()
-        self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
-        self._update_grid_closure_from_meta(self.selected_folder)
+        if self._is_step2_unstructured_mesh():
+            wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
+            self._transform_ww3_grid_nml_for_unstructured(wgp)
+            nlp = os.path.join(self.selected_folder, "namelists.nml")
+            self._set_namelists_misc_flagtr_zero(nlp)
+            self.log(
+                tr(
+                    "step4_unst_nml_applied",
+                    "✅ 非结构网格：已将 ww3_grid.nml 设为 UNST（RECT/DEPTH/MASK/OBST 已注释，UNST_NML 启用），namelists.nml 中 FLAGTR=0",
+                )
+            )
+        else:
+            self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
+            self._update_grid_closure_from_meta(self.selected_folder)
+
+    def _is_step2_unstructured_mesh(self):
+        """第二步当前是否为「非结构网格」（与 step2 一致）。"""
+        ut = tr("step2_mesh_type_unstructured", "非结构网格")
+        return getattr(self, "mesh_type_var", "") == ut
+
+    @staticmethod
+    def _ww3_nml_force_comment_line(line):
+        """与 public/ww3/ww3_grid.nml 模板一致：行首一个 `!`，其后保留原行全部内容（含缩进）。
+
+        例如 `&RECT_NML` → `!&RECT_NML`，`  RECT%NX = 1` → `!  RECT%NX = 1`。
+        避免写成 `  ! RECT%NX`（`!` 插在缩进后），与模板中 `!&UNST_NML` / `!  UNST%...` 风格一致。
+        """
+        if not line.strip():
+            return line
+        ls = line.lstrip()
+        if ls.startswith("!"):
+            return line
+        nl = "\n" if line.endswith("\n") else ""
+        body = line.rstrip("\n")
+        return "!" + body + nl
+
+    @staticmethod
+    def _ww3_nml_force_uncomment_line(line):
+        """去掉行首（允许行前空白后的）单个 `!`，保留 `!` 之后全部字符，不 lstrip（否则会丢掉 UNST 行前两格缩进）。"""
+        body = line.rstrip("\n")
+        nl = "\n" if line.endswith("\n") else ""
+        m = re.match(r"^(\s*)!(.*)$", body)
+        if m:
+            return m.group(1) + m.group(2) + nl
+        return line
+
+    @staticmethod
+    def _nml_line_is_namelist_close(lnn):
+        """识别 namelist 结束行 `/`（允许行前 `!`）。"""
+        t = lnn.strip()
+        if t.startswith("!"):
+            t = t[1:].lstrip()
+        return t == "/" or t.startswith("/")
+
+    def _transform_ww3_grid_nml_for_unstructured(self, nml_path):
+        """RECT/DEPTH/MASK/OBST 块整段注释；启用 &UNST_NML；GRID%TYPE → UNST；UNST%FILENAME → grid.ww3"""
+        if not nml_path or not os.path.isfile(nml_path):
+            return
+        blocks_comment = ("RECT_NML", "DEPTH_NML", "MASK_NML", "OBST_NML")
+        try:
+            with open(nml_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            out = []
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                line_no_nl = line.rstrip("\n")
+                ls = line.lstrip()
+
+                if ls and not ls.startswith("!") and "GRID%TYPE" in line and "=" in line:
+                    nl = re.sub(r"(GRID%TYPE\s*=\s*)'RECT'", r"\1'UNST'", line, count=1)
+                    nl = re.sub(r'(GRID%TYPE\s*=\s*)"RECT"', r'\1"UNST"', nl, count=1)
+                    out.append(nl)
+                    i += 1
+                    continue
+
+                in_comment_block = None
+                for blk in blocks_comment:
+                    if re.match(rf"^\s*!?\s*&{re.escape(blk)}\b", line_no_nl):
+                        in_comment_block = blk
+                        break
+                if in_comment_block:
+                    while i < len(lines):
+                        ln = lines[i]
+                        lnn = ln.rstrip("\n")
+                        if self._nml_line_is_namelist_close(lnn):
+                            out.append(self._ww3_nml_force_comment_line(ln))
+                            i += 1
+                            break
+                        out.append(self._ww3_nml_force_comment_line(ln))
+                        i += 1
+                    continue
+
+                if re.match(r"^\s*!?\s*&UNST_NML\b", line_no_nl):
+                    while i < len(lines):
+                        ln = lines[i]
+                        lnn = ln.rstrip("\n")
+                        if self._nml_line_is_namelist_close(lnn):
+                            out.append(self._ww3_nml_force_uncomment_line(ln))
+                            i += 1
+                            break
+                        uln = self._ww3_nml_force_uncomment_line(ln)
+                        uls = uln.lstrip()
+                        if (
+                            not uls.startswith("!")
+                            and "UNST%FILENAME" in uln
+                            and "=" in uln
+                        ):
+                            uln = re.sub(
+                                r"UNST%FILENAME\s*=\s*'[^']*'",
+                                "UNST%FILENAME       = 'grid.ww3'",
+                                uln,
+                                count=1,
+                            )
+                        out.append(uln)
+                        i += 1
+                    continue
+
+                out.append(line)
+                i += 1
+
+            with open(nml_path, "w", encoding="utf-8") as f:
+                f.writelines(out)
+        except Exception as e:
+            self.log(
+                tr(
+                    "step4_unst_ww3_grid_transform_failed",
+                    "⚠️ 非结构网格 ww3_grid.nml 调整失败：{err}",
+                ).format(err=e)
+            )
+
+    def _set_namelists_misc_flagtr_zero(self, namelists_path):
+        """namelists.nml 中 &MISC 的 FLAGTR 改为 0（非结构网格无障碍子网格）。"""
+        if not namelists_path or not os.path.isfile(namelists_path):
+            return
+        try:
+            with open(namelists_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            new_lines = []
+            for line in lines:
+                ls = line.lstrip()
+                if ls.startswith("!"):
+                    new_lines.append(line)
+                    continue
+                if "&MISC" in line and "FLAGTR" in line:
+                    new_lines.append(
+                        re.sub(r"FLAGTR\s*=\s*\d+", "FLAGTR = 0", line, count=1)
+                    )
+                else:
+                    new_lines.append(line)
+            with open(namelists_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+        except Exception as e:
+            self.log(
+                tr(
+                    "step4_namelists_flagtr_failed",
+                    "⚠️ 修改 namelists.nml FLAGTR 失败：{err}",
+                ).format(err=e)
+            )
 
 
 

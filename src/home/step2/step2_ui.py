@@ -2,6 +2,8 @@
 第二步：生成网格模块 - UI部分
 包含UI创建（外网格参数、内网格参数、网格类型选择、按钮等）
 """
+import os
+
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy
@@ -77,7 +79,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         outer_grid.setSpacing(10)
 
         # DX, DY 输入框
-        outer_grid.addWidget(QLabel(tr("step2_dx", "DX:")), 0, 0)
+        self.dx_label = QLabel(tr("step2_dx", "DX:"))
+        outer_grid.addWidget(self.dx_label, 0, 0)
         self.dx_edit = LineEdit()
         # 格式化 DX 为最多2位小数
         try:
@@ -88,7 +91,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.dx_edit.setStyleSheet(input_style)
         outer_grid.addWidget(self.dx_edit, 0, 1)
 
-        outer_grid.addWidget(QLabel(tr("step2_dy", "DY:")), 0, 2)
+        self.dy_label = QLabel(tr("step2_dy", "DY:"))
+        outer_grid.addWidget(self.dy_label, 0, 2)
         self.dy_edit = LineEdit()
         # 格式化 DY 为最多2位小数
         try:
@@ -100,7 +104,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         outer_grid.addWidget(self.dy_edit, 0, 3)
 
         # 经度输入框
-        outer_grid.addWidget(QLabel(tr("step2_lon_west", "西经:")), 1, 0)
+        self.lon_west_label = QLabel(tr("step2_lon_west", "西经:"))
+        outer_grid.addWidget(self.lon_west_label, 1, 0)
         self.lon_west_edit = LineEdit()
         self.lon_west_edit.setText(LONGITUDE_WEST if LONGITUDE_WEST else "")
         self.lon_west_edit.setStyleSheet(input_style)
@@ -113,7 +118,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         outer_grid.addWidget(self.lon_east_edit, 1, 3)
 
         # 纬度输入框
-        outer_grid.addWidget(QLabel(tr("step2_lat_south", "南纬:")), 2, 0)
+        self.lat_south_label = QLabel(tr("step2_lat_south", "南纬:"))
+        outer_grid.addWidget(self.lat_south_label, 2, 0)
         self.lat_south_edit = LineEdit()
         self.lat_south_edit.setText(LATITUDE_SORTH if LATITUDE_SORTH else "")
         self.lat_south_edit.setStyleSheet(input_style)
@@ -125,9 +131,139 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.lat_north_edit.setStyleSheet(input_style)
         outer_grid.addWidget(self.lat_north_edit, 2, 3)
 
+        # 类型 / 网格下拉框与上方输入区共用同一 QGridLayout（列 1 与 DX/西经/南纬 输入框同列），任意语言下左边缘一致
+        combo_style = self._get_combo_style()
+        self.grid_type_label = QLabel(tr("step2_grid_type", "类型："))
+        self.grid_type_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        outer_grid.addWidget(self.grid_type_label, 3, 0)
+        self.grid_type_combo = ComboBox()
+        normal_text = tr("step2_grid_type_normal", "普通网格")
+        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        self.grid_type_combo.addItems([normal_text, nested_text])
+        from ..utils import HomeState
+        current_grid_type = HomeState.get_grid_type()
+        if current_grid_type is None:
+            HomeState.set_grid_type(normal_text)
+            self.grid_type_combo.blockSignals(True)
+            self.grid_type_combo.setCurrentText(normal_text)
+            self.grid_type_combo.blockSignals(False)
+            self.grid_type_var = normal_text
+        else:
+            self.grid_type_combo.blockSignals(True)
+            self.grid_type_combo.setCurrentText(current_grid_type)
+            self.grid_type_combo.blockSignals(False)
+            self.grid_type_var = current_grid_type
+        self.grid_type_combo.currentTextChanged.connect(self._set_step2_grid_type)
+        self.grid_type_combo.setStyleSheet(combo_style)
+        self.grid_type_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        def _set_grid_type_combo_alignment():
+            try:
+                if hasattr(self.grid_type_combo, "lineEdit"):
+                    line_edit = self.grid_type_combo.lineEdit()
+                    if line_edit:
+                        line_edit.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            except Exception:
+                pass
+
+        QtCore.QTimer.singleShot(10, _set_grid_type_combo_alignment)
+        outer_grid.addWidget(self.grid_type_combo, 3, 1, 1, 3)
+
+        self.mesh_type_label = QLabel(tr("step2_mesh_type_label", "网格："))
+        self.mesh_type_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        outer_grid.addWidget(self.mesh_type_label, 4, 0)
+        self.mesh_type_combo = ComboBox()
+        rectangle_text = tr("step2_mesh_type_rectangle", "矩形网格")
+        curvilinear_text = tr("step2_mesh_type_curvilinear", "曲线网格")
+        smc_text = tr("step2_mesh_type_smc", "SMC 网格")
+        unstructured_text = tr("step2_mesh_type_unstructured", "非结构网格")
+        self.mesh_type_combo.addItems([rectangle_text, curvilinear_text, smc_text, unstructured_text])
+        self.mesh_type_var = rectangle_text
+        self.mesh_type_combo.setCurrentText(rectangle_text)
+        self.mesh_type_combo.currentTextChanged.connect(self._set_step2_mesh_type)
+        self.mesh_type_combo.setStyleSheet(combo_style)
+        self.mesh_type_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        def _set_mesh_type_combo_alignment():
+            try:
+                if hasattr(self.mesh_type_combo, "lineEdit"):
+                    line_edit = self.mesh_type_combo.lineEdit()
+                    if line_edit:
+                        line_edit.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            except Exception:
+                pass
+
+        QtCore.QTimer.singleShot(10, _set_mesh_type_combo_alignment)
+        outer_grid.addWidget(self.mesh_type_combo, 4, 1, 1, 3)
+
+        # 非结构网格 spacing 参数（与 unst_msh_gen/config.json 中 spacing 对应；仅在选择非结构网格时显示）
+        self.unst_spacing_widget = QWidget()
+        unst_grid = QGridLayout()
+        unst_grid.setContentsMargins(0, 0, 0, 0)
+        unst_grid.setSpacing(10)
+
+        def _unst_spacing_label(short_key: str, tip_key: str, default_short: str, default_tip: str) -> QLabel:
+            lb = QLabel(tr(short_key, default_short))
+            lb.setToolTip(tr(tip_key, default_tip))
+            lb.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            return lb
+
+        unst_grid.addWidget(
+            _unst_spacing_label(
+                "step2_unst_spacing_hmax",
+                "step2_unst_spacing_hmax_tip",
+                "深水尺度 (km)",
+                "外海/深水区三角形边长大致对应的尺度（km）。数值越大网格越粗。",
+            ),
+            0,
+            0,
+        )
+        self.unst_hmax_edit = LineEdit()
+        self.unst_hmax_edit.setText("100.0")
+        self.unst_hmax_edit.setStyleSheet(input_style)
+        unst_grid.addWidget(self.unst_hmax_edit, 0, 1)
+
+        unst_grid.addWidget(
+            _unst_spacing_label(
+                "step2_unst_spacing_hshr",
+                "step2_unst_spacing_hshr_tip",
+                "近岸尺度 (km)",
+                "岸线及近岸加密目标尺度（km）；与程序内部最细尺度一致。数值越小近岸越密。",
+            ),
+            1,
+            0,
+        )
+        self.unst_hshr_edit = LineEdit()
+        self.unst_hshr_edit.setText("20.0")
+        self.unst_hshr_edit.setStyleSheet(input_style)
+        unst_grid.addWidget(self.unst_hshr_edit, 1, 1)
+
+        unst_grid.addWidget(
+            _unst_spacing_label(
+                "step2_unst_spacing_dhdx",
+                "step2_unst_spacing_dhdx_tip",
+                "水深梯度",
+                "从近岸到深水的间距变化陡度（与 unst_msh_gen 中 dhdx 一致）；数值越小过渡越平缓。",
+            ),
+            2,
+            0,
+        )
+        self.unst_dhdx_edit = LineEdit()
+        self.unst_dhdx_edit.setText("0.05")
+        self.unst_dhdx_edit.setStyleSheet(input_style)
+        unst_grid.addWidget(self.unst_dhdx_edit, 2, 1)
+
+        self.unst_spacing_widget.setLayout(unst_grid)
+        self.unst_spacing_widget.setVisible(False)
+        outer_grid.addWidget(self.unst_spacing_widget, 5, 0, 1, 4)
+
         outer_grid_layout.addLayout(outer_grid)
         self.outer_grid_widget.setLayout(outer_grid_layout)
         step2_card_layout.addWidget(self.outer_grid_widget)
+
+        self._update_step2_grid_type_row_visibility()
+        self._update_step2_dx_dy_visibility()
+        self._refresh_step2_mesh_type_combo_enabled()
 
         # 内网格参数容器（初始隐藏）
         self.inner_grid_widget = QWidget()
@@ -231,58 +367,6 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.inner_grid_widget.setLayout(inner_grid_layout)
         self.inner_grid_widget.setVisible(False)  # 初始隐藏
         step2_card_layout.addWidget(self.inner_grid_widget)
-
-        # 下拉选择框样式：使用主题适配的样式
-        combo_style = self._get_combo_style()
-
-        # 网格类型选择（下拉框）- 放在"从风场文件读取范围"按钮上面
-        grid_type_layout = QGridLayout()
-        grid_type_layout.setSpacing(0)  # 与 outer_grid 的间距一致
-        grid_type_label = QLabel(tr("step2_grid_type", "类型："))
-        grid_type_layout.addWidget(grid_type_label, 0, 0)
-        self.grid_type_combo = ComboBox()
-        normal_text = tr("step2_grid_type_normal", "普通网格")
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        self.grid_type_combo.addItems([normal_text, nested_text])
-        
-        # 使用全局状态管理
-        from ..utils import HomeState
-        # 先检查全局状态是否已有值，如果没有才使用默认值
-        current_grid_type = HomeState.get_grid_type()  # 不传 default，如果未设置会返回 None
-        if current_grid_type is None:
-            # 全局状态为空，设置默认值为普通网格
-            HomeState.set_grid_type(normal_text)
-            # 先断开信号，避免触发 _set_step2_grid_type
-            self.grid_type_combo.blockSignals(True)
-            self.grid_type_combo.setCurrentText(normal_text)
-            self.grid_type_combo.blockSignals(False)
-            self.grid_type_var = normal_text
-        else:
-            # 全局状态已有值，使用全局状态的值
-            # 先断开信号，避免触发 _set_step2_grid_type
-            self.grid_type_combo.blockSignals(True)
-            self.grid_type_combo.setCurrentText(current_grid_type)
-            self.grid_type_combo.blockSignals(False)
-            self.grid_type_var = current_grid_type
-        
-        self.grid_type_combo.currentTextChanged.connect(self._set_step2_grid_type)
-        self.grid_type_combo.setStyleSheet(combo_style)
-        # 设置尺寸策略，让选择框可以展开
-        self.grid_type_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        # 设置文本左对齐（延迟设置，确保样式已应用）
-        def _set_grid_type_combo_alignment():
-            try:
-                if hasattr(self.grid_type_combo, 'lineEdit'):
-                    line_edit = self.grid_type_combo.lineEdit()
-                    if line_edit:
-                        line_edit.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            except:
-                pass
-        QtCore.QTimer.singleShot(10, _set_grid_type_combo_alignment)
-        grid_type_layout.setColumnStretch(0, 0)
-        grid_type_layout.setColumnStretch(1, 1)
-        grid_type_layout.addWidget(self.grid_type_combo, 0, 1)
-        step2_card_layout.addLayout(grid_type_layout)
 
         # 从风场文件读取范围按钮
         btn_load_from_nc = PrimaryPushButton(tr("step2_load_from_nc", "从 wind.nc 读取范围"))
@@ -431,7 +515,88 @@ class HomeStepTwoCard(StepTwoServiceMixin):
             # 隐藏设置外网格和设置内网格按钮
             self.btn_setup_outer_grid.setVisible(False)
             self.btn_setup_inner_grid.setVisible(False)
-    
+
+    def _update_step2_grid_type_row_visibility(self):
+        """非结构网格时隐藏「类型」（普通/嵌套）一行。"""
+        if not hasattr(self, "grid_type_label") or not hasattr(self, "grid_type_combo"):
+            return
+        utext = tr("step2_mesh_type_unstructured", "非结构网格")
+        show = getattr(self, "mesh_type_var", "") != utext
+        self.grid_type_label.setVisible(show)
+        self.grid_type_combo.setVisible(show)
+
+    def _update_step2_dx_dy_visibility(self):
+        """非结构网格时隐藏 DX/DY（分辨率由 hmax/hmin 等 spacing 控制）。"""
+        if not hasattr(self, "dx_label") or not hasattr(self, "dy_label"):
+            return
+        if not hasattr(self, "dx_edit") or not hasattr(self, "dy_edit"):
+            return
+        utext = tr("step2_mesh_type_unstructured", "非结构网格")
+        show = getattr(self, "mesh_type_var", "") != utext
+        self.dx_label.setVisible(show)
+        self.dx_edit.setVisible(show)
+        self.dy_label.setVisible(show)
+        self.dy_edit.setVisible(show)
+
+    def _refresh_step2_mesh_type_combo_enabled(self):
+        """「网格」下拉（矩形/非结构等）始终可切换；不因目录内已有网格文件或嵌套文件夹而禁用。
+
+        「类型」（普通网格/嵌套网格）的禁止逻辑仍在 _set_step2_grid_type 中处理。
+        """
+        if not hasattr(self, "mesh_type_combo"):
+            return
+        self.mesh_type_combo.setEnabled(True)
+        if hasattr(self, "mesh_type_label"):
+            self.mesh_type_label.setToolTip("")
+
+    def _set_step2_mesh_type(self, mesh_type):
+        """设置网格形态选择，并给出当前功能状态提示"""
+        from qfluentwidgets import InfoBar
+
+        rectangle_text = tr("step2_mesh_type_rectangle", "矩形网格")
+        curvilinear_text = tr("step2_mesh_type_curvilinear", "曲线网格")
+        smc_text = tr("step2_mesh_type_smc", "SMC 网格")
+        unstructured_text = tr("step2_mesh_type_unstructured", "非结构网格")
+
+        # 上一次允许保留的选择（曲线/SMC 不允许切换，需回退）
+        prev_mesh = getattr(self, "mesh_type_var", None) or rectangle_text
+
+        if mesh_type in (curvilinear_text, smc_text):
+            self.mesh_type_combo.blockSignals(True)
+            self.mesh_type_combo.setCurrentText(prev_mesh)
+            self.mesh_type_combo.blockSignals(False)
+            try:
+                InfoBar.warning(
+                    title=tr("tip", "提示"),
+                    content=tr("step2_mesh_type_not_implemented", "尚未实现"),
+                    duration=3000,
+                    parent=self,
+                )
+            except Exception:
+                pass
+            return
+
+        # 允许保留：矩形网格、非结构网格（不再因目录内已有网格文件/嵌套而禁止切换）
+        self.mesh_type_var = mesh_type
+
+        if mesh_type == unstructured_text:
+            try:
+                InfoBar.warning(
+                    title=tr("tip", "提示"),
+                    content=tr("step2_mesh_type_experimental", "实验中，正在改进"),
+                    duration=3000,
+                    parent=self,
+                )
+            except Exception:
+                pass
+
+        if hasattr(self, "unst_spacing_widget"):
+            self.unst_spacing_widget.setVisible(mesh_type == unstructured_text)
+
+        self._update_step2_grid_type_row_visibility()
+        self._update_step2_dx_dy_visibility()
+        self._refresh_step2_mesh_type_combo_enabled()
+
     def _update_step4_wavewatch_title(self):
         """更新第四步的 WAVEWATCH 标签文本"""
         if hasattr(self, '_update_wavewatch_title'):

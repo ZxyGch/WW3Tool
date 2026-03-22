@@ -23,6 +23,10 @@ function create_grid(fname_nml)
 
 % 0. Initialization
 tic
+title_banner = 'Rectangular Grid Generation By Gridgen Matlab Version';
+fprintf('%s\n', repmat('=',1,70));
+fprintf('%s%s\n', repmat(' ',1,70-length(title_banner)), title_banner);
+fprintf('%s\n', repmat('=',1,70));
 fprintf('%s\n',fname_nml);
 set(groot,'DefaultFigureColormap',jet);
 close all;
@@ -563,6 +567,10 @@ if (coastbound)
     clear d2;
 end
 
+title_done = 'Grid Generation Complete!';
+fprintf('%s\n', repmat('=',1,70));
+fprintf('%s%s\n', repmat(' ',1,70-length(title_done)), title_done);
+fprintf('%s\n', repmat('=',1,70));
 toc
 end
 

@@ -10,6 +10,10 @@ import cartopy.feature as cfeature
 from netCDF4 import Dataset
 from datetime import datetime, timedelta
 from setting.language_manager import tr
+from .workers_utils import (
+    ww3_resolve_lon_lat_names,
+    ww3_hs_collocation_flat,
+)
 
 
 def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, result_queue, max_dist_deg=0.125, time_window_hours=0.5):
@@ -35,24 +39,19 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
         with Dataset(ww3_file, 'r') as nc:
             # 检查必需的变量是否存在
             available_vars = list(nc.variables.keys())
-            
-            # 检查经度变量
-            if 'longitude' not in nc.variables:
-                error_msg = tr("plotting_missing_longitude_variable", "❌ 文件中没有 'longitude' 变量。可用变量: {vars}").format(vars=', '.join(available_vars))
+
+            lon_name, lat_name = ww3_resolve_lon_lat_names(nc)
+            if not lon_name or not lat_name:
+                error_msg = tr(
+                    "plotting_missing_lon_lat_variables",
+                    "❌ 无法识别经度/纬度变量（需 longitude/lon、latitude/lat 等）。可用变量: {vars}",
+                ).format(vars=", ".join(available_vars))
                 log(error_msg)
                 log_queue.put("__DONE__")
                 result_queue.put(None)
                 return
-            ww3_lon = nc.variables['longitude'][:].astype(float)
-            
-            # 检查纬度变量
-            if 'latitude' not in nc.variables:
-                error_msg = tr("plotting_missing_latitude_variable", "❌ 文件中没有 'latitude' 变量。可用变量: {vars}").format(vars=', '.join(available_vars))
-                log(error_msg)
-                log_queue.put("__DONE__")
-                result_queue.put(None)
-                return
-            ww3_lat = nc.variables['latitude'][:].astype(float)
+            ww3_lon = nc.variables[lon_name][:]
+            ww3_lat = nc.variables[lat_name][:]
             
             # 检查时间变量
             if 'time' not in nc.variables:
@@ -81,27 +80,39 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                 result_queue.put(None)
                 return
             
-            ww3_swh = nc.variables[wave_height_var][:].astype(float)
+            ww3_swh = nc.variables[wave_height_var][:]
 
+        ww3_lon = np.asarray(ww3_lon, dtype=float)
+        ww3_lat = np.asarray(ww3_lat, dtype=float)
         ww3_lon = ((ww3_lon + 180.0) % 360.0) - 180.0
-        ww3_swh[(ww3_swh < 0) | (ww3_swh > 50)] = np.nan
 
-        log(f"WW3 lon range: [{ww3_lon.min():.2f}, {ww3_lon.max():.2f}]")
-        log(f"WW3 lat range: [{ww3_lat.min():.2f}, {ww3_lat.max():.2f}]")
+        nt = len(time_ww3)
+        try:
+            lon1, lat1, hs_nt_n, lon_lat = ww3_hs_collocation_flat(nt, ww3_lon, ww3_lat, ww3_swh)
+        except Exception as e:
+            log(
+                tr(
+                    "plotting_jason3_ww3_grid_prepare_failed",
+                    "❌ WW3 波高/经纬度维数无法用于 Jason 匹配（支持规则网格或非结构 time×node）：{err}",
+                ).format(err=e)
+            )
+            log_queue.put("__DONE__")
+            result_queue.put(None)
+            return
+
+        hs_nt_n = np.asarray(hs_nt_n, dtype=float)
+        hs_nt_n[(hs_nt_n < 0) | (hs_nt_n > 50)] = np.nan
+
+        log(f"WW3 lon range: [{lon_lat[0]:.2f}, {lon_lat[1]:.2f}]")
+        log(f"WW3 lat range: [{lon_lat[2]:.2f}, {lon_lat[3]:.2f}]")
         log(f"WW3 time steps: {len(time_ww3)}")
-
-        nx = len(ww3_lon)
-        ny = len(ww3_lat)
-        lon_grid, lat_grid = np.meshgrid(ww3_lon, ww3_lat, indexing='xy')
-        lon1 = lon_grid.ravel()
-        lat1 = lat_grid.ravel()
+        log(f"WW3 collocation points per step: {hs_nt_n.shape[1]}")
 
         reference_date = datetime(1990, 1, 1, 0, 0, 0)
         timesec = [reference_date + timedelta(days=float(t)) for t in time_ww3]
         T = np.array([dt.strftime('%Y%m%d%H%M%S') for dt in timesec])
         log(f"WW3 time range: {timesec[0]} to {timesec[-1]}")
 
-        lon_lat = [ww3_lon.min(), ww3_lon.max(), ww3_lat.min(), ww3_lat.max()]
         log(f"Matching region: lon[{lon_lat[0]}, {lon_lat[1]}], lat[{lon_lat[2]}, {lon_lat[3]}]")
 
         swh_jason3 = []
@@ -286,7 +297,7 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                 progress_pct = int((i + 1) / len(T) * 100)
                 log(tr("plotting_matching_progress", "📊 进度: {current}/{total} ({percent}%) - 已匹配 {matched} 个点").format(current=i + 1, total=len(T), percent=progress_pct, matched=total_matched))
 
-            ww3_swh1 = ww3_swh[i, :, :].ravel()
+            ww3_swh1 = hs_nt_n[i, :]
             year = int(T[i][0:4])
             month = int(T[i][4:6])
             day = int(T[i][6:8])
@@ -961,30 +972,64 @@ class Jason3ServiceMixin:
         """匹配 WW3 和 Jason-3 数据"""
         self.log_signal.emit('Reading WW3 data...')
         with Dataset(ww3_file, 'r') as nc:
-            ww3_lon = nc.variables['longitude'][:].astype(float)
-            ww3_lat = nc.variables['latitude'][:].astype(float)
-            ww3_swh = nc.variables['hs'][:].astype(float)
+            available_vars = list(nc.variables.keys())
+            lon_name, lat_name = ww3_resolve_lon_lat_names(nc)
+            if not lon_name or not lat_name:
+                self.log_signal.emit(
+                    tr(
+                        "plotting_missing_lon_lat_variables",
+                        "❌ 无法识别经度/纬度变量（需 longitude/lon、latitude/lat 等）。可用变量: {vars}",
+                    ).format(vars=", ".join(available_vars))
+                )
+                return
+            ww3_lon = nc.variables[lon_name][:]
+            ww3_lat = nc.variables[lat_name][:]
             time_ww3 = nc.variables['time'][:].astype(float)
+            wave_height_var = None
+            possible_vars = ['hs', 'swh', 'wave_height', 'HS', 'SWH']
+            for var_name in possible_vars:
+                if var_name in nc.variables:
+                    wave_height_var = var_name
+                    break
+            if wave_height_var is None:
+                self.log_signal.emit(
+                    tr(
+                        "plotting_missing_hs_variable_jason",
+                        "❌ 文件中没有找到波高变量（尝试了: {tried}）。可用变量: {vars}",
+                    ).format(tried=', '.join(possible_vars), vars=', '.join(available_vars))
+                )
+                return
+            ww3_swh = nc.variables[wave_height_var][:]
 
+        ww3_lon = np.asarray(ww3_lon, dtype=float)
+        ww3_lat = np.asarray(ww3_lat, dtype=float)
         ww3_lon = ((ww3_lon + 180.0) % 360.0) - 180.0
-        ww3_swh[(ww3_swh < 0) | (ww3_swh > 50)] = np.nan
 
-        self.log_signal.emit(f"WW3 lon range: [{ww3_lon.min():.2f}, {ww3_lon.max():.2f}]")
-        self.log_signal.emit(f"WW3 lat range: [{ww3_lat.min():.2f}, {ww3_lat.max():.2f}]")
+        nt = len(time_ww3)
+        try:
+            lon1, lat1, hs_nt_n, lon_lat = ww3_hs_collocation_flat(nt, ww3_lon, ww3_lat, ww3_swh)
+        except Exception as e:
+            self.log_signal.emit(
+                tr(
+                    "plotting_jason3_ww3_grid_prepare_failed",
+                    "❌ WW3 波高/经纬度维数无法用于 Jason 匹配（支持规则网格或非结构 time×node）：{err}",
+                ).format(err=e)
+            )
+            return
+
+        hs_nt_n = np.asarray(hs_nt_n, dtype=float)
+        hs_nt_n[(hs_nt_n < 0) | (hs_nt_n > 50)] = np.nan
+
+        self.log_signal.emit(f"WW3 lon range: [{lon_lat[0]:.2f}, {lon_lat[1]:.2f}]")
+        self.log_signal.emit(f"WW3 lat range: [{lon_lat[2]:.2f}, {lon_lat[3]:.2f}]")
         self.log_signal.emit(f"WW3 time steps: {len(time_ww3)}")
-
-        nx = len(ww3_lon)
-        ny = len(ww3_lat)
-        lon_grid, lat_grid = np.meshgrid(ww3_lon, ww3_lat, indexing='xy')
-        lon1 = lon_grid.ravel()
-        lat1 = lat_grid.ravel()
+        self.log_signal.emit(f"WW3 collocation points per step: {hs_nt_n.shape[1]}")
 
         reference_date = datetime(1990, 1, 1, 0, 0, 0)
         timesec = [reference_date + timedelta(days=float(t)) for t in time_ww3]
         T = np.array([dt.strftime('%Y%m%d%H%M%S') for dt in timesec])
         self.log_signal.emit(f"WW3 time range: {timesec[0]} to {timesec[-1]}")
 
-        lon_lat = [ww3_lon.min(), ww3_lon.max(), ww3_lat.min(), ww3_lat.max()]
         self.log_signal.emit(f"Matching region: lon[{lon_lat[0]}, {lon_lat[1]}], lat[{lon_lat[2]}, {lon_lat[3]}]")
 
         swh_jason3 = []
@@ -1003,7 +1048,7 @@ class Jason3ServiceMixin:
                 progress_pct = int((i + 1) / len(T) * 100)
                 self.log_update_last_line_signal.emit(f"📊 进度: {i + 1}/{len(T)} ({progress_pct}%) - 已匹配 {total_matched} 个点")
 
-            ww3_swh1 = ww3_swh[i, :, :].ravel()
+            ww3_swh1 = hs_nt_n[i, :]
             year = int(T[i][0:4])
             month = int(T[i][4:6])
             day = int(T[i][6:8])

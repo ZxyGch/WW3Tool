@@ -545,10 +545,10 @@
 ! -------------------------------------------------------------------- !
 !&UNST_NML
 !  UNST%SF             = -1.
-!  UNST%FILENAME       = 'ngug.msh'
-!  UNST%IDLA           = 4
-!  UNST%IDFM           = 2
-!  UNST%FORMAT         = '(20f10.2)'
+!  UNST%FILENAME       = 'grid.ww3'
+!  UNST%IDLA           = 1
+!  UNST%IDFM           = 1
+!  UNST%FORMAT         = '(....)'
 !/
 
 ! -------------------------------------------------------------------- !
