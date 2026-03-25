@@ -1,0 +1,52 @@
+#!/bin/bash
+
+##  Run SMCGSideMP for SMC61250 global part.
+##  Usage:  ./runSMCSideMP  ./SideMPInput.txt 
+##
+##  First created:   Jian-Guo Li    28 Apr 2021
+##  Last modified:   Jian-Guo Li    20 Jun 2025
+##
+
+##  Use default input file unless a given file is provided. 
+ 
+echo $# $*
+if [ $# -ge 1 ]
+   then
+   Inputfile=$1
+else
+   Inputfile='SideInput.txt'
+fi
+
+Wrkdir='..' 
+GridName=`head -n 1 $Inputfile` 
+echo " GridName from $Inputfile file is $GridName "
+
+cd $Wrkdir/tmpfls/
+
+##  OpenMP threads for parallelization. 
+export OMP_NUM_THREADS=2
+
+cat $Wrkdir/Linuxs/$Inputfile  > ./InputFile
+
+ $Wrkdir/F90SMC/SMCGSideMP    ./InputFile
+
+# Check run finished and save output files
+  CC=$?
+  if test $CC -ne 0
+  then
+    echo " *** SMCGSideMP Crash !!! *** "
+  else
+##  Save output files
+   ls -l  ${GridName}ISide.d ${GridName}JSide.d
+   $Wrkdir/Linuxs/countijsd6lv ${GridName}ISide.d ${GridName}JSide.d
+    mv       ${GridName}ISide.dat  ${GridName}ISid.dat
+    mv       ${GridName}JSide.dat  ${GridName}JSid.dat
+  fi
+
+  echo " Done for grid $GridName "
+
+
+ echo " *** END *** "
+
+ exit 0
+

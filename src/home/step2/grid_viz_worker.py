@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-网格可视化子进程：非结构 grid.ww3（Gmsh）与结构化 grid.meta/bot/mask/obst。
+网格可视化子进程：非结构 grid.ww3（Gmsh）与结构化 grid.nml（WW3 描述）/ bot / mask / obst。
 生成图片到 <grid_dir>/photo/grid/，并写入 .grid_viz_cache.json 供主进程跳过未改网格。
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
 
+import glob
 import numpy as np
 
 CACHE_FILE = ".grid_viz_cache.json"
-CACHE_VERSION = 4
+CACHE_VERSION = 8
 VIZ_PREFIX = "WW3TOOL_VIZ"
 
 
@@ -59,6 +61,63 @@ def _stat_fp(path: str) -> dict | None:
     return {"mtime_ns": st.st_mtime_ns, "size": st.st_size}
 
 
+def _structured_mask_path(grid_dir: str) -> str | None:
+    """Use ``grid.mask_nobound`` if present; otherwise ``grid.mask``."""
+    p = os.path.join(grid_dir, "grid.mask_nobound")
+    if os.path.isfile(p):
+        return p
+    p2 = os.path.join(grid_dir, "grid.mask")
+    return p2 if os.path.isfile(p2) else None
+
+
+def _flat_grid_meta_ok(path: str) -> bool:
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            c = f.read(8000)
+    except OSError:
+        return False
+    return all(
+        s in c
+        for s in ("RECT%NX", "RECT%NY", "RECT%SX", "RECT%SY", "RECT%X0", "RECT%Y0")
+    )
+
+
+def _structured_grid_desc_path(grid_dir: str) -> str | None:
+    """Match ``structured_grid_paths.structured_grid_desc_path`` (no package import)."""
+    if not grid_dir or not os.path.isdir(grid_dir):
+        return None
+    gm = os.path.join(grid_dir, "grid.meta")
+    if os.path.isfile(gm) and _flat_grid_meta_ok(gm):
+        return gm
+    gn = os.path.join(grid_dir, "grid.nml")
+    if os.path.isfile(gn):
+        try:
+            with open(gn, encoding="utf-8", errors="ignore") as f:
+                ch = f.read(16000)
+        except OSError:
+            ch = ""
+        if "&DEPTH_NML" in ch or "$ Define grid" in ch:
+            return gn
+    preferred = os.path.join(grid_dir, "ww3_grid.nml.grid")
+    if os.path.isfile(preferred):
+        return preferred
+    cands = sorted(glob.glob(os.path.join(grid_dir, "ww3_grid.nml.*")))
+    if cands:
+        return cands[0]
+    if os.path.isfile(gm):
+        try:
+            rpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rect_grid_desc_parse.py")
+            spec = importlib.util.spec_from_file_location("_rgd_chk", rpath)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                if mod.parse_rect_grid_description(gm):
+                    return gm
+        except Exception:
+            pass
+    return None
+
+
 def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
     if mode == "unst":
         p = os.path.join(grid_dir, "grid.ww3")
@@ -68,12 +127,20 @@ def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
         return {"grid.ww3": fp}
     if mode == "structured":
         out = {}
-        for name in ("grid.meta", "grid.bot", "grid.mask", "grid.obst"):
+        desc = _structured_grid_desc_path(grid_dir)
+        if not desc:
+            return None
+        out[os.path.basename(desc)] = _stat_fp(desc)
+        for name in ("grid.bot", "grid.obst"):
             p = os.path.join(grid_dir, name)
             fp = _stat_fp(p)
             if fp is None:
                 return None
             out[name] = fp
+        mask_p = _structured_mask_path(grid_dir)
+        if mask_p is None:
+            return None
+        out["grid.mask"] = _stat_fp(mask_p)
         return out
     return None
 
@@ -244,39 +311,28 @@ def unst_wireframe_segments(
 # --- Structured WW3 ASCII ---
 
 
+_rgd_parse = None
+
+
+def _rect_grid_desc_module():
+    global _rgd_parse
+    if _rgd_parse is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rect_grid_desc_parse.py")
+        spec = importlib.util.spec_from_file_location("_rect_grid_desc_parse", path)
+        if spec is None or spec.loader is None:
+            raise ImportError(path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _rgd_parse = mod
+    return _rgd_parse
+
+
 def read_ww3meta(fname: str):
+    """Structured grid: MATLAB-style ``grid.nml`` (&RECT_NML) or legacy ASCII."""
     try:
-        with open(fname, "r", encoding="utf-8", errors="ignore") as fid:
-            lines = fid.readlines()
-        grid_line_idx = None
-        gtype = None
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if not stripped or stripped.startswith("$"):
-                continue
-            tokens = stripped.replace("'", "").replace('"', "").split()
-            if not tokens:
-                continue
-            if tokens[0].upper() in ("RECT", "CURV"):
-                gtype = tokens[0].upper()
-                grid_line_idx = i
-                break
-        if grid_line_idx is None or gtype != "RECT":
+        lon, lat = _rect_grid_desc_module().rect_lon_lat_mesh(fname)
+        if lon is None:
             return None, None
-        if grid_line_idx + 3 >= len(lines):
-            return None, None
-        values = lines[grid_line_idx + 1].split()
-        Nx = int(float(values[0]))
-        Ny = int(float(values[1]))
-        values = lines[grid_line_idx + 2].split()
-        dx = float(values[0]) / float(values[2])
-        dy = float(values[1]) / float(values[2])
-        values = lines[grid_line_idx + 3].split()
-        lons = float(values[0]) / float(values[2])
-        lats = float(values[1]) / float(values[2])
-        lon1d = lons + np.arange(Nx) * dx
-        lat1d = lats + np.arange(Ny) * dy
-        lon, lat = np.meshgrid(lon1d, lat1d)
         return lon, lat
     except Exception:
         return None, None
@@ -491,18 +547,20 @@ def run_structured(grid_dir: str) -> dict:
         imgs = cached_image_paths(grid_dir, "structured")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
     emit_log(_viz_tr("step2_grid_viz_worker_read", "   正在读取网格数据…"))
+    mask_p = _structured_mask_path(grid_dir)
+    desc_p = _structured_grid_desc_path(grid_dir)
     gf = {
-        "meta": os.path.join(grid_dir, "grid.meta"),
+        "meta": desc_p,
         "bot": os.path.join(grid_dir, "grid.bot"),
-        "mask": os.path.join(grid_dir, "grid.mask"),
+        "mask": mask_p,
         "obst": os.path.join(grid_dir, "grid.obst"),
     }
     for k, p in gf.items():
-        if not os.path.isfile(p):
+        if p is None or not os.path.isfile(p):
             return {"ok": False, "error": f"missing {k}", "images": [], "photo_dir": photo_dir}
     lon, lat = read_ww3meta(gf["meta"])
     if lon is None:
-        return {"ok": False, "error": "grid.meta RECT read failed", "images": [], "photo_dir": photo_dir}
+        return {"ok": False, "error": "structured grid description RECT read failed", "images": [], "photo_dir": photo_dir}
     Ny, Nx = lon.shape
     mask = read_ww3file(gf["mask"], Nx, Ny)
     loc = (mask == 0) if mask is not None else None

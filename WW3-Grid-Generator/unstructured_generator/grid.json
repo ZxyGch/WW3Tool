@@ -1,0 +1,54 @@
+{
+  "Domain": {
+    "clip_to_bounds": false,
+    "west_lon": 110,
+    "east_lon": 130,
+    "south_lat": 10,
+    "north_lat": 30
+  },
+  "Zoom": {
+    "zoom_auto_center": true,
+    "zoom_lon_deg": 30.5,
+    "zoom_lat_deg": 41.5
+  },
+  "Workflow": {
+    "run_window_mask": false,
+    "unst_msh_gen_dir": "unst_msh_gen",
+    "resolved_config_name": ".grid_run.ini",
+    "jigsaw_python_root": "jigsaw-python"
+  },
+  "Output": {
+    "mesh_workspace_dir": "unst_msh_gen/mesh_workspace",
+    "ww3_publish_dir": "output",
+    "ww3_publish_basename": "grid.ww3"
+  },
+  "Spacing": {
+    "hmax": 100.0,
+    "hshr": 100.0,
+    "nwav": 400,
+    "hmin": 100.0,
+    "dhdx": 0.05,
+    "deep_ocean_threshold_m": 4000.0
+  },
+  "ScalingSettings": {
+    "upper_bound": 50,
+    "middle_bound": -20,
+    "lower_bound": -90,
+    "scale_north": 9,
+    "scale_middle": 20,
+    "scale_south_upper": 30,
+    "scale_south_lower": 9
+  },
+  "MeshSettings": {
+    "hfun_hmax": 100,
+    "mesh_file": "uglo_poly_nBlkS.msh",
+    "ww3_mesh_file": "uglo_poly_nBlkS.ww3"
+  },
+  "CommandLineArgs": {
+    "black_sea": 3,
+    "mask_file": "wmask.nc"
+  },
+  "DataFiles": {
+    "dem_file": "../reference_data/RTopo_2_0_4_GEBCO_v2024_60sec_pixel.nc"
+  }
+}

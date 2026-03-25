@@ -1,0 +1,31 @@
+#!/usr/bin/ksh
+
+##  Run countcell for Sub61250 cell arrays. 
+##  Usage:  ./runCountCelSub 
+##
+##  First created:   Jian-Guo Li    28 Apr 2021
+##  Last modified:   Jian-Guo Li    25 Feb 2022
+##
+
+Wrkdir='../' 
+
+cd $Wrkdir/tmpfls/
+
+## Loop over 3 sub-grids and run countcell4lv for each grid.
+for grid in Soth Pacf Atln 
+do
+
+ GridName=${grid}61250
+ $Wrkdir/Linuxs/countcell4lv  ${grid}Cels.dat
+ mv New_${grid}Cels.dat  ${GridName}Cels.dat
+ $Wrkdir/Linuxs/countcell4lv  ${grid}Bdys.dat
+ mv New_${grid}Bdys.dat  ${GridName}Bdys.dat
+
+ echo " Done for grid $grid "
+
+done
+
+ echo " *** END *** "
+
+ exit 0
+

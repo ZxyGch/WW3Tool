@@ -1,0 +1,5 @@
+SMC1R3A
+  1000   1200   3   ##  NCL,  NFC,  MRL
+  1024    720   2   ##  NLon, NLat, NPol
+'../DatSWE/SMC1R3BArc.dat'
+

@@ -1,0 +1,5 @@
+ SWEs1d 1 level grid zlon zlat dlon dlat  JGLi15May2025 
+  0.0  0.0  1.40625  1.0
+ ../tmpfls/  ../DatSWE/
+  2  Number of polar cells or polar parts. 0 implies no Arctic part.
+

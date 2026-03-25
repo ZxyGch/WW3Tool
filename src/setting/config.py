@@ -18,14 +18,14 @@ CONFIG_FILE = os.path.join(PUBLIC_DIR, "config.json")
 
 
 def get_project_gridgen_path():
-    """固定为项目根目录下的 gridgen/，不再从设置或 GRIDGEN_PATH 配置项覆盖。"""
+    """固定为项目根目录下的 WW3-Grid-Generator/（网格工具根目录），不从设置或 GRIDGEN_PATH 覆盖。"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     src_dir = os.path.dirname(script_dir)
     project_root = os.path.dirname(src_dir)
-    return os.path.normpath(os.path.join(project_root, "gridgen"))
+    return os.path.normpath(os.path.join(project_root, "WW3-Grid-Generator"))
 
 
-# gridgen/unst_msh_gen/config.json 默认值（与仓库内 config.json 一致）
+# 非结构网格：设置页与 Step2 使用的「扁平」键（与 grid.json 互转）；持久化仅使用 unstructured_generator/grid.json
 UNST_MSH_GEN_CONFIG_DEFAULTS = {
     "spacing": {
         "hmax": 100.0,
@@ -33,6 +33,7 @@ UNST_MSH_GEN_CONFIG_DEFAULTS = {
         "hmin": 20.0,
         "nwav": 400,
         "dhdx": 0.05,
+        "deep_ocean_threshold_m": 4000.0,
     },
     "mesh_settings": {"hfun_hmax": 100.0},
     "data": {
@@ -52,11 +53,181 @@ UNST_MSH_GEN_CONFIG_DEFAULTS = {
     },
 }
 
+UNSTRUCTURED_GRID_SCALING_DEFAULTS = {
+    "upper_bound": 50,
+    "middle_bound": -20,
+    "lower_bound": -90,
+    "scale_north": 9,
+    "scale_middle": 20,
+    "scale_south_upper": 30,
+    "scale_south_lower": 9,
+}
+
+
+def get_unstructured_grid_json_path():
+    return os.path.normpath(
+        os.path.join(get_project_gridgen_path(), "unstructured_generator", "grid.json")
+    )
+
 
 def get_unst_msh_gen_config_path():
-    return os.path.normpath(
-        os.path.join(get_project_gridgen_path(), "unst_msh_gen", "config.json")
-    )
+    """兼容旧名：非结构网格统一使用 unstructured_generator/grid.json。"""
+    return get_unstructured_grid_json_path()
+
+
+def default_unst_dem_file_relpath():
+    """reference_data 中 RTopo DEM 的相对路径，相对于 unstructured_generator/（与 grid.json 同目录）。"""
+    g = get_project_gridgen_path()
+    ug = os.path.normpath(os.path.join(g, "unstructured_generator"))
+    dem_abs = os.path.join(g, "reference_data", "RTopo_2_0_4_GEBCO_v2024_60sec_pixel.nc")
+    try:
+        return os.path.relpath(dem_abs, ug).replace("\\", "/")
+    except ValueError:
+        return UNST_MSH_GEN_CONFIG_DEFAULTS["data"]["dem_file"]
+
+
+def _grid_json_to_legacy(gj: dict) -> dict:
+    d0 = UNST_MSH_GEN_CONFIG_DEFAULTS
+    sp = gj.get("Spacing") or {}
+    ms = gj.get("MeshSettings") or {}
+    df = gj.get("DataFiles") or {}
+    cmd = gj.get("CommandLineArgs") or {}
+    reg_in = dict(gj.get("Regional") or {})
+    dom = gj.get("Domain") or {}
+    legacy_reg = copy.deepcopy(d0["regional"])
+    if reg_in:
+        for k, v in reg_in.items():
+            if v is None or k not in legacy_reg:
+                continue
+            try:
+                if k == "edge_segments":
+                    legacy_reg[k] = int(v)
+                else:
+                    legacy_reg[k] = float(v)
+            except (TypeError, ValueError):
+                pass
+    elif dom:
+        try:
+            legacy_reg["lon_min"] = float(dom.get("west_lon", legacy_reg["lon_min"]))
+            legacy_reg["lon_max"] = float(dom.get("east_lon", legacy_reg["lon_max"]))
+            legacy_reg["lat_min"] = float(dom.get("south_lat", legacy_reg["lat_min"]))
+            legacy_reg["lat_max"] = float(dom.get("north_lat", legacy_reg["lat_max"]))
+        except (TypeError, ValueError):
+            pass
+    mask = str(df.get("mask_file") or cmd.get("mask_file") or "").strip()
+    return {
+        "spacing": {
+            "hmax": float(sp.get("hmax", d0["spacing"]["hmax"])),
+            "hshr": float(sp.get("hshr", d0["spacing"]["hshr"])),
+            "hmin": float(sp.get("hmin", sp.get("hshr", d0["spacing"]["hmin"]))),
+            "nwav": int(sp.get("nwav", d0["spacing"]["nwav"])),
+            "dhdx": float(sp.get("dhdx", d0["spacing"]["dhdx"])),
+            "deep_ocean_threshold_m": float(
+                sp.get("deep_ocean_threshold_m", d0["spacing"]["deep_ocean_threshold_m"])
+            ),
+        },
+        "mesh_settings": {
+            "hfun_hmax": float(ms.get("hfun_hmax", d0["mesh_settings"]["hfun_hmax"])),
+        },
+        "data": {
+            "dem_file": str(df.get("dem_file", "") or "").strip(),
+            "mask_file": mask,
+        },
+        "command_line_args": {
+            "black_sea": int(cmd.get("black_sea", d0["command_line_args"]["black_sea"])),
+        },
+        "regional": legacy_reg,
+    }
+
+
+def _legacy_dict_to_grid_json(leg: dict) -> dict:
+    sp = leg.get("spacing") or {}
+    ms = leg.get("mesh_settings") or {}
+    data = leg.get("data") or {}
+    cmd = leg.get("command_line_args") or {}
+    reg = leg.get("regional") or UNST_MSH_GEN_CONFIG_DEFAULTS["regional"]
+    dem = str(data.get("dem_file", "") or "").strip()
+    if not dem:
+        dem = default_unst_dem_file_relpath()
+    mask = str(data.get("mask_file") or cmd.get("mask_file") or "").strip()
+    return {
+        "Domain": {
+            "clip_to_bounds": False,
+            "west_lon": float(reg["lon_min"]),
+            "east_lon": float(reg["lon_max"]),
+            "south_lat": float(reg["lat_min"]),
+            "north_lat": float(reg["lat_max"]),
+        },
+        "Zoom": {
+            "zoom_auto_center": True,
+            "zoom_lon_deg": 30.5,
+            "zoom_lat_deg": 41.5,
+        },
+        "Workflow": {
+            "run_window_mask": False,
+            "unst_msh_gen_dir": "unst_msh_gen",
+            "resolved_config_name": ".grid_run.ini",
+            "jigsaw_python_root": "jigsaw-python",
+        },
+        "Output": {
+            "mesh_workspace_dir": "unst_msh_gen/mesh_workspace",
+            "ww3_publish_dir": "output",
+            "ww3_publish_basename": "grid.ww3",
+        },
+        "Spacing": {
+            "hmax": float(sp.get("hmax", 100.0)),
+            "hshr": float(sp.get("hshr", 20.0)),
+            "nwav": int(sp.get("nwav", 400)),
+            "hmin": float(sp.get("hmin", sp.get("hshr", 20.0))),
+            "dhdx": float(sp.get("dhdx", 0.05)),
+            "deep_ocean_threshold_m": float(sp.get("deep_ocean_threshold_m", 4000.0)),
+        },
+        "ScalingSettings": copy.deepcopy(UNSTRUCTURED_GRID_SCALING_DEFAULTS),
+        "MeshSettings": {
+            "hfun_hmax": float(ms.get("hfun_hmax", 100.0)),
+            "mesh_file": "grid.msh",
+            "ww3_mesh_file": "grid.ww3",
+        },
+        "CommandLineArgs": {
+            "black_sea": int(cmd.get("black_sea", 3)),
+            "mask_file": mask,
+        },
+        "DataFiles": {"dem_file": dem},
+    }
+
+
+def _apply_legacy_updates_to_grid_json(full: dict, updates: dict) -> None:
+    if not updates:
+        return
+    if "spacing" in updates and updates["spacing"]:
+        full.setdefault("Spacing", {})
+        u = updates["spacing"]
+        for k in ("hmax", "hshr", "hmin", "dhdx", "deep_ocean_threshold_m"):
+            if k in u:
+                full["Spacing"][k] = float(u[k])
+        if "nwav" in u:
+            full["Spacing"]["nwav"] = int(u["nwav"])
+    if "mesh_settings" in updates and updates["mesh_settings"]:
+        full.setdefault("MeshSettings", {})
+        for k, v in updates["mesh_settings"].items():
+            full["MeshSettings"][k] = float(v) if k == "hfun_hmax" else v
+    if "data" in updates and updates["data"]:
+        full.setdefault("DataFiles", {})
+        for k, v in updates["data"].items():
+            if v is not None:
+                full["DataFiles"][k] = v
+    if "command_line_args" in updates and updates["command_line_args"]:
+        full.setdefault("CommandLineArgs", {})
+        full["CommandLineArgs"].update(updates["command_line_args"])
+    if "regional" in updates and updates["regional"]:
+        full.setdefault("Regional", {})
+        for k, v in updates["regional"].items():
+            if k in ("lon_min", "lon_max", "lat_min", "lat_max"):
+                continue
+            if k == "edge_segments":
+                full["Regional"][k] = int(v)
+            else:
+                full["Regional"][k] = float(v) if v is not None else v
 
 
 def _deep_merge_unst_dict(base, override):
@@ -68,49 +239,46 @@ def _deep_merge_unst_dict(base, override):
 
 
 def load_unst_msh_gen_config():
-    """读取 unst_msh_gen/config.json，与默认结构合并。失败时返回默认副本。"""
+    """读取 unstructured_generator/grid.json，转为与旧版一致的 spacing/mesh_settings/data/regional 扁平结构。"""
     data = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
-    path = get_unst_msh_gen_config_path()
-    if not os.path.isfile(path):
-        return data
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            user = json.load(f)
-        if isinstance(user, dict):
-            _deep_merge_unst_dict(data, user)
-    except Exception:
-        pass
+    data["data"] = dict(data.get("data") or {})
+    path = get_unstructured_grid_json_path()
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                gj = json.load(f)
+            if isinstance(gj, dict):
+                user = _grid_json_to_legacy(gj)
+                _deep_merge_unst_dict(data, user)
+        except Exception:
+            pass
+    if not str((data.get("data") or {}).get("dem_file") or "").strip():
+        data["data"]["dem_file"] = default_unst_dem_file_relpath()
     return data
 
 
 def save_unst_msh_gen_config(updates):
-    """将 updates 合并写入 unst_msh_gen/config.json。不修改 regional 中的 lon_min/lon_max/lat_min/lat_max。"""
-    path = get_unst_msh_gen_config_path()
+    """将 updates 合并写入 unstructured_generator/grid.json（不改动 Domain/Regional 中的经纬度边角）。"""
+    path = get_unstructured_grid_json_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    def _fresh_full_from_defaults():
+        b = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
+        b["data"] = dict(b.get("data") or {})
+        b["data"]["dem_file"] = default_unst_dem_file_relpath()
+        return _legacy_dict_to_grid_json(b)
+
     if os.path.isfile(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 full = json.load(f)
+            if not isinstance(full, dict):
+                full = _fresh_full_from_defaults()
         except Exception:
-            full = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
+            full = _fresh_full_from_defaults()
     else:
-        full = copy.deepcopy(UNST_MSH_GEN_CONFIG_DEFAULTS)
-    for key, default_section in UNST_MSH_GEN_CONFIG_DEFAULTS.items():
-        if key not in full:
-            full[key] = copy.deepcopy(default_section)
-        elif isinstance(default_section, dict):
-            for sk, sv in default_section.items():
-                full[key].setdefault(sk, sv)
-    for section in ("spacing", "mesh_settings", "data", "command_line_args"):
-        if section in updates and updates[section]:
-            full.setdefault(section, {})
-            full[section].update(updates[section])
-    if "regional" in updates and updates["regional"]:
-        reg = full.setdefault("regional", {})
-        skip = {"lon_min", "lon_max", "lat_min", "lat_max"}
-        for k, v in updates["regional"].items():
-            if k not in skip:
-                reg[k] = v
+        full = _fresh_full_from_defaults()
+    _apply_legacy_updates_to_grid_json(full, updates)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(full, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -125,7 +293,7 @@ DEFAULT_CONFIG = {
     # 已废弃：保留键以兼容旧 config.json；实际目录见 get_project_gridgen_path()
     "GRIDGEN_PATH": "",
 
-    # 参考数据路径（用于网格生成时的参考数据，为空则使用项目 gridgen/reference_data）
+    # 参考数据路径（用于网格生成时的参考数据，为空则使用项目 WW3-Grid-Generator/reference_data）
     "REFERENCE_DATA_PATH": "",
 
     # GridGen 版本类型（"MATLAB" 或 "Python"）
@@ -399,7 +567,9 @@ def reload_config():
         MATLAB_PATH = matlab_path
     
     GRIDGEN_PATH = get_project_gridgen_path()
-    GRIDGEN_BIN_PATH = os.path.normpath(os.path.join(GRIDGEN_PATH, "matlab"))
+    GRIDGEN_BIN_PATH = os.path.normpath(
+        os.path.join(GRIDGEN_PATH, "structured_generator", "gridgen")
+    )
     
     DX = _config.get("DX", DEFAULT_CONFIG["DX"])
     DY = _config.get("DY", DEFAULT_CONFIG["DY"])

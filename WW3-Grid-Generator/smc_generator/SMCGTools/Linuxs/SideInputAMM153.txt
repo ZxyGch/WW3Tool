@@ -1,0 +1,6 @@
+AMM153km 
+ 680000   750000   2   ##  NCL,  NFC,  MRL
+   1458     1345   0   ##  NLon, NLat, NPol
+'../../Bathy/AMM15Wave/DatSMC/AMM153kmCels.dat'
+ .FALSE.
+

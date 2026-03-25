@@ -1,0 +1,32 @@
+#!/usr/bin/ksh
+
+##  Convert ps images inot gif using convert
+##  Usage:  ls psfiles.ps | convps2gif 
+##  Output is saved as psfiles.gif
+##
+##  First created:   Jian-Guo Li     8 Aug 2006
+##  Last modified:   Jian-Guo Li    20 Jan 2020
+##
+
+# Density nnn provided on command line or default 100 pixle per inch.
+ if [ 0$# -ge 1 ]
+   then
+   nnn=$1
+ else
+   nnn=100 
+ fi
+ echo "convert at density $nnn dpi"
+
+## Loop over all file fed by pipe list
+while read fff
+do
+leng=`expr length $fff`
+clen=`expr $leng - 3`
+newf=`expr substr $fff 1 $clen`
+echo " converting $fff to ${newf}.gif ..."
+# Use default density 100 pixle per inch
+ convert -background white -flatten -density $nnn  $fff  ${newf}.gif
+done
+
+exit 0
+

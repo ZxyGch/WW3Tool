@@ -1,0 +1,44 @@
+{
+  "input": {
+    "bathymetry_file": "../reference_data/etopo2.nc",
+    "lon_var": null,
+    "lat_var": null,
+    "bathy_var": null,
+    "bathy_convention": "elevation",
+    "auto_flip_lat": true,
+    "auto_flip_lon": true,
+    "coord_spacing_rtol": 0.001,
+    "coord_spacing_atol": 1e-08,
+    "nan_fill_value": 1000.0
+  },
+  "grid": {
+    "name": "grid",
+    "n_levels": 2,
+    "global": false,
+    "arctic": false,
+    "glb_arc_lat": 84.4,
+    "origin": {
+      "lon0": 0.0,
+      "lat0": -90.0
+    },
+    "regional_bounds": {
+      "west_lon": 110.0,
+      "south_lat": 10.0,
+      "east_lon": 130.0,
+      "north_lat": 30.0
+    }
+  },
+  "physics": {
+    "wlevel": 0.0,
+    "depmin": 0.0,
+    "dshalw": -150.0
+  },
+  "boundary": {
+    "generate_boundary_cells": true,
+    "msea": 1
+  },
+  "output": {
+    "output_dir": "./output",
+    "file_prefix": ""
+  }
+}

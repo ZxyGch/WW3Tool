@@ -6,7 +6,7 @@ import os
 
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy, QCheckBox
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox
 from setting.language_manager import tr
 from setting.config import DX, DY, LONGITUDE_WEST, LONGITUDE_EAST, LATITUDE_SORTH, LATITUDE_NORTH
@@ -196,7 +196,7 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         QtCore.QTimer.singleShot(10, _set_mesh_type_combo_alignment)
         outer_grid.addWidget(self.mesh_type_combo, 4, 1, 1, 3)
 
-        # 非结构网格 spacing 参数（与 unst_msh_gen/config.json 中 spacing 对应；仅在选择非结构网格时显示）
+        # 非结构网格 spacing 参数（与 unstructured_generator/grid.json 中 Spacing 对应；仅在选择非结构网格时显示）
         self.unst_spacing_widget = QWidget()
         unst_grid = QGridLayout()
         unst_grid.setContentsMargins(0, 0, 0, 0)
@@ -253,9 +253,69 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.unst_dhdx_edit.setStyleSheet(input_style)
         unst_grid.addWidget(self.unst_dhdx_edit, 2, 1)
 
+        unst_grid.addWidget(
+            _unst_spacing_label(
+                "step2_unst_spacing_deep_threshold",
+                "step2_unst_spacing_deep_threshold_tip",
+                "深水阈值 (m)",
+                "判定为深水区的水深阈值（米，正数）。例如 4000 表示水深大于 4000 m 时按深水尺度处理。",
+            ),
+            3,
+            0,
+        )
+        self.unst_deep_threshold_edit = LineEdit()
+        self.unst_deep_threshold_edit.setText("4000")
+        self.unst_deep_threshold_edit.setStyleSheet(input_style)
+        unst_grid.addWidget(self.unst_deep_threshold_edit, 3, 1)
+
         self.unst_spacing_widget.setLayout(unst_grid)
         self.unst_spacing_widget.setVisible(False)
         outer_grid.addWidget(self.unst_spacing_widget, 5, 0, 1, 4)
+
+        # SMC 网格参数（create_grid.py 中 grid.n_levels / physics / boundary；输出目录由 Step2 固定为当前工作目录）
+        self.smc_params_widget = QWidget()
+        smc_grid = QGridLayout()
+        smc_grid.setContentsMargins(0, 0, 0, 0)
+        smc_grid.setSpacing(10)
+
+        def _smc_lbl(key: str, default: str) -> QLabel:
+            lb = QLabel(tr(key, default))
+            lb.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            return lb
+
+        smc_grid.addWidget(_smc_lbl("step2_smc_n_levels", "细化层数:"), 0, 0)
+        self.smc_n_levels_edit = LineEdit()
+        self.smc_n_levels_edit.setText("2")
+        self.smc_n_levels_edit.setStyleSheet(input_style)
+        smc_grid.addWidget(self.smc_n_levels_edit, 0, 1)
+
+        smc_grid.addWidget(_smc_lbl("step2_smc_depmin", "最小水深:"), 1, 0)
+        self.smc_depmin_edit = LineEdit()
+        self.smc_depmin_edit.setText("0.0")
+        self.smc_depmin_edit.setStyleSheet(input_style)
+        smc_grid.addWidget(self.smc_depmin_edit, 1, 1)
+
+        smc_grid.addWidget(_smc_lbl("step2_smc_dshalw", "浅水截断:"), 2, 0)
+        self.smc_dshalw_edit = LineEdit()
+        self.smc_dshalw_edit.setText("-150.0")
+        self.smc_dshalw_edit.setStyleSheet(input_style)
+        smc_grid.addWidget(self.smc_dshalw_edit, 2, 1)
+
+        smc_grid.addWidget(_smc_lbl("step2_smc_boundary", "开边界:"), 3, 0)
+        self.smc_boundary_generate_check = QCheckBox(tr("step2_smc_boundary_generate", "生成开边界格点"))
+        self.smc_boundary_generate_check.setChecked(True)
+        smc_grid.addWidget(self.smc_boundary_generate_check, 3, 1)
+
+        smc_grid.addWidget(_smc_lbl("step2_smc_msea", "海陆类型:"), 4, 0)
+        self.smc_msea_edit = LineEdit()
+        self.smc_msea_edit.setText("1")
+        self.smc_msea_edit.setToolTip(tr("step2_smc_msea_tip", "生成开边界格点时使用的海陆类型编号（默认 1，一般无需修改）。"))
+        self.smc_msea_edit.setStyleSheet(input_style)
+        smc_grid.addWidget(self.smc_msea_edit, 4, 1)
+
+        self.smc_params_widget.setLayout(smc_grid)
+        self.smc_params_widget.setVisible(False)
+        outer_grid.addWidget(self.smc_params_widget, 6, 0, 1, 4)
 
         outer_grid_layout.addLayout(outer_grid)
         self.outer_grid_widget.setLayout(outer_grid_layout)
@@ -521,7 +581,9 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         if not hasattr(self, "grid_type_label") or not hasattr(self, "grid_type_combo"):
             return
         utext = tr("step2_mesh_type_unstructured", "非结构网格")
-        show = getattr(self, "mesh_type_var", "") != utext
+        stext = tr("step2_mesh_type_smc", "SMC 网格")
+        mesh = getattr(self, "mesh_type_var", "")
+        show = mesh not in (utext, stext)
         self.grid_type_label.setVisible(show)
         self.grid_type_combo.setVisible(show)
 
@@ -532,7 +594,9 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         if not hasattr(self, "dx_edit") or not hasattr(self, "dy_edit"):
             return
         utext = tr("step2_mesh_type_unstructured", "非结构网格")
-        show = getattr(self, "mesh_type_var", "") != utext
+        stext = tr("step2_mesh_type_smc", "SMC 网格")
+        mesh = getattr(self, "mesh_type_var", "")
+        show = mesh not in (utext, stext)
         self.dx_label.setVisible(show)
         self.dx_edit.setVisible(show)
         self.dy_label.setVisible(show)
@@ -558,10 +622,10 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         smc_text = tr("step2_mesh_type_smc", "SMC 网格")
         unstructured_text = tr("step2_mesh_type_unstructured", "非结构网格")
 
-        # 上一次允许保留的选择（曲线/SMC 不允许切换，需回退）
+        # 上一次允许保留的选择（曲线网格尚未实现，需回退）
         prev_mesh = getattr(self, "mesh_type_var", None) or rectangle_text
 
-        if mesh_type in (curvilinear_text, smc_text):
+        if mesh_type == curvilinear_text:
             self.mesh_type_combo.blockSignals(True)
             self.mesh_type_combo.setCurrentText(prev_mesh)
             self.mesh_type_combo.blockSignals(False)
@@ -576,7 +640,7 @@ class HomeStepTwoCard(StepTwoServiceMixin):
                 pass
             return
 
-        # 允许保留：矩形网格、非结构网格（不再因目录内已有网格文件/嵌套而禁止切换）
+        # 允许：矩形、SMC、非结构网格
         self.mesh_type_var = mesh_type
 
         if mesh_type == unstructured_text:
@@ -592,6 +656,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
 
         if hasattr(self, "unst_spacing_widget"):
             self.unst_spacing_widget.setVisible(mesh_type == unstructured_text)
+        if hasattr(self, "smc_params_widget"):
+            self.smc_params_widget.setVisible(mesh_type == smc_text)
 
         self._update_step2_grid_type_row_visibility()
         self._update_step2_dx_dy_visibility()

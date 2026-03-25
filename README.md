@@ -127,24 +127,24 @@ The bundle includes bathymetry (e.g. gebco, etopo1, etopo2) and coastline data, 
 
 ![](public/resource/README-media/截屏2026-03-09%2015.50.19.png)
 
-When the app reports missing `reference_data`, click **Download**: it will automatically fetch four parts from the WW3Tool GitHub release (`part_aa`–`part_ad`), merges them into `reference_data.zip` , and extracts to `gridgen/reference_data` (or your configured path). 
+When the app reports missing `reference_data`, click **Download**: it will automatically fetch four parts from the WW3Tool GitHub release (`part_aa`–`part_ad`), merges them into `reference_data.zip` , and extracts to `WW3-Grid-Generator/reference_data` (or your configured path). 
 
 If that is slow or fails, use the mirrors: [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [BaiduNetdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48). 
 
-**For manual downloads, extract the contents to the directory: WW3Tool/gridgen/reference_data.**
+**For manual downloads, extract the contents to the directory: WW3Tool/WW3-Grid-Generator/reference_data.**
 
 
 ![](public/resource/README-media/c1ffc9ab1b634c5011341174f966110e26d380b9.png)
 
 #### Regular Grid
 
-Run the app, choose a domain from wind.nc, and click Generate Grid. This calls WW3Tool/gridgen to generate grid files into the work directory.
+Run the app, choose a domain from wind.nc, and click Generate Grid. This calls WW3Tool/WW3-Grid-Generator to generate grid files into the work directory.
 
 Smaller DX/DY yields higher accuracy because DX/DY is the grid spacing.
 
 ![](public/resource/README-media/ff088383518ca593ffa433786bfc3fc74c8dbf55.png)
 
-Four files are produced in the work directory: grid.bot, grid.obst, grid.meta, grid.mask.
+Four files are produced in the work directory: grid.bot, grid.obst, grid.nml (WW3 grid description from `write_ww3meta`), grid.mask_nobound.
 
 #### Nested Grid
 
@@ -172,7 +172,7 @@ When coarse and fine exist, opening the directory automatically switches to nest
 
 #### Grid Cache
 
-To avoid repeated computation, each grid is cached under WW3Tool/gridgen/cache.
+To avoid repeated computation, each grid is cached under WW3Tool/WW3-Grid-Generator/cache.
 
 A cache key based on parameters becomes the folder name. When generating, the cache is checked first and reused if available.
 
@@ -195,7 +195,7 @@ Each cache folder includes params. json:
       10.0,
       30.0
     ],
-    "ref_dir": "/Users/zxy/ocean/WW3Tool/gridgen/reference_data",
+    "ref_dir": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/reference_data",
     "bathymetry": "GEBCO",
     "coastline_precision": "full"
   }
@@ -361,7 +361,7 @@ Next:
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml
 ```
 
-We convert the grid. meta section:
+We convert the grid.meta section:
 
 ``` swift
    'RECT'  T 'NONE'

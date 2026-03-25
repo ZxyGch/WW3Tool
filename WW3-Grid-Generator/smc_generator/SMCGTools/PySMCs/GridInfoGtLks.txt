@@ -1,0 +1,6 @@
+ GtLk6125  3 level grid zlon zlat dlon dlat for size-1 cells.  JGLi04Jun2025
+  0.0  0.0  0.087890625  0.058593750
+  ../tmpfls/   ../DatGMC/               Working and cell array dirs.
+  0  Number of polar cells or polar parts. 0 implies no Arctic part.
+  ../../GtLks6125Tx/ww3.    ../OutDatGtLk/      SWH and PropTest file dirs.
+

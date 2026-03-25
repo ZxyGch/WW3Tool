@@ -1,0 +1,10 @@
+SMC251020 
+ '../../DatGMC/'
+ 1036000  1160000  4   79424  # NCL,  NFC,  MRL,  Itrm
+ 10240    7200     1   6      # NLon, NLat, NPol, Init
+  6000      60    10   10     # NTS,  NWP,  NHrg, NLrg
+ 0.0  0.0  0.03515625  0.025  # ZLon, ZLat, DLon, DLat
+ 0.20   30.0   4.0E5  0.0015  # DFR0, DT,   AKHM, CBFr
+ -180.0  90.0   76.0     0.1  # PLon, PLat, PAvr, Beta
+ .True. .False. .True. .False.     # Arctic, Source, WHPrts, Restrt
+

@@ -1,0 +1,14 @@
+{
+  "config_path": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/SMCGTools/config.json",
+  "bathymetry_file": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/reference_data/etopo2.nc",
+  "lon_var": "x",
+  "lat_var": "y",
+  "bathy_var": "z",
+  "nlon": 10801,
+  "nlat": 5401,
+  "dlon": 0.03333282470703125,
+  "dlat": 0.03333282470703125,
+  "file_stem": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/SMCGTools/output/SMC_ChinaSea",
+  "cells_file": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/SMCGTools/output/SMC_ChinaSeaCels.dat",
+  "boundary_file": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/SMCGTools/output/SMC_ChinaSeaBdys.dat"
+}

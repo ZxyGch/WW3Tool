@@ -913,6 +913,18 @@ class ModifyWW3NML:
 
     # ==================== Meta 到 Grid NML 同步 ====================
 
+    @staticmethod
+    def _ww3_nml_assign_line(key: str, value_repr: str, key_width: int = 18) -> str:
+        """
+        Align like public/ww3/ww3_grid.nml: ``  `` + key + spaces so that column of
+        ``=`` matches the template (key + padding width is ``key_width`` characters).
+        Use key_width 18 for GRID/RECT, 16 for DEPTH%SF, 15 for OBST%SF.
+        """
+        sp = key_width - len(key)
+        if sp < 1:
+            sp = 1
+        return f"  {key}{' ' * sp}=  {value_repr}\n"
+
     def sync_grid_meta_to_grid_nml(self, target_dir=None):
         """从 grid.meta 提取参数并同步到 ww3_grid.nml（普通网格模式）"""
         if target_dir is None:
@@ -924,112 +936,132 @@ class ModifyWW3NML:
 
 
     def _sync_grid_meta_to_grid_nml_in_dir(self, target_dir, grid_label=""):
-        """在指定目录中从 grid.meta 提取 3 行 → 替换 ww3_grid.nml 中 &RECT_NML 的参数"""
+        """从 grid.meta 仅同步 GRID%TYPE/COORD/CLOS、RECT%*、DEPTH%SF、OBST%SF 到 ww3_grid.nml（与扁平 meta 一致）。"""
         if not target_dir or not isinstance(target_dir, str):
             return
+        from ..step2.structured_grid_paths import structured_grid_desc_path
 
-        meta_path = os.path.join(target_dir, "grid.meta")
+        meta_path = structured_grid_desc_path(target_dir)
         nml_path = os.path.join(target_dir, "ww3_grid.nml")
 
-        if not os.path.exists(meta_path):
-            self.log(tr("meta_file_not_found", "⚠️ 未找到文件：{path}，跳过 meta to grid 转换").format(path=meta_path))
+        if not meta_path:
+            self.log(tr("meta_file_not_found", "⚠️ 未找到文件：{path}，跳过 meta to grid 转换").format(path=target_dir))
+            return
+        if not os.path.isfile(nml_path):
+            self.log(tr("step4_ww3_grid_nml_missing", "⚠️ 未找到 {path}，跳过 meta 同步").format(path=nml_path))
             return
 
-
         try:
-            # 1. 读取 meta 文件
-            with open(meta_path, "r", encoding="utf-8") as f:
-                meta_lines = f.readlines()
+            from ..step2.rect_grid_desc_parse import parse_ww3_grid_meta_for_sync
 
-            # 查找 RECT 块
-            # 尝试多种搜索模式，因为 grid.meta 格式可能有变化
-            target_index_meta = None
-            for i, line in enumerate(meta_lines):
-                # 模式1: 包含 'RECT'、'T' 和 'NONE'（原始模式）
-                if "'RECT'" in line and "T" in line and "'NONE'" in line:
-                    target_index_meta = i
-                    break
-                # 模式2: 只包含 'RECT'（更宽松的模式）
-                elif "'RECT'" in line or '"RECT"' in line or "RECT" in line.upper():
-                    # 检查是否是网格类型行（通常在注释后）
-                    stripped = line.strip()
-                    if stripped.startswith("'") or stripped.startswith('"') or len(stripped.split()) <= 3:
-                        target_index_meta = i
-                        break
-
-            if target_index_meta is None:
-                self.log(tr("rect_block_not_found", "⚠️ grid.meta 中未找到 RECT 块"))
+            sync = parse_ww3_grid_meta_for_sync(meta_path)
+            if not sync:
+                self.log(
+                    tr(
+                        "step4_grid_meta_sync_parse_fail",
+                        "⚠️ grid.meta 中缺少 RECT 几何行（RECT%NX/NY/SX/SY/X0/Y0），无法同步到 ww3_grid.nml",
+                    )
+                )
                 self.log(tr("file_path", "   文件路径：{path}").format(path=meta_path))
-                self.log(tr("file_line_count", "   文件行数：{count}").format(count=len(meta_lines)))
-                # 输出前50行用于调试
-                if len(meta_lines) > 0:
-                    self.log(tr("file_preview_50_lines", "   文件前50行预览："))
-                    for i, line in enumerate(meta_lines[:50]):
-                        if "'RECT'" in line or '"RECT"' in line or "RECT" in line.upper():
-                            self.log(tr("file_line_preview", "   第{line_num}行: {content}").format(line_num=i+1, content=line.strip()))
                 return
 
-            if target_index_meta + 3 >= len(meta_lines):
-                self.log(tr("rect_block_insufficient", "⚠️ grid.meta 中 RECT 块内容不足（找到 RECT 在第 {line} 行，但文件只有 {total} 行）").format(line=target_index_meta + 1, total=len(meta_lines)))
-                return
-
-            # 提取三行参数
-            L1 = meta_lines[target_index_meta + 1].split()
-            L2 = meta_lines[target_index_meta + 2].split()
-            L3 = meta_lines[target_index_meta + 3].split()
-
-            NX, NY = int(L1[0]), int(L1[1])
-            SX, SY, SF = float(L2[0]), float(L2[1]), float(L2[2])
-            X0, Y0, SF0 = float(L3[0]), float(L3[1]), float(L3[2])
-
-            # 2. 读取并修改 nml 文件
             with open(nml_path, "r", encoding="utf-8") as f:
                 nml_lines = f.readlines()
 
             new_lines = []
-            in_rect = False
+            in_grid = in_rect = in_depth = in_obst = False
 
             for line in nml_lines:
-                if "&RECT_NML" in line:
-                    in_rect = True
+                ls = line.lstrip()
+                is_comment = ls.startswith("!")
+                u = line.upper()
+
+                if not is_comment and "&GRID_NML" in u:
+                    in_grid, in_rect, in_depth, in_obst = True, False, False, False
+                    new_lines.append(line)
+                    continue
+                if not is_comment and "&RECT_NML" in u:
+                    in_grid, in_rect, in_depth, in_obst = False, True, False, False
+                    new_lines.append(line)
+                    continue
+                if not is_comment and "&DEPTH_NML" in u:
+                    in_grid, in_rect, in_depth, in_obst = False, False, True, False
+                    new_lines.append(line)
+                    continue
+                if not is_comment and "&OBST_NML" in u:
+                    in_grid, in_rect, in_depth, in_obst = False, False, False, True
                     new_lines.append(line)
                     continue
 
-                if in_rect:
-                    if "/" in line:
-                        in_rect = False
-                        new_lines.append(line)
+                st = line.strip()
+                if not is_comment and (st == "/" or st.startswith("/")):
+                    in_grid = in_rect = in_depth = in_obst = False
+                    new_lines.append(line)
+                    continue
+
+                if not is_comment and in_grid and "=" in line:
+                    if "GRID%TYPE" in line and "grid_type" in sync:
+                        new_lines.append(
+                            self._ww3_nml_assign_line("GRID%TYPE", f"'{sync['grid_type']}'")
+                        )
+                        continue
+                    if "GRID%COORD" in line and "grid_coord" in sync:
+                        new_lines.append(
+                            self._ww3_nml_assign_line("GRID%COORD", f"'{sync['grid_coord']}'")
+                        )
+                        continue
+                    if "GRID%CLOS" in line and "grid_clos" in sync:
+                        new_lines.append(
+                            self._ww3_nml_assign_line("GRID%CLOS", f"'{sync['grid_clos']}'")
+                        )
                         continue
 
-                    # 替换参数
-                    if "RECT%NX" in line:
-                        new_lines.append(f"  RECT%NX           =  {NX}\n")
+                if not is_comment and in_rect and "=" in line:
+                    if "RECT%NX" in line and "XCOORD" not in line.upper():
+                        new_lines.append(self._ww3_nml_assign_line("RECT%NX", str(int(sync["nx"]))))
                         continue
-                    if "RECT%NY" in line:
-                        new_lines.append(f"  RECT%NY           =  {NY}\n")
+                    if "RECT%NY" in line and "YCOORD" not in line.upper():
+                        new_lines.append(self._ww3_nml_assign_line("RECT%NY", str(int(sync["ny"]))))
                         continue
-                    if "RECT%SX" in line:
-                        new_lines.append(f"  RECT%SX           =  {SX:.6f}\n")
+                    if "RECT%SX" in line and "XCOORD" not in line.upper():
+                        new_lines.append(
+                            self._ww3_nml_assign_line("RECT%SX", f"{float(sync['sx']):15.12f}")
+                        )
                         continue
-                    if "RECT%SY" in line:
-                        new_lines.append(f"  RECT%SY           =  {SY:.6f}\n")
-                        continue
-                    if "RECT%SF" in line:
-                        new_lines.append(f"  RECT%SF           =  {SF:.6f}\n")
+                    if "RECT%SY" in line and "YCOORD" not in line.upper():
+                        new_lines.append(
+                            self._ww3_nml_assign_line("RECT%SY", f"{float(sync['sy']):15.12f}")
+                        )
                         continue
                     if "RECT%X0" in line:
-                        new_lines.append(f"  RECT%X0           =  {X0:.6f}\n")
+                        new_lines.append(
+                            self._ww3_nml_assign_line("RECT%X0", f"{float(sync['x0']):8.4f}")
+                        )
                         continue
                     if "RECT%Y0" in line:
-                        new_lines.append(f"  RECT%Y0           =  {Y0:.6f}\n")
+                        new_lines.append(
+                            self._ww3_nml_assign_line("RECT%Y0", f"{float(sync['y0']):8.4f}")
+                        )
                         continue
-                    if "RECT%SF0" in line:
-                        new_lines.append(f"  RECT%SF0          =  {SF0:.6f}\n")
-                        continue
+
+                if not is_comment and in_depth and "DEPTH%SF" in line and "=" in line and "depth_sf" in sync:
+                    new_lines.append(
+                        self._ww3_nml_assign_line(
+                            "DEPTH%SF", f"{float(sync['depth_sf']):.6f}", key_width=16
+                        )
+                    )
+                    continue
+
+                if not is_comment and in_obst and "OBST%SF" in line and "=" in line and "obst_sf" in sync:
+                    new_lines.append(
+                        self._ww3_nml_assign_line(
+                            "OBST%SF", f"{float(sync['obst_sf']):.6f}", key_width=15
+                        )
+                    )
+                    continue
 
                 new_lines.append(line)
 
-            # 3. 写回文件
             with open(nml_path, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
 
@@ -1040,12 +1072,14 @@ class ModifyWW3NML:
             self.log(prefix + tr("step4_grid_meta_sync_failed", "⚠️ 同步 grid.meta 到 ww3_grid.nml 失败: {error}").format(error=e))
 
     def _update_grid_closure_from_meta(self, target_dir, grid_label=""):
-        """根据 grid.meta 设置 ww3_grid.nml 中 GRID%CLOS（全球网格用 SMPL）"""
+        """根据 grid.nml / ww3_grid.nml.* / grid.meta 设置 ww3_grid.nml 中 GRID%CLOS（全球网格用 SMPL）"""
         if not target_dir or not isinstance(target_dir, str):
             return
-        meta_path = os.path.join(target_dir, "grid.meta")
+        from ..step2.structured_grid_paths import structured_grid_desc_path
+
+        meta_path = structured_grid_desc_path(target_dir)
         nml_path = os.path.join(target_dir, "ww3_grid.nml")
-        if not os.path.exists(meta_path) or not os.path.exists(nml_path):
+        if not meta_path or not os.path.exists(nml_path):
             return
 
         try:
@@ -1056,13 +1090,24 @@ class ModifyWW3NML:
 
         clos = None
         for line in meta_lines:
-            if "RECT" in line.upper() or "CURV" in line.upper():
-                if "SMPL" in line.upper():
+            u = line.upper()
+            if "GRID%CLOS" in u and "=" in line:
+                if "SMPL" in u:
                     clos = "SMPL"
                     break
-                if "NONE" in line.upper():
+                if "NONE" in u:
                     clos = "NONE"
                     break
+        if clos is None:
+            for line in meta_lines:
+                u = line.upper()
+                if "RECT" in u or "CURV" in u:
+                    if "SMPL" in u:
+                        clos = "SMPL"
+                        break
+                    if "NONE" in u:
+                        clos = "NONE"
+                        break
 
         if clos is None:
             return

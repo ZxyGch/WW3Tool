@@ -570,7 +570,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_card_layout.addWidget(reference_data_label)
             reference_data_row = QHBoxLayout()
             self.settings_reference_data_edit = LineEdit()
-            self.settings_reference_data_edit.setPlaceholderText(f"{tr('default_path', '默认路径')}：WW3Tool/gridgen/reference_data")
+            self.settings_reference_data_edit.setPlaceholderText(f"{tr('default_path', '默认路径')}：WW3Tool/WW3-Grid-Generator/reference_data")
             reference_data_path = current_config.get("REFERENCE_DATA_PATH", "").strip()
             if not reference_data_path:
                 reference_data_path = ""
@@ -725,7 +725,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_card.viewLayout.addLayout(grid_card_layout)
             settings_layout.addWidget(grid_card)
 
-            # === 非结构化三角网格（unst_msh_gen/config.json）===
+            # === 非结构化三角网格（unstructured_generator/grid.json）===
             unst_mesh_card = HeaderCardWidget(settings_content)
             self.unst_mesh_card = unst_mesh_card
             unst_mesh_card.setTitle(tr("unst_mesh_config_card", "非结构化三角网格配置"))
@@ -777,17 +777,27 @@ class SettingsMixin(SettingsServiceMixin):
             self.settings_unst_spacing_nwav_edit.setStyleSheet(input_style)
             _row(3, self.unst_l_spacing_nwav, self.settings_unst_spacing_nwav_edit)
 
+            self.unst_l_spacing_deep_threshold = QLabel(
+                tr("unst_spacing_deep_threshold", "深水阈值（m）")
+            )
+            self.settings_unst_spacing_deep_threshold_edit = LineEdit()
+            self.settings_unst_spacing_deep_threshold_edit.setText(
+                str(sp.get("deep_ocean_threshold_m", d0["spacing"]["deep_ocean_threshold_m"]))
+            )
+            self.settings_unst_spacing_deep_threshold_edit.setStyleSheet(input_style)
+            _row(4, self.unst_l_spacing_deep_threshold, self.settings_unst_spacing_deep_threshold_edit)
+
             self.unst_l_reg_margin = QLabel(tr("unst_regional_margin_deg", "区域外扩边距（度）"))
             self.settings_unst_regional_margin_deg_edit = LineEdit()
             self.settings_unst_regional_margin_deg_edit.setText(str(reg.get("margin_deg", d0["regional"]["margin_deg"])))
             self.settings_unst_regional_margin_deg_edit.setStyleSheet(input_style)
-            _row(4, self.unst_l_reg_margin, self.settings_unst_regional_margin_deg_edit)
+            _row(5, self.unst_l_reg_margin, self.settings_unst_regional_margin_deg_edit)
 
             self.unst_l_reg_edge_seg = QLabel(tr("unst_regional_edge_segments", "矩形边界折线段数（越大越光顺）"))
             self.settings_unst_regional_edge_segments_edit = LineEdit()
             self.settings_unst_regional_edge_segments_edit.setText(str(reg.get("edge_segments", d0["regional"]["edge_segments"])))
             self.settings_unst_regional_edge_segments_edit.setStyleSheet(input_style)
-            _row(5, self.unst_l_reg_edge_seg, self.settings_unst_regional_edge_segments_edit)
+            _row(6, self.unst_l_reg_edge_seg, self.settings_unst_regional_edge_segments_edit)
 
             unst_mesh_layout.addLayout(unst_grid)
 

@@ -82,7 +82,7 @@ class SettingsServiceMixin:
             return fallback
 
     def _save_unst_msh_gen_config_from_ui(self):
-        """将设置页中的非结构网格项写入 gridgen/unst_msh_gen/config.json（不改动 regional 经纬度）。"""
+        """将设置页中的非结构网格项写入 unstructured_generator/grid.json（不改动 Domain/Regional 经纬度边角）。"""
         if not hasattr(self, "settings_unst_spacing_hmax_edit"):
             return
         from setting.config import save_unst_msh_gen_config, load_unst_msh_gen_config
@@ -92,6 +92,12 @@ class SettingsServiceMixin:
         rg0 = cur["regional"]
         hmax_v = self._unst_parse_float(self.settings_unst_spacing_hmax_edit.text(), sp0["hmax"])
         hshr_v = self._unst_parse_float(self.settings_unst_spacing_hshr_edit.text(), sp0["hshr"])
+        deep_threshold_v = abs(
+            self._unst_parse_float(
+                self.settings_unst_spacing_deep_threshold_edit.text(),
+                sp0.get("deep_ocean_threshold_m", 4000.0),
+            )
+        )
         updates = {
             "spacing": {
                 "hmax": hmax_v,
@@ -99,6 +105,7 @@ class SettingsServiceMixin:
                 "hmin": hshr_v,
                 "nwav": self._unst_parse_int(self.settings_unst_spacing_nwav_edit.text(), sp0["nwav"]),
                 "dhdx": self._unst_parse_float(self.settings_unst_spacing_dhdx_edit.text(), sp0["dhdx"]),
+                "deep_ocean_threshold_m": deep_threshold_v,
             },
             "mesh_settings": {
                 "hfun_hmax": hmax_v,
@@ -340,6 +347,7 @@ class SettingsServiceMixin:
             "settings_unst_spacing_hshr_edit",
             "settings_unst_spacing_nwav_edit",
             "settings_unst_spacing_dhdx_edit",
+            "settings_unst_spacing_deep_threshold_edit",
             "settings_unst_regional_margin_deg_edit",
             "settings_unst_regional_edge_segments_edit",
         ]
@@ -1882,6 +1890,7 @@ class SettingsServiceMixin:
                 ("unst_l_spacing_hshr", "unst_spacing_hshr", "近岸尺度（km）"),
                 ("unst_l_spacing_dhdx", "unst_spacing_dhdx", "水深梯度"),
                 ("unst_l_spacing_nwav", "unst_spacing_nwav", "浅水按波长加密（填 0 关闭）"),
+                ("unst_l_spacing_deep_threshold", "unst_spacing_deep_threshold", "深水阈值（m）"),
                 ("unst_l_reg_margin", "unst_regional_margin_deg", "区域外扩边距（度）"),
                 ("unst_l_reg_edge_seg", "unst_regional_edge_segments", "矩形边界折线段数（越大越光顺）"),
             ]

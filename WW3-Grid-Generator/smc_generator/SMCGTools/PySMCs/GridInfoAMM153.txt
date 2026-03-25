@@ -1,0 +1,7 @@
+ AMM153km 2 level grid zlon zlat dlon dlat for siz-1 cells. JGLi12May2025
+ -10.89625 -7.30095  0.0135  0.0135
+ ../../Bathy/AMM15Wave/   ../../Bathy/AMM15Wave/DatGMC/   /home/users/jianguo.li/Python/MyCodes/
+  0  1  Numbers of polar cells and sub-grids. 0 implies no Arctic part.
+  177.5   37.5    Rotated polon and polat for AMM153 grid.
+ ../../SAMM153Tx/ww3.   ../../Bathy/AMM15Wave/OutDat/   10
+

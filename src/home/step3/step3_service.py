@@ -206,68 +206,35 @@ class StepThreeServiceMixin:
         )
 
     def _read_single_grid_meta_bounds(self, target_dir):
-        """读取指定目录下的grid.meta文件并返回经纬度范围"""
+        """读取 grid.nml（WW3 描述）或旧版 ww3_grid.nml.* / grid.meta 并返回经纬度范围"""
         if not target_dir or not isinstance(target_dir, str):
             return None
-        
-        meta_path = os.path.join(target_dir, "grid.meta")
-        if not os.path.exists(meta_path):
+        from ..step2.rect_grid_desc_parse import parse_rect_grid_description
+        from ..step2.structured_grid_paths import structured_grid_desc_path
+
+        meta_path = structured_grid_desc_path(target_dir)
+        if not meta_path:
             return None
-        
+
         try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                meta_lines = f.readlines()
-            
-            # 查找 RECT 块
-            target_index_meta = None
-            for i, line in enumerate(meta_lines):
-                if "'RECT'" in line and "T" in line and "'NONE'" in line:
-                    target_index_meta = i
-                    break
-                elif "'RECT'" in line or '"RECT"' in line or "RECT" in line.upper():
-                    stripped = line.strip()
-                    if stripped.startswith("'") or stripped.startswith('"') or len(stripped.split()) <= 3:
-                        target_index_meta = i
-                        break
-            
-            if target_index_meta is None or target_index_meta + 3 >= len(meta_lines):
+            d = parse_rect_grid_description(meta_path)
+            if not d:
                 return None
-            
-            if target_index_meta is None or target_index_meta + 3 >= len(meta_lines):
-                return None
-            
-            # 提取三行参数
-            L1 = meta_lines[target_index_meta + 1].split()
-            L2 = meta_lines[target_index_meta + 2].split()
-            L3 = meta_lines[target_index_meta + 3].split()
-            
-            NX, NY = int(L1[0]), int(L1[1])
-            SX, SY, SF = float(L2[0]), float(L2[1]), float(L2[2])
-            X0, Y0, SF0 = float(L3[0]), float(L3[1]), float(L3[2])
-            
-            # 计算经纬度范围
-            # 根据WW3文档：X0, Y0是左下角坐标（度），需要除以SF0
-            # SX, SY是网格增量，需要除以SF得到度
-            # 经度范围：[X0/SF0, X0/SF0 + (NX-1) * SX / SF]
-            # 纬度范围：[Y0/SF0, Y0/SF0 + (NY-1) * SY / SF]
-            lon_min = X0 / SF0
-            lon_max = lon_min + (NX - 1) * SX / SF
-            lat_min = Y0 / SF0
-            lat_max = lat_min + (NY - 1) * SY / SF
-            
-            # 计算精度（DX, DY），单位：度
-            dx = SX / SF
-            dy = SY / SF
-            
+            nx, ny = d["nx"], d["ny"]
+            sx, sy, x0, y0 = d["sx"], d["sy"], d["x0"], d["y0"]
+            lon_min = x0
+            lon_max = x0 + (nx - 1) * sx
+            lat_min = y0
+            lat_max = y0 + (ny - 1) * sy
             return {
-                'lon_min': lon_min,
-                'lon_max': lon_max,
-                'lat_min': lat_min,
-                'lat_max': lat_max,
-                'dx': dx,
-                'dy': dy
+                "lon_min": lon_min,
+                "lon_max": lon_max,
+                "lat_min": lat_min,
+                "lat_max": lat_max,
+                "dx": sx,
+                "dy": sy,
             }
-        except Exception as e:
+        except Exception:
             return None
 
     def _add_spectral_point(self):

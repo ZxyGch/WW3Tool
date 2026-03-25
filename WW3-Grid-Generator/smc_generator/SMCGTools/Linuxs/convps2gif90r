@@ -1,0 +1,37 @@
+#!/usr/bin/ksh
+
+##  Convert ps images into gif with 90 degree rotation.
+##  Usage:  ls psfiles.ps | convps2gif90r
+##  Output is saved as psfiles.jpg
+##
+##  First created:   Jian-Guo Li     8 Aug 2006
+##  Last modified:   Jian-Guo Li    16 Jan 2020
+##
+
+# Density nnn provided on command line or default 100
+ if [ 0$# -ge 1 ]
+   then
+   nnn=$1
+ else
+   nnn=100 
+ fi
+ echo " converting at density $nnn dpi"
+
+ if [ 0$# -ge 2 ]
+   then
+   wrkdir=$2
+ else
+   wrkdir=./ 
+ fi
+
+while read fff
+do
+leng=`expr length $fff`
+clen=`expr $leng - 3`
+newf=`expr substr $fff 1 $clen`
+echo " converting $fff to ${wrkdir}${newf}.gif ..."
+ convert -background white -flatten -rotate 90 -density $nnn  $fff  ${wrkdir}${newf}.gif
+done
+
+exit 0
+

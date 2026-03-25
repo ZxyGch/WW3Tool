@@ -109,17 +109,17 @@ reference_data 必须下载，否则无法生成网格文件！
 
 数据包内含 gebco、etopo1/2 及海岸边界等文件，解压后位于 `reference_data`。
 
-界面提示缺失时点击 **下载**：程序会从自动从 GitHub Release（`part_aa`～`part_ad` 四个分卷）下载，按顺序合并为 `reference_data.zip`，再解压到 `gridgen/reference_data`。若自动下载过慢或失败，可使用 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48)。
+界面提示缺失时点击 **下载**：程序会从自动从 GitHub Release（`part_aa`～`part_ad` 四个分卷）下载，按顺序合并为 `reference_data.zip`，再解压到 `WW3-Grid-Generator/reference_data`。若自动下载过慢或失败，可使用 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48)。
 
-**手动下载的 reference_data 最后解压到 WW3Tool/gridgen/reference_data**
+**手动下载的 reference_data 最后解压到 WW3Tool/WW3-Grid-Generator/reference_data**
 
 #### 一般网格
 
-运行软件，选择从 wind.nc 读取范围，点击生成网格，会调用 WW3Tool/gridgen 目录的代码生成网格文件到工作目录
+运行软件，选择从 wind.nc 读取范围，点击生成网格，会调用 WW3Tool/WW3-Grid-Generator 目录的代码生成网格文件到工作目录
 
 DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
-最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.meta、grid.mask
+最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.nml（WW3 网格描述）、grid.mask_nobound
 
 #### 嵌套网格
 
@@ -141,7 +141,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 #### 网格缓存
 
-为了避免无意义的计算，每次生成的网格我们都会在 WW3Tool/gridgen/cache 中缓存。
+为了避免无意义的计算，每次生成的网格我们都会在 WW3Tool/WW3-Grid-Generator/cache 中缓存。
 
 根据网格的生成参数生成 key，作为文件夹的名称，这样每次生成网格的时候会先遍历缓存，如果已经存在缓存了，则直接使用缓存的网格文件。
 
@@ -162,7 +162,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
       10.0,
       30.0
     ],
-    "ref_dir": "/Users/zxy/ocean/WW3Tool/gridgen/reference_data",
+    "ref_dir": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/reference_data",
     "bathymetry": "GEBCO",
     "coastline_precision": "full"
   }

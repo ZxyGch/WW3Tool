@@ -1,0 +1,6 @@
+ SMC125120 5 level grid zlon zlat dlon dlat for size-1 cells.  JGLi16Jul2025
+  0.0  0.0  0.017578125  0.012500
+ /data/users/jianguo.li/Bathy/GEBCO3km/   /data/users/jianguo.li/Bathy/GEBCO3km/DatGMC/
+  1  Number of polar cells or polar parts. 0 implies no Arctic part.
+ /data/users/jianguo.li/S125120Tx/ww3.    /data/users/jianguo.li/Bathy/GEBCO3km/OutDat/  10 
+

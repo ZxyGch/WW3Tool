@@ -1,0 +1,6 @@
+ SMC251020 4 level grid zlon zlat dlon dlat for size-1 cells.  JGLi05Jun2025
+  0.0  0.0  0.03515625  0.02500
+ /data/users/jianguo.li/Bathy/GlbTsunm/   /data/users/jianguo.li/Bathy/GlbTsunm/DatGMC/
+  1  Number of polar cells or polar parts. 0 implies no Arctic part.
+ /data/users/jianguo.li/S251020Ts/        /data/users/jianguo.li/Bathy/GlbTsunm/OutDat/
+

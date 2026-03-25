@@ -1,0 +1,6 @@
+ SMC61250 4 level grid zlon zlat dlon dlat for size-1 cells.  JGLi28May2025
+  0.0  0.0  0.087890625  0.058593750
+  ../tmpfls/   ../DatGMC/               Working and cell array dirs.
+  1  Number of polar cells or polar parts. 0 implies no Arctic part.
+  ../../S61250Tx/ww3.    ../OutDat/   4    SWH and PropTest file dirs and nhr.
+

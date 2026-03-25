@@ -1,0 +1,7 @@
+## awk script to select cells for area specified by
+## SW corner:    27.000   44.500   1536   3560
+## NE corner:    36.200   48.000   2059   3840
+## Usage:  awk -f awktemp  Cell_file > tempcels.dat
+
+ { if ( !(( $1 >= 3152 && $1 < 3210 ) && ( $2 >= 733 && $2 < 744 )) ) print $0 }  
+

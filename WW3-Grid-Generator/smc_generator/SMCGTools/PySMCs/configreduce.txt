@@ -1,0 +1,8 @@
+{ 'action': 'reduce',
+  'gebcofile': '../../Bathy/GEBCO2022/GEBCO_2022.nc',
+  'scalefac': [20, 12],
+  'depthmin': 0.0,
+  'extents': None,
+  'region': None,
+  'workdir': '../tmpfls/' }
+

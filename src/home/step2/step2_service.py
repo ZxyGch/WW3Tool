@@ -2,6 +2,7 @@
 第二步：生成网格模块 - 业务逻辑部分
 包含所有业务逻辑函数（从 ui.py 拆分出来）
 """
+import copy
 import os
 import sys
 import json
@@ -49,9 +50,23 @@ from setting.config import (
     get_project_gridgen_path,
 )
 from .grid_viz_worker import VIZ_PREFIX, cache_is_current, cached_image_paths
+from .rect_grid_desc_parse import parse_rect_grid_description, rect_lon_lat_mesh
+from .structured_grid_paths import (
+    structured_grid_desc_basenames_to_copy,
+    structured_grid_desc_path,
+)
 
 
 REGION_MAP_WORKER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "region_map_worker.py")
+
+
+def _structured_grid_mask_path(folder: str):
+    """Prefer ``grid.mask_nobound``; if missing, use ``grid.mask`` if present."""
+    p = os.path.join(folder, "grid.mask_nobound")
+    if os.path.isfile(p):
+        return p
+    p2 = os.path.join(folder, "grid.mask")
+    return p2 if os.path.isfile(p2) else None
 
 
 # reference_data 目录下必须存在的文件（生成网格前检测）
@@ -735,7 +750,7 @@ class StepTwoServiceMixin:
                 if 'lat_max' in fine_info:
                     self.inner_lat_north_edit.setText(f"{fine_info['lat_max']:.4f}")
         else:
-            # 普通网格模式：读取工作目录下的 grid.meta
+            # 普通网格模式：读取 grid.nml（WW3 描述）或旧版 ww3_grid.nml.* / grid.meta
             grid_info = self._read_single_grid_meta_bounds(self.selected_folder)
             if grid_info:
                 if 'dx' in grid_info:
@@ -973,13 +988,19 @@ class StepTwoServiceMixin:
 
     # ========== 辅助函数（路径、缓存相关）==========
     def _get_gridgen_path(self):
-        """gridgen 根目录固定为项目下的 gridgen/，与设置无关。"""
+        """WW3-Grid-Generator 根目录（reference_data、unst_msh_gen、cache 等与设置无关）。"""
         return get_project_gridgen_path()
 
     def _get_gridgen_bin_path(self):
-        """动态获取 GRIDGEN_BIN_PATH（项目 gridgen/matlab）。"""
+        """MATLAB gridgen 根目录：…/structured_generator/gridgen（含 bin/ 与 create_grid.m）。"""
         gridgen_path = self._get_gridgen_path()
-        return os.path.normpath(os.path.join(gridgen_path, "matlab")) if gridgen_path else None
+        return (
+            os.path.normpath(
+                os.path.join(gridgen_path, "structured_generator", "gridgen")
+            )
+            if gridgen_path
+            else None
+        )
 
     def _get_reference_data_path(self):
         """获取参考数据目录路径（优先使用配置中的路径）"""
@@ -993,23 +1014,33 @@ class StepTwoServiceMixin:
             if os.path.isabs(ref_data_path):
                 ref_dir = ref_data_path
             else:
-                # 如果是相对路径，相对于项目 gridgen 根目录
+                # 如果是相对路径，相对于项目 WW3-Grid-Generator 根目录
                 ref_dir = os.path.join(gridgen_path, ref_data_path)
         else:
             # 如果配置为空，使用默认路径
             ref_dir = os.path.join(gridgen_path, "reference_data")
         
         # 如果路径不存在，尝试备用路径
-        if not os.path.exists(ref_dir) and gridgen_bin_path:
-            ref_dir = os.path.join(gridgen_bin_path, "..", "reference_data")
+        if not os.path.exists(ref_dir) and gridgen_path:
+            ref_dir = os.path.join(gridgen_path, "reference_data")
         
         # 规范化路径
         ref_dir = os.path.normpath(os.path.abspath(ref_dir))
         return ref_dir
 
-    def _get_unst_msh_gen_dir(self):
-        """gridgen/unst_msh_gen 目录（JIGSAW 非结构网格工程）。"""
-        return os.path.normpath(os.path.join(self._get_gridgen_path(), "unst_msh_gen"))
+    def _get_unstructured_generator_dir(self):
+        """WW3-Grid-Generator/unstructured_generator（create_grid.py / unst_msh_gen / jigsaw-python）。"""
+        return os.path.normpath(os.path.join(self._get_gridgen_path(), "unstructured_generator"))
+
+    def _get_unstructured_unst_msh_gen_dir(self):
+        return os.path.normpath(os.path.join(self._get_unstructured_generator_dir(), "unst_msh_gen"))
+
+    def _get_unstructured_jigsaw_root(self):
+        return os.path.normpath(os.path.join(self._get_unstructured_generator_dir(), "jigsaw-python"))
+
+    def _get_smc_generator_dir(self):
+        """WW3-Grid-Generator/smc_generator（create_grid.py、PySMCs）。"""
+        return os.path.normpath(os.path.join(self._get_gridgen_path(), "smc_generator"))
 
     @staticmethod
     def _unst_jigsaw_shared_lib_basename():
@@ -1021,28 +1052,27 @@ class StepTwoServiceMixin:
             return "libjigsaw.dylib"
         return "libjigsaw.so"
 
-    def _unst_jigsaw_lib_path(self, unst_dir):
+    def _unst_jigsaw_lib_path(self, jig_root):
+        """jig_root 为 jigsaw-python 根目录（内含 jigsawpy/）。"""
         return os.path.join(
-            unst_dir,
-            "jigsaw-python",
+            jig_root,
             "jigsawpy",
             "_lib",
             self._unst_jigsaw_shared_lib_basename(),
         )
 
-    def _is_jigsaw_library_built(self, unst_dir):
+    def _is_jigsaw_library_built(self, jig_root):
         """JIGSAW 是否已编译到 jigsawpy/_lib（jigsawpy 通过 ctypes 加载该库）。"""
-        p = self._unst_jigsaw_lib_path(unst_dir)
+        p = self._unst_jigsaw_lib_path(jig_root)
         try:
             return os.path.isfile(p) and os.path.getsize(p) > 0
         except OSError:
             return False
 
-    def _ensure_jigsaw_built(self, unst_dir):
+    def _ensure_jigsaw_built(self, jig_root):
         """若无动态库则在 jigsaw-python 目录执行 build.py（cmake）；成功返回 True。"""
-        if self._is_jigsaw_library_built(unst_dir):
+        if self._is_jigsaw_library_built(jig_root):
             return True
-        jig_root = os.path.join(unst_dir, "jigsaw-python")
         build_py = os.path.join(jig_root, "build.py")
         ext_src = os.path.join(jig_root, "external", "jigsaw")
         if not os.path.isfile(build_py):
@@ -1103,7 +1133,7 @@ class StepTwoServiceMixin:
                 ).format(code=ret)
             )
             return False
-        if not self._is_jigsaw_library_built(unst_dir):
+        if not self._is_jigsaw_library_built(jig_root):
             self.log_signal.emit(
                 tr(
                     "step2_jigsaw_build_no_lib",
@@ -1119,10 +1149,235 @@ class StepTwoServiceMixin:
         ut = tr("step2_mesh_type_unstructured", "非结构网格")
         return getattr(self, "mesh_type_var", "") == ut
 
+    def _is_step2_smc_mesh(self):
+        """当前第二步是否选择「SMC 网格」。"""
+        st = tr("step2_mesh_type_smc", "SMC 网格")
+        return getattr(self, "mesh_type_var", "") == st
+
+    def _get_smc_bathy_path(self):
+        """
+        SMC create_grid 所需规则经纬网格水深 NetCDF 路径。
+        优先 public/config.json 的 SMC_BATHYMETRY_FILE；否则 reference_data 中 etopo2/gebco/etopo1；
+        再否则尝试 smc_generator/grid.json 内 input.bathymetry_file（相对 smc_generator/）。
+        """
+        cfg = load_config()
+        custom = (cfg.get("SMC_BATHYMETRY_FILE") or "").strip()
+        gridgen_root = self._get_gridgen_path()
+        if custom:
+            path = custom if os.path.isabs(custom) else os.path.normpath(os.path.join(gridgen_root, custom))
+            return path if os.path.isfile(path) else None
+        ref_dir = self._get_reference_data_path()
+        for name in ("etopo2.nc", "gebco.nc", "etopo1.nc"):
+            p = os.path.join(ref_dir, name)
+            if os.path.isfile(p):
+                return p
+        smc_dir = self._get_smc_generator_dir()
+        tpl = os.path.join(smc_dir, "grid.json")
+        if os.path.isfile(tpl):
+            try:
+                with open(tpl, encoding="utf-8") as f:
+                    raw = json.load(f)
+                inp = raw.get("input") or {}
+                rel = str(inp.get("bathymetry_file") or "").strip()
+                if rel:
+                    p = rel if os.path.isabs(rel) else os.path.normpath(os.path.join(smc_dir, rel))
+                    if os.path.isfile(p):
+                        return p
+            except Exception:
+                pass
+        return None
+
+    def _check_smc_prerequisites(self):
+        """SMC 生成前检查（目录、PySMCs、Python 依赖、水深文件）。返回 (ok, err_msg)。"""
+        smc_dir = self._get_smc_generator_dir()
+        if not os.path.isdir(smc_dir):
+            return False, tr(
+                "step2_smc_dir_missing",
+                "未找到 smc_generator：{path}",
+            ).format(path=smc_dir)
+        create_py = os.path.join(smc_dir, "create_grid.py")
+        if not os.path.isfile(create_py):
+            return False, tr("step2_smc_incomplete", "smc_generator 缺少 create_grid.py")
+        pys_a = os.path.join(smc_dir, "PySMCs", "smcellgen.py")
+        pys_b = os.path.join(smc_dir, "SMCGTools", "PySMCs", "smcellgen.py")
+        if not (os.path.isfile(pys_a) or os.path.isfile(pys_b)):
+            return False, tr("step2_smc_pysmcs_missing", "smc_generator 缺少 PySMCs（smcellgen.py）")
+        try:
+            r = subprocess.run(
+                [sys.executable, "-c", "import netCDF4, pandas"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except Exception as e:
+            return False, tr("step2_smc_dep_check_failed", "检测 SMC 依赖失败：{err}").format(err=e)
+        if r.returncode != 0:
+            return False, tr(
+                "step2_smc_deps_missing",
+                "当前 Python 需安装 netCDF4、pandas。请在终端执行：{cmd}",
+            ).format(cmd=f"{sys.executable} -m pip install netCDF4 pandas")
+        bathy = self._get_smc_bathy_path()
+        if not bathy:
+            return False, tr(
+                "step2_smc_bathy_missing",
+                "未找到 SMC 水深 NetCDF。请安装 reference_data（含 etopo2.nc 等），或在 public/config.json 中设置 SMC_BATHYMETRY_FILE。",
+            )
+        return True, ""
+
+    def _build_smc_step2_grid_dict(self, lon_west, lon_east, lat_south, lat_north, output_dir):
+        """根据界面参数与工作目录构造 smc_generator/create_grid.py 所用 grid.json 体。"""
+        smc_dir = self._get_smc_generator_dir()
+        tpl_path = os.path.join(smc_dir, "grid.json")
+        if os.path.isfile(tpl_path):
+            with open(tpl_path, encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+        grid_json = copy.deepcopy(data) if data else {}
+
+        def _read_int_default(edit_attr, default):
+            ed = getattr(self, edit_attr, None)
+            if ed is None:
+                return int(default)
+            t = ed.text().strip()
+            return int(t) if t else int(default)
+
+        def _read_float_default(edit_attr, default):
+            ed = getattr(self, edit_attr, None)
+            if ed is None:
+                return float(default)
+            t = ed.text().strip()
+            return float(t) if t else float(default)
+
+        try:
+            n_levels = _read_int_default("smc_n_levels_edit", 2)
+        except Exception:
+            raise ValueError("n_levels") from None
+        depmin = _read_float_default("smc_depmin_edit", 0.0)
+        dshalw = _read_float_default("smc_dshalw_edit", -150.0)
+        try:
+            msea_ed = getattr(self, "smc_msea_edit", None)
+            msea = int(msea_ed.text().strip()) if msea_ed and msea_ed.text().strip() else 1
+        except Exception:
+            msea = 1
+        gen_bdy_chk = getattr(self, "smc_boundary_generate_check", None)
+        gen_bdy = bool(gen_bdy_chk.isChecked()) if gen_bdy_chk is not None else True
+
+        bathy = self._get_smc_bathy_path()
+        if not bathy:
+            raise FileNotFoundError("smc bathymetry")
+
+        is_global = self._is_global_range(lon_west, lon_east, lat_south, lat_north)
+        lon_lo, lon_hi = min(lon_west, lon_east), max(lon_west, lon_east)
+        lat_lo, lat_hi = min(lat_south, lat_north), max(lat_south, lat_north)
+        out_abs = os.path.abspath(os.path.normpath(output_dir))
+
+        grid_json.setdefault("input", {})
+        grid_json["input"]["bathymetry_file"] = os.path.abspath(os.path.normpath(bathy))
+
+        grid_json.setdefault("grid", {})
+        grid_json["grid"]["name"] = str(grid_json["grid"].get("name") or "grid")
+        grid_json["grid"]["n_levels"] = int(n_levels)
+        grid_json["grid"]["global"] = bool(is_global)
+        grid_json["grid"].setdefault("arctic", False)
+        grid_json["grid"].setdefault("glb_arc_lat", 84.4)
+        if "origin" not in grid_json["grid"] or not isinstance(grid_json["grid"]["origin"], dict):
+            grid_json["grid"]["origin"] = {"lon0": 0.0, "lat0": -90.0}
+        if not is_global:
+            grid_json["grid"]["regional_bounds"] = {
+                "west_lon": float(lon_lo),
+                "south_lat": float(lat_lo),
+                "east_lon": float(lon_hi),
+                "north_lat": float(lat_hi),
+            }
+        else:
+            grid_json["grid"].pop("regional_bounds", None)
+
+        grid_json.setdefault("physics", {})
+        grid_json["physics"]["wlevel"] = float(grid_json["physics"].get("wlevel", 0.0))
+        grid_json["physics"]["depmin"] = float(depmin)
+        grid_json["physics"]["dshalw"] = float(dshalw)
+
+        grid_json.setdefault("boundary", {})
+        grid_json["boundary"]["generate_boundary_cells"] = bool(gen_bdy and not is_global)
+        grid_json["boundary"]["msea"] = int(msea)
+
+        grid_json.setdefault("output", {})
+        grid_json["output"]["output_dir"] = out_abs
+        grid_json["output"].setdefault("file_prefix", "")
+
+        return grid_json
+
+    def _run_smc_mesh_generation(self, lon_west, lon_east, lat_south, lat_north):
+        """调用 smc_generator/create_grid.py；grid.json 中 output_dir 为当前工作目录。"""
+        output_dir = os.path.abspath(os.path.normpath(self.selected_folder))
+        os.makedirs(output_dir, exist_ok=True)
+        smc_dir = self._get_smc_generator_dir()
+        create_py = os.path.join(smc_dir, "create_grid.py")
+
+        tmpdir = tempfile.mkdtemp(prefix="ww3tool_smc_")
+        tmpdir = os.path.normpath(os.path.abspath(tmpdir))
+        grid_path = os.path.join(tmpdir, "ww3tool_step2_smc_grid.json")
+
+        try:
+            try:
+                grid_dict = self._build_smc_step2_grid_dict(
+                    lon_west, lon_east, lat_south, lat_north, output_dir
+                )
+            except ValueError as e:
+                self.log_signal.emit(
+                    tr("step2_smc_config_invalid", "❌ SMC 参数无效（例如 n_levels/msea 需为整数）：{err}").format(err=e)
+                )
+                return False
+            with open(grid_path, "w", encoding="utf-8") as f:
+                json.dump(grid_dict, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+        except Exception as e:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            self.log_signal.emit(
+                tr("step2_smc_config_write_failed", "❌ SMC 配置写入失败：{err}").format(err=e)
+            )
+            return False
+
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        argv = [sys.executable, "-u", create_py, "--grid", grid_path]
+
+        ret = 1
+        try:
+            try:
+                ret = self._stream_subprocess_to_log(argv, cwd=smc_dir, env=env)
+            except Exception as e:
+                self.log_signal.emit(
+                    tr("step2_python_error", "❌ 执行 Python 版 gridgen 出错: {error}").format(error=e)
+                )
+                import traceback
+
+                for line in traceback.format_exc().splitlines():
+                    self.log_signal.emit(line)
+                ret = 1
+
+            if ret != 0:
+                self.log_signal.emit(
+                    tr("step2_python_failed", "❌ Python 版 gridgen 执行失败，返回码: {code}").format(code=ret)
+                )
+                return False
+
+            cell_dat = os.path.join(output_dir, "grid_cell.dat")
+            if not (os.path.isfile(cell_dat) and os.path.getsize(cell_dat) > 0):
+                self.log_signal.emit(tr("step2_smc_no_cell_file", "❌ 未找到有效的 grid_cell.dat"))
+                return False
+            self.log_signal.emit(
+                tr("step2_smc_mesh_complete", "✅ SMC 网格生成完成（文件已写入当前工作目录）")
+            )
+            return True
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def _get_unst_dem_file(self):
         """
         解析非结构网格所需的 DEM（NetCDF，需含 lon/lat/bed_elevation 等，见 unst_msh_gen）。
-        优先 public/config.json 的 UNST_DEM_FILE；否则使用 unst_msh_gen/config.json 中的 dem_file（相对路径相对 unst_msh_gen）。
+        优先 public/config.json 的 UNST_DEM_FILE；否则使用 unstructured_generator/grid.json 中 DataFiles.dem_file（相对路径相对 unstructured_generator/）。
         """
         cfg = load_config()
         custom = (cfg.get("UNST_DEM_FILE") or "").strip()
@@ -1130,33 +1385,50 @@ class StepTwoServiceMixin:
         if custom:
             path = custom if os.path.isabs(custom) else os.path.normpath(os.path.join(gridgen_root, custom))
             return path if os.path.isfile(path) else None
-        unst_dir = self._get_unst_msh_gen_dir()
-        tpl = os.path.join(unst_dir, "config.json")
-        if not os.path.isfile(tpl):
-            return None
+        ug_dir = self._get_unstructured_generator_dir()
+        dem_rel = ""
         try:
-            with open(tpl, encoding="utf-8") as f:
-                raw = json.load(f)
-            dem_rel = (raw.get("data") or {}).get("dem_file") or ""
+            gj_path = os.path.join(ug_dir, "grid.json")
+            if os.path.isfile(gj_path):
+                with open(gj_path, encoding="utf-8") as f:
+                    raw = json.load(f)
+                df = raw.get("DataFiles") or raw.get("data") or {}
+                dem_rel = df.get("dem_file") or ""
+            if not str(dem_rel).strip():
+                from setting.config import load_unst_msh_gen_config
+
+                dem_rel = (load_unst_msh_gen_config().get("data") or {}).get("dem_file") or ""
             dem_rel = str(dem_rel).strip()
             if not dem_rel:
                 return None
             if os.path.isabs(dem_rel):
                 return dem_rel if os.path.isfile(dem_rel) else None
-            abs_dem = os.path.normpath(os.path.join(unst_dir, dem_rel))
+            abs_dem = os.path.normpath(os.path.join(ug_dir, dem_rel))
             return abs_dem if os.path.isfile(abs_dem) else None
         except Exception:
             return None
 
     def _check_unst_mesh_prerequisites(self):
         """非结构网格生成前的环境检查。返回 (ok, err_msg)。"""
-        unst_dir = self._get_unst_msh_gen_dir()
-        if not os.path.isdir(unst_dir):
+        ug_dir = self._get_unstructured_generator_dir()
+        if not os.path.isdir(ug_dir):
             return False, tr(
                 "step2_unst_dir_missing",
-                "未找到 unst_msh_gen 目录：{path}（请确认项目内 gridgen/unst_msh_gen 是否存在）",
-            ).format(path=unst_dir)
-        for name in ("ocn_ww3.py", "ocn_ww3_regional.py", "config_loader.py", "spacing.py"):
+                "unstructured_generator not found: {path} (check WW3-Grid-Generator/unstructured_generator).",
+            ).format(path=ug_dir)
+        create_py = os.path.join(ug_dir, "create_grid.py")
+        if not os.path.isfile(create_py):
+            return False, tr(
+                "step2_unst_incomplete",
+                "unstructured_generator 不完整，缺少：{name}",
+            ).format(name="create_grid.py")
+        unst_dir = self._get_unstructured_unst_msh_gen_dir()
+        if not os.path.isdir(unst_dir):
+            return False, tr(
+                "step2_unst_incomplete",
+                "unstructured_generator 不完整，缺少目录：unst_msh_gen",
+            )
+        for name in ("ocn_ww3.py", "spacing.py"):
             p = os.path.join(unst_dir, name)
             if not os.path.isfile(p):
                 return False, tr(
@@ -1168,9 +1440,9 @@ class StepTwoServiceMixin:
             return False, tr(
                 "step2_unst_dem_missing",
                 "未找到非结构网格 DEM（NetCDF）。请在 public/config.json 中设置 UNST_DEM_FILE 为绝对路径，"
-                "或将 DEM 放到 unst_msh_gen/config.json 里 dem_file 所指向的位置（相对路径相对于 unst_msh_gen）。",
+                "或编辑 unstructured_generator/grid.json 中 DataFiles.dem_file，并将 DEM 放到相对路径所指位置。",
             )
-        # 与 gridgen/python 相同：子进程用 sys.executable，须在该环境中装好 scikit-image
+        # 与 WW3-Grid-Generator/structured_generator/pygridgen 相同：子进程用 sys.executable，须在该环境中装好 scikit-image
         try:
             r = subprocess.run(
                 [sys.executable, "-c", "import skimage.filters, skimage.measure"],
@@ -1189,8 +1461,9 @@ class StepTwoServiceMixin:
                 "当前用于生成网格的 Python 未安装 scikit-image（unst_msh_gen/spacing.py 需要）。\n"
                 "请在终端执行（与启动本程序的解释器一致）：\n{cmd}",
             ).format(cmd=f"{sys.executable} -m pip install scikit-image")
-        # JIGSAW：jigsawpy 依赖 _lib 下动态库；未编译时生成步骤会运行 build.py，此处要求已安装 cmake
-        if not self._is_jigsaw_library_built(unst_dir):
+        # JIGSAW：使用 unstructured_generator/jigsaw-python
+        jig_root = self._get_unstructured_jigsaw_root()
+        if not self._is_jigsaw_library_built(jig_root):
             if not shutil.which("cmake"):
                 return False, tr(
                     "step2_jigsaw_cmake_required",
@@ -1201,11 +1474,10 @@ class StepTwoServiceMixin:
         return True, ""
 
     def _build_unst_msh_gen_config_dict(self, lon_west, lon_east, lat_south, lat_north, is_global):
-        """基于 unst_msh_gen/config.json 模板与界面 spacing/范围生成运行用 JSON 对象。"""
-        unst_dir = self._get_unst_msh_gen_dir()
-        tpl_path = os.path.join(unst_dir, "config.json")
-        with open(tpl_path, encoding="utf-8") as f:
-            raw = json.load(f)
+        """基于 unstructured_generator/grid.json（经 load_unst_msh_gen_config）与界面 spacing/范围生成运行用 JSON 对象。"""
+        from setting.config import load_unst_msh_gen_config
+
+        raw = copy.deepcopy(load_unst_msh_gen_config())
 
         def _f(edit, default):
             try:
@@ -1221,6 +1493,10 @@ class StepTwoServiceMixin:
         hmax = _f_attr("unst_hmax_edit", raw.get("spacing", {}).get("hmax", 100.0))
         hshr = _f_attr("unst_hshr_edit", raw.get("spacing", {}).get("hshr", 20.0))
         dhdx = _f_attr("unst_dhdx_edit", raw.get("spacing", {}).get("dhdx", 0.05))
+        deep_threshold_m = _f_attr(
+            "unst_deep_threshold_edit",
+            raw.get("spacing", {}).get("deep_ocean_threshold_m", 4000.0),
+        )
         hmin = hshr
 
         spacing = dict(raw.get("spacing") or {})
@@ -1228,6 +1504,7 @@ class StepTwoServiceMixin:
         spacing["hmin"] = hmin
         spacing["hshr"] = hshr
         spacing["dhdx"] = dhdx
+        spacing["deep_ocean_threshold_m"] = abs(float(deep_threshold_m))
         raw["spacing"] = spacing
 
         mesh_s = dict(raw.get("mesh_settings") or {})
@@ -1259,6 +1536,99 @@ class StepTwoServiceMixin:
             reg["stereo_lat"] = float(mid_lat)
             raw["regional"] = reg
         return raw
+
+    def _build_unstructured_step2_grid_dict(
+        self, cfg_obj, is_global, tmp_dir, unst_abs, jig_abs, ww3_publish_dir=None
+    ):
+        """
+        生成 unstructured_generator/create_grid.py 使用的 grid.json 体（与仓库内 grid.json  schema 一致）。
+        ww3_publish_dir：grid.ww3 输出目录；Step2 传当前工作目录（selected_folder），避免沿用模板里的 "output"。
+        """
+        tpl_path = os.path.join(self._get_unstructured_generator_dir(), "grid.json")
+        if os.path.isfile(tpl_path):
+            with open(tpl_path, encoding="utf-8") as f:
+                grid = json.load(f)
+        else:
+            grid = {}
+        grid = copy.deepcopy(grid) if grid else {}
+
+        mesh_ws = os.path.join(tmp_dir, "mesh_workspace")
+        os.makedirs(mesh_ws, exist_ok=True)
+
+        sp = cfg_obj.get("spacing") or {}
+        ms = cfg_obj.get("mesh_settings") or {}
+        cmd = cfg_obj.get("command_line_args") or {}
+        data = cfg_obj.get("data") or {}
+
+        grid.setdefault("Workflow", {})
+        grid["Workflow"]["run_window_mask"] = False
+        grid["Workflow"]["unst_msh_gen_dir"] = unst_abs
+        grid["Workflow"]["jigsaw_python_root"] = jig_abs
+        grid["Workflow"].setdefault("resolved_config_name", ".grid_run.ini")
+
+        grid.setdefault("Output", {})
+        grid["Output"]["mesh_workspace_dir"] = mesh_ws
+        publish_base = ww3_publish_dir if ww3_publish_dir else tmp_dir
+        grid["Output"]["ww3_publish_dir"] = os.path.normpath(os.path.abspath(publish_base))
+        grid["Output"]["ww3_publish_basename"] = "grid.ww3"
+
+        grid.setdefault("Spacing", {})
+        grid["Spacing"].update(
+            {
+                "hmax": float(sp.get("hmax", 100.0)),
+                "hshr": float(sp.get("hshr", 20.0)),
+                "hmin": float(sp.get("hmin", sp.get("hshr", 20.0))),
+                "nwav": int(sp.get("nwav", 400)),
+                "dhdx": float(sp.get("dhdx", 0.05)),
+                "deep_ocean_threshold_m": float(sp.get("deep_ocean_threshold_m", 4000.0)),
+            }
+        )
+
+        grid.setdefault("MeshSettings", {})
+        grid["MeshSettings"]["hfun_hmax"] = float(ms.get("hfun_hmax", sp.get("hmax", 100.0)))
+        grid["MeshSettings"]["mesh_file"] = "grid.msh"
+        grid["MeshSettings"]["ww3_mesh_file"] = "grid.ww3"
+
+        grid.setdefault("CommandLineArgs", {})
+        grid["CommandLineArgs"]["black_sea"] = int(cmd.get("black_sea", 3))
+        grid["CommandLineArgs"]["mask_file"] = ""
+
+        grid.setdefault("DataFiles", {})
+        grid["DataFiles"]["dem_file"] = data.get("dem_file") or ""
+
+        lon_lo, lon_hi, lat_lo, lat_hi = -180.0, 180.0, -90.0, 90.0
+        if not is_global:
+            reg = cfg_obj.get("regional") or {}
+            lon_lo = float(reg.get("lon_min", -180))
+            lon_hi = float(reg.get("lon_max", 180))
+            lat_lo = float(reg.get("lat_min", -90))
+            lat_hi = float(reg.get("lat_max", 90))
+            grid["Regional"] = {
+                "lon_min": lon_lo,
+                "lon_max": lon_hi,
+                "lat_min": lat_lo,
+                "lat_max": lat_hi,
+                "margin_deg": float(reg.get("margin_deg", 1.0)),
+                "edge_segments": int(reg.get("edge_segments", 64)),
+                "stereo_lon": float(reg.get("stereo_lon", 0.5 * (lon_lo + lon_hi))),
+                "stereo_lat": float(reg.get("stereo_lat", 0.5 * (lat_lo + lat_hi))),
+            }
+        else:
+            grid.pop("Regional", None)
+
+        grid.setdefault("Domain", {})
+        grid["Domain"]["clip_to_bounds"] = False
+        grid["Domain"]["west_lon"] = lon_lo
+        grid["Domain"]["east_lon"] = lon_hi
+        grid["Domain"]["south_lat"] = lat_lo
+        grid["Domain"]["north_lat"] = lat_hi
+
+        grid.setdefault("Zoom", {})
+        grid["Zoom"]["zoom_auto_center"] = True
+        grid["Zoom"]["zoom_lon_deg"] = float(0.5 * (lon_lo + lon_hi))
+        grid["Zoom"]["zoom_lat_deg"] = float(0.5 * (lat_lo + lat_hi))
+
+        return grid
 
     def _stream_subprocess_to_log(self, argv, cwd, env):
         """运行子进程并将 stdout/stderr 打到 log_signal，返回 returncode。"""
@@ -1303,11 +1673,13 @@ class StepTwoServiceMixin:
         return proc.returncode
 
     def _run_unstructured_mesh_generation(self, lon_west, lon_east, lat_south, lat_north):
-        """在临时目录调用 unst_msh_gen，成功后仅将 grid.ww3 复制到工作目录。"""
+        """通过 WW3-Grid-Generator/unstructured_generator/create_grid.py 生成非结构网格，将 grid.ww3 复制到工作目录。"""
         output_dir = os.path.abspath(os.path.normpath(self.selected_folder))
         os.makedirs(output_dir, exist_ok=True)
-        unst_dir = self._get_unst_msh_gen_dir()
-        if not self._ensure_jigsaw_built(unst_dir):
+        ug_dir = self._get_unstructured_generator_dir()
+        jig_root = self._get_unstructured_jigsaw_root()
+        unst_abs = os.path.normpath(os.path.abspath(self._get_unstructured_unst_msh_gen_dir()))
+        if not self._ensure_jigsaw_built(jig_root):
             return False
         is_global = self._is_global_range(lon_west, lon_east, lat_south, lat_north)
 
@@ -1329,12 +1701,13 @@ class StepTwoServiceMixin:
         self.log_signal.emit(
             tr(
                 "step2_unst_params",
-                "   参数: hmax={hmax}, hmin={hmin}, hshr={hshr}, dhdx={dhdx}",
+                "   参数: hmax={hmax}, hmin={hmin}, hshr={hshr}, dhdx={dhdx}, deep={deep}m",
             ).format(
                 hmax=sp.get("hmax", ""),
                 hmin=sp.get("hmin", ""),
                 hshr=sp.get("hshr", ""),
                 dhdx=sp.get("dhdx", ""),
+                deep=sp.get("deep_ocean_threshold_m", ""),
             )
         )
         self.log_signal.emit(
@@ -1367,48 +1740,42 @@ class StepTwoServiceMixin:
         self.log_signal.emit(tr("step2_cache_not_found", "🔄 未找到匹配的缓存，开始生成新网格..."))
 
         tmpdir = tempfile.mkdtemp(prefix="ww3tool_unst_")
+        tmpdir = os.path.normpath(os.path.abspath(tmpdir))
         cfg_path = os.path.join(tmpdir, cfg_name)
+        grid_path = os.path.join(tmpdir, "ww3tool_step2_grid.json")
+        create_grid_py = os.path.join(ug_dir, "create_grid.py")
         try:
             with open(cfg_path, "w", encoding="utf-8") as f:
                 json.dump(cfg_obj, f, indent=2)
+                f.write("\n")
+            grid_dict = self._build_unstructured_step2_grid_dict(
+                cfg_obj,
+                is_global,
+                tmpdir,
+                unst_abs,
+                os.path.normpath(os.path.abspath(jig_root)),
+                ww3_publish_dir=output_dir,
+            )
+            with open(grid_path, "w", encoding="utf-8") as f:
+                json.dump(grid_dict, f, indent=2, ensure_ascii=False)
                 f.write("\n")
         except Exception as e:
             shutil.rmtree(tmpdir, ignore_errors=True)
             self.log_signal.emit(
                 tr("step2_unst_config_write_failed", "❌ 无法写入配置文件：{path} — {err}").format(
-                    path=cfg_path, err=e
+                    path=grid_path, err=e
                 )
             )
             return False
 
-        unst_dir_norm = os.path.normpath(os.path.abspath(unst_dir))
-        jig_py = os.path.normpath(os.path.join(unst_dir_norm, "jigsaw-python"))
-
-        if is_global:
-            script = os.path.join(unst_dir_norm, "ocn_ww3.py")
-        else:
-            script = os.path.join(unst_dir_norm, "ocn_ww3_regional.py")
-
-        # 与 gridgen/python 一致：sys.executable + -u -c，在代码里 sys.path.insert，env 仅 PYTHONUNBUFFERED
-        script_bn = os.path.basename(script)
-        python_script = f"""
-import sys
-import runpy
-sys.path.insert(0, {repr(jig_py)})
-sys.path.insert(0, {repr(unst_dir_norm)})
-sys.argv = [{repr(script_bn)}, "--config", {repr(cfg_path)}]
-runpy.run_path({repr(script)}, run_name="__main__")
-"""
-
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-
-        argv = [sys.executable, "-u", "-c", python_script]
+        argv = [sys.executable, "-u", create_grid_py, "--grid", grid_path]
 
         ret = 1
         try:
             try:
-                ret = self._stream_subprocess_to_log(argv, cwd=tmpdir, env=env)
+                ret = self._stream_subprocess_to_log(argv, cwd=ug_dir, env=env)
             except Exception as e:
                 self.log_signal.emit(tr("step2_python_error", "❌ 执行 Python 版 gridgen 出错: {error}").format(error=e))
                 import traceback
@@ -1423,10 +1790,16 @@ runpy.run_path({repr(script)}, run_name="__main__")
                 )
                 return False
 
-            src_ww3 = os.path.join(tmpdir, "grid.ww3")
+            # create_grid 已将 ww3_publish_dir 设为 output_dir 时，grid.ww3 直接写在工作目录
+            src_ww3 = os.path.join(output_dir, "grid.ww3")
             dst_ww3 = os.path.join(output_dir, "grid.ww3")
+            if not (os.path.isfile(src_ww3) and os.path.getsize(src_ww3) > 0):
+                src_ww3 = os.path.join(tmpdir, "grid.ww3")
             if os.path.isfile(src_ww3) and os.path.getsize(src_ww3) > 0:
-                shutil.copy2(src_ww3, dst_ww3)
+                if os.path.normpath(os.path.abspath(src_ww3)) != os.path.normpath(
+                    os.path.abspath(dst_ww3)
+                ):
+                    shutil.copy2(src_ww3, dst_ww3)
                 try:
                     shutil.copy2(cfg_path, os.path.join(output_dir, cfg_name))
                 except Exception:
@@ -1473,7 +1846,7 @@ runpy.run_path({repr(script)}, run_name="__main__")
         """
         从 GitHub Release「data」资源下载 reference_data 分卷 part_aa…part_ad，
         按顺序二进制拼接（等价于 shell: cat part_aa part_ab part_ac part_ad > reference_data.zip），
-        再解压到 gridgen/reference_data（或配置的 REFERENCE_DATA_PATH）。
+        再解压到 WW3-Grid-Generator/reference_data（或配置的 REFERENCE_DATA_PATH）。
         """
         ref_dir = self._get_reference_data_path()
         work_dir = os.path.dirname(ref_dir) if ref_dir else self._get_gridgen_path()
@@ -1561,7 +1934,7 @@ runpy.run_path({repr(script)}, run_name="__main__")
                             tr("step2_ref_data_zip_empty", "reference_data.zip 内无有效文件")
                         )
                     top_roots = {n.split("/")[0] for n in file_members}
-                    # zip 内仅有 reference_data/ 前缀时解压到 gridgen（得到 …/reference_data/…）
+                    # zip 内仅有 reference_data/ 前缀时解压到 WW3-Grid-Generator（得到 …/reference_data/…）
                     if len(top_roots) == 1 and next(iter(top_roots)) == "reference_data":
                         zf.extractall(work_dir)
                     else:
@@ -1622,14 +1995,14 @@ runpy.run_path({repr(script)}, run_name="__main__")
             pass
 
     def _get_grid_cache_dir(self):
-        """获取网格缓存目录（gridgen/cache）"""
+        """获取网格缓存目录（WW3-Grid-Generator/cache）"""
         gridgen_path = self._get_gridgen_path()
         gridgen_cache_dir = os.path.join(gridgen_path, "cache")
         os.makedirs(gridgen_cache_dir, exist_ok=True)
         return gridgen_cache_dir
 
-    def _get_grid_cache_key(self, dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry=None, coastline_precision=None):
-        """生成网格参数的缓存键（哈希值）"""
+    def _get_grid_cache_key(self, dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry=None, coastline_precision=None, gridgen_backend=None):
+        """生成网格参数的缓存键（哈希值）。Python 与 MATLAB gridgen 使用不同后端键，缓存互不共用。"""
         import hashlib
         # 如果参数未提供，从配置中读取
         if bathymetry is None or coastline_precision is None:
@@ -1638,6 +2011,14 @@ runpy.run_path({repr(script)}, run_name="__main__")
                 bathymetry = config.get("BATHYMETRY", "GEBCO")
             if coastline_precision is None:
                 coastline_precision = config.get("COASTLINE_PRECISION", tr("step2_coastline_precision_full", "最高"))
+        if gridgen_backend is None:
+            config = load_config()
+            gv = config.get("GRIDGEN_VERSION", "MATLAB")
+            gridgen_backend = "python" if gv == "Python" else "matlab"
+        else:
+            gridgen_backend = str(gridgen_backend).strip().lower()
+            if gridgen_backend not in ("python", "matlab"):
+                gridgen_backend = "matlab"
         # 将所有参数转换为可序列化的格式
         params = {
             'dx': float(dx_value),
@@ -1646,7 +2027,8 @@ runpy.run_path({repr(script)}, run_name="__main__")
             'lat_range': [float(lat_south), float(lat_north)],
             'ref_dir': os.path.normpath(os.path.abspath(ref_dir)).replace("\\", "/"),
             'bathymetry': str(bathymetry),
-            'coastline_precision': str(coastline_precision)
+            'coastline_precision': str(coastline_precision),
+            'gridgen_backend': gridgen_backend,
         }
         # 将参数序列化为JSON字符串（排序键以确保一致性）
         params_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
@@ -1660,13 +2042,18 @@ runpy.run_path({repr(script)}, run_name="__main__")
         cache_path = os.path.join(cache_dir, cache_key)
         # 检查缓存目录是否存在，且包含必要的文件
         if os.path.isdir(cache_path):
-            required_files = ['grid.bot', 'grid.obst', 'grid.meta', 'grid.mask']
-            if all(os.path.exists(os.path.join(cache_path, f)) for f in required_files):
+            req = ["grid.bot", "grid.obst"]
+            if not all(os.path.exists(os.path.join(cache_path, f)) for f in req):
+                return None
+            if structured_grid_desc_path(cache_path) is None:
+                return None
+            if _structured_grid_mask_path(cache_path):
                 return cache_path
         return None
 
     def _save_grid_to_cache(self, cache_key, source_dir, dx_value=None, dy_value=None,
-                           lon_west=None, lon_east=None, lat_south=None, lat_north=None, ref_dir=None, bathymetry=None, coastline_precision=None):
+                           lon_west=None, lon_east=None, lat_south=None, lat_north=None, ref_dir=None, bathymetry=None, coastline_precision=None,
+                           gridgen_backend=None):
         """将生成的网格保存到缓存"""
         cache_dir = self._get_grid_cache_dir()
         cache_path = os.path.join(cache_dir, cache_key)
@@ -1678,13 +2065,19 @@ runpy.run_path({repr(script)}, run_name="__main__")
         # 创建缓存目录
         os.makedirs(cache_path, exist_ok=True)
 
-        # 复制网格文件到缓存
-        grid_files = ['grid.bot', 'grid.obst', 'grid.meta', 'grid.mask']
-        for f in grid_files:
+        # 复制网格文件到缓存（掩膜统一存为 grid.mask_nobound）
+        for f in ["grid.bot", "grid.obst"]:
             src = os.path.join(source_dir, f)
             if os.path.exists(src):
-                dst = os.path.join(cache_path, f)
-                shutil.copy2(src, dst)
+                shutil.copy2(src, os.path.join(cache_path, f))
+        for bn in structured_grid_desc_basenames_to_copy(source_dir):
+            src = os.path.join(source_dir, bn)
+            shutil.copy2(src, os.path.join(cache_path, bn))
+        mask_src = os.path.join(source_dir, "grid.mask_nobound")
+        if not os.path.exists(mask_src):
+            mask_src = os.path.join(source_dir, "grid.mask")
+        if os.path.exists(mask_src):
+            shutil.copy2(mask_src, os.path.join(cache_path, "grid.mask_nobound"))
 
         # 保存参数信息（包含明文参数和缓存信息）
         params_data = {
@@ -1697,7 +2090,8 @@ runpy.run_path({repr(script)}, run_name="__main__")
                 'lat_range': [lat_south, lat_north] if lat_south is not None and lat_north is not None else None,
                 'ref_dir': ref_dir,
                 'bathymetry': bathymetry,
-                'coastline_precision': coastline_precision
+                'coastline_precision': coastline_precision,
+                'gridgen_backend': gridgen_backend,
             }
         }
         params_file = os.path.join(cache_path, 'params.json')
@@ -1706,12 +2100,18 @@ runpy.run_path({repr(script)}, run_name="__main__")
 
     def _load_grid_from_cache(self, cache_path, output_dir):
         """从缓存加载网格文件到输出目录"""
-        grid_files = ['grid.bot', 'grid.obst', 'grid.meta', 'grid.mask']
-        for f in grid_files:
+        for f in ["grid.bot", "grid.obst"]:
             src = os.path.join(cache_path, f)
             if os.path.exists(src):
-                dst = os.path.join(output_dir, f)
-                shutil.copy2(src, dst)
+                shutil.copy2(src, os.path.join(output_dir, f))
+        for bn in structured_grid_desc_basenames_to_copy(cache_path):
+            src = os.path.join(cache_path, bn)
+            shutil.copy2(src, os.path.join(output_dir, bn))
+        m_src = os.path.join(cache_path, "grid.mask_nobound")
+        if not os.path.exists(m_src):
+            m_src = os.path.join(cache_path, "grid.mask")
+        if os.path.exists(m_src):
+            shutil.copy2(m_src, os.path.join(output_dir, "grid.mask_nobound"))
 
     def _get_unst_mesh_cache_key(self, cfg_obj: dict, is_global: bool) -> str:
         """非结构网格缓存键：完整配置 + DEM 文件签名（mtime/size），避免 DEM 更新仍误命中。"""
@@ -1763,36 +2163,30 @@ runpy.run_path({repr(script)}, run_name="__main__")
         import time
         
         grid_bot_path = os.path.join(output_dir, "grid.bot")
-        grid_meta_path = os.path.join(output_dir, "grid.meta")
-        
+        grid_desc_path = None
         for _ in range(5):
-            if os.path.exists(grid_bot_path) and os.path.exists(grid_meta_path):
+            grid_desc_path = structured_grid_desc_path(output_dir)
+            if os.path.exists(grid_bot_path) and grid_desc_path:
                 break
             time.sleep(1.0)
-        
+        grid_desc_path = grid_desc_path or structured_grid_desc_path(output_dir)
+
         if not os.path.exists(grid_bot_path):
             return False, tr("step2_grid_bot_not_exists", "grid.bot 文件不存在")
-        
-        if not os.path.exists(grid_meta_path):
-            return False, tr("step2_grid_meta_not_exists", "grid.meta 文件不存在，无法验证")
-        
+
+        if not grid_desc_path:
+            return False, tr("step2_grid_meta_not_exists", "未找到 WW3 网格描述文件（grid.nml / ww3_grid.nml.* / grid.meta），无法验证")
+
         Nx, Ny = None, None
         try:
-            with open(grid_meta_path, 'r') as f:
-                lines = f.readlines()
-                for i, line in enumerate(lines):
-                    if "'RECT'" in line or '"RECT"' in line:
-                        if i + 1 < len(lines):
-                            values = lines[i + 1].split()
-                            if len(values) >= 2:
-                                Nx = int(float(values[0]))
-                                Ny = int(float(values[1]))
-                                break
+            d = parse_rect_grid_description(grid_desc_path)
+            if d:
+                Nx, Ny = d["nx"], d["ny"]
         except Exception as e:
-            return False, tr("step2_read_grid_meta_failed", "读取 grid.meta 失败: {error}").format(error=e)
-        
+            return False, tr("step2_read_grid_meta_failed", "读取网格描述文件失败: {error}").format(error=e)
+
         if Nx is None or Ny is None:
-            return False, tr("step2_cannot_read_nx_ny", "无法从 grid.meta 读取 Nx, Ny")
+            return False, tr("step2_cannot_read_nx_ny", "无法从网格描述文件读取 Nx, Ny")
         
         for retry in range(max_retries):
             try:
@@ -2247,12 +2641,15 @@ runpy.run_path({repr(script)}, run_name="__main__")
         lat_north,
         is_global
     ):
-        """更新 MATLAB gridgen 的 grid.nml 参数"""
+        """更新 MATLAB gridgen 的 grid.nml（写入 gridgen/grid.nml，供顶层 create_grid.m 使用）。"""
         if not matlab_bin_dir:
             return
-        grid_nml_path = os.path.join(matlab_bin_dir, "bin", "grid.nml")
+        grid_nml_path = os.path.join(matlab_bin_dir, "grid.nml")
+        bin_grid_nml = os.path.join(matlab_bin_dir, "bin", "grid.nml")
         if not os.path.exists(grid_nml_path):
-            return
+            if not os.path.exists(bin_grid_nml):
+                return
+            shutil.copy2(bin_grid_nml, grid_nml_path)
 
         def to_posix(path_value):
             return os.path.abspath(os.path.normpath(path_value)).replace("\\", "/")
@@ -2304,6 +2701,24 @@ runpy.run_path({repr(script)}, run_name="__main__")
                         title=tr("tip", "提示"),
                         content=unst_err,
                         duration=6000,
+                        parent=self,
+                    )
+                except Exception:
+                    pass
+                return
+        elif self._is_step2_smc_mesh():
+            ok, missing_list, ref_dir = self._check_reference_data()
+            if not ok:
+                dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
+                dlg.exec()
+                return
+            smc_ok, smc_err = self._check_smc_prerequisites()
+            if not smc_ok:
+                try:
+                    InfoBar.warning(
+                        title=tr("tip", "提示"),
+                        content=smc_err,
+                        duration=8000,
                         parent=self,
                     )
                 except Exception:
@@ -2380,7 +2795,7 @@ runpy.run_path({repr(script)}, run_name="__main__")
             self.log_signal.emit(tr("step2_latlon_empty_blocked", "❌ 经纬度不能为空，缺少：{fields}").format(fields=", ".join(missing_fields)))
             return
 
-        # 非结构网格：使用 gridgen/unst_msh_gen（JIGSAW / ocn_ww3*）
+        # 非结构网格：WW3-Grid-Generator/unstructured_generator/create_grid.py（内调 unst_msh_gen / jigsaw-python）
         if self._is_step2_unstructured_mesh():
             try:
                 lon_w = float(self.lon_west_edit.text().strip())
@@ -2393,6 +2808,29 @@ runpy.run_path({repr(script)}, run_name="__main__")
                 )
                 return
             self._run_unstructured_mesh_generation(lon_w, lon_e, lat_s, lat_n)
+            return
+
+        # SMC 网格：smc_generator/create_grid.py，产物写入当前工作目录
+        if self._is_step2_smc_mesh():
+            if is_nested:
+                self.log_signal.emit(
+                    tr(
+                        "step2_smc_nested_not_supported",
+                        "❌ SMC 网格不支持嵌套模式，请将「类型」设为普通网格。",
+                    )
+                )
+                return
+            try:
+                lon_w = float(self.lon_west_edit.text().strip())
+                lon_e = float(self.lon_east_edit.text().strip())
+                lat_s = float(self.lat_south_edit.text().strip())
+                lat_n = float(self.lat_north_edit.text().strip())
+            except (ValueError, AttributeError):
+                self.log_signal.emit(
+                    tr("step2_unst_latlon_invalid", "❌ 经纬度格式无效，请输入有效数字。")
+                )
+                return
+            self._run_smc_mesh_generation(lon_w, lon_e, lat_s, lat_n)
             return
 
         # 如果是嵌套网格，需要分别生成外网格和内网格
@@ -2559,7 +2997,9 @@ runpy.run_path({repr(script)}, run_name="__main__")
             if gridgen_version == "Python":
                 # Python 版本
                 gridgen_path = self._get_gridgen_path()
-                python_version_path = os.path.join(gridgen_path, "python")
+                python_version_path = os.path.join(
+                    gridgen_path, "structured_generator", "pygridgen"
+                )
                 if not os.path.exists(python_version_path):
                     self.log_signal.emit(tr("step2_python_dir_not_found", "❌ 未找到 Python 版本目录：{path}").format(path=python_version_path))
                     return False
@@ -2620,8 +3060,12 @@ runpy.run_path({repr(script)}, run_name="__main__")
             }
             boundary = coastline_map.get(str(coastline_precision_config), "full")
             
-            # 检查缓存（使用原始配置值）
-            cache_key = self._get_grid_cache_key(dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config)
+            gridgen_backend = "python" if gridgen_version == "Python" else "matlab"
+            # 检查缓存（使用原始配置值；按 gridgen 后端区分缓存）
+            cache_key = self._get_grid_cache_key(
+                dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir,
+                bathymetry_config, coastline_precision_config, gridgen_backend
+            )
             cache_path = self._check_grid_cache(cache_key)
 
             if cache_path:
@@ -2717,8 +3161,11 @@ create_grid(
                         
                         # 保存到缓存（使用原始配置值）
                         try:
-                            self._save_grid_to_cache(cache_key, output_dir_norm, dx_value, dy_value, 
-                                                    lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config)
+                            self._save_grid_to_cache(
+                                cache_key, output_dir_norm, dx_value, dy_value,
+                                lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config,
+                                gridgen_backend,
+                            )
                             self.log_signal.emit(tr("step2_cache_saved", "✅ 已保存网格到缓存（{key}...）").format(key=cache_key[:8]))
                         except Exception as cache_error:
                             self.log_signal.emit(tr("step2_cache_save_failed", "⚠️ 保存缓存失败: {error}").format(error=cache_error))
@@ -2801,13 +3248,11 @@ create_grid(
                     )
                     return False
 
-                # 构建 MATLAB 命令
-                matlab_bin_dir = matlab_bin_dir_norm.replace('\\', '/') if matlab_bin_dir_norm else None
-                matlab_bin_scripts = None
-                if matlab_bin_dir_norm:
-                    matlab_bin_scripts = os.path.join(matlab_bin_dir_norm, "bin")
-                matlab_bin_scripts_posix = matlab_bin_scripts.replace('\\', '/') if matlab_bin_scripts else None
-                matlab_out_dir = output_dir_norm.replace('\\', '/')
+                # 构建 MATLAB 命令：在 gridgen 根目录执行 create_grid.m（启动器会 cd 到 bin 再调 bin/create_grid）
+                matlab_run_dir = (
+                    os.path.normpath(matlab_bin_dir_norm) if matlab_bin_dir_norm else None
+                )
+                matlab_run_dir_posix = matlab_run_dir.replace("\\", "/") if matlab_run_dir else None
 
                 # 同步 grid.nml 参数（MATLAB 版本）
                 try:
@@ -2828,12 +3273,22 @@ create_grid(
                 except Exception as e:
                     self.log_signal.emit(tr("step2_update_grid_nml_failed", "⚠️ 更新 grid.nml 失败: {error}").format(error=e))
                 
+                if not matlab_run_dir or not os.path.isfile(
+                    os.path.join(matlab_run_dir, "create_grid.m")
+                ):
+                    self.log_signal.emit(
+                        tr(
+                            "step2_matlab_run_launcher_missing",
+                            "❌ 未找到 MATLAB 启动脚本：{path}/create_grid.m",
+                        ).format(path=matlab_run_dir or "")
+                    )
+                    return False
+
                 matlab_cmd = (
                     f"warning('off', 'all'); "
                     f"feature('DefaultCharacterSet', 'UTF8'); "
-                    f"addpath('{matlab_bin_scripts_posix}'); "
-                    f"cd('{matlab_bin_scripts_posix}'); "
-                    f"create_grid('grid.nml');"
+                    f"cd('{matlab_run_dir_posix}'); "
+                    f"create_grid;"
                 )
                 
                 cmd = [matlab_path]
@@ -2879,8 +3334,11 @@ create_grid(
                     
                     # 保存到缓存（使用原始配置值）
                     try:
-                        self._save_grid_to_cache(cache_key, output_dir_norm, dx_value, dy_value, 
-                                                lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config)
+                        self._save_grid_to_cache(
+                            cache_key, output_dir_norm, dx_value, dy_value,
+                            lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config,
+                            gridgen_backend,
+                        )
                         self.log_signal.emit(tr("step2_cache_saved", "✅ 已保存网格到缓存（{key}...）").format(key=cache_key[:8]))
                     except Exception as cache_error:
                         self.log_signal.emit(tr("step2_cache_save_failed", "⚠️ 保存缓存失败: {error}").format(error=cache_error))
@@ -3146,15 +3604,20 @@ create_grid(
                 (coarse_dir, tr("step2_outer_grid_title", "外网格（coarse）")),
                 (fine_dir, tr("step2_inner_grid_title", "内网格（fine）")),
             ):
+                mp = _structured_grid_mask_path(sub)
+                desc = structured_grid_desc_path(sub)
                 gf = {
-                    "meta": os.path.join(sub, "grid.meta"),
+                    "meta": desc,
                     "bot": os.path.join(sub, "grid.bot"),
-                    "mask": os.path.join(sub, "grid.mask"),
+                    "mask": mp,
                     "obst": os.path.join(sub, "grid.obst"),
                 }
-                missing = [k for k, p in gf.items() if not os.path.isfile(p)]
+                missing = [k for k, p in gf.items() if p is None or not os.path.isfile(p)]
                 if missing:
-                    miss = ", ".join(f"grid.{m}" for m in missing)
+                    miss = ", ".join(
+                        ("grid.nml / ww3_grid.nml.* / grid.meta" if m == "meta" else f"grid.{m}")
+                        for m in missing
+                    )
                     self.log(
                         tr(
                             "step2_grid_missing_files",
@@ -3172,9 +3635,9 @@ create_grid(
             return
 
         ww3_path = os.path.join(self.selected_folder, "grid.ww3")
-        meta_path = os.path.join(self.selected_folder, "grid.meta")
+        desc_path = structured_grid_desc_path(self.selected_folder)
         use_unst_viz = self._is_step2_unstructured_mesh() or (
-            os.path.isfile(ww3_path) and not os.path.isfile(meta_path)
+            os.path.isfile(ww3_path) and not desc_path
         )
         if use_unst_viz:
             if not os.path.isfile(ww3_path):
@@ -3206,15 +3669,20 @@ create_grid(
             )
             return
 
+        mp = _structured_grid_mask_path(self.selected_folder)
+        desc_p = structured_grid_desc_path(self.selected_folder)
         gf = {
-            "meta": os.path.join(self.selected_folder, "grid.meta"),
+            "meta": desc_p,
             "bot": os.path.join(self.selected_folder, "grid.bot"),
-            "mask": os.path.join(self.selected_folder, "grid.mask"),
+            "mask": mp,
             "obst": os.path.join(self.selected_folder, "grid.obst"),
         }
-        missing = [k for k, p in gf.items() if not os.path.isfile(p)]
+        missing = [k for k, p in gf.items() if p is None or not os.path.isfile(p)]
         if missing:
-            miss = ", ".join(f"grid.{m}" for m in missing)
+            miss = ", ".join(
+                ("grid.nml / ww3_grid.nml.* / grid.meta" if m == "meta" else f"grid.{m}")
+                for m in missing
+            )
             self.log(
                 tr(
                     "step2_grid_missing_files",
@@ -3320,61 +3788,12 @@ create_grid(
         dialog.exec()
 
     def _read_ww3meta(self, fname):
-        """读取 WAVEWATCH III meta 文件，返回经纬度数组"""
+        """读取 grid.nml（&RECT_NML）或旧版 ASCII，返回经纬度数组"""
         try:
-            with open(fname, 'r') as fid:
-                lines = fid.readlines()
-
-            grid_line_idx = None
-            gtype = None
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                if not stripped or stripped.startswith("$"):
-                    continue
-                tokens = stripped.replace("'", "").replace('"', "").split()
-                if not tokens:
-                    continue
-                if tokens[0].upper() in ("RECT", "CURV"):
-                    gtype = tokens[0].upper()
-                    grid_line_idx = i
-                    break
-
-            if grid_line_idx is None:
+            lon, lat = rect_lon_lat_mesh(fname)
+            if lon is None:
                 self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
                 return None, None
-
-            if gtype != "RECT":
-                self.log(tr("step2_unsupported_grid_type", "❌ 不支持的网格类型: {gtype}").format(gtype=gtype))
-                return None, None
-
-            if grid_line_idx + 3 >= len(lines):
-                self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
-                return None, None
-
-            # 第一行：Nx Ny
-            values = lines[grid_line_idx + 1].split()
-            Nx = int(float(values[0]))
-            Ny = int(float(values[1]))
-
-            # 第二行：dx dy scale
-            values = lines[grid_line_idx + 2].split()
-            dx = float(values[0])
-            dy = float(values[1])
-            scale = float(values[2])
-            dx = dx / scale
-            dy = dy / scale
-
-            # 第三行：lons lats scale
-            values = lines[grid_line_idx + 3].split()
-            lons = float(values[0])
-            lats = float(values[1])
-            scale = float(values[2])
-
-            # 生成经纬度数组
-            lon1d = lons / scale + np.arange(Nx) * dx
-            lat1d = lats / scale + np.arange(Ny) * dy
-
-            lon, lat = np.meshgrid(lon1d, lat1d)
             return lon, lat
         except Exception as e:
             self.log(tr("step2_read_meta_error", "❌ 读取 meta 文件失败: {error}").format(error=e))

@@ -1,0 +1,36 @@
+#!/usr/bin/ksh
+
+##  Remove isolated cells from given cell array file with awk scripts.
+##  Usage:  ls awkscript1 [awkscript2 ...] | trimtempcels  [tempcels.dat]
+##  Output is saved as tempcels.dat
+##
+##  First created:   Jian-Guo Li     8 Aug 2006
+##  Last modified:   Jian-Guo Li    26 Jan 2023
+##
+
+# Density nnn provided on command line or default 160
+ if [ 0$# -ge 1 ]
+   then
+   datfle=$1
+ else
+   echo " Please specify input cell array file after trimtempcels. "
+   exit 1
+ fi
+ echo "Trimming cell array in $datfle "
+
+ cp $datfle ./tempcels.dat
+ wc -l  $datfle 
+
+## Loop over all file fed by pipe list
+while read fff
+do
+
+echo " Processing $fff ..."
+awk -f $fff tempcels.dat > tempcell.dat
+mv tempcell.dat tempcels.dat
+wc -l tempcels.dat
+
+done
+
+exit 0
+

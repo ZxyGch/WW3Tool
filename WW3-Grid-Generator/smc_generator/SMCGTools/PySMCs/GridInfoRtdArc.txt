@@ -1,0 +1,7 @@
+ RtdArc  3 level grid zlon zlat dlon dlat for siz-1 cells. JGLi19Nov2025
+ -26.03125 -28.03125  0.06250  0.06250
+ ../../MFTModel/RtdArc/   ../../MFTModel/RtdArc/DatGMC/   /home/users/jianguo.li/Python/MyCodes/
+  0  1  Numbers of polar cells and sub-grids. 0 implies no Arctic part.
+  135.0   10.0    Rotated polon and polat for AMM153 grid.
+ ../../SRtdArcTx/ww3.   ../../MFTModel/RtdArc/OutDat/   10
+

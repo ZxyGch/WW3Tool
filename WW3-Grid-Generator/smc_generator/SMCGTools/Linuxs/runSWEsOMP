@@ -1,0 +1,56 @@
+#!/bin/bash
+
+##  Run SWEs model test on SMC1R3 global grid.
+##  Usage:  ./runSWEsOMP  Full_path/SWEsInput.txt 
+##
+##  First created:   Jian-Guo Li    28 Apr 2021
+##  Last modified:   Jian-Guo Li    20 Jun 2025
+##
+
+##  Use default input file unless a given file is provided. 
+ 
+echo $# $*
+if [ $# -ge 1 ]
+   then
+   Inputfile=$1
+else
+   Inputfile='SWEsInput.txt'
+fi
+
+SWEsModel='../F90SMC/SWESMCoMP'
+Wrkdir='../tmpfls'
+cd $Wrkdir
+CC=$?
+if test $CC -ne 0
+  then
+  mkdir $Wrkdir
+  cd    $Wrkdir
+fi
+
+rm -r *.txt *.d
+
+cp -p  ../Linuxs/$Inputfile    ./SWEsInput.txt
+
+GridName=`head -n 1  SWEsInput.txt`
+echo " GridName from $Inputfile file is $GridName "
+
+##  OpenMP threads for parallelization.  
+ export OMP_NUM_THREADS=2
+
+ $SWEsModel/SWEsnSMCeP
+
+# Check run finished and save output files
+  CC=$?
+  if test $CC -ne 0
+  then
+    echo " *** SWEsnSMC crashed !!! *** "
+  else
+##  Save output files
+    echo " *** SWEsnSMC finished !!! *** "
+  fi
+  echo " Done for grid $GridName "
+
+ echo " *** END *** "
+
+ exit 0
+

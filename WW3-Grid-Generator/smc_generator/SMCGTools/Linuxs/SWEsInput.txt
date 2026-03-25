@@ -1,0 +1,10 @@
+SMC1R3
+ '../DatSWE/'
+ 68000  69000   3  58235 # NCL,  NFC,  MRL,  Itrm
+ 1024    720    2    2   # NLon, NLat, NPol, Init
+ 9600    240   20   40   # NTS,  NWP,  NHrg, NLrg
+ 0.0   0.0  0.3515625  0.2500000   # ZLon, ZLat, DLon, DLat
+ 1.0  90.0  3.5E5      0.0000      # DFR0, DT,   AHK,  CBFr
+ -180.0  2.864789  73.0   0.4      # PLon, PLat, PAvr, Beta
+ .True. .False. .False. .False.    # Arctic, Source, WHPrts, Restrt
+

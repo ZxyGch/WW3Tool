@@ -1,0 +1,5 @@
+SMC61250
+ 260000   300000   4   ##  NCL,  NFC,  MRL
+   4096     3072   0   ##  NLon, NLat, NPol
+'../DatGMC/SMC61250Cels.dat'
+

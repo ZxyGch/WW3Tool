@@ -1,0 +1,82 @@
+#!/usr/bin/ksh
+
+##  Count ISD JSD face numbers of different sizes
+##  Usage:  countisd ISD_File JSD_File
+##  Output is saved as newISD_File, newJSD_File
+##
+##  First created:   Jian-Guo Li    26 Feb 2010
+##  Last modified:   Jian-Guo Li    12 Mar 2020
+##
+
+##  Use given input files.
+#
+if [ $# -ne 2 ]
+  then echo "$0: Usage is $0 U_iside v_jside "
+  exit 1
+fi
+#
+USide=$1
+if test ! -f "$USide"                    # Check if USide file exists
+  then
+  echo "$USide does not exist"
+  exit 1
+fi
+#
+VSide=$2
+if test ! -f "$VSide"                     # Check if VSide file exists
+  then
+  echo "$VSide does not exists"
+  exit 1
+fi
+
+ echo "U/V side arrays are from: $USide $VSide"
+
+##  sort according to y-size then j and i count
+#     sort -nb +2 -3 +1 -2 +0 -1 G6kISide.d > G6kISide.ds3
+#     sort -nb +7    +1 -2 +0 -1 G6kJSide.d > G6kJSide.ds8
+      sort -s -k 3,3n -k 2,2n -k 1,1n  $USide > temp1
+      sort -s -k 8,8n -k 2,2n -k 1,1n  $VSide > temp2 
+
+##  Use awk field number to extract y-size column.
+      awk '{print $3}' temp1 > temp3
+      awk '{print $8}' temp2 > temp8
+
+##  count the different sizes
+      N1a=`grep '^1' temp3 | wc -l `
+      NU2=`grep '^2' temp3 | wc -l `
+      NU4=`grep '^4' temp3 | wc -l `
+      NU8=`grep '^8' temp3 | wc -l `
+      NU16=`grep '^16' temp3 | wc -l `
+      NU1=`expr $N1a - $NU16`      ## Because N1a contains both 1 and 16 lines.
+      NU32=`grep '^32' temp3 | wc -l `
+ 
+      NUT=`cat temp3 | wc -l `
+
+    echo " NU    NU1  NU2  NU4  NU8  NU16  NU32"
+    echo " "$NUT  $NU1 $NU2 $NU4 $NU8 $NU16 $NU32 
+    echo " "$NUT  $NU1 $NU2 $NU4 $NU8 $NU16 $NU32 > temp4 
+
+      N1a=`grep '^1' temp8 | wc -l `
+      NV2=`grep '^2' temp8 | wc -l `
+      NV4=`grep '^4' temp8 | wc -l `
+      NV8=`grep '^8' temp8 | wc -l `
+      NV16=`grep '^16' temp8 | wc -l `
+      NV1=`expr $N1a - $NV16`      ## Because N1a contains both 1 and 16 lines.
+      NV32=`grep '^32' temp8 | wc -l `
+ 
+      NVT=`cat temp8 | wc -l `
+
+    echo " NV    NV1  NV2  NV4  NV8  NV16  NV32"
+    echo " "$NVT  $NV1 $NV2 $NV4 $NV8 $NV16 $NV32 
+    echo " "$NVT  $NV1 $NV2 $NV4 $NV8 $NV16 $NV32 > temp5 
+
+##  Merge saved counts with sorted face array files
+    cat temp4 temp1 >  ${USide}at
+    cat temp5 temp2 >  ${VSide}at
+
+##  Clear temporary files
+    rm  temp[1-5] temp8
+
+##  All done.
+   exit 0
+

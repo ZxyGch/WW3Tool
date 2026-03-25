@@ -1,0 +1,5 @@
+SMC1R3
+ 60000   65000   3   ##  NCL,  NFC,  MRL
+  1024     720   0   ##  NLon, NLat, NPol
+'../DatSWE/SMC1R3Cels.dat'
+

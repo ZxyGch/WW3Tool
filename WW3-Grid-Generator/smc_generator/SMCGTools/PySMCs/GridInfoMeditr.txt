@@ -1,0 +1,6 @@
+ Medi36125  4 level grid zlon zlat dlon dlat for size-1 cells.  JGLi06Jun2025
+  0.0  0.0  0.0439453125  0.029296875 
+  /data/users/jianguo.li/MFTModel/Med36125/   /data/users/jianguo.li/MFTModel/Med36125/DatGMC/  
+  0  Number of polar cells or polar parts. 0 implies no Arctic part.
+  ../../Medi36125Tx/ww3.    ../OutDatMedi/      SWH and PropTest file dirs.
+

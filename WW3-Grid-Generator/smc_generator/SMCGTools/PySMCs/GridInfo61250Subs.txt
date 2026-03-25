@@ -1,0 +1,5 @@
+ SubG61250  Soth61250  Pacf61250  Atln61250 
+  0.0  0.0  0.087890625  0.058593750 
+  ../tmpfls/   ../DatSub/   ./     Working, cell array, and MCodes dirs.
+  1  3  One polar cell and 3 sub-grids.   First 0 implies no Arctic part.
+  ../../S61250     ../OutDat/   4    SWH and PropTest file dirs and nhr.

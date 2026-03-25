@@ -1,0 +1,49 @@
+#!/usr/bin/ksh
+
+##  Run SMCGSideMP for each Sub3 sub-grids. 
+##  Usage:  ./runSub3SideMP 
+##
+##  First created:   Jian-Guo Li    28 Apr 2021
+##  Last modified:   Jian-Guo Li    25 Feb 2022
+##
+
+Wrkdir='../' 
+
+cd $Wrkdir/tmpfls/
+
+##  OpenMP threads for parallelization. 
+export OMP_NUM_THREADS=2
+
+## Loop over 3 sub-grids and run GtLkSideMP for each grid.
+for grid in Soth Pacf Atln 
+do
+
+ GridName=${grid}61250
+ echo " Run SMCGSideMP with cell file $CellFile "
+
+ cat $Wrkdir/Linuxs/SideMPInput.txt  \
+     | sed "s/<GridName>/${GridName}/g" \
+     | sed "s/<DatGMC>/DatSub/g"        \
+     | sed "s/TRUE/FALSE/g" > ./InputFile
+
+ $Wrkdir/F90SMC/SMCGSideMP  ./InputFile
+
+# Check run finished and save output files
+  CC=$?
+  if test $CC -ne 0
+  then
+    echo " *** $grid SideMP Crash !!! *** "
+  else
+##  Save output files
+    $Wrkdir/Linuxs/countijsd4lv ${GridName}ISide.d ${GridName}JSide.d
+    mv  ${GridName}ISide.dat    ${GridName}ISid.dat
+    mv  ${GridName}JSide.dat    ${GridName}JSid.dat
+  fi
+  echo " Done for grid $grid "
+
+done
+
+ echo " *** END *** "
+
+ exit 0
+

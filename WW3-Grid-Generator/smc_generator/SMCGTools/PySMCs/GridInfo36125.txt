@@ -1,0 +1,6 @@
+ SMC36125 4 level grid zlon zlat dlon dlat for size-1 cells.  JGLi28May2025
+  0.0  0.0  0.0439453125  0.029296875
+ /data/users/jianguo.li/MFTModel/SMC36125/   /data/users/jianguo.li/MFTModel/SMC36125/DatGMC/
+  1  Number of polar cells or polar parts. 0 implies no Arctic part.
+ /data/users/jianguo.li/S36125Tx/ww3.        /data/users/jianguo.li/MFTModel/SMC36125/Sp36RGD2/
+

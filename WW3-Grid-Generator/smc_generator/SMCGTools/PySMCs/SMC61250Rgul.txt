@@ -1,0 +1,8 @@
+ Regular domain parameters for SMC61250 grid 
+ NC, NR= 512, 362 
+ DX, DY= 0.703125, 0.468750 
+ X1, Y1= 0.351562, -79.453125 
+ XN, YN= 359.648438, 89.765625 
+ iShft, jEqut= 0, 1360 
+ NRLvl, MRFct= 4, 8 
+ End of regular information. 

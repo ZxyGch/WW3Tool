@@ -1,0 +1,8 @@
+## awk script to select Gibraltar Strait cells from cell_file.
+## Usage:  awk -f awkGibrlt  cell_file > tempcels.dat 
+##                JGLi28Feb2022
+##
+
+  { if ( ( ( $1 >= 4008 && $1 < 4048 ) &&
+           ( $2 >=  576 && $2 <  640 ) ) ) print $0 }
+

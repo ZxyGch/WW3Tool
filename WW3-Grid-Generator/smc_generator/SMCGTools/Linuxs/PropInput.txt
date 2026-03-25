@@ -1,0 +1,9 @@
+SMC61250
+ '../DatGMC/'
+ 260000  310000  4     # NCL,  NFC,  MRL
+ 4096    3037    1     # NLon, NLat, NPol
+ 24   1  480    24     # NDir, NFrq, NTS, NWP
+ 0.0  0.0  0.087890625  0.058593750   # ZLon, ZLat, DLon, DLat
+  900.0  300.0         # DTG,  DTCFL
+  -46.0   46.0         # SSLat, SNLat for non-zero stripes.
+ .TRUE.                # Arctic
