@@ -9,13 +9,18 @@ Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](htt
 本软件包括以下功能：
 
 1. 支持多种强迫场：风场 (ERA5，CFSR，CCMP)、流场 (Copernicus)、水位场(Copernicus)、海冰场(Copernicus)，包含对强迫场的自动修复功能 （纬度排序、时间修复、变量修复）
-2. gridgen 矩形网格生成，JIGSAW 非结构化三角形网格生成，支持最多两层的嵌套网格模式（支持 Python 版本，不依赖 Matlab，Two-Way Nesting，相同强迫场数据）
+
+2. gridgen，pygridgen 结构化矩形网格生成，JIGSAW 三角形非结构化网格生成，SMCGTools smc 网格生成，对于结构化矩形网格支持最多两层的嵌套网格模式（支持 Python 版本，不依赖 Matlab，Two-Way Nesting，相同强迫场数据）
+
 3. 支持区域计算、二维谱点计算、航迹计算
+
 4. 支持 Slurm 脚本配置
-5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，主要配置计算精度、输出精度、时间范围、二维谱点计算、航迹计算、谱分区输出、强迫场配置
+
+5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，主要配置计算精度、输出精度、时间范围、二维谱点计算、航迹计算、谱分区输出、强迫场配置，网格文件配置
+
 6. 波高图、波高视频、等高线图、二维谱图、JASON3 卫星轨迹图、二维谱图
 
-这个软件可以运行在 Win/Linux/Mac，几乎完全由 Python 组成
+这个软件可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码）
 
 实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
 

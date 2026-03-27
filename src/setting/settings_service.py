@@ -117,6 +117,75 @@ class SettingsServiceMixin:
         }
         save_unst_msh_gen_config(updates)
 
+    def _save_smc_grid_config_from_ui(self):
+        """将设置页中的 SMC 项写入 smc_generator/grid.json。"""
+        if not hasattr(self, "settings_smc_bathy_combo"):
+            return
+        from setting.config import (
+            load_smc_grid_json_for_settings,
+            save_smc_grid_json_updates,
+            smc_bathymetry_relpath_for_combo_index,
+        )
+
+        cur = load_smc_grid_json_for_settings()
+        inp = cur.get("input") or {}
+        gr = cur.get("grid") or {}
+        phy = cur.get("physics") or {}
+        bnd = cur.get("boundary") or {}
+
+        conv_idx = (
+            self.settings_smc_convention_combo.currentIndex()
+            if hasattr(self, "settings_smc_convention_combo")
+            else 0
+        )
+        bathy_convention = "depth" if conv_idx == 1 else "elevation"
+
+        gr_save = {k: v for k, v in gr.items() if k != "global"}
+
+        n_levels = self._unst_parse_int(
+            self.settings_smc_n_levels_edit.text(), int(gr.get("n_levels", 2))
+        )
+        msea = self._unst_parse_int(
+            self.settings_smc_msea_edit.text(), int(bnd.get("msea", 1))
+        )
+        gen_bdy = (
+            self.settings_smc_boundary_generate_switch.isChecked()
+            if hasattr(self, "settings_smc_boundary_generate_switch")
+            else True
+        )
+
+        updates = {
+            "input": {
+                **inp,
+                "bathymetry_file": smc_bathymetry_relpath_for_combo_index(
+                    self.settings_smc_bathy_combo.currentIndex()
+                ),
+                "bathy_convention": bathy_convention,
+            },
+            "grid": {
+                **gr_save,
+                "n_levels": int(n_levels),
+            },
+            "physics": {
+                **phy,
+                "wlevel": self._unst_parse_float(
+                    self.settings_smc_wlevel_edit.text(), float(phy.get("wlevel", 0.0))
+                ),
+                "depmin": self._unst_parse_float(
+                    self.settings_smc_depmin_edit.text(), float(phy.get("depmin", 0.0))
+                ),
+                "dshalw": self._unst_parse_float(
+                    self.settings_smc_dshalw_edit.text(), float(phy.get("dshalw", -150.0))
+                ),
+            },
+            "boundary": {
+                **bnd,
+                "generate_boundary_cells": bool(gen_bdy),
+                "msea": int(msea),
+            },
+        }
+        save_smc_grid_json_updates(updates)
+
     def _choose_matlab_path(self):
         """选择 MATLAB 路径"""
         start = self.settings_matlab_edit.text().strip() if hasattr(self, 'settings_matlab_edit') else ""
@@ -354,6 +423,16 @@ class SettingsServiceMixin:
         for _name in _unst_edits:
             if hasattr(self, _name):
                 line_edits.append(getattr(self, _name))
+        _smc_edits = [
+            "settings_smc_n_levels_edit",
+            "settings_smc_wlevel_edit",
+            "settings_smc_depmin_edit",
+            "settings_smc_dshalw_edit",
+            "settings_smc_msea_edit",
+        ]
+        for _name in _smc_edits:
+            if hasattr(self, _name):
+                line_edits.append(getattr(self, _name))
         for line_edit in line_edits:
             if hasattr(line_edit, 'textChanged'):
                 line_edit.textChanged.connect(self._save_settings)
@@ -365,6 +444,20 @@ class SettingsServiceMixin:
             self.settings_bathymetry_combo.currentTextChanged.connect(self._save_settings)
         if hasattr(self, 'settings_coastline_combo') and hasattr(self.settings_coastline_combo, 'currentTextChanged'):
             self.settings_coastline_combo.currentTextChanged.connect(self._save_settings)
+        for _smc_combo in (
+            "settings_smc_bathy_combo",
+            "settings_smc_convention_combo",
+        ):
+            if hasattr(self, _smc_combo):
+                c = getattr(self, _smc_combo)
+                if hasattr(c, "currentIndexChanged"):
+                    c.currentIndexChanged.connect(self._save_settings)
+        if hasattr(self, "settings_smc_boundary_generate_switch"):
+            _bs = self.settings_smc_boundary_generate_switch
+            if hasattr(_bs, "checkedChanged"):
+                _bs.checkedChanged.connect(self._save_settings)
+            elif hasattr(_bs, "stateChanged"):
+                _bs.stateChanged.connect(self._save_settings)
         # 语言选择框不自动保存，需要手动保存（因为切换语言会刷新界面）
 
         # CheckBox 控件：使用 stateChanged 信号
@@ -617,6 +710,10 @@ class SettingsServiceMixin:
 
                 try:
                     self._save_unst_msh_gen_config_from_ui()
+                except Exception:
+                    pass
+                try:
+                    self._save_smc_grid_config_from_ui()
                 except Exception:
                     pass
 
@@ -1886,20 +1983,76 @@ class SettingsServiceMixin:
             if hasattr(self, "unst_mesh_card"):
                 self.unst_mesh_card.setTitle(tr("unst_mesh_config_card", "非结构化三角网格配置"))
             _unst_lbls = [
-                ("unst_l_spacing_hmax", "unst_spacing_hmax", "深水尺度（km）"),
-                ("unst_l_spacing_hshr", "unst_spacing_hshr", "近岸尺度（km）"),
-                ("unst_l_spacing_dhdx", "unst_spacing_dhdx", "水深梯度"),
-                ("unst_l_spacing_nwav", "unst_spacing_nwav", "浅水按波长加密（填 0 关闭）"),
-                ("unst_l_spacing_deep_threshold", "unst_spacing_deep_threshold", "深水阈值（m）"),
-                ("unst_l_reg_margin", "unst_regional_margin_deg", "区域外扩边距（度）"),
-                ("unst_l_reg_edge_seg", "unst_regional_edge_segments", "矩形边界折线段数（越大越光顺）"),
+                ("unst_l_spacing_hmax", "unst_spacing_hmax", "深水尺度（km）:"),
+                ("unst_l_spacing_hshr", "unst_spacing_hshr", "近岸尺度（km）:"),
+                ("unst_l_spacing_dhdx", "unst_spacing_dhdx", "水深梯度:"),
+                ("unst_l_spacing_nwav", "unst_spacing_nwav", "浅水按波长加密:"),
+                ("unst_l_spacing_deep_threshold", "unst_spacing_deep_threshold", "深水阈值（m）:"),
+                ("unst_l_reg_margin", "unst_regional_margin_deg", "区域外扩边距（度）:"),
+                ("unst_l_reg_edge_seg", "unst_regional_edge_segments", "矩形边界折线段数:"),
             ]
             for attr_name, tr_key, default in _unst_lbls:
                 if hasattr(self, attr_name):
                     lb = getattr(self, attr_name)
                     if lb:
                         lb.setText(tr(tr_key, default))
-            
+
+            if hasattr(self, "smc_mesh_card"):
+                self.smc_mesh_card.setTitle(tr("settings_smc_config_card", "SMC 网格配置"))
+            _smc_lbls = [
+                ("settings_smc_l_bathy_file", "settings_smc_bathy_file", "水深数据:"),
+                ("settings_smc_l_convention", "settings_smc_bathy_convention", "水深约定:"),
+                ("settings_smc_l_n_levels", "settings_smc_n_levels", "细化层数:"),
+                ("settings_smc_l_wlevel", "settings_smc_wlevel", "参考水位:"),
+                ("settings_smc_l_depmin", "settings_smc_depmin", "最小水深:"),
+                ("settings_smc_l_dshalw", "settings_smc_dshalw", "浅水截断:"),
+                ("settings_smc_l_boundary", "settings_smc_boundary", "开边界:"),
+                ("settings_smc_l_msea", "settings_smc_msea", "海陆类型:"),
+            ]
+            for attr_name, tr_key, default in _smc_lbls:
+                if hasattr(self, attr_name):
+                    lb = getattr(self, attr_name)
+                    if lb:
+                        lb.setText(tr(tr_key, default))
+            if hasattr(self, "settings_smc_bathy_combo"):
+                b0 = self.settings_smc_bathy_combo.currentIndex()
+                self.settings_smc_bathy_combo.clear()
+                self.settings_smc_bathy_combo.addItems(
+                    [
+                        tr("settings_smc_bathy_etopo1", "ETOPO1"),
+                        tr("settings_smc_bathy_etopo2", "ETOPO2"),
+                        tr("settings_smc_bathy_gebco", "GEBCO"),
+                    ]
+                )
+                self.settings_smc_bathy_combo.setToolTip(
+                    tr(
+                        "settings_smc_bathy_tip",
+                        "文件位于 WW3-Grid-Generator/reference_data，写入 grid.json 为相对 smc_generator 的路径。",
+                    )
+                )
+                if b0 >= 0:
+                    self.settings_smc_bathy_combo.setCurrentIndex(min(b0, 2))
+            if hasattr(self, "settings_smc_convention_combo"):
+                i0 = self.settings_smc_convention_combo.currentIndex()
+                self.settings_smc_convention_combo.clear()
+                self.settings_smc_convention_combo.addItems(
+                    [
+                        tr("settings_smc_convention_elevation", "高程（海面向下为正）"),
+                        tr("settings_smc_convention_depth", "水深（向下为正）"),
+                    ]
+                )
+                if i0 >= 0:
+                    self.settings_smc_convention_combo.setCurrentIndex(min(i0, 1))
+            if hasattr(self, "settings_smc_boundary_generate_switch"):
+                from setting.config import load_smc_grid_json_for_settings as _load_smc_gj
+
+                _bd = (_load_smc_gj().get("boundary") or {})
+                self.settings_smc_boundary_generate_switch.blockSignals(True)
+                self.settings_smc_boundary_generate_switch.setChecked(
+                    bool(_bd.get("generate_boundary_cells", True))
+                )
+                self.settings_smc_boundary_generate_switch.blockSignals(False)
+
             # 更新其他卡片标题和标签
             # 注意：这里只更新设置页面中可以直接访问的控件
             # 对于嵌套在卡片中的控件，需要更复杂的逻辑

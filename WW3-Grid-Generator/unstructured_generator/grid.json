@@ -40,7 +40,7 @@
     "scale_south_lower": 9
   },
   "MeshSettings": {
-    "hfun_hmax": 100,
+    "hfun_hmax": 100.0,
     "mesh_file": "uglo_poly_nBlkS.msh",
     "ww3_mesh_file": "uglo_poly_nBlkS.ww3"
   },
@@ -50,5 +50,9 @@
   },
   "DataFiles": {
     "dem_file": "../reference_data/RTopo_2_0_4_GEBCO_v2024_60sec_pixel.nc"
+  },
+  "Regional": {
+    "margin_deg": 1.0,
+    "edge_segments": 64
   }
 }

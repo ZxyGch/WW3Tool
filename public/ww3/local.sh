@@ -66,6 +66,26 @@ run_prnc_with_fields() {
     fi
 }
 
+run_ww3_shel_with_fallback() {
+    echo "=== Running mpirun ww3_shel ===" | tee -a "$LOG"
+    mpirun -n $MPI_NPROCS ww3_shel 2>&1 | tee -a "$LOG"
+    rc_mpi=${PIPESTATUS[0]}
+    if [ $rc_mpi -eq 0 ]; then
+        return 0
+    fi
+
+    echo "=== mpirun ww3_shel failed with exit code $rc_mpi; retrying direct ww3_shel ===" | tee -a "$LOG"
+    ww3_shel 2>&1 | tee -a "$LOG"
+    rc_direct=${PIPESTATUS[0]}
+    if [ $rc_direct -eq 0 ]; then
+        echo "=== direct ww3_shel succeeded after mpirun failure ===" | tee -a "$LOG"
+        return 0
+    fi
+
+    echo "=== direct ww3_shel also failed with exit code $rc_direct ===" | tee -a "$LOG"
+    return $rc_direct
+}
+
 # 检测嵌套网格模式
 if [ -d "coarse" ] && [ -d "fine" ]; then
     ######################################
@@ -161,12 +181,11 @@ else
     ######################################
     # 运行 MPI 程序 (普通网格模式)
     ######################################
-    echo "=== Running mpirun ww3_shel ===" | tee -a "$LOG"
-    mpirun -n $MPI_NPROCS ww3_shel 2>&1 | tee -a "$LOG"
-    rc_mpi=${PIPESTATUS[0]}
-    if [ $rc_mpi -ne 0 ]; then
+    run_ww3_shel_with_fallback
+    rc_shel=$?
+    if [ $rc_shel -ne 0 ]; then
         [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
-        exit $rc_mpi
+        exit $rc_shel
     fi
     
     ######################################

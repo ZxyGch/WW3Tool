@@ -34,8 +34,7 @@ from PIL import Image
 import platform
 import re
 import cv2
-from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6 import QtWidgets
 QSplitter = QtWidgets.QSplitter
 from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget
@@ -43,7 +42,6 @@ from PyQt6.QtGui import QColor, QIcon
 from qfluentwidgets import MessageBoxBase
 from PyQt6.QtWidgets import QTableWidgetItem, QHeaderView, QScrollArea
 from PyQt6.QtGui import QPixmap
-QApplication = QtWidgets.QApplication
 QWidget = QtWidgets.QWidget
 QVBoxLayout = QtWidgets.QVBoxLayout
 QHBoxLayout = QtWidgets.QHBoxLayout
@@ -70,10 +68,9 @@ class Log:
     def log(self, msg):
         """写入日志到 TextEdit 控件，并自动滚动到底部（优化版本，减少UI操作）"""
         if hasattr(self, 'log_text') and self.log_text:
-            # 使用 append 方法，它已经会自动滚动到底部，减少手动操作
-            self.log_text.appendPlainText(str(msg))  # 确保转换为字符串
-            # 注意：不要在这里调用 processEvents()，会导致无限递归
-            # PyQt 的事件循环会自动处理 UI 更新
+            self.log_text.appendPlainText(str(msg))
+            # 不在此处调用 processEvents / 强制 viewport 刷新：日志爆发时易与 Fluent 滚动条
+            # 的 value 同步重入，触发 RecursionError（不改变日志控件与滚动条实现）。
         else:
             # 如果 log_text 不存在，输出到控制台
             print(f"[LOG] {msg}")

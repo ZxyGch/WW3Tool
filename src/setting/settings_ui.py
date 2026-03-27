@@ -753,32 +753,32 @@ class SettingsMixin(SettingsServiceMixin):
                 unst_grid.addWidget(label_widget, line, 0)
                 unst_grid.addWidget(edit_widget, line, 1, 1, col_span_edit)
 
-            self.unst_l_spacing_hmax = QLabel(tr("unst_spacing_hmax", "深水尺度（km）"))
+            self.unst_l_spacing_hmax = QLabel(tr("unst_spacing_hmax", "深水尺度（km）:"))
             self.settings_unst_spacing_hmax_edit = LineEdit()
             self.settings_unst_spacing_hmax_edit.setText(str(sp.get("hmax", d0["spacing"]["hmax"])))
             self.settings_unst_spacing_hmax_edit.setStyleSheet(input_style)
             _row(0, self.unst_l_spacing_hmax, self.settings_unst_spacing_hmax_edit)
 
-            self.unst_l_spacing_hshr = QLabel(tr("unst_spacing_hshr", "近岸尺度（km）"))
+            self.unst_l_spacing_hshr = QLabel(tr("unst_spacing_hshr", "近岸尺度（km）:"))
             self.settings_unst_spacing_hshr_edit = LineEdit()
             self.settings_unst_spacing_hshr_edit.setText(str(sp.get("hshr", d0["spacing"]["hshr"])))
             self.settings_unst_spacing_hshr_edit.setStyleSheet(input_style)
             _row(1, self.unst_l_spacing_hshr, self.settings_unst_spacing_hshr_edit)
 
-            self.unst_l_spacing_dhdx = QLabel(tr("unst_spacing_dhdx", "水深梯度"))
+            self.unst_l_spacing_dhdx = QLabel(tr("unst_spacing_dhdx", "水深梯度:"))
             self.settings_unst_spacing_dhdx_edit = LineEdit()
             self.settings_unst_spacing_dhdx_edit.setText(str(sp.get("dhdx", d0["spacing"]["dhdx"])))
             self.settings_unst_spacing_dhdx_edit.setStyleSheet(input_style)
             _row(2, self.unst_l_spacing_dhdx, self.settings_unst_spacing_dhdx_edit)
 
-            self.unst_l_spacing_nwav = QLabel(tr("unst_spacing_nwav", "浅水按波长加密（填 0 关闭）"))
+            self.unst_l_spacing_nwav = QLabel(tr("unst_spacing_nwav", "浅水按波长加密:"))
             self.settings_unst_spacing_nwav_edit = LineEdit()
             self.settings_unst_spacing_nwav_edit.setText(str(sp.get("nwav", d0["spacing"]["nwav"])))
             self.settings_unst_spacing_nwav_edit.setStyleSheet(input_style)
             _row(3, self.unst_l_spacing_nwav, self.settings_unst_spacing_nwav_edit)
 
             self.unst_l_spacing_deep_threshold = QLabel(
-                tr("unst_spacing_deep_threshold", "深水阈值（m）")
+                tr("unst_spacing_deep_threshold", "深水阈值（m）:")
             )
             self.settings_unst_spacing_deep_threshold_edit = LineEdit()
             self.settings_unst_spacing_deep_threshold_edit.setText(
@@ -787,13 +787,13 @@ class SettingsMixin(SettingsServiceMixin):
             self.settings_unst_spacing_deep_threshold_edit.setStyleSheet(input_style)
             _row(4, self.unst_l_spacing_deep_threshold, self.settings_unst_spacing_deep_threshold_edit)
 
-            self.unst_l_reg_margin = QLabel(tr("unst_regional_margin_deg", "区域外扩边距（度）"))
+            self.unst_l_reg_margin = QLabel(tr("unst_regional_margin_deg", "区域外扩边距（度）:"))
             self.settings_unst_regional_margin_deg_edit = LineEdit()
             self.settings_unst_regional_margin_deg_edit.setText(str(reg.get("margin_deg", d0["regional"]["margin_deg"])))
             self.settings_unst_regional_margin_deg_edit.setStyleSheet(input_style)
             _row(5, self.unst_l_reg_margin, self.settings_unst_regional_margin_deg_edit)
 
-            self.unst_l_reg_edge_seg = QLabel(tr("unst_regional_edge_segments", "矩形边界折线段数（越大越光顺）"))
+            self.unst_l_reg_edge_seg = QLabel(tr("unst_regional_edge_segments", "矩形边界折线段数:"))
             self.settings_unst_regional_edge_segments_edit = LineEdit()
             self.settings_unst_regional_edge_segments_edit.setText(str(reg.get("edge_segments", d0["regional"]["edge_segments"])))
             self.settings_unst_regional_edge_segments_edit.setStyleSheet(input_style)
@@ -804,6 +804,140 @@ class SettingsMixin(SettingsServiceMixin):
             unst_mesh_card.viewLayout.setContentsMargins(11, 10, 11, 12)
             unst_mesh_card.viewLayout.addLayout(unst_mesh_layout)
             settings_layout.addWidget(unst_mesh_card)
+
+            # === SMC 网格（smc_generator/grid.json）===
+            smc_mesh_card = HeaderCardWidget(settings_content)
+            self.smc_mesh_card = smc_mesh_card
+            smc_mesh_card.setTitle(tr("settings_smc_config_card", "SMC 网格配置"))
+            smc_mesh_card.setStyleSheet("""
+                HeaderCardWidget QLabel {
+                    font-weight: normal;
+                    margin-left: 0px;
+                    padding-left: 0px;
+                }
+            """)
+            smc_mesh_card.headerLayout.setContentsMargins(11, 10, 11, 12)
+            smc_mesh_layout = QVBoxLayout()
+            smc_mesh_layout.setSpacing(5)
+            smc_mesh_layout.setContentsMargins(0, 0, 0, 0)
+            smc_gr = QGridLayout()
+            smc_gr.setColumnStretch(1, 1)
+            smc_gr.setSpacing(5)
+
+            smc_cfg = load_smc_grid_json_for_settings()
+            sinp = smc_cfg.get("input") or {}
+            sgr = smc_cfg.get("grid") or {}
+            sphy = smc_cfg.get("physics") or {}
+            sbnd = smc_cfg.get("boundary") or {}
+
+            def _smc_row(line: int, label_widget, field_widget, col_span=1):
+                smc_gr.addWidget(label_widget, line, 0)
+                smc_gr.addWidget(field_widget, line, 1, 1, col_span)
+
+            _sr = 0
+            self.settings_smc_l_bathy_file = QLabel(tr("settings_smc_bathy_file", "水深数据:"))
+            self.settings_smc_bathy_combo = ComboBox()
+            self.settings_smc_bathy_combo.addItems(
+                [
+                    tr("settings_smc_bathy_etopo1", "ETOPO1"),
+                    tr("settings_smc_bathy_etopo2", "ETOPO2"),
+                    tr("settings_smc_bathy_gebco", "GEBCO"),
+                ]
+            )
+            self.settings_smc_bathy_combo.setCurrentIndex(
+                smc_bathymetry_combo_index_from_path(sinp.get("bathymetry_file"))
+            )
+            self.settings_smc_bathy_combo.setToolTip(
+                tr(
+                    "settings_smc_bathy_tip",
+                    "数据来自 reference_data；保存后 grid.json 内为相对 smc_generator 的路径。",
+                )
+            )
+            self.settings_smc_bathy_combo.setStyleSheet(combo_style)
+            _smc_row(_sr, self.settings_smc_l_bathy_file, self.settings_smc_bathy_combo)
+            _sr += 1
+
+            self.settings_smc_l_convention = QLabel(tr("settings_smc_bathy_convention", "水深约定:"))
+            self.settings_smc_convention_combo = ComboBox()
+            self.settings_smc_convention_combo.addItems(
+                [
+                    tr("settings_smc_convention_elevation", "高程（海面向下为正）"),
+                    tr("settings_smc_convention_depth", "水深（向下为正）"),
+                ]
+            )
+            _bc = str(sinp.get("bathy_convention", "elevation")).lower()
+            self.settings_smc_convention_combo.setCurrentIndex(
+                1 if _bc in ("depth", "depth_positive_down", "positive_down") else 0
+            )
+            self.settings_smc_convention_combo.setStyleSheet(combo_style)
+            _smc_row(_sr, self.settings_smc_l_convention, self.settings_smc_convention_combo)
+            _sr += 1
+
+            self.settings_smc_l_n_levels = QLabel(tr("settings_smc_n_levels", "细化层数:"))
+            self.settings_smc_n_levels_edit = LineEdit()
+            self.settings_smc_n_levels_edit.setText(str(sgr.get("n_levels", 2)))
+            self.settings_smc_n_levels_edit.setStyleSheet(input_style)
+            _smc_row(_sr, self.settings_smc_l_n_levels, self.settings_smc_n_levels_edit)
+            _sr += 1
+
+            self.settings_smc_l_wlevel = QLabel(tr("settings_smc_wlevel", "参考水位:"))
+            self.settings_smc_wlevel_edit = LineEdit()
+            self.settings_smc_wlevel_edit.setText(str(sphy.get("wlevel", 0.0)))
+            self.settings_smc_wlevel_edit.setStyleSheet(input_style)
+            _smc_row(_sr, self.settings_smc_l_wlevel, self.settings_smc_wlevel_edit)
+            _sr += 1
+
+            self.settings_smc_l_depmin = QLabel(tr("settings_smc_depmin", "最小水深:"))
+            self.settings_smc_depmin_edit = LineEdit()
+            self.settings_smc_depmin_edit.setText(str(sphy.get("depmin", 0.0)))
+            self.settings_smc_depmin_edit.setStyleSheet(input_style)
+            _smc_row(_sr, self.settings_smc_l_depmin, self.settings_smc_depmin_edit)
+            _sr += 1
+
+            self.settings_smc_l_dshalw = QLabel(tr("settings_smc_dshalw", "浅水截断:"))
+            self.settings_smc_dshalw_edit = LineEdit()
+            self.settings_smc_dshalw_edit.setText(str(sphy.get("dshalw", -150.0)))
+            self.settings_smc_dshalw_edit.setStyleSheet(input_style)
+            _smc_row(_sr, self.settings_smc_l_dshalw, self.settings_smc_dshalw_edit)
+            _sr += 1
+
+            self.settings_smc_l_boundary = QLabel(tr("settings_smc_boundary", "开边界:"))
+            if SwitchButton is not None:
+                self.settings_smc_boundary_generate_switch = SwitchButton()
+                self.settings_smc_boundary_generate_switch.setSpacing(0)
+                self.settings_smc_boundary_generate_switch.setChecked(
+                    bool(sbnd.get("generate_boundary_cells", True))
+                )
+                self.settings_smc_boundary_generate_switch.setOnText("")
+                self.settings_smc_boundary_generate_switch.setOffText("")
+            else:
+                self.settings_smc_boundary_generate_switch = QtWidgets.QCheckBox()
+                self.settings_smc_boundary_generate_switch.setChecked(
+                    bool(sbnd.get("generate_boundary_cells", True))
+                )
+            if SwitchButton is not None:
+                self.settings_smc_boundary_generate_switch.setStyleSheet("""
+                    SwitchButton {
+                        margin: 0px !important;
+                        margin-right: 5px !important;
+                        padding: 0px !important;
+                        padding-right: 0px !important;
+                        max-width: none;
+                    }
+                """)
+            _smc_row(_sr, self.settings_smc_l_boundary, self.settings_smc_boundary_generate_switch)
+            _sr += 1
+
+            self.settings_smc_l_msea = QLabel(tr("settings_smc_msea", "海陆类型:"))
+            self.settings_smc_msea_edit = LineEdit()
+            self.settings_smc_msea_edit.setText(str(sbnd.get("msea", 1)))
+            self.settings_smc_msea_edit.setStyleSheet(input_style)
+            _smc_row(_sr, self.settings_smc_l_msea, self.settings_smc_msea_edit)
+
+            smc_mesh_layout.addLayout(smc_gr)
+            smc_mesh_card.viewLayout.setContentsMargins(11, 10, 11, 12)
+            smc_mesh_card.viewLayout.addLayout(smc_mesh_layout)
+            settings_layout.addWidget(smc_mesh_card)
 
             # === Slurm 配置 ===
             compute_card = HeaderCardWidget(settings_content)

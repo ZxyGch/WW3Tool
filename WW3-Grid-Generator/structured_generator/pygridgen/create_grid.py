@@ -23,12 +23,25 @@ def _load_local_module(rel_path: str, module_id: str):
     import importlib.util
 
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), *rel_path.split("/"))
-    spec = importlib.util.spec_from_file_location(module_id, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    for attempt in range(2):
+        spec = importlib.util.spec_from_file_location(module_id, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load module from {path}")
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(mod)
+            return mod
+        except ValueError as e:
+            msg = str(e).lower()
+            if attempt == 0 and ("bad marshal data" in msg or "bad magic number" in msg):
+                cache = importlib.util.cache_from_source(path)
+                try:
+                    if os.path.isfile(cache):
+                        os.unlink(cache)
+                except OSError:
+                    pass
+                continue
+            raise
 
 
 # Single import strategy:

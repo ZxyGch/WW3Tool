@@ -103,7 +103,6 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
     images_loading_complete_signal = QtCore.Signal()  # 图片加载完成信号
     show_info_bar_signal = QtCore.Signal(str, str, str)  # 用于显示 InfoBar (type, title, content)
 
-
     def __init__(self):
         super().__init__()
 
@@ -321,7 +320,6 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         
         # 使用主题适配的边框样式
         self._update_log_border_style()
-        # PlainTextEdit 自带滚动条，确保滚动条始终可见
 
         right_log_layout.addWidget(self.log_text, 1)  # 设置拉伸因子
 

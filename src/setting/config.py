@@ -284,6 +284,109 @@ def save_unst_msh_gen_config(updates):
         f.write("\n")
 
 
+# SMC 网格：smc_generator/grid.json 默认值（与仓库内模板一致；设置页读写该文件）
+SMC_GRID_JSON_DEFAULTS = {
+    "input": {
+        "bathymetry_file": "../reference_data/etopo2.nc",
+        "lon_var": None,
+        "lat_var": None,
+        "bathy_var": None,
+        "bathy_convention": "elevation",
+        "auto_flip_lat": True,
+        "auto_flip_lon": True,
+        "coord_spacing_rtol": 0.001,
+        "coord_spacing_atol": 1e-08,
+        "nan_fill_value": 1000.0,
+    },
+    "grid": {
+        "name": "grid",
+        "n_levels": 2,
+        "global": False,
+        "arctic": False,
+        "glb_arc_lat": 84.4,
+        "origin": {"lon0": 0.0, "lat0": -90.0},
+        "regional_bounds": {
+            "west_lon": 110.0,
+            "south_lat": 10.0,
+            "east_lon": 130.0,
+            "north_lat": 30.0,
+        },
+    },
+    "physics": {"wlevel": 0.0, "depmin": 0.0, "dshalw": -150.0},
+    "boundary": {"generate_boundary_cells": True, "msea": 1},
+    "output": {"output_dir": "./output", "file_prefix": ""},
+}
+
+# SMC 水深：仅使用 reference_data 中三份 NetCDF；grid.json 内存相对 smc_generator 的路径
+SMC_REFERENCE_BATHY_FILES = ("etopo1.nc", "etopo2.nc", "gebco.nc")
+
+
+def smc_bathymetry_relpath_for_combo_index(index: int) -> str:
+    """返回相对 smc_generator/ 的路径，如 ../reference_data/etopo2.nc。"""
+    i = max(0, min(int(index), len(SMC_REFERENCE_BATHY_FILES) - 1))
+    return f"../reference_data/{SMC_REFERENCE_BATHY_FILES[i]}"
+
+
+def smc_bathymetry_combo_index_from_path(bathy_value) -> int:
+    """从已有 bathymetry_file 推断设置页下拉索引：0=ETOPO1，1=ETOPO2，2=GEBCO。"""
+    s = str(bathy_value or "").replace("\\", "/").lower()
+    if "etopo1" in s:
+        return 0
+    if "gebco" in s:
+        return 2
+    return 1
+
+
+def get_smc_grid_json_path():
+    """WW3-Grid-Generator/smc_generator/grid.json 绝对路径。"""
+    return os.path.normpath(
+        os.path.join(get_project_gridgen_path(), "smc_generator", "grid.json")
+    )
+
+
+def _deep_merge_smc_dict(base, override):
+    for k, v in override.items():
+        if k in base and isinstance(base[k], dict) and isinstance(v, dict) and v:
+            _deep_merge_smc_dict(base[k], v)
+        else:
+            base[k] = copy.deepcopy(v)
+
+
+def load_smc_grid_json_for_settings():
+    """读取 smc_generator/grid.json，与 SMC_GRID_JSON_DEFAULTS 深度合并（用于设置页展示）。"""
+    data = copy.deepcopy(SMC_GRID_JSON_DEFAULTS)
+    path = get_smc_grid_json_path()
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                user = json.load(f)
+            if isinstance(user, dict):
+                _deep_merge_smc_dict(data, user)
+        except Exception:
+            pass
+    return data
+
+
+def save_smc_grid_json_updates(updates: dict):
+    """将嵌套 updates 合并写入 smc_generator/grid.json（保留文件中未出现在 updates 的其它键）。"""
+    path = get_smc_grid_json_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                full = json.load(f)
+            if not isinstance(full, dict):
+                full = copy.deepcopy(SMC_GRID_JSON_DEFAULTS)
+        except Exception:
+            full = copy.deepcopy(SMC_GRID_JSON_DEFAULTS)
+    else:
+        full = copy.deepcopy(SMC_GRID_JSON_DEFAULTS)
+    _deep_merge_smc_dict(full, updates)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(full, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
 # ==================== 默认配置值 ====================
 DEFAULT_CONFIG = {
     # ---------- 路径配置 ----------

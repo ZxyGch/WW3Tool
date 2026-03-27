@@ -47,7 +47,7 @@ Top-level keys are fixed sections. Use standard JSON (no comments). Summary:
 | | `coord_spacing_rtol`, `coord_spacing_atol` | Tolerance for checking **uniform** `Δlon` / `Δlat` (see `create_grid.py`). |
 | | `nan_fill_value` | Replacement for NaNs in bathymetry before calling SMC routines. |
 | **grid** | | SMC grid geometry |
-| | `name` | Logical grid name (stored in `grid_run_info.json`). |
+| | `name` | Logical grid name (in config; copied to output `grid.json`). |
 | | `n_levels` | SMC refinement level count (`mlvlxy0` first entry). |
 | | `global` | **true** = global SMC; **false** = regional (requires `regional_bounds`). |
 | | `arctic` | **true** = generate Arctic extension (`*BArc.dat` → `grid_arctic_cells.dat`) when global. |
@@ -62,7 +62,7 @@ Top-level keys are fixed sections. Use standard JSON (no comments). Summary:
 | | `generate_boundary_cells` | If **true** and **regional** (`global` false), run `smcellbdy` and write `grid_boundary.dat`. |
 | | `msea` | Boundary / sea mask parameter for `smcellbdy`. |
 | **output** | | |
-| | `output_dir` | Directory for final `.dat` / `grid_run_info.json` (relative to `grid.json` parent if not absolute). |
+| | `output_dir` | Directory for final `.dat` and a copy of the input config as `grid.json` (relative to the **config** file’s directory if not absolute). |
 | | `file_prefix` | Present in the sample file for future use; **not** read by `create_grid.py` today. |
 
 ## Outputs
@@ -74,9 +74,16 @@ Written under **`output.output_dir`** (default `./output` relative to `grid.json
 | `grid_cell.dat` | SMC inner cells (from temporary `*Cels.dat`). |
 | `grid_boundary.dat` | Open-boundary strip only if **`grid.global`** is **false** and **`boundary.generate_boundary_cells`** is **true**. |
 | `grid_arctic_cells.dat` | Arctic cells only if **`grid.global`** is **true** and **`grid.arctic`** is **true**. |
-| `grid_run_info.json` | Metadata: paths, resolution, variable names, output paths. |
+| `grid_subtr.dat` | WW3 **SMCG** subgrid obstruction file (`create_grid.py` writes **zeros** = no blocking). |
+| `grid.json` (under `output_dir`) | Copy of the **input** config file passed to `--grid` / `--config` (same as `smc_generator/grid.json` when using the default path). |
 
 Temporary files use the stem `_smc_generate_tmp*` during the run and are renamed on success.
+
+### WAVEWATCH III `ww3_grid` (SMCG)
+
+`ww3_grid` reads **MCELS**, then **unconditionally** opens **ISIDE**, **JSIDE**, and **SUBTR** (NOAA WW3 `model/src/w3gridmd.F90`, `W3_SMC` block). If those namelist filenames default to **`unset`**, the next `OPEN` fails with **IOSTAT = 2** after cells are read.
+
+`create_grid.py` supplies **`grid_cell.dat`**, **`grid_subtr.dat`**, and optional boundary/arctic files. You must still build **`grid_iside.dat`** and **`grid_jside.dat`** (face arrays), e.g. compile **`SMCGTools/F90SMC/SMCGSideMP`** and run it with an input file like **`SMCGTools/Linuxs/SideMPInput.txt`** (grid stem, `NCL`/`NFC`/`MRL`, `NLon`/`NLat`/`NPol`, path to **`grid_cell.dat`**). Rename outputs to **`grid_iside.dat`** and **`grid_jside.dat`** in your run directory to match `&SMC_NML`. See **`SMCGTools/Linuxs/runSMCSideMP`** for the usual `countijsd*` post-steps.
 
 ## References
 

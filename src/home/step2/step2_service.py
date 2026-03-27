@@ -49,7 +49,7 @@ from setting.config import (
     load_config,
     get_project_gridgen_path,
 )
-from .grid_viz_worker import VIZ_PREFIX, cache_is_current, cached_image_paths
+from .grid_viz_worker import VIZ_PREFIX, cache_is_current, cached_image_paths, smc_run_metadata_path
 from .rect_grid_desc_parse import parse_rect_grid_description, rect_lon_lat_mesh
 from .structured_grid_paths import (
     structured_grid_desc_basenames_to_copy,
@@ -700,6 +700,178 @@ class StepTwoServiceMixin:
         if hasattr(self, "log"):
             self.log(tr("step2_unst_auto_from_ww3", "📐 检测到 grid.ww3，已切换为非结构网格并读取范围与参数"))
 
+    @staticmethod
+    def _folder_has_any_dat_files(folder: str) -> bool:
+        try:
+            for name in os.listdir(folder):
+                if name.startswith("."):
+                    continue
+                p = os.path.join(folder, name)
+                if os.path.isfile(p) and name.lower().endswith(".dat"):
+                    return True
+        except OSError:
+            pass
+        return False
+
+    @staticmethod
+    def _is_step2_smc_grid_json_doc(doc: object) -> bool:
+        """与 smc_generator 输入一致的平铺 grid.json（可读取范围与 physics）。"""
+        if not isinstance(doc, dict):
+            return False
+        inp = doc.get("input")
+        grid = doc.get("grid")
+        if not isinstance(inp, dict) or not isinstance(grid, dict):
+            return False
+        if not str(inp.get("bathymetry_file") or "").strip():
+            return False
+        return "n_levels" in grid
+
+    @staticmethod
+    def _normalize_step2_smc_config_root(doc: object) -> dict | None:
+        """平铺配置，或旧版运行元数据外层下嵌套的 ``grid_json``。"""
+        if StepTwoServiceMixin._is_step2_smc_grid_json_doc(doc):
+            return doc  # type: ignore[arg-type]
+        if not isinstance(doc, dict):
+            return None
+        inner = doc.get("grid_json")
+        if isinstance(inner, dict) and StepTwoServiceMixin._is_step2_smc_grid_json_doc(inner):
+            return inner
+        return None
+
+    @staticmethod
+    def _folder_triggers_smc_autoload(folder: str) -> bool:
+        """存在 SMC 主产物 grid_cell.dat，或目录内任一 .dat 文件。"""
+        try:
+            cell = os.path.join(folder, "grid_cell.dat")
+            if os.path.isfile(cell) and os.path.getsize(cell) > 0:
+                return True
+        except OSError:
+            pass
+        return StepTwoServiceMixin._folder_has_any_dat_files(folder)
+
+    @staticmethod
+    def _smc_regional_bounds_from_grid_dict(grid: dict) -> tuple[float, float, float, float] | None:
+        b = grid.get("regional_bounds")
+        if not isinstance(b, dict):
+            return None
+
+        def _pick(keys: list[str]) -> float | None:
+            for k in keys:
+                v = b.get(k)
+                if v is None:
+                    continue
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    continue
+            return None
+
+        lon_w = _pick(["west_lon", "xstart", "lon_min", "min_lon"])
+        lat_s = _pick(["south_lat", "ystart", "lat_min", "min_lat"])
+        lon_e = _pick(["east_lon", "xend", "lon_max", "max_lon"])
+        lat_n = _pick(["north_lat", "yend", "lat_max", "max_lat"])
+        if lon_w is None or lat_s is None or lon_e is None or lat_n is None:
+            return None
+        return lon_w, lon_e, lat_s, lat_n
+
+    def _step2_apply_smc_from_grid_json(self, gj: dict) -> None:
+        """切换第二步为 SMC，并按 grid.json 填写外框范围与 SMC 三参数。"""
+        smc_text = tr("step2_mesh_type_smc", "SMC 网格")
+        if hasattr(self, "mesh_type_combo"):
+            self.mesh_type_combo.blockSignals(True)
+            idx = -1
+            for i in range(self.mesh_type_combo.count()):
+                try:
+                    if self.mesh_type_combo.itemText(i) == smc_text:
+                        idx = i
+                        break
+                except Exception:
+                    continue
+            if idx >= 0:
+                self.mesh_type_combo.setCurrentIndex(idx)
+            elif self.mesh_type_combo.count() > 2:
+                # 顺序：矩形、曲线、SMC、非结构（与 create_step_2_card 一致）
+                self.mesh_type_combo.setCurrentIndex(2)
+            else:
+                self.mesh_type_combo.setCurrentText(smc_text)
+            self.mesh_type_combo.blockSignals(False)
+        if hasattr(self, "_set_step2_mesh_type"):
+            self._set_step2_mesh_type(smc_text)
+
+        grid = gj.get("grid") or {}
+        phy = gj.get("physics") or {}
+
+        if bool(grid.get("global", False)):
+            lon_w, lon_e, lat_s, lat_n = -180.0, 180.0, -90.0, 90.0
+        else:
+            ext = self._smc_regional_bounds_from_grid_dict(grid)
+            if ext is not None:
+                lon_w, lon_e, lat_s, lat_n = ext
+            else:
+                lon_w = lon_e = lat_s = lat_n = None
+
+        if (
+            lon_w is not None
+            and hasattr(self, "lon_west_edit")
+            and hasattr(self, "lon_east_edit")
+            and hasattr(self, "lat_south_edit")
+            and hasattr(self, "lat_north_edit")
+        ):
+            self.lon_west_edit.setText(f"{lon_w:.4f}")
+            self.lon_east_edit.setText(f"{lon_e:.4f}")
+            self.lat_south_edit.setText(f"{lat_s:.4f}")
+            self.lat_north_edit.setText(f"{lat_n:.4f}")
+
+        try:
+            nlv = int(grid.get("n_levels", 2))
+        except (TypeError, ValueError):
+            nlv = 2
+        if hasattr(self, "smc_n_levels_edit"):
+            self.smc_n_levels_edit.setText(str(nlv))
+
+        depmin = phy.get("depmin", 0.0)
+        dshalw = phy.get("dshalw", -150.0)
+        try:
+            depmin_f = float(depmin)
+        except (TypeError, ValueError):
+            depmin_f = 0.0
+        try:
+            dshalw_f = float(dshalw)
+        except (TypeError, ValueError):
+            dshalw_f = -150.0
+        if hasattr(self, "smc_depmin_edit"):
+            self.smc_depmin_edit.setText(f"{depmin_f:g}")
+        if hasattr(self, "smc_dshalw_edit"):
+            self.smc_dshalw_edit.setText(f"{dshalw_f:g}")
+
+    def _try_apply_smc_workspace_from_folder(self) -> bool:
+        """目录含 grid_cell.dat 或 .dat 文件，且 grid.json 可解析为 SMC 配置时，切换 SMC 并填充第二步。"""
+        folder = self.selected_folder
+        if not folder or not os.path.isdir(folder):
+            return False
+        if not self._folder_triggers_smc_autoload(folder):
+            return False
+        gj_path = os.path.join(folder, "grid.json")
+        if not os.path.isfile(gj_path) or os.path.getsize(gj_path) <= 0:
+            return False
+        try:
+            with open(gj_path, encoding="utf-8") as f:
+                raw = json.load(f)
+        except Exception:
+            return False
+        gj = self._normalize_step2_smc_config_root(raw)
+        if not gj:
+            return False
+        self._step2_apply_smc_from_grid_json(gj)
+        if hasattr(self, "log"):
+            self.log(
+                tr(
+                    "step2_smc_auto_from_workspace",
+                    "📐 检测到工作目录中的 .dat 与 SMC 配置 grid.json，已切换为 SMC 网格并读取范围与参数",
+                )
+            )
+        return True
+
     def _load_grid_info_to_step2(self):
         """读取当前工作目录的网格文件范围和精度，填充到第二步的输入框"""
         if not self.selected_folder:
@@ -708,6 +880,9 @@ class StepTwoServiceMixin:
         ww3_path = os.path.join(self.selected_folder, "grid.ww3")
         if os.path.isfile(ww3_path) and os.path.getsize(ww3_path) > 0:
             self._step2_apply_unstructured_from_grid_ww3(ww3_path)
+            return
+
+        if self._try_apply_smc_workspace_from_folder():
             return
 
         # 检查是否是嵌套网格模式（通过检查目录结构）
@@ -1157,8 +1332,8 @@ class StepTwoServiceMixin:
     def _get_smc_bathy_path(self):
         """
         SMC create_grid 所需规则经纬网格水深 NetCDF 路径。
-        优先 public/config.json 的 SMC_BATHYMETRY_FILE；否则 reference_data 中 etopo2/gebco/etopo1；
-        再否则尝试 smc_generator/grid.json 内 input.bathymetry_file（相对 smc_generator/）。
+        优先 public/config.json 的 SMC_BATHYMETRY_FILE；其次 smc_generator/grid.json 中 input.bathymetry_file；
+        再否则 reference_data 中 etopo2/gebco/etopo1。
         """
         cfg = load_config()
         custom = (cfg.get("SMC_BATHYMETRY_FILE") or "").strip()
@@ -1166,11 +1341,6 @@ class StepTwoServiceMixin:
         if custom:
             path = custom if os.path.isabs(custom) else os.path.normpath(os.path.join(gridgen_root, custom))
             return path if os.path.isfile(path) else None
-        ref_dir = self._get_reference_data_path()
-        for name in ("etopo2.nc", "gebco.nc", "etopo1.nc"):
-            p = os.path.join(ref_dir, name)
-            if os.path.isfile(p):
-                return p
         smc_dir = self._get_smc_generator_dir()
         tpl = os.path.join(smc_dir, "grid.json")
         if os.path.isfile(tpl):
@@ -1185,6 +1355,11 @@ class StepTwoServiceMixin:
                         return p
             except Exception:
                 pass
+        ref_dir = self._get_reference_data_path()
+        for name in ("etopo2.nc", "gebco.nc", "etopo1.nc"):
+            p = os.path.join(ref_dir, name)
+            if os.path.isfile(p):
+                return p
         return None
 
     def _check_smc_prerequisites(self):
@@ -1224,6 +1399,45 @@ class StepTwoServiceMixin:
             )
         return True, ""
 
+    def _get_step2_wind_nc_bounds(self):
+        """读取工作目录 wind*.nc 的经纬范围，返回 (lon_lo, lon_hi, lat_lo, lat_hi) 或 None。"""
+        folder = str(getattr(self, "selected_folder", "") or "").strip()
+        if not folder:
+            return None
+        wind_files = glob.glob(os.path.join(folder, "*wind*.nc"))
+        if not wind_files:
+            p = os.path.join(folder, "wind.nc")
+            if os.path.isfile(p):
+                wind_files = [p]
+        if not wind_files:
+            return None
+
+        preferred = os.path.join(folder, "wind.nc")
+        nc_path = preferred if preferred in wind_files else sorted(wind_files)[0]
+        try:
+            with Dataset(nc_path, "r") as ds:
+                lon_var = None
+                lat_var = None
+                for lon_name in ("longitude", "lon", "Longitude", "LON"):
+                    if lon_name in ds.variables:
+                        lon_var = ds.variables[lon_name]
+                        break
+                for lat_name in ("latitude", "lat", "Latitude", "LAT"):
+                    if lat_name in ds.variables:
+                        lat_var = ds.variables[lat_name]
+                        break
+                if lon_var is None or lat_var is None:
+                    return None
+                lon = np.asarray(lon_var[:], dtype=float)
+                lat = np.asarray(lat_var[:], dtype=float)
+                lon = lon[np.isfinite(lon)]
+                lat = lat[np.isfinite(lat)]
+                if lon.size == 0 or lat.size == 0:
+                    return None
+                return float(np.min(lon)), float(np.max(lon)), float(np.min(lat)), float(np.max(lat))
+        except Exception:
+            return None
+
     def _build_smc_step2_grid_dict(self, lon_west, lon_east, lat_south, lat_north, output_dir):
         """根据界面参数与工作目录构造 smc_generator/create_grid.py 所用 grid.json 体。"""
         smc_dir = self._get_smc_generator_dir()
@@ -1255,13 +1469,6 @@ class StepTwoServiceMixin:
             raise ValueError("n_levels") from None
         depmin = _read_float_default("smc_depmin_edit", 0.0)
         dshalw = _read_float_default("smc_dshalw_edit", -150.0)
-        try:
-            msea_ed = getattr(self, "smc_msea_edit", None)
-            msea = int(msea_ed.text().strip()) if msea_ed and msea_ed.text().strip() else 1
-        except Exception:
-            msea = 1
-        gen_bdy_chk = getattr(self, "smc_boundary_generate_check", None)
-        gen_bdy = bool(gen_bdy_chk.isChecked()) if gen_bdy_chk is not None else True
 
         bathy = self._get_smc_bathy_path()
         if not bathy:
@@ -1270,6 +1477,41 @@ class StepTwoServiceMixin:
         is_global = self._is_global_range(lon_west, lon_east, lat_south, lat_north)
         lon_lo, lon_hi = min(lon_west, lon_east), max(lon_west, lon_east)
         lat_lo, lat_hi = min(lat_south, lat_north), max(lat_south, lat_north)
+        if not is_global:
+            wind_bounds = self._get_step2_wind_nc_bounds()
+            if wind_bounds is not None:
+                w_lon_lo, w_lon_hi, w_lat_lo, w_lat_hi = wind_bounds
+                if min(lon_hi, w_lon_hi) <= max(lon_lo, w_lon_lo) or min(lat_hi, w_lat_hi) <= max(lat_lo, w_lat_lo):
+                    raise ValueError(
+                        tr(
+                            "step2_smc_wind_no_overlap",
+                            "SMC 区域与风场无有效交集，请先同步 Step1 风场范围与 Step2 区域范围。",
+                        )
+                    )
+                if (
+                    lon_lo < w_lon_lo
+                    or lon_hi > w_lon_hi
+                    or lat_lo < w_lat_lo
+                    or lat_hi > w_lat_hi
+                ):
+                    if hasattr(self, "log_signal"):
+                        self.log_signal.emit(
+                            tr(
+                                "step2_smc_bounds_exceed_wind",
+                                "⚠️ SMC 区域超出风场覆盖：SMC lon [{sl:.4f},{sr:.4f}] lat [{sb:.4f},{st:.4f}]，"
+                                "wind lon [{wl:.4f},{wr:.4f}] lat [{wb:.4f},{wt:.4f}]。"
+                                "最终是否允许将由 create_grid.py 的区域约束策略决定。",
+                            ).format(
+                                sl=lon_lo,
+                                sr=lon_hi,
+                                sb=lat_lo,
+                                st=lat_hi,
+                                wl=w_lon_lo,
+                                wr=w_lon_hi,
+                                wb=w_lat_lo,
+                                wt=w_lat_hi,
+                            )
+                        )
         out_abs = os.path.abspath(os.path.normpath(output_dir))
 
         grid_json.setdefault("input", {})
@@ -1290,6 +1532,9 @@ class StepTwoServiceMixin:
                 "east_lon": float(lon_hi),
                 "north_lat": float(lat_hi),
             }
+            # 与 smcellgen 中 x0lon/y0lat 对齐；若保留模板 (0,-90)，格块索引换算到经纬度
+            # 易与区域角点不一致，导致可视化 set_extent 裁切后「只见岸线不见网」。
+            grid_json["grid"]["origin"] = {"lon0": float(lon_lo), "lat0": float(lat_lo)}
         else:
             grid_json["grid"].pop("regional_bounds", None)
 
@@ -1299,6 +1544,9 @@ class StepTwoServiceMixin:
         grid_json["physics"]["dshalw"] = float(dshalw)
 
         grid_json.setdefault("boundary", {})
+        _b = grid_json["boundary"]
+        gen_bdy = bool(_b.get("generate_boundary_cells", True))
+        msea = int(_b.get("msea", 1))
         grid_json["boundary"]["generate_boundary_cells"] = bool(gen_bdy and not is_global)
         grid_json["boundary"]["msea"] = int(msea)
 
@@ -1315,20 +1563,34 @@ class StepTwoServiceMixin:
         smc_dir = self._get_smc_generator_dir()
         create_py = os.path.join(smc_dir, "create_grid.py")
 
+        try:
+            grid_dict = self._build_smc_step2_grid_dict(
+                lon_west, lon_east, lat_south, lat_north, output_dir
+            )
+        except ValueError as e:
+            self.log_signal.emit(
+                tr("step2_smc_config_invalid", "❌ SMC 参数无效（例如 n_levels/msea 需为整数）：{err}").format(err=e)
+            )
+            return False
+
+        cache_key = self._get_smc_mesh_cache_key(grid_dict)
+        cached = self._check_smc_mesh_cache(cache_key)
+        if cached:
+            try:
+                self._load_smc_mesh_from_cache(cached, output_dir)
+                self.log_signal.emit(tr("step2_cache_found", "✅ 找到匹配的网格缓存，直接使用缓存的网格"))
+                return True
+            except Exception as e:
+                self.log_signal.emit(
+                    tr("step2_unst_cache_copy_failed", "❌ 从缓存复制失败：{err}").format(err=e)
+                )
+                return False
+
         tmpdir = tempfile.mkdtemp(prefix="ww3tool_smc_")
         tmpdir = os.path.normpath(os.path.abspath(tmpdir))
         grid_path = os.path.join(tmpdir, "ww3tool_step2_smc_grid.json")
 
         try:
-            try:
-                grid_dict = self._build_smc_step2_grid_dict(
-                    lon_west, lon_east, lat_south, lat_north, output_dir
-                )
-            except ValueError as e:
-                self.log_signal.emit(
-                    tr("step2_smc_config_invalid", "❌ SMC 参数无效（例如 n_levels/msea 需为整数）：{err}").format(err=e)
-                )
-                return False
             with open(grid_path, "w", encoding="utf-8") as f:
                 json.dump(grid_dict, f, indent=2, ensure_ascii=False)
                 f.write("\n")
@@ -1367,6 +1629,15 @@ class StepTwoServiceMixin:
             if not (os.path.isfile(cell_dat) and os.path.getsize(cell_dat) > 0):
                 self.log_signal.emit(tr("step2_smc_no_cell_file", "❌ 未找到有效的 grid_cell.dat"))
                 return False
+            try:
+                self._save_smc_mesh_to_cache(cache_key, output_dir)
+                self.log_signal.emit(
+                    tr("step2_cache_saved", "✅ 已保存网格到缓存（{key}...）").format(key=cache_key[:8])
+                )
+            except Exception as cache_error:
+                self.log_signal.emit(
+                    tr("step2_cache_save_failed", "⚠️ 保存缓存失败: {error}").format(error=cache_error)
+                )
             self.log_signal.emit(
                 tr("step2_smc_mesh_complete", "✅ SMC 网格生成完成（文件已写入当前工作目录）")
             )
@@ -1647,16 +1918,38 @@ class StepTwoServiceMixin:
         read_finished = threading.Event()
 
         def read_output_thread():
+            # NOTE:
+            # readline() may hold data until '\n' or EOF when upstream output is
+            # partially buffered. Reading char-by-char avoids "all logs show up
+            # at the end" behavior for long-running generators.
+            # 仅去掉 \r/\n，不要用 strip()：否则会吃掉用于横幅等格式的行尾空格。
+            def _put_line(raw: str) -> None:
+                s = raw.rstrip("\r\n")
+                if s.strip():
+                    output_queue.put(s)
+
+            if proc.stdout is None:
+                read_finished.set()
+                return
             try:
-                for line in iter(proc.stdout.readline, ""):
-                    line_stripped = line.rstrip()
-                    if line_stripped:
-                        output_queue.put(line_stripped)
-                remaining = proc.stdout.read()
-                if remaining:
-                    for ln in remaining.splitlines():
-                        if ln.strip():
-                            output_queue.put(ln.strip())
+                buf = ""
+                while True:
+                    ch = proc.stdout.read(1)
+                    if ch == "":
+                        break
+                    if ch == "\r":
+                        if buf.strip():
+                            _put_line(buf)
+                        buf = ""
+                        continue
+                    if ch == "\n":
+                        if buf.strip():
+                            _put_line(buf)
+                        buf = ""
+                        continue
+                    buf += ch
+                if buf.strip():
+                    _put_line(buf)
             finally:
                 read_finished.set()
 
@@ -2157,6 +2450,105 @@ class StepTwoServiceMixin:
 
     def _load_unst_mesh_from_cache(self, cache_path: str, output_dir: str) -> None:
         shutil.copy2(os.path.join(cache_path, "grid.ww3"), os.path.join(output_dir, "grid.ww3"))
+
+    def _get_smc_mesh_cache_key(self, grid_dict: dict) -> str:
+        """SMC 缓存键：完整 grid 配置（不含 output_dir）+ 水深文件 mtime/size。"""
+        import hashlib
+        import copy
+
+        b = copy.deepcopy(grid_dict)
+        out = dict(b.get("output") or {})
+        out.pop("output_dir", None)
+        b["output"] = out
+        inp = dict(b.get("input") or {})
+        bp = str(inp.get("bathymetry_file") or "").strip()
+        bp_abs = os.path.normpath(os.path.abspath(bp)) if bp else ""
+        sig: list[int] = [0, 0]
+        if bp_abs and os.path.isfile(bp_abs):
+            st = os.stat(bp_abs)
+            sig = [int(st.st_mtime_ns), int(st.st_size)]
+        inp["bathymetry_file"] = bp_abs.replace("\\", "/")
+        b["input"] = inp
+        bundle = {"grid_body": b, "bathy_sig": sig}
+        try:
+            params_str = json.dumps(bundle, sort_keys=True, separators=(",", ":"), default=str)
+        except TypeError:
+            params_str = json.dumps(bundle, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(params_str.encode("utf-8")).hexdigest()
+
+    def _check_smc_mesh_cache(self, cache_key: str) -> str | None:
+        """若存在有效 SMC 产物则返回缓存目录，否则 None。"""
+        if not cache_key:
+            return None
+        base = os.path.join(self._get_grid_cache_dir(), "smc", cache_key)
+        cell = os.path.join(base, "grid_cell.dat")
+        meta = os.path.join(base, "grid.json")
+        iside = os.path.join(base, "grid_iside.dat")
+        jside = os.path.join(base, "grid_jside.dat")
+        subtr = os.path.join(base, "grid_subtr.dat")
+        if (
+            os.path.isfile(cell)
+            and os.path.getsize(cell) > 0
+            and os.path.isfile(meta)
+            and os.path.getsize(meta) > 0
+            and os.path.isfile(iside)
+            and os.path.getsize(iside) > 0
+            and os.path.isfile(jside)
+            and os.path.getsize(jside) > 0
+            and os.path.isfile(subtr)
+            and os.path.getsize(subtr) > 0
+        ):
+            return base
+        return None
+
+    def _save_smc_mesh_to_cache(self, cache_key: str, output_dir: str) -> None:
+        base = os.path.join(self._get_grid_cache_dir(), "smc", cache_key)
+        if os.path.isdir(base):
+            shutil.rmtree(base)
+        os.makedirs(base, exist_ok=True)
+        smc_files = (
+            "grid_cell.dat",
+            "grid.json",
+            "grid_subtr.dat",
+            "grid_iside.dat",
+            "grid_jside.dat",
+            "grid_boundary.dat",
+            "grid_arctic_cells.dat",
+            "grid_aisid.dat",
+            "grid_ajsid.dat",
+        )
+        for name in smc_files:
+            src = os.path.join(output_dir, name)
+            if os.path.isfile(src) and os.path.getsize(src) > 0:
+                shutil.copy2(src, os.path.join(base, name))
+        params_data = {"cache_key": cache_key, "kind": "smc"}
+        with open(os.path.join(base, "params.json"), "w", encoding="utf-8") as pf:
+            json.dump(params_data, pf, indent=2, ensure_ascii=False)
+
+    def _load_smc_mesh_from_cache(self, cache_path: str, output_dir: str) -> None:
+        smc_files = (
+            "grid_cell.dat",
+            "grid.json",
+            "grid_subtr.dat",
+            "grid_iside.dat",
+            "grid_jside.dat",
+            "grid_boundary.dat",
+            "grid_arctic_cells.dat",
+            "grid_aisid.dat",
+            "grid_ajsid.dat",
+        )
+        # Avoid stale mixed-version artifacts (old side/subtr + new cells).
+        for name in smc_files:
+            dst = os.path.join(output_dir, name)
+            try:
+                if os.path.isfile(dst):
+                    os.remove(dst)
+            except OSError:
+                pass
+        for name in smc_files:
+            src = os.path.join(cache_path, name)
+            if os.path.isfile(src):
+                shutil.copy2(src, os.path.join(output_dir, name))
 
     def _validate_grid_files(self, output_dir, max_retries=3, retry_delay=1.0):
         """验证生成的网格文件是否完整，如果文件不完整则等待并重试"""
@@ -3119,14 +3511,14 @@ create_grid(
                     def read_output_thread():
                         try:
                             for line in iter(proc.stdout.readline, ''):
-                                line_stripped = line.rstrip()
-                                if line_stripped:
-                                    output_queue.put(line_stripped)
+                                line_clean = line.rstrip("\r\n")
+                                if line_clean.strip():
+                                    output_queue.put(line_clean)
                             remaining = proc.stdout.read()
                             if remaining:
                                 for l in remaining.splitlines():
                                     if l.strip():
-                                        output_queue.put(l.strip())
+                                        output_queue.put(l)
                         finally:
                             read_finished.set()
                     
@@ -3631,6 +4023,38 @@ create_grid(
                 self._grid_viz_thread_nested,
                 (os.path.abspath(coarse_dir), os.path.abspath(fine_dir), wr),
                 tr("step2_nested_grid_label", "嵌套网格"),
+            )
+            return
+
+        if self._is_step2_smc_mesh():
+            cell_p = os.path.join(self.selected_folder, "grid_cell.dat")
+            run_p = smc_run_metadata_path(self.selected_folder)
+            if not os.path.isfile(cell_p) or not run_p:
+                self.log(
+                    tr(
+                        "step2_smc_viz_missing_files",
+                        "❌ 未找到 grid_cell.dat 或 SMC 运行元数据 grid.json，请先生成 SMC 网格。",
+                    )
+                )
+                return
+            grid_dir_abs = os.path.abspath(self.selected_folder)
+            gname = tr("step2_mesh_type_smc", "SMC 网格")
+            if cache_is_current(grid_dir_abs, "smc"):
+                paths = [p for p in cached_image_paths(grid_dir_abs, "smc") if os.path.isfile(p)]
+                if paths:
+                    pdir = os.path.join(grid_dir_abs, "photo", "grid")
+                    self.log(
+                        tr(
+                            "step2_grid_viz_cache_hit",
+                            "📎 {name}：网格未变，使用已缓存的图片。",
+                        ).format(name=gname)
+                    )
+                    self._grid_viz_show_on_main(paths, gname, pdir, from_cache=True)
+                    return
+            self._start_grid_viz_background(
+                self._grid_viz_thread_single,
+                (grid_dir_abs, "smc", gname),
+                gname,
             )
             return
 

@@ -190,8 +190,8 @@ END MODULE Constants
 !     Generate i & j inter-sides for all cells at the highest level
 !     Separate i & j faces into 2 sections for OpenMP parallelisation. 
 
-!     Reset system variable OMP_NUM_THREADS if not equal 2.   JGLi28Aug2025 
-!$    CALL OMP_SET_NUM_THREADS(2)
+!     Thread team size comes from OMP_NUM_THREADS (create_grid.py sets it for the subprocess).
+!     Upstream used CALL OMP_SET_NUM_THREADS(2) here, which ignored the env var.
 
 !     Start parallel sessions and setup threads.
 

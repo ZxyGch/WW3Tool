@@ -6,7 +6,7 @@ import os
 
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy, QCheckBox
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox
 from setting.language_manager import tr
 from setting.config import DX, DY, LONGITUDE_WEST, LONGITUDE_EAST, LATITUDE_SORTH, LATITUDE_NORTH
@@ -300,18 +300,6 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.smc_dshalw_edit.setText("-150.0")
         self.smc_dshalw_edit.setStyleSheet(input_style)
         smc_grid.addWidget(self.smc_dshalw_edit, 2, 1)
-
-        smc_grid.addWidget(_smc_lbl("step2_smc_boundary", "开边界:"), 3, 0)
-        self.smc_boundary_generate_check = QCheckBox(tr("step2_smc_boundary_generate", "生成开边界格点"))
-        self.smc_boundary_generate_check.setChecked(True)
-        smc_grid.addWidget(self.smc_boundary_generate_check, 3, 1)
-
-        smc_grid.addWidget(_smc_lbl("step2_smc_msea", "海陆类型:"), 4, 0)
-        self.smc_msea_edit = LineEdit()
-        self.smc_msea_edit.setText("1")
-        self.smc_msea_edit.setToolTip(tr("step2_smc_msea_tip", "生成开边界格点时使用的海陆类型编号（默认 1，一般无需修改）。"))
-        self.smc_msea_edit.setStyleSheet(input_style)
-        smc_grid.addWidget(self.smc_msea_edit, 4, 1)
 
         self.smc_params_widget.setLayout(smc_grid)
         self.smc_params_widget.setVisible(False)

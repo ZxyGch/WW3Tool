@@ -24,6 +24,92 @@ from .workers_utils import (
     remove_tricontourf_artist,
 )
 
+try:
+    from home.step2.grid_viz_worker import (
+        _load_smc_run_info,
+        _load_smc_cell_array,
+        _smc_zlonlat_dgrid,
+        _smc_cell_centers,
+        _smc_cell_rect_vertices,
+        _smc_extent_for_plot,
+    )
+except Exception:
+    _load_smc_run_info = None
+    _load_smc_cell_array = None
+    _smc_zlonlat_dgrid = None
+    _smc_cell_centers = None
+    _smc_cell_rect_vertices = None
+    _smc_extent_for_plot = None
+
+
+def _try_load_smc_plot_geometry(grid_dir, ww3_lon, ww3_lat):
+    """Return SMC cell polygons and ordering when the pointwise output matches `grid_cell.dat`."""
+    if (
+        _load_smc_run_info is None
+        or _load_smc_cell_array is None
+        or _smc_zlonlat_dgrid is None
+        or _smc_cell_centers is None
+        or _smc_cell_rect_vertices is None
+        or _smc_extent_for_plot is None
+    ):
+        return None
+    cell_path = os.path.join(grid_dir, "grid_cell.dat")
+    if not os.path.isfile(cell_path):
+        return None
+    try:
+        run_info = _load_smc_run_info(grid_dir)
+        if not isinstance(run_info, dict):
+            return None
+        cel, _depth = _load_smc_cell_array(cell_path)
+        if cel.shape[0] != len(ww3_lon):
+            return None
+        zlon, zlat, dlon, dlat = _smc_zlonlat_dgrid(run_info)
+        lon_c, lat_c = _smc_cell_centers(cel, zlon, zlat, dlon, dlat)
+        dec = max(6, min(10, int(np.ceil(-np.log10(max(min(abs(dlon), abs(dlat)), 1e-12)))) + 3))
+        ww3_xy = np.round(np.column_stack([np.asarray(ww3_lon, dtype=float), np.asarray(ww3_lat, dtype=float)]), dec)
+        cel_xy = np.round(np.column_stack([lon_c, lat_c]), dec)
+        if np.array_equal(ww3_xy, cel_xy):
+            order = None
+        else:
+            order_map = {tuple(xy): i for i, xy in enumerate(ww3_xy)}
+            order = np.array([order_map.get(tuple(xy), -1) for xy in cel_xy], dtype=np.int64)
+            if np.any(order < 0) or len(np.unique(order)) != len(order):
+                return None
+        return {
+            "run_info": run_info,
+            "cells": cel,
+            "lon": lon_c,
+            "lat": lat_c,
+            "polys": _smc_cell_rect_vertices(cel, zlon, zlat, dlon, dlat),
+            "extent": _smc_extent_for_plot(run_info, lon_c, lat_c),
+            "order": order,
+        }
+    except Exception:
+        return None
+
+
+def _sanitize_nc_field(raw_var, raw):
+    """Apply NetCDF fill-value and valid-range masking."""
+    arr = np.asarray(raw, dtype=float)
+    fv = getattr(raw_var, "_FillValue", None)
+    if fv is not None:
+        fv = float(np.asarray(fv).flat[0])
+        arr = np.where(np.abs(arr - fv) < 1e30, np.nan, arr)
+    arr = np.where(arr > 1e30, np.nan, arr)
+    arr = np.where(arr < -1e30, np.nan, arr)
+    vmin = getattr(raw_var, "valid_min", None)
+    vmax = getattr(raw_var, "valid_max", None)
+    try:
+        if vmin is not None:
+            arr = np.where(arr < float(np.asarray(vmin).flat[0]), np.nan, arr)
+        if vmax is not None:
+            arr = np.where(arr > float(np.asarray(vmax).flat[0]), np.nan, arr)
+    except Exception:
+        pass
+    # Extra guard for pathological values that can survive malformed metadata.
+    arr = np.where(np.abs(arr) > 1e10, np.nan, arr)
+    return arr
+
 
 def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_queue,
                            FIGSIZE=(16,12), DPI=300, UPSAMPLE_FACTOR=3, CLIM_PCT=99.0,
@@ -156,14 +242,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 result_queue.put([])
                 return
             raw_var = ds.variables['hs']
-            raw = np.array(raw_var[:])
-            # 处理 NetCDF 缺测值（_FillValue 如 9.96921e+36 在 float32 下仍为 finite）
-            _fv = getattr(raw_var, '_FillValue', None)
-            if _fv is not None:
-                fv = float(np.asarray(_fv).flat[0])
-                raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
-            raw = np.where(raw > 1e30, np.nan, raw)  # CF 常见大值缺测
-            raw = np.where(raw > 1e10, np.nan, raw)
+            raw = _sanitize_nc_field(raw_var, raw_var[:])
             varlabel = 'Total Hs (m)'; prefix='hs'
         elif v == 2:
             if 'phs0' not in ds.variables:
@@ -173,13 +252,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 result_queue.put([])
                 return
             raw_var = ds.variables['phs0']
-            raw = np.array(raw_var[:])
-            _fv = getattr(raw_var, '_FillValue', None)
-            if _fv is not None:
-                fv = float(np.asarray(_fv).flat[0])
-                raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
-            raw = np.where(raw > 1e30, np.nan, raw)
-            raw = np.where(raw > 1e10, np.nan, raw)
+            raw = _sanitize_nc_field(raw_var, raw_var[:])
             varlabel = 'Wind Sea Hs (m)'; prefix='phs0'
         else:
             if 'phs1' not in ds.variables:
@@ -189,13 +262,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 result_queue.put([])
                 return
             raw_var = ds.variables['phs1']
-            raw = np.array(raw_var[:])
-            _fv = getattr(raw_var, '_FillValue', None)
-            if _fv is not None:
-                fv = float(np.asarray(_fv).flat[0])
-                raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
-            raw = np.where(raw > 1e30, np.nan, raw)
-            raw = np.where(raw > 1e10, np.nan, raw)
+            raw = _sanitize_nc_field(raw_var, raw_var[:])
             varlabel = 'Swell Hs (m)'; prefix='phs1'
 
         # 非结构网格 / SMC：hs 为 (time, node) 或 (node, time)；关闭文件前检测并读取三角连通表
@@ -273,13 +340,19 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         WW3_lat = np.asarray(WW3_lat).squeeze()
         npoints = len(WW3_lon) if WW3_lon.ndim == 1 else WW3_lon.size
         mesh_tri_use = mesh_tri_global
+        smc_geom = None
+        is_smc = False
         if is_pointwise:
+            smc_geom = _try_load_smc_plot_geometry(selected_folder, WW3_lon, WW3_lat)
+            is_smc = smc_geom is not None
             log(
                 tr(
                     "plotting_unst_pointwise_detected",
                     "📐 检测到非结构/点序列网格 ({n} 个节点)，维度 (time×node) 或 (node×time) 已对齐",
                 ).format(n=npoints)
             )
+            if is_smc:
+                log(tr("plotting_smc_cell_render", "🧩 检测到 SMC 网格，绘图将按 grid_cell.dat 格块直接填色"))
             if generate_video:
                 log(tr("plotting_smc_video_skip", "⚠️ SMC 网格暂不支持视频生成，将仅输出图片"))
                 generate_video = False
@@ -290,8 +363,18 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         if is_pointwise:
             Hs = np.asarray(Hs_pw, dtype=float)
             Hs[Hs > 1e10] = np.nan
+            if is_smc and smc_geom is not None and smc_geom.get("order") is not None:
+                order = np.asarray(smc_geom["order"], dtype=np.int64)
+                WW3_lon = np.asarray(smc_geom["lon"], dtype=float)
+                WW3_lat = np.asarray(smc_geom["lat"], dtype=float)
+                Hs = Hs[:, order]
+                if u10_pw is not None:
+                    u10_pw = u10_pw[:, order]
+                if v10_pw is not None:
+                    v10_pw = v10_pw[:, order]
+                npoints = len(WW3_lon)
             SMC_SUBSAMPLE = 50000
-            if npoints > SMC_SUBSAMPLE:
+            if (not is_smc) and npoints > SMC_SUBSAMPLE:
                 rng = np.random.default_rng(42)
                 idx = rng.choice(npoints, SMC_SUBSAMPLE, replace=False)
                 idx = np.sort(idx)
@@ -326,8 +409,11 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         # 区域范围（先基于文件，再收缩到有数据的范围）
         # ------------------------
         if is_pointwise:
-            lon_min, lon_max = float(np.nanmin(WW3_lon)), float(np.nanmax(WW3_lon))
-            lat_min, lat_max = float(np.nanmin(WW3_lat)), float(np.nanmax(WW3_lat))
+            if is_smc and smc_geom is not None:
+                lon_min, lon_max, lat_min, lat_max = [float(x) for x in smc_geom["extent"]]
+            else:
+                lon_min, lon_max = float(np.nanmin(WW3_lon)), float(np.nanmax(WW3_lon))
+                lat_min, lat_max = float(np.nanmin(WW3_lat)), float(np.nanmax(WW3_lat))
             Hs_all = Hs.astype(float)
             Hs_all[Hs_all > 1e10] = np.nan
             pct = np.nanpercentile(Hs_all, CLIM_PCT)
@@ -524,40 +610,58 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         gl.ylocator = FixedLocator(lat_ticks)
 
         # 创建绘图对象：规则网格用 pcolormesh，点序列网格用 tricontourf（在循环内绘制）
+        pc = None
         if is_pointwise:
             from matplotlib.tri import Triangulation
 
-            lon_full = WW3_lon.astype(np.float64)
-            lat_full = WW3_lat.astype(np.float64)
             tri = None
             Hs_smc = None
-            if mesh_tri_use is not None:
-                try:
-                    tri = Triangulation(lon_full, lat_full, triangles=mesh_tri_use)
-                    Hs_smc = Hs
-                except Exception as e:
-                    log(
-                        tr(
-                            "plotting_tri_mesh_fallback",
-                            "⚠️ NetCDF 三角连通无法用于绘图，改用 Delaunay: {error}",
-                        ).format(error=e)
-                    )
-                    tri = None
-            if tri is None:
-                smc_valid = (
-                    np.isfinite(WW3_lon)
-                    & np.isfinite(WW3_lat)
-                    & (np.abs(WW3_lon) <= 360)
-                    & (np.abs(WW3_lat) <= 90)
+            if is_smc and smc_geom is not None:
+                from matplotlib.collections import PolyCollection
+
+                polys = np.asarray(smc_geom["polys"], dtype=np.float64)
+                Hs_smc = Hs
+                pc = PolyCollection(
+                    polys,
+                    cmap=cm.turbo,
+                    edgecolors="none",
+                    linewidths=0.0,
+                    transform=ccrs.PlateCarree(),
                 )
-                lon_tri = WW3_lon[smc_valid].astype(np.float64)
-                lat_tri = WW3_lat[smc_valid].astype(np.float64)
-                tri = Triangulation(lon_tri, lat_tri)
-                Hs_smc = Hs[:, smc_valid]
-            pcm = None
-            sm = plt.cm.ScalarMappable(cmap=cm.turbo, norm=plt.Normalize(vmin=vmin, vmax=vmax))
-            sm.set_array([])
-            cb = fig.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06, aspect=40)
+                pc.set_clim(vmin, vmax)
+                pc.set_array(np.ma.masked_all(polys.shape[0], dtype=float))
+                ax.add_collection(pc)
+                cb = fig.colorbar(pc, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06, aspect=40)
+            else:
+                lon_full = WW3_lon.astype(np.float64)
+                lat_full = WW3_lat.astype(np.float64)
+                if mesh_tri_use is not None:
+                    try:
+                        tri = Triangulation(lon_full, lat_full, triangles=mesh_tri_use)
+                        Hs_smc = Hs
+                    except Exception as e:
+                        log(
+                            tr(
+                                "plotting_tri_mesh_fallback",
+                                "⚠️ NetCDF 三角连通无法用于绘图，改用 Delaunay: {error}",
+                            ).format(error=e)
+                        )
+                        tri = None
+                if tri is None:
+                    smc_valid = (
+                        np.isfinite(WW3_lon)
+                        & np.isfinite(WW3_lat)
+                        & (np.abs(WW3_lon) <= 360)
+                        & (np.abs(WW3_lat) <= 90)
+                    )
+                    lon_tri = WW3_lon[smc_valid].astype(np.float64)
+                    lat_tri = WW3_lat[smc_valid].astype(np.float64)
+                    tri = Triangulation(lon_tri, lat_tri)
+                    Hs_smc = Hs[:, smc_valid]
+                pcm = None
+                sm = plt.cm.ScalarMappable(cmap=cm.turbo, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+                sm.set_array([])
+                cb = fig.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06, aspect=40)
             cb.set_label(varlabel)
         else:
             def _calc_edges(arr):
@@ -588,7 +692,7 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         num = 0
         total = len(targets)
 
-        smc_tcf = None  # SMC 时保存上一帧的 tricontourf，用于移除
+        smc_tcf = None  # 点序列三角网时保存上一帧的 tricontourf，用于移除
         for idx, (tid, t_target) in enumerate(zip(target_ids, targets)):
             # 每10张图片更新一次进度
             if (idx + 1) % 10 == 0 or idx == 0:
@@ -613,11 +717,14 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 continue
 
             if is_pointwise:
-                # 移除上一帧的 tricontourf（兼容无 .collections 的 matplotlib）
-                remove_tricontourf_artist(smc_tcf)
-                Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
-                smc_tcf = ax.tricontourf(tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
-                                         cmap=cm.turbo, vmin=vmin, vmax=vmax)
+                if is_smc and pc is not None:
+                    pc.set_array(np.ma.masked_invalid(Hs_now))
+                else:
+                    # 移除上一帧的 tricontourf（兼容无 .collections 的 matplotlib）
+                    remove_tricontourf_artist(smc_tcf)
+                    Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
+                    smc_tcf = ax.tricontourf(tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
+                                             cmap=cm.turbo, vmin=vmin, vmax=vmax)
             else:
                 # 超快速上采样（cv2 比 scipy 快 5～20 倍）
                 if UPSAMPLE_FACTOR > 1:
@@ -842,13 +949,7 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
 
         # 读取波高数据（含 NetCDF _FillValue 处理）
         raw_var = ds.variables["hs"]
-        raw = np.array(raw_var[:])
-        _fv = getattr(raw_var, "_FillValue", None)
-        if _fv is not None:
-            fv = float(np.asarray(_fv).flat[0])
-            raw = np.where(np.abs(raw.astype(float) - fv) < 1e30, np.nan, raw)
-        raw = np.where(raw > 1e30, np.nan, raw)
-        raw = np.where(raw > 1e10, np.nan, raw)
+        raw = _sanitize_nc_field(raw_var, raw_var[:])
         varlabel = "Total Hs (m)"
         prefix = "contour_hs"
 
