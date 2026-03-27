@@ -1,10 +1,19 @@
 
 import os
+import platform
 import subprocess
 import shutil
 import argparse
 
 HERE = os.path.abspath(os.path.dirname(__file__))
+
+
+def _cmake_env():
+    """Env for cmake: avoid ARCHFLAGS forcing x86_64 while linking arm64 Homebrew libs."""
+    env = os.environ.copy()
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        env.pop("ARCHFLAGS", None)
+    return env
 
 def build_external(build_type="Release", 
                    netcdf_user_path=None,
@@ -48,6 +57,9 @@ def build_external(build_type="Release",
             "cmake", "..", 
         "-DCMAKE_BUILD_TYPE=" + build_type]
 
+        if platform.system() == "Darwin" and platform.machine() == "arm64":
+            config_call.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
+
         if (netcdf_user_path is not None):
             config_call+= [
         "-DNETCDF_USER_PATH="+netcdf_user_path]
@@ -57,7 +69,8 @@ def build_external(build_type="Release",
         "-DOPENMP_USER_PATH="+openmp_user_path]
 
         print(config_call)
-        subprocess.run(config_call, check=True)
+        cmake_env = _cmake_env()
+        subprocess.run(config_call, check=True, env=cmake_env)
 
         print("cmake compile for jigsaw...")
 
@@ -69,7 +82,7 @@ def build_external(build_type="Release",
                 "--parallel", "4"
                 ]
             subprocess.run(
-                compilecall, check=True)
+                compilecall, check=True, env=cmake_env)
 
         except:
             compilecall = [
@@ -78,7 +91,7 @@ def build_external(build_type="Release",
                 "--target", "install"
                 ]
             subprocess.run(
-                compilecall, check=True)
+                compilecall, check=True, env=cmake_env)
 
         print("cmake cleanup for jigsaw...")
 

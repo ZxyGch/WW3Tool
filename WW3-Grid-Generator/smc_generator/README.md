@@ -1,69 +1,54 @@
 # SMC grid generator (`SMCGTools` wrapper)
 
+**Languages:** [English](#english) · [简体中文](#简体中文)
+
+<a id="english"></a>
+
 ## Overview
 
-This folder drives **Spherical Multi-Cell (SMC)** grid generation for WW3 using Python routines from **`SMCGTools/PySMCs`** (`smcellgen`, `smcellbdy`). The bundled tree under **`SMCGTools/`** follows the upstream **SMCGTools** project:
-
-**Source:** [ww3-opentools/SMCGTools](https://github.com/ww3-opentools/SMCGTools)
-
-Configuration is read from **`grid.json`** in this directory (or via `-c` / `--config` / `--grid`). Relative paths in JSON are resolved from the **directory that contains `grid.json`**.
-
-The wrapper script is **`create_grid.py`** (not shipped in SMCGTools; it wires bathymetry NetCDF → `smcellgen` / `smcellbdy` and renames outputs).
+This generator wraps [SMCGTools](https://github.com/ww3-opentools/SMCGTools); meshes produced can be used directly with WAVEWATCH III.
 
 ## Quick start
 
-1. **Python** — install at least **`netCDF4`** and **`pandas`** (same interpreter you use to run the script):
+```bash
+cd WW3-Grid-Generator/smc_generator
+python -m pip install netCDF4 pandas
+python create_grid.py
+```
 
-   ```bash
-   python3 -m pip install netCDF4 pandas
-   ```
-
-2. **Bathymetry** — NetCDF with **1D** `lon` and **1D** `lat`, and a **2D** bathymetry field after squeeze. The grid must be on a **regular** lon/lat spacing (constant `Δlon`, `Δlat`). Set `input.bathymetry_file` in `grid.json`. Example (from `smc_generator/`): `../reference_data/etopo2.nc` → `WW3-Grid-Generator/reference_data/`.
-
-3. **Run**
-
-   ```bash
-   cd WW3-Grid-Generator/smc_generator
-   python3 create_grid.py
-   ```
-
-   Custom config path:
-
-   ```bash
-   python3 create_grid.py --grid /path/to/grid.json
-   ```
+`create_grid.py` reads grid settings from `grid.json`, including where to write the mesh outputs.
 
 ## `grid.json` layout
 
-Top-level keys are fixed sections. Use standard JSON (no comments). Summary:
+Top-level keys are fixed sections. Use standard JSON (no comments in the file). Summary:
 
 | Section | Keys | Role |
 |--------|------|------|
 | **input** | | Bathymetry file and axis handling |
-| | `bathymetry_file` | Path to NetCDF (relative to `grid.json`’s directory if not absolute). |
+| | `bathymetry_file` | Path to NetCDF (relative to the directory containing `grid.json` if not absolute). |
 | | `lon_var`, `lat_var`, `bathy_var` | NetCDF variable names; **`null`** lets `create_grid.py` auto-detect from common names (`lon`/`longitude`/…, `lat`/…, `elevation`/`depth`/…). |
 | | `bathy_convention` | `"elevation"` (positive up) or `"depth"` / `"depth_positive_down"` / `"positive_down"` (positive down → converted to elevation internally). |
-| | `auto_flip_lat`, `auto_flip_lon` | If **true**, flip axis and bathy so lon/lat are increasing (default **true**). |
-| | `coord_spacing_rtol`, `coord_spacing_atol` | Tolerance for checking **uniform** `Δlon` / `Δlat` (see `create_grid.py`). |
+| | `auto_flip_lat`, `auto_flip_lon` | If **true**, flip axis and bathy so lon/lat increase (default **true**). |
+| | `coord_spacing_rtol`, `coord_spacing_atol` | Tolerances for checking **uniform** `Δlon` / `Δlat` (see `create_grid.py`). |
 | | `nan_fill_value` | Replacement for NaNs in bathymetry before calling SMC routines. |
 | **grid** | | SMC grid geometry |
 | | `name` | Logical grid name (in config; copied to output `grid.json`). |
-| | `n_levels` | SMC refinement level count (`mlvlxy0` first entry). |
+| | `n_levels` | SMC refinement level count (first entry of `mlvlxy0`). |
 | | `global` | **true** = global SMC; **false** = regional (requires `regional_bounds`). |
-| | `arctic` | **true** = generate Arctic extension (`*BArc.dat` → `grid_arctic_cells.dat`) when global. |
-| | `glb_arc_lat` | Arctic latitude parameter (`GlbArcLat`, default like `84.4`). |
+| | `arctic` | **true** = when global, generate Arctic extension (`*BArc.dat` → `grid_arctic_cells.dat`). |
+| | `glb_arc_lat` | Arctic latitude parameter (`GlbArcLat`, default about `84.4`). |
 | | `origin` | `lon0` / `lat0` (aliases `x0lon` / `y0lat`): SMC origin on the sphere. |
-| | `regional_bounds` | Required if `global` is **false**: `west_lon`, `south_lat`, `east_lon`, `north_lat` (aliases `xstart`/`ystart`/… supported in code). |
+| | `regional_bounds` | Required if `global` is **false**: `west_lon`, `south_lat`, `east_lon`, `north_lat` (code also supports aliases such as `xstart`/`ystart`/…). |
 | **physics** | | Passed into `smcellgen` / `smcellbdy` |
 | | `wlevel` | Water level. |
-| | `depmin` | Minimum depth / masking threshold context (see SMCGTools docs). |
-| | `dshalw` | Shallow-water parameter (`dshalw` in wrapper call). |
+| | `depmin` | Minimum depth / masking-threshold context (see SMCGTools docs). |
+| | `dshalw` | Shallow-water parameter (`dshalw` in the wrapper call). |
 | **boundary** | | Regional open boundary |
 | | `generate_boundary_cells` | If **true** and **regional** (`global` false), run `smcellbdy` and write `grid_boundary.dat`. |
-| | `msea` | Boundary / sea mask parameter for `smcellbdy`. |
+| | `msea` | Boundary / sea-mask parameter for `smcellbdy`. |
 | **output** | | |
 | | `output_dir` | Directory for final `.dat` and a copy of the input config as `grid.json` (relative to the **config** file’s directory if not absolute). |
-| | `file_prefix` | Present in the sample file for future use; **not** read by `create_grid.py` today. |
+| | `file_prefix` | Present in the sample for future use; **not** read by `create_grid.py` today. |
 
 ## Outputs
 
@@ -75,17 +60,79 @@ Written under **`output.output_dir`** (default `./output` relative to `grid.json
 | `grid_boundary.dat` | Open-boundary strip only if **`grid.global`** is **false** and **`boundary.generate_boundary_cells`** is **true**. |
 | `grid_arctic_cells.dat` | Arctic cells only if **`grid.global`** is **true** and **`grid.arctic`** is **true**. |
 | `grid_subtr.dat` | WW3 **SMCG** subgrid obstruction file (`create_grid.py` writes **zeros** = no blocking). |
-| `grid.json` (under `output_dir`) | Copy of the **input** config file passed to `--grid` / `--config` (same as `smc_generator/grid.json` when using the default path). |
+| `grid.json` (under `output_dir`) | Copy of the **input** config passed to `--grid` / `--config` (same as `smc_generator/grid.json` when using the default path). |
 
-Temporary files use the stem `_smc_generate_tmp*` during the run and are renamed on success.
+Temporary files use the prefix `_smc_generate_tmp*` during the run and are renamed on success.
 
-### WAVEWATCH III `ww3_grid` (SMCG)
+---
 
-`ww3_grid` reads **MCELS**, then **unconditionally** opens **ISIDE**, **JSIDE**, and **SUBTR** (NOAA WW3 `model/src/w3gridmd.F90`, `W3_SMC` block). If those namelist filenames default to **`unset`**, the next `OPEN` fails with **IOSTAT = 2** after cells are read.
+## 简体中文
 
-`create_grid.py` supplies **`grid_cell.dat`**, **`grid_subtr.dat`**, and optional boundary/arctic files. You must still build **`grid_iside.dat`** and **`grid_jside.dat`** (face arrays), e.g. compile **`SMCGTools/F90SMC/SMCGSideMP`** and run it with an input file like **`SMCGTools/Linuxs/SideMPInput.txt`** (grid stem, `NCL`/`NFC`/`MRL`, `NLon`/`NLat`/`NPol`, path to **`grid_cell.dat`**). Rename outputs to **`grid_iside.dat`** and **`grid_jside.dat`** in your run directory to match `&SMC_NML`. See **`SMCGTools/Linuxs/runSMCSideMP`** for the usual `countijsd*` post-steps.
+<a id="简体中文"></a>
 
-## References
+# SMC 网格生成器
 
-- **Upstream SMCGTools (canonical sources for `SMCGTools/`):** [github.com/ww3-opentools/SMCGTools](https://github.com/ww3-opentools/SMCGTools)
-- Local guides / PDFs: `SMCGTools/SMCGTools_Guide.pdf`, `SMCGTools/SMC_Grids_Guide.pdf`, `SMCGTools/README.md`
+**语言：** [English](#english)（上文）· [简体中文](#简体中文)（本文）
+
+## 概述
+
+本生成器是对 [SMCGTools](https://github.com/ww3-opentools/SMCGTools) 的二次包装，生成的网格文件可直接用于 WAVEWATCH III.
+
+
+## 快速开始
+
+```bash
+cd WW3-Grid-Generator/smc_generator
+python -m pip install netCDF4 pandas
+python create_grid.py
+```
+
+create_grid.py 会自动读取 grid.json 的网格配置，其中包含网格的输出路径
+
+
+## `grid.json` 结构
+
+顶层键为固定小节。使用标准 JSON（文件中不要写注释）。概要如下：
+
+| 小节 | 键 | 作用 |
+|--------|------|------|
+| **input** | | 水深文件与坐标轴处理 |
+| | `bathymetry_file` | NetCDF 路径（非绝对路径时相对于 `grid.json` 所在目录）。 |
+| | `lon_var`, `lat_var`, `bathy_var` | NetCDF 变量名；**`null`** 时由 `create_grid.py` 按常见命名自动检测（`lon`/`longitude`/…，`lat`/…，`elevation`/`depth`/…）。 |
+| | `bathy_convention` | `"elevation"`（高度向上为正）或 `"depth"` / `"depth_positive_down"` / `"positive_down"`（深度向下为正 → 内部转为高度）。 |
+| | `auto_flip_lat`, `auto_flip_lon` | 若为 **true**，翻转轴与水深使 lon/lat 递增（默认 **true**）。 |
+| | `coord_spacing_rtol`, `coord_spacing_atol` | 检查 **均匀** `Δlon` / `Δlat` 时的容差（见 `create_grid.py`）。 |
+| | `nan_fill_value` | 调用 SMC 例程前对水深中 NaN 的替换值。 |
+| **grid** | | SMC 网格几何 |
+| | `name` | 逻辑网格名（配置中；会复制到输出 `grid.json`）。 |
+| | `n_levels` | SMC 细化层数（`mlvlxy0` 首项）。 |
+| | `global` | **true** = 全球 `SMC`；**false** = 区域（需 `regional_bounds`）。 |
+| | `arctic` | **true** = 全球时在生成北极扩展（`*BArc.dat` → `grid_arctic_cells.dat`）。 |
+| | `glb_arc_lat` | 北极纬度参数（`GlbArcLat`，默认约 `84.4`）。 |
+| | `origin` | `lon0` / `lat0`（别名 `x0lon` / `y0lat`）：球面 SMC 原点。 |
+| | `regional_bounds` | 若 `global` 为 **false** 则 **必需**：`west_lon`、`south_lat`、`east_lon`、`north_lat`（代码还支持 `xstart`/`ystart`/… 等别名）。 |
+| **physics** | | 传入 `smcellgen` / `smcellbdy` |
+| | `wlevel` | 水位。 |
+| | `depmin` | 最小水深 / 掩膜阈值语境（见 SMCGTools 文档）。 |
+| | `dshalw` | 浅水参数（封装调用中的 `dshalw`）。 |
+| **boundary** | | 区域开边界 |
+| | `generate_boundary_cells` | 若为 **true** 且为 **区域**（`global` 为 false），运行 `smcellbdy` 并写出 `grid_boundary.dat`。 |
+| | `msea` | `smcellbdy` 的边界/海掩膜参数。 |
+| **output** | | |
+| | `output_dir` | 最终 `.dat` 及输入配置副本 `grid.json` 的输出目录（非绝对路径时相对于**配置文件**所在目录）。 |
+| | `file_prefix` | 示例文件中保留供将来使用；**当前** `create_grid.py` **不读取**。 |
+
+## 输出
+
+写入 **`output.output_dir`**（默认相对于 `grid.json` 为 `./output`）：
+
+| 文件 | 说明 |
+|------|------|
+| `grid_cell.dat` | SMC 内部单元（由临时 `*Cels.dat` 得到）。 |
+| `grid_boundary.dat` | 仅当 **`grid.global`** 为 **false** 且 **`boundary.generate_boundary_cells`** 为 **true** 时生成开边界带。 |
+| `grid_arctic_cells.dat` | 仅当 **`grid.global`** 为 **true** 且 **`grid.arctic`** 为 **true** 时生成北极单元。 |
+| `grid_subtr.dat` | WW3 **SMCG** 子网格阻障文件（`create_grid.py` 写 **全零** = 无阻挡）。 |
+| `output_dir` 下的 `grid.json` | 传给 `--grid` / `--config` 的**输入**配置副本（使用默认路径时与 `smc_generator/grid.json` 一致）。 |
+
+运行过程中临时文件使用前缀 `_smc_generate_tmp*`，成功后会重命名。
+

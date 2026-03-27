@@ -11,6 +11,7 @@ Distributed with WAVEWATCH III
 Last Update: 2024
 """
 
+import argparse
 import os
 import sys
 import time
@@ -392,7 +393,8 @@ def create_grid(**kwargs):
     sys.stdout.flush()
     print('=' * 70, flush=True)
     title = 'Structured Rectangular Grid Generation By Gridgen Python Version'
-    print(' ' * ((70 - len(title))) + title, flush=True)
+    pad = max((70 - len(title)) // 2, 0)
+    print(' ' * pad + title, flush=True)
     print('=' * 70, flush=True)
     if fname_nml_abs:
         print(f"grid.nml: {fname_nml_abs}", flush=True)
@@ -676,7 +678,8 @@ def create_grid(**kwargs):
     elapsed_time = time.time() - start_time
     print('=' * 70, flush=True)
     title2 = 'Grid Generation Complete!'
-    print(' ' * ((70 - len(title2))) + title2, flush=True)
+    pad = max((70 - len(title2)) // 2, 0)
+    print(' ' * pad + title2, flush=True)
     print('=' * 70, flush=True)
     print(f"Output directory: {params['out_dir']}", flush=True)
     print('Output files:', flush=True)
@@ -689,3 +692,24 @@ def create_grid(**kwargs):
     print("  - grid.nml (WW3 grid description, same as MATLAB gridgen)", flush=True)
     print(f'Total time: {elapsed_time:.2f} seconds', flush=True)
     print('=' * 70, flush=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate a WW3 structured grid from grid.nml or kwargs defaults."
+    )
+    default_nml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "grid.nml")
+    parser.add_argument(
+        "--nml",
+        default=default_nml,
+        help="Path to grid.nml (default: pygridgen/grid.nml).",
+    )
+    parser.add_argument(
+        "--no-nml",
+        action="store_true",
+        help="Ignore any grid.nml and use built-in defaults/kwargs only.",
+    )
+    args = parser.parse_args()
+
+    nml_path = None if args.no_nml else args.nml
+    create_grid(nml_path=nml_path)

@@ -53,7 +53,8 @@ if (DEFINED GCXX_LIKE)
   cfg_compile_options (-fno-math-errno RELEASE) # no errno checks
   cfg_compile_options (-fno-trapping-math RELEASE) # no fp exceptions
   cfg_compile_options (-fno-signed-zeros RELEASE) # -0.0 == +0.0
-  cfg_compile_options (-ffinite-math-only RELEASE) # no explicit nans, etc
+  # Do not use -ffinite-math-only in Release: jig_load.hpp test_jcfg() uses
+  # infinity as an upper bound; finite-math breaks those comparisons on Clang.
 endif ()
 
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

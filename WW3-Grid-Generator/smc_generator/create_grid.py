@@ -1230,6 +1230,10 @@ def main() -> None:
         f"Wrote {run_info_file} (includes ww3_rect for WW3 &RECT_NML / SMCG base grid).",
         flush=True,
     )
+    print(f"Final outputs directory: {out_dir.resolve()}", flush=True)
+    print("=" * 70, flush=True)
+    print("Grid Generation Complete!".center(70), flush=True)
+    print("=" * 70, flush=True)
 
 
 if __name__ == "__main__":

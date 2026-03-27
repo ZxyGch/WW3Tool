@@ -41,7 +41,7 @@ from PyQt6.QtCore import QEvent, Qt
 QSplitter = QtWidgets.QSplitter
 from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme, PlainTextEdit, MessageBox
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget, CheckBox
-from PyQt6.QtGui import QColor, QIcon
+from PyQt6.QtGui import QColor, QIcon, QFontDatabase, QFont
 from qfluentwidgets import MessageBoxBase
 
 from PyQt6.QtWidgets import QTableWidgetItem, QHeaderView, QScrollArea, QListWidget, QListWidgetItem
@@ -315,6 +315,18 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
 
         # 日志文本区域（PlainTextEdit 自带滚动条）
         self.log_text = PlainTextEdit()
+        base_font = self.font()
+        mono_font = QFont(base_font)
+        fallback_monos = [
+            "Menlo","Monaco", "Consolas", "SF Mono",   "Courier New",
+            "Liberation Mono", "DejaVu Sans Mono", "Noto Sans Mono"
+        ]
+        available = set(QFontDatabase.families())
+        chosen = next((f for f in fallback_monos if f in available), None)
+        if not chosen:
+            chosen = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+        mono_font.setFamily(chosen)
+        self.log_text.setFont(mono_font)
         self.log_text.setReadOnly(True)
         self.log_text.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
