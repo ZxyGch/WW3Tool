@@ -12,15 +12,13 @@ import tempfile
 import re
 import subprocess
 import threading
-import zipfile
-from urllib.request import urlretrieve
 import platform
 import warnings
 import numpy as np
 from netCDF4 import Dataset
 
 from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import Qt, QUrl, QMetaObject, pyqtSlot, QProcess
+from PyQt6.QtCore import Qt, QMetaObject, pyqtSlot, QProcess
 from PyQt6.QtWidgets import (
     QLabel,
     QVBoxLayout,
@@ -35,7 +33,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QProgressBar,
 )
-from PyQt6.QtGui import QPixmap, QDesktopServices, QShortcut, QKeySequence
+from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, InfoBar, MessageBoxBase
 from setting.language_manager import tr
 from setting.config import (
@@ -83,29 +81,73 @@ REFERENCE_DATA_REQUIRED_FILES = [
     "gebco.nc",
 ]
 
-# reference_data 手动下载说明链接与路径提示
-REFERENCE_DATA_YDRAY_URL = "https://ydray.com/get/t/u17741446196277XguE91036edeefddAV"
-REFERENCE_DATA_ONEDRIVE_URL = "https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9"
-REFERENCE_DATA_BAIDU_URL = "https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48"
+
+def _flatten_nested_reference_data_dir(ref_dir: str, log_emit=None) -> None:
+    """
+    If layout is ``reference_data/reference_data/...``, move inner files up to ``ref_dir``.
+    ``log_emit`` is optional ``callable(str)`` (e.g. log_signal.emit).
+    """
+    inner = os.path.join(ref_dir, "reference_data")
+    if not os.path.isdir(inner):
+        return
+    if log_emit:
+        log_emit(
+            tr(
+                "step2_ref_data_flatten",
+                "正在修正嵌套的 reference_data 目录（reference_data/reference_data）…",
+            )
+        )
+    for name in list(os.listdir(inner)):
+        src = os.path.join(inner, name)
+        dst = os.path.join(ref_dir, name)
+        if os.path.exists(dst):
+            if os.path.isdir(dst) and os.path.isdir(src):
+                for sub in list(os.listdir(src)):
+                    shutil.move(
+                        os.path.join(src, sub),
+                        os.path.join(dst, sub),
+                    )
+                try:
+                    os.rmdir(src)
+                except OSError:
+                    shutil.rmtree(src)
+            else:
+                if os.path.isdir(dst):
+                    shutil.rmtree(dst)
+                else:
+                    os.remove(dst)
+                shutil.move(src, dst)
+        else:
+            shutil.move(src, dst)
+    try:
+        os.rmdir(inner)
+    except OSError:
+        pass
 
 
 class _ReferenceDataMissingDialog(MessageBoxBase):
-    """reference_data 缺失提示弹窗：提示下载或手动放置到指定路径"""
+    """reference_data 缺失提示弹窗：可一键从 GitHub 下载到默认目录"""
 
-    def __init__(self, parent, ref_dir, missing_list, on_download_clicked=None):
+    def __init__(self, parent, on_download_clicked=None):
         super().__init__(parent)
         self._on_download_clicked = on_download_clicked
-        self.setWindowTitle(tr("step2_ref_data_missing_title", "缺失 reference_data 文件"))
+        self.setWindowTitle(tr("step2_ref_data_missing_title", "reference_data 缺失"))
         self.hideYesButton()
         self.hideCancelButton()
         self.buttonLayout.parent().setVisible(False)
 
         msg1 = tr(
             "step2_ref_data_missing_msg1",
-            "生成网格需要 reference_data 文件夹及指定文件，当前缺失或路径不存在。"
+            "生成网格需要 reference_data 数据，当前缺失",
         )
         label1 = QLabel(msg1)
         label1.setWordWrap(True)
+        label1.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        _ref_msg_min_w = 440
+        label1.setMinimumWidth(_ref_msg_min_w)
         self.viewLayout.addWidget(label1)
 
         button_style = parent._get_button_style() if hasattr(parent, "_get_button_style") else ""
@@ -114,52 +156,17 @@ class _ReferenceDataMissingDialog(MessageBoxBase):
         self.btn_download.clicked.connect(self._on_download)
         self.viewLayout.addWidget(self.btn_download)
 
-        msg2 = tr(
-            "step2_ref_data_missing_msg2",
-            "If download is slow or fails, you can download manually using the buttons below."
-        )
-        manual_hint = tr(
-            "step2_ref_data_manual_hint",
-            "After manual download, place the extracted files in the path below."
-        )
-        label2 = QLabel(f"{msg2}\n\n{manual_hint}")
-        label2.setWordWrap(True)
-        # 允许选择和复制文字
-        label2.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard
-            | Qt.TextInteractionFlag.LinksAccessibleByMouse
-        )
-        self.viewLayout.addWidget(label2)
-
-        # 固定展示可复制的参考数据路径
-        ref_path_label = QLabel(ref_dir)
-        ref_path_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard
-        )
-        ref_path_label.setStyleSheet(
-            "font-family: Consolas, 'Courier New', monospace; margin-bottom: 8px;"
-        )
-        self.viewLayout.addWidget(ref_path_label)
-
-        self.btn_ydray = PrimaryPushButton(tr("step2_ref_data_open_ydray", "打开 YDRAY 下载链接"))
-        self.btn_ydray.setStyleSheet(button_style)
-        self.btn_ydray.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_YDRAY_URL)))
-        self.viewLayout.addWidget(self.btn_ydray)
-
-        self.btn_onedrive = PrimaryPushButton(tr("step2_ref_data_open_onedrive", "打开 OneDrive 下载链接"))
-        self.btn_onedrive.setStyleSheet(button_style)
-        self.btn_onedrive.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_ONEDRIVE_URL)))
-        self.viewLayout.addWidget(self.btn_onedrive)
-        self.btn_baidu = PrimaryPushButton(tr("step2_ref_data_open_baidu", "打开百度网盘下载链接"))
-        self.btn_baidu.setStyleSheet(button_style)
-        self.btn_baidu.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REFERENCE_DATA_BAIDU_URL)))
-        self.viewLayout.addWidget(self.btn_baidu)
         self.btn_cancel = PrimaryPushButton(tr("step2_ref_data_cancel", "取消"))
         self.btn_cancel.setStyleSheet(button_style)
         self.btn_cancel.clicked.connect(self.reject)
         self.viewLayout.addWidget(self.btn_cancel)
+
+        # MessageBoxBase 默认内容区偏窄，中英文说明易被挤成细长条
+        _ref_dlg_min_w = max(_ref_msg_min_w + 80, 520)
+        self.setMinimumWidth(_ref_dlg_min_w)
+        card = getattr(self, "widget", None)
+        if card is not None:
+            card.setMinimumWidth(_ref_dlg_min_w)
 
     def _on_download(self):
         if callable(self._on_download_clicked):
@@ -2129,6 +2136,7 @@ class StepTwoServiceMixin:
         ref_dir = self._get_reference_data_path()
         if not ref_dir or not os.path.isdir(ref_dir):
             return False, list(REFERENCE_DATA_REQUIRED_FILES), ref_dir or ""
+        _flatten_nested_reference_data_dir(ref_dir)
         missing = [
             f for f in REFERENCE_DATA_REQUIRED_FILES
             if not os.path.isfile(os.path.join(ref_dir, f))
@@ -2136,150 +2144,94 @@ class StepTwoServiceMixin:
         return len(missing) == 0, missing, ref_dir
 
     def _run_get_reference_data(self):
-        """
-        从 GitHub Release「data」资源下载 reference_data 分卷 part_aa…part_ad，
-        按顺序二进制拼接（等价于 shell: cat part_aa part_ab part_ac part_ad > reference_data.zip），
-        再解压到 WW3-Grid-Generator/reference_data（或配置的 REFERENCE_DATA_PATH）。
-        """
+        """在 WW3-Grid-Generator 下执行 ``get_reference_data.py``，日志为脚本原始英文输出（含百分比）。"""
+        gridgen = self._get_gridgen_path()
         ref_dir = self._get_reference_data_path()
-        work_dir = os.path.dirname(ref_dir) if ref_dir else self._get_gridgen_path()
-        if not work_dir:
+        log_signal = getattr(self, "log_signal", None)
+
+        if not gridgen:
             QtCore.QTimer.singleShot(
                 0,
                 lambda: self._show_ref_data_result(
                     False,
-                    tr("step2_ref_data_no_workdir", "无法确定参考数据所在目录，请检查 REFERENCE_DATA_PATH 配置。"),
+                    "Cannot find WW3-Grid-Generator path.",
                 ),
             )
             return
 
-        part_urls = [
-            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_aa",
-            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_ab",
-            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_ac",
-            "https://github.com/ZxyGch/WW3Tool/releases/download/data/part_ad",
-        ]
-        part_names = ["part_aa", "part_ab", "part_ac", "part_ad"]
-        zip_path = os.path.join(work_dir, "reference_data.zip")
+        script_path = os.path.join(gridgen, "get_reference_data.py")
+        if not os.path.isfile(script_path):
+            QtCore.QTimer.singleShot(
+                0,
+                lambda: self._show_ref_data_result(
+                    False,
+                    f"get_reference_data.py not found: {script_path}",
+                ),
+            )
+            return
 
-        log_signal = getattr(self, "log_signal", None)
-
-        def _ref_dl_reporthook(name: str):
-            def _hook(block_num: int, block_size: int, total_size: int) -> None:
-                if not log_signal:
-                    return
-                downloaded = block_num * block_size
-                if total_size <= 0:
-                    if block_num % 200 == 0 or block_num < 3:
-                        mb = downloaded / (1024 * 1024)
-                        log_signal.emit(f"  [{name}] " + tr("step2_ref_data_dl_mb", "已下载: {mb:.1f} MB").format(mb=mb))
-                    return
-                downloaded = min(downloaded, total_size)
-                pct = 100.0 * downloaded / total_size
-                mb_d = downloaded / (1024 * 1024)
-                mb_t = total_size / (1024 * 1024)
-                prev_pct = (block_num - 1) * block_size * 100.0 / total_size if block_num else 0
-                if block_num == 0 or pct >= 99.5 or int(pct // 5) > int(prev_pct // 5):
-                    log_signal.emit(
-                        f"  [{name}] "
-                        + tr(
-                            "step2_ref_data_dl_pct",
-                            "进度: {pct:.1f}% ({mb_d:.1f} / {mb_t:.1f} MB)",
-                        ).format(pct=pct, mb_d=mb_d, mb_t=mb_t)
-                    )
-
-            return _hook
+        default_ref = os.path.normpath(os.path.join(gridgen, "reference_data"))
+        argv = [sys.executable, "-u", script_path]
+        if ref_dir and os.path.normpath(os.path.abspath(ref_dir)) != default_ref:
+            argv.extend(["--ref-dir", os.path.abspath(ref_dir)])
 
         def _run():
             ok = False
             msg = ""
             try:
-                os.makedirs(work_dir, exist_ok=True)
-
-                if log_signal:
-                    log_signal.emit(tr("step2_ref_data_started", "正在从 GitHub 下载 reference_data 分卷…"))
-
-                for url, pname in zip(part_urls, part_names):
-                    dest_part = os.path.join(work_dir, pname)
-                    if log_signal:
-                        log_signal.emit(tr("step2_ref_data_dl_part", "下载分卷：{name}").format(name=pname))
-                    urlretrieve(url, dest_part, _ref_dl_reporthook(pname))
-
-                if log_signal:
-                    log_signal.emit(tr("step2_ref_data_merge", "正在合并分卷为 reference_data.zip…"))
-                # 固定顺序拼接，等价于: cat part_aa part_ab part_ac part_ad > reference_data.zip
-                with open(zip_path, "wb") as out_zip:
-                    for pname in part_names:
-                        part_path = os.path.join(work_dir, pname)
-                        if not os.path.isfile(part_path) or os.path.getsize(part_path) == 0:
-                            raise OSError(tr("step2_ref_data_part_missing", "分卷缺失或为空：{name}").format(name=pname))
-                        with open(part_path, "rb") as inf:
-                            shutil.copyfileobj(inf, out_zip)
-
-                if log_signal:
-                    log_signal.emit(tr("step2_ref_data_unzip", "正在解压到 reference_data 目录…"))
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    file_members = [
-                        n for n in zf.namelist() if n.strip() and not n.endswith("/")
-                    ]
-                    if not file_members:
-                        raise OSError(
-                            tr("step2_ref_data_zip_empty", "reference_data.zip 内无有效文件")
-                        )
-                    top_roots = {n.split("/")[0] for n in file_members}
-                    # zip 内仅有 reference_data/ 前缀时解压到 WW3-Grid-Generator（得到 …/reference_data/…）
-                    if len(top_roots) == 1 and next(iter(top_roots)) == "reference_data":
-                        zf.extractall(work_dir)
-                    else:
-                        os.makedirs(ref_dir, exist_ok=True)
-                        zf.extractall(ref_dir)
-
-                for pname in part_names:
-                    try:
-                        os.remove(os.path.join(work_dir, pname))
-                    except OSError:
-                        pass
-                try:
-                    os.remove(zip_path)
-                except OSError:
-                    pass
-
-                ok = True
-                msg = tr("step2_ref_data_done", "下载完成")
+                env = os.environ.copy()
+                proc = subprocess.Popen(
+                    argv,
+                    cwd=gridgen,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    env=env,
+                    close_fds=True,
+                )
+                if proc.stdout is not None:
+                    for line in iter(proc.stdout.readline, ""):
+                        if not line:
+                            break
+                        s = line.rstrip()
+                        if s and log_signal:
+                            log_signal.emit(s)
+                proc.wait()
+                code = proc.returncode if proc.returncode is not None else -1
+                ok = code == 0
+                msg = "" if ok else f"exit code {code}"
             except Exception as e:
                 ok = False
                 msg = str(e)
-            QtCore.QTimer.singleShot(0, lambda: self._show_ref_data_result(ok, msg))
+            QtCore.QTimer.singleShot(0, lambda o=ok, m=msg: self._show_ref_data_result(o, m))
 
         threading.Thread(target=_run, daemon=True).start()
         try:
             InfoBar.info(
-                title=tr("tip", "提示"),
-                content=tr("step2_ref_data_started", "正在从 GitHub 下载 reference_data 分卷…"),
-                duration=3000,
+                title="Info",
+                content="Running get_reference_data.py — see log for progress.",
+                duration=3500,
                 parent=self,
             )
         except Exception:
             pass
 
     def _show_ref_data_result(self, success, message):
-        """在主线程显示 reference_data 下载结果（日志 + InfoBar）。"""
-        if hasattr(self, "log_signal") and self.log_signal:
-            if success:
-                self.log_signal.emit(tr("step2_ref_data_done", "✅ reference_data 下载完成"))
-            else:
-                self.log_signal.emit(tr("step2_ref_data_failed_log", "❌ reference_data 下载失败：{msg}").format(msg=message))
+        """在主线程提示结果；详细过程已由 get_reference_data.py 打印到日志。"""
+        if hasattr(self, "log_signal") and self.log_signal and not success and message:
+            self.log_signal.emit(f"❌ reference_data: {message}")
         try:
             if success:
                 InfoBar.success(
-                    title=tr("tip", "提示"),
-                    content=tr("step2_ref_data_done_toast", "reference_data 下载完成，可重新点击「生成网格」"),
+                    title="Info",
+                    content="reference_data is ready. You can click Generate Grid again.",
                     duration=4000,
                     parent=self,
                 )
             else:
                 InfoBar.warning(
-                    title=tr("tip", "提示"),
+                    title="Info",
                     content=message[:200] + ("…" if len(message) > 200 else ""),
                     duration=5000,
                     parent=self,
@@ -3086,6 +3038,14 @@ class StepTwoServiceMixin:
     def apply_and_create_grid(self):
         """应用配置并生成网格（合并两步为一步）- 在后台线程中执行"""
         if self._is_step2_unstructured_mesh():
+            # 与其他网格类型一致：先处理 reference_data（目录/缺文件），再进入 DEM/JIGSAW 等 InfoBar。
+            # 若用户已配置可解析的 DEM（含 UNST_DEM_FILE），即使未装齐 REFERENCE_DATA_REQUIRED_FILES 也允许继续。
+            ref_ok, _missing_list, _ref_dir = self._check_reference_data()
+            dem_resolved = self._get_unst_dem_file()
+            if not ref_ok and not dem_resolved:
+                dlg = _ReferenceDataMissingDialog(self, on_download_clicked=self._run_get_reference_data)
+                dlg.exec()
+                return
             unst_ok, unst_err = self._check_unst_mesh_prerequisites()
             if not unst_ok:
                 try:
@@ -3099,9 +3059,9 @@ class StepTwoServiceMixin:
                     pass
                 return
         elif self._is_step2_smc_mesh():
-            ok, missing_list, ref_dir = self._check_reference_data()
+            ok, _missing_list, _ref_dir = self._check_reference_data()
             if not ok:
-                dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
+                dlg = _ReferenceDataMissingDialog(self, on_download_clicked=self._run_get_reference_data)
                 dlg.exec()
                 return
             smc_ok, smc_err = self._check_smc_prerequisites()
@@ -3117,9 +3077,9 @@ class StepTwoServiceMixin:
                     pass
                 return
         else:
-            ok, missing_list, ref_dir = self._check_reference_data()
+            ok, _missing_list, _ref_dir = self._check_reference_data()
             if not ok:
-                dlg = _ReferenceDataMissingDialog(self, ref_dir, missing_list, on_download_clicked=self._run_get_reference_data)
+                dlg = _ReferenceDataMissingDialog(self, on_download_clicked=self._run_get_reference_data)
                 dlg.exec()
                 return
         self._maybe_prompt_global_grid()

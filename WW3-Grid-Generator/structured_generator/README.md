@@ -32,24 +32,12 @@ There are two code stacks: **gridgen** is the original [Ifremer code (MATLAB)](h
 
 You need `reference_data` ready first (bathymetry, coastline-related `.mat` / `.nc`, etc.).
 
-**Default — GitHub split release (recommended)**
-
 Run:
 
 ```bash
 cd WW3-Grid-Generator
 python3 get_reference_data.py
 ```
-
-The script downloads `part_aa` … `part_ad` from the WW3Tool **`data`** release on **GitHub**, merges them into `reference_data.zip`, and extracts under `WW3-Grid-Generator/reference_data/`.
-
-If GitHub is slow or unavailable, use one of these mirrors:
-
-- **Ydray:** <https://ydray.com/get/t/u17741446196277XguE91036edeefddAV>
-- **OneDrive:** <https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9>
-- **Baidu Netdisk:** https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48
-
-
 
 
 ### Quick start
@@ -133,22 +121,11 @@ After generation, the output directory contains:
 
 开始前需要准备好 `reference_data`(水深、岸线相关 `.mat` / `.nc` 等)。
 
-**默认方式：GitHub 分卷包(推荐)**
-
-执行：
 
 ```bash
 cd WW3-Grid-Generator
-python3 get_reference_data.py
+python get_reference_data.py
 ```
-
-脚本会从 **GitHub** 上 WW3Tool 的 `data` 资源下载 `part_aa` ～ `part_ad`，合并为 `reference_data.zip` 并解压到 `WW3-Grid-Generator/reference_data/`。  
-
-若 GitHub 下载慢或不可用，可以用以下方式替代：
-
-- **Ydray：** <https://ydray.com/get/t/u17741446196277XguE91036edeefddAV>
-- **OneDrive：** <https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9>
-- **百度网盘：** https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48
 
 
 

@@ -113,6 +113,7 @@ class HomeLocalRun:
 
     def _run_local_ww3_internal(self, bin_dir):
         """内部执行本地 WW3 运行（在后台线程中调用）"""
+        self._local_run_proc = None
         try:
             # 获取本地脚本路径
             # __file__ 是 main/home/home_local_run.py，需要回到项目根目录
@@ -132,7 +133,7 @@ class HomeLocalRun:
             if bin_dir:
                 env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
             
-            # 执行脚本
+            # 执行脚本（新会话使 bash 为进程组组长，停止时可一次 killpg 结束 mpirun/ww3_* 整树）
             proc = subprocess.Popen(
                 ["bash", local_script_path],
                 cwd=self.selected_folder,
@@ -142,9 +143,10 @@ class HomeLocalRun:
                 bufsize=0,
                 env=env,
                 close_fds=True,
-                start_new_session=True
+                start_new_session=True,
             )
-            
+            self._local_run_proc = proc
+
             # 读取输出
             try:
                 for line in iter(proc.stdout.readline, ''):
@@ -166,6 +168,7 @@ class HomeLocalRun:
         except Exception as e:
             self.log_signal.emit(tr("step5_local_run_error", "❌ 本地 WW3 运行出错：{error}").format(error=e))
         finally:
+            self._local_run_proc = None
             QtCore.QTimer.singleShot(0, self._restore_local_run_button)
 
     @QtCore.pyqtSlot()
@@ -390,7 +393,37 @@ class HomeLocalRun:
             self.log_signal.emit(tr("step5_trnc_error", "❌ ww3_trnc 执行出错：{error}").format(error=e))
 
     def stop_local_shel(self):
-        """停止 ww3_shel 或 ww3_multi（根据网格类型）"""
+        """停止本地运行：优先终止 GUI 启动的 bash 进程组（含 mpirun / ww3_*），否则按进程名清理（兼容手工启动）。"""
+        proc = getattr(self, "_local_run_proc", None)
+        if proc is not None and proc.poll() is None:
+            try:
+                if hasattr(os, "killpg"):
+                    pgrp = os.getpgid(proc.pid)
+                    os.killpg(pgrp, signal.SIGTERM)
+                    self.log(
+                        tr(
+                            "step5_terminate_local_group",
+                            "🛑 已向本地运行进程组发送终止信号（PGID {pgid}，含 bash / mpirun / ww3 等）",
+                        ).format(pgid=pgrp)
+                    )
+                    return
+                proc.terminate()
+                self.log(
+                    tr(
+                        "step5_terminate_local_proc",
+                        "🛑 已向本地运行子进程发送终止信号（PID {pid}）",
+                    ).format(pid=proc.pid)
+                )
+                return
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                self.log(
+                    tr("step5_terminate_local_group_failed", "⚠️ 终止进程组失败：{error}，将尝试按进程名结束…").format(
+                        error=e
+                    )
+                )
+
         # 检查是否是嵌套网格模式
         from .utils import HomeState
         is_nested_grid = HomeState.is_nested_grid()

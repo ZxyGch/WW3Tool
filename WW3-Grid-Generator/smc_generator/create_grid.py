@@ -807,7 +807,7 @@ def _print_smc_run_banner() -> None:
     """Banner line width 70；标题在等宽显示下居中（字符列）。"""
     sys.stdout.flush()
     print("=" * 70, flush=True)
-    title = "SMC Grid Generation By SMCGTools"
+    title = "SMC Mesh Generation By SMCGTools"
     print(title.center(70), flush=True)
     print("=" * 70 + "\n", flush=True)
 
@@ -1232,7 +1232,7 @@ def main() -> None:
     )
     print(f"Final outputs directory: {out_dir.resolve()}", flush=True)
     print("=" * 70, flush=True)
-    print("Grid Generation Complete!".center(70), flush=True)
+    print("Mesh Generation Complete!".center(70), flush=True)
     print("=" * 70, flush=True)
 
 

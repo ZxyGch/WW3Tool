@@ -8,6 +8,16 @@ concatenate into ``reference_data.zip``, extract under WW3-Grid-Generator.
 Optional ``--legacy``: fetch from original upstreams (NOAA GSHHS FTP, CEDA GEBCO
 zip, dengwirda RTopo zip) — slower and more fragile, but does not rely on the
 project’s split release archive.
+
+If GitHub is slow or unreachable, you can obtain the same ``reference_data.zip``
+manually from these mirrors, then extract so ``reference_data/`` exists (the
+script prints its absolute path when run).
+
+- **Ydray:** https://ydray.com/get/t/u17741446196277XguE91036edeefddAV
+- **OneDrive:**
+  https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9
+- **Baidu Netdisk:** https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48
+  (extraction code: ``cb48``)
 """
 
 from __future__ import annotations
@@ -41,6 +51,47 @@ RTOPO_ZIP_URL = (
     "RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip"
 )
 
+# Same ``reference_data.zip`` as the GitHub release bundle; for manual download if GitHub is slow.
+REFERENCE_DATA_MIRROR_YDRAY = (
+    "https://ydray.com/get/t/u17741446196277XguE91036edeefddAV"
+)
+REFERENCE_DATA_MIRROR_ONEDRIVE = (
+    "https://tiangongeducn-my.sharepoint.com/:u:/r/personal/"
+    "1911650207_tiangong_edu_cn/Documents/reference_data.zip?"
+    "csf=1&web=1&e=SXDbA9"
+)
+REFERENCE_DATA_MIRROR_BAIDU = (
+    "https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48"
+)
+
+
+def print_reference_data_mirror_help(
+    log=print,
+    ref_dir: Path | str | None = None,
+) -> None:
+    """Print alternate download locations (English)."""
+    if ref_dir is not None:
+        target = Path(ref_dir).expanduser().resolve()
+    else:
+        target = (Path(__file__).resolve().parent / "reference_data").resolve()
+    log("", flush=True)
+    log(
+        "If GitHub is slow or unreachable, obtain the same reference_data.zip from:",
+        flush=True,
+    )
+    log(f"  Ydray:        {REFERENCE_DATA_MIRROR_YDRAY}", flush=True)
+    log(f"  OneDrive:     {REFERENCE_DATA_MIRROR_ONEDRIVE}", flush=True)
+    log(f"  Baidu Netdisk: {REFERENCE_DATA_MIRROR_BAIDU}", flush=True)
+    log("", flush=True)
+
+    log(
+        "Then extract so the reference_data directory exists at this absolute path:",
+        flush=True,
+    )
+    log(f"  {target}", flush=True)
+    log("", flush=True)
+    log("", flush=True)
+
 
 def _reporthook(
     block_num: int,
@@ -56,6 +107,7 @@ def _reporthook(
         if block_num % 200 == 0 or block_num < 3:
             mb = downloaded / (1024 * 1024)
             log(f"  [{name}] Downloaded: {mb:.1f} MB", flush=True)
+            log("", flush=True)
         return
     downloaded = min(downloaded, total_size)
     pct = 100.0 * downloaded / total_size
@@ -67,13 +119,64 @@ def _reporthook(
             f"  [{name}] Progress: {pct:.1f}% ({mb_d:.1f} / {mb_t:.1f} MB)",
             flush=True,
         )
+        log("", flush=True)
+
+
+def _zip_normalized_roots(namelist: list[str]) -> set[str]:
+    """Top-level path components in the archive, ignoring ``__MACOSX`` and dot junk."""
+    roots: set[str] = set()
+    for raw in namelist:
+        n = raw.replace("\\", "/").strip()
+        if not n or n.endswith("/"):
+            continue
+        first = n.split("/")[0]
+        if first == "__MACOSX" or first.startswith("."):
+            continue
+        roots.add(first)
+    return roots
+
+
+def flatten_nested_reference_data_dir(ref_dir: Path, log=print) -> None:
+    """
+    If data ended up as ``reference_data/reference_data/...`` (wrong extract target
+    or odd zip layout), move inner contents up to ``ref_dir``.
+    """
+    inner = ref_dir / "reference_data"
+    if not inner.is_dir():
+        return
+    log("Fixing nested reference_data/reference_data (moving inner files up)…", flush=True)
+    for item in list(inner.iterdir()):
+        dest = ref_dir / item.name
+        if dest.exists():
+            if dest.is_dir() and item.is_dir():
+                for sub in list(item.iterdir()):
+                    shutil.move(str(sub), str(dest / sub.name))
+                try:
+                    item.rmdir()
+                except OSError:
+                    shutil.rmtree(item)
+            else:
+                if dest.is_dir():
+                    shutil.rmtree(dest)
+                else:
+                    dest.unlink()
+                shutil.move(str(item), str(dest))
+        else:
+            shutil.move(str(item), str(dest))
+    try:
+        inner.rmdir()
+    except OSError:
+        pass
 
 
 def download(url: str, dest: Path, name: str = "", log=print) -> None:
     """Stream ``url`` to ``dest`` with progress via ``_reporthook``."""
     name = name or dest.name
     log(f"Downloading: {name}", flush=True)
+    log(f"  URL: {url}", flush=True)
+    log("", flush=True)
     urlretrieve(url, dest.as_posix(), lambda b, bs, ts: _reporthook(b, bs, ts, name, log))
+    log("", flush=True)
 
 
 def download_reference_data_github(
@@ -99,16 +202,19 @@ def download_reference_data_github(
     work_dir.mkdir(parents=True, exist_ok=True)
     zip_path = work_dir / "reference_data.zip"
 
+    release_page = "https://github.com/ZxyGch/WW3Tool/releases/tag/data"
     log(
         "Downloading reference_data split parts from GitHub WW3Tool Release `data`…",
         flush=True,
     )
+    log(f"  Release page: {release_page}", flush=True)
+    log("", flush=True)
 
     for url, pname in zip(REFERENCE_DATA_PART_URLS, REFERENCE_DATA_PART_NAMES):
         dest_part = work_dir / pname
-        log(f"Downloading part: {pname}", flush=True)
         download(url, dest_part, pname, log=log)
 
+    log("", flush=True)
     log("Merging parts into reference_data.zip…", flush=True)
     with zip_path.open("wb") as out_zip:
         for pname in REFERENCE_DATA_PART_NAMES:
@@ -118,19 +224,22 @@ def download_reference_data_github(
             with part_path.open("rb") as inf:
                 shutil.copyfileobj(inf, out_zip)
 
+    log("", flush=True)
     log("Extracting to reference_data…", flush=True)
+    ref_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as zf:
-        file_members = [n for n in zf.namelist() if n.strip() and not n.endswith("/")]
+        names = zf.namelist()
+        file_members = [n for n in names if n.strip() and not n.endswith("/")]
         if not file_members:
             raise OSError("No valid files in reference_data.zip")
-        top_roots = {n.split("/")[0] for n in file_members}
-        if len(top_roots) == 1 and next(iter(top_roots)) == "reference_data":
+        top_roots = _zip_normalized_roots(names)
+        if len(top_roots) == 1 and next(iter(top_roots)).lower() == "reference_data":
             # Layout: reference_data/coastal_bound_....mat → work_dir/reference_data/
             zf.extractall(work_dir)
         else:
             # Flat archive: drop files straight into ref_dir
-            ref_dir.mkdir(parents=True, exist_ok=True)
             zf.extractall(ref_dir)
+        flatten_nested_reference_data_dir(ref_dir, log=log)
 
     # Remove split parts and merged zip to save disk space
     for pname in REFERENCE_DATA_PART_NAMES:
@@ -143,6 +252,7 @@ def download_reference_data_github(
     except OSError:
         pass
 
+    log("", flush=True)
     log("GitHub reference_data download and extraction finished.", flush=True)
     log(f"Path: {ref_dir}", flush=True)
 
@@ -200,16 +310,32 @@ def main() -> None:
         action="store_true",
         help="Use original multi-source download (NOAA GSHHS FTP, CEDA GEBCO, GitHub dengwirda RTopo) instead of GitHub bundle.",
     )
+    parser.add_argument(
+        "--ref-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "Directory to receive reference_data files (default: <WW3-Grid-Generator>/reference_data). "
+            "Split parts and reference_data.zip are written under DIR's parent."
+        ),
+    )
     args = parser.parse_args()
 
-    # Script lives in WW3-Grid-Generator/; reference_data is the standard subfolder
     root = Path(__file__).resolve().parent
-    ref_dir = root / "reference_data"
+    if args.ref_dir is not None:
+        ref_dir = Path(args.ref_dir).expanduser().resolve()
+        work_dir = ref_dir.parent
+    else:
+        ref_dir = root / "reference_data"
+        work_dir = root
+
+    print_reference_data_mirror_help(ref_dir=ref_dir)
 
     if args.legacy:
         main_legacy(root, ref_dir)
     else:
-        download_reference_data_github(root, ref_dir)
+        download_reference_data_github(work_dir, ref_dir)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Unstructured grid generator (`unst_msh_gen`)
+# Unstructured mesh generator 
 
 **Languages:** English ([this page](#english)) · [简体中文](#简体中文)
 
@@ -235,7 +235,7 @@ create_grid.py 会自动读取 grid.json 的配置
 
 **ScalingSettings**
 
-仅由 `**window_mask.py`** 读取，用于按纬度带对掩膜/缩放因子分区。
+仅由 **window_mask.py** 读取，用于按纬度带对掩膜/缩放因子分区。
 
 
 | 变量                  | 说明                                                            |

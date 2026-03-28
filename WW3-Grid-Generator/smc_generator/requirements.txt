@@ -1,2 +1,0 @@
-netCDF4
-pandas

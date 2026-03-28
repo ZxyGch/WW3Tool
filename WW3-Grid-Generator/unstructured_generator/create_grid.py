@@ -1109,14 +1109,14 @@ def _print_unstructured_run_banner() -> None:
     """70-column banner; title visually centered in fixed-width log."""
     sys.stdout.flush()
     print("=" * 70, flush=True)
-    _print_banner_title_line("Unstructured Triangular Grid Generation By JIGSAW")
+    _print_banner_title_line("Unstructured Triangular Mesh Generation By JIGSAW")
     print("=" * 70 + "\n", flush=True)
 
 
 def _print_unstructured_complete_banner() -> None:
     sys.stdout.flush()
     print("=" * 70, flush=True)
-    _print_banner_title_line("Grid Generation Complete!")
+    _print_banner_title_line("Mesh Generation Complete!")
     print("=" * 70, flush=True)
 
 
