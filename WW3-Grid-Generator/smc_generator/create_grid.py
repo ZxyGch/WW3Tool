@@ -273,6 +273,29 @@ def _write_side_mp_input(
     path.write_text(txt, encoding="utf-8")
 
 
+def _is_windows_pe_executable(path: Path) -> bool:
+    """
+    True if *path* looks like a native Windows PE binary (MZ), not Linux ELF.
+    A stray ``SMCGSideMP`` built under WSL is often ELF; Windows then raises WinError 193.
+    """
+    try:
+        with path.open("rb") as f:
+            head = f.read(4)
+    except OSError:
+        return False
+    if head[:4] == b"\x7fELF":
+        return False
+    return head[:2] == b"MZ"
+
+
+def _smcgside_path_usable(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    if sys.platform == "win32":
+        return _is_windows_pe_executable(path)
+    return True
+
+
 def _find_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) -> Path | None:
     candidates: list[Path] = []
     for key in ("smcgside_executable", "SMCGSideMP"):
@@ -286,10 +309,14 @@ def _find_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) -> P
     if envp:
         candidates.append(Path(envp))
     pdir = script_dir / "SMCGTools" / "F90SMC"
-    for name in ("SMCGSideMP", "SMCGSideMP.exe"):
-        candidates.append(pdir / name)
+    # Windows: prefer .exe first; extensionless SMCGSideMP is often a Linux ELF copy.
+    if sys.platform == "win32":
+        for name in ("SMCGSideMP.exe", "SMCGSideMP"):
+            candidates.append(pdir / name)
+    else:
+        candidates.append(pdir / "SMCGSideMP")
     for p in candidates:
-        if p.is_file():
+        if _smcgside_path_usable(p):
             return p
     return None
 
