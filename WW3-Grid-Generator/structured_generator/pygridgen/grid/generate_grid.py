@@ -134,7 +134,12 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
     dy = max(all_heights)
     
     # Determine dimensions and ranges of base bathymetry coords
-    fname_base = os.path.join(ref_dir, f'{bathy_input}.nc')
+    fname_base = os.path.normpath(
+        os.path.join(
+            os.path.abspath(os.path.expanduser(str(ref_dir).strip())),
+            f'{bathy_input}.nc',
+        )
+    )
     
     if not os.path.exists(fname_base):
         raise FileNotFoundError(f'Bathymetry file not found: {fname_base}')

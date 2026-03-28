@@ -98,11 +98,13 @@ def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=N
         except Exception as e:
             print(f"!!ERROR!!: Cannot read namelist: {e}")
             return str(e), -1
-        ref_dir = str(init_nml["ref_dir"])
+        ref_dir = os.path.normpath(
+            os.path.abspath(os.path.expanduser(str(init_nml["ref_dir"]).strip().strip("'\"")))
+        )
         ref_grid = str(bathy_nml["ref_grid"])
         xvar = str(bathy_nml["xvar"])
         grid_name = str(init_nml.get("fname", file_prefix))
-        fname_bathy = os.path.join(ref_dir, f"{ref_grid}.nc")
+        fname_bathy = os.path.normpath(os.path.join(ref_dir, f"{ref_grid}.nc"))
         try:
             with netCDF4.Dataset(fname_bathy, "r") as f:
                 var_lon = f.variables[xvar]

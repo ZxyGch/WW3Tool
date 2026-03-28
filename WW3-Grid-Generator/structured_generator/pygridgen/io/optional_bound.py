@@ -41,7 +41,12 @@ def optional_bound(ref_dir, fname):
         Total number of polygons found
     """
     # Load the optional coastal polygons MAT file
-    mat_file = os.path.join(ref_dir, 'optional_coastal_polygons.mat')
+    mat_file = os.path.normpath(
+        os.path.join(
+            os.path.abspath(os.path.expanduser(str(ref_dir).strip())),
+            'optional_coastal_polygons.mat',
+        )
+    )
     mat_data = scipy.io.loadmat(mat_file)
     user_bound = mat_data['user_bound']
     

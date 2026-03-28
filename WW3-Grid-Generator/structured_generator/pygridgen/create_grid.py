@@ -378,7 +378,9 @@ def create_grid(**kwargs):
     params.update(kwargs)
     
     # Normalize key paths to avoid Windows backslash/escape issues
-    params['ref_dir'] = os.path.abspath(params['ref_dir']).replace("\\", "/")
+    # Native separators (normpath); do not force "/" — on Windows join(ref_dir, "*.nc") would
+    # otherwise become mixed slashes and netCDF4 fails with "Unknown file format".
+    params['ref_dir'] = os.path.normpath(os.path.abspath(os.path.expanduser(params['ref_dir'])))
     params['out_dir'] = os.path.abspath(params['out_dir']).replace("\\", "/")
     
     # Set default values for computed parameters
@@ -437,7 +439,9 @@ def create_grid(**kwargs):
     # 2. Read boundary data
     if params['read_boundary']:
         print('Step 2: Reading GSHHS boundary data...', flush=True)
-        boundary_file = os.path.join(params['ref_dir'], f"coastal_bound_{params['boundary']}.mat")
+        boundary_file = os.path.normpath(
+            os.path.join(params['ref_dir'], f"coastal_bound_{params['boundary']}.mat")
+        )
         
         if os.path.exists(boundary_file):
             mat_data = scipy.io.loadmat(boundary_file)
@@ -496,7 +500,9 @@ def create_grid(**kwargs):
             # Load optional polygons if requested
             Nu = 0
             if params['opt_poly'] == 1:
-                fname_poly = os.path.join(params['ref_dir'], params['fname_poly'])
+                fname_poly = os.path.normpath(
+                    os.path.join(params['ref_dir'], params['fname_poly'])
+                )
                 if os.path.exists(fname_poly):
                     # optional_bound expects ref_dir and the full path to the flag file
                     bound_user, Nu = optional_bound(params['ref_dir'], fname_poly)
