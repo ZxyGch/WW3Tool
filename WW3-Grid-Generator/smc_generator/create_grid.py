@@ -341,7 +341,7 @@ def _gfortran_missing_instructions(f90_dir: Path) -> str:
     ]
     if sys.platform == "win32":
         lines.append(
-            "========================================================\n"
+            "=============================== What you need to do? ===============================\n"
             "Windows: install gfortran for SMCGSideMP auto-build\n"
             "\n"
             "1. Download and install MSYS2 from the official website (search: MSYS2).\n"
@@ -356,7 +356,7 @@ def _gfortran_missing_instructions(f90_dir: Path) -> str:
             "       )\n"
             "   If MSYS2 is not under C:\\msys64, change the path accordingly.\n"
             "5. Close and reopen PowerShell / WW3Tool, then run SMC grid generation again.\n"
-            "========================================================"
+            "================================================================================"
         )
         lines.append("")
     else:
@@ -521,7 +521,7 @@ def _generate_iside_jside_pair(
             pass
     print(
         f"Running SMCGSideMP ({exe.name}) stem={smc_stem} inp={SMCGSIDE_INP_BASENAME} "
-        f"→ {final_iside.name} / {final_jside.name}",
+        f"-> {final_iside.name} / {final_jside.name}",
         flush=True,
     )
     _run_smcgside_mp(exe, SMCGSIDE_INP_BASENAME, out_dir, output_cfg)
@@ -682,8 +682,8 @@ def _crop_bathy_for_regional_smc(
 
     if xstart < xlon[0] or xend > xlon[-1] or ystart < ylat[0] or yend > ylat[-1]:
         raise SystemExit(
-            f"Regional range [{xstart:g},{ystart:g}]–[{xend:g},{yend:g}] is outside bathy "
-            f"[{xlon[0]:g},{ylat[0]:g}]–[{xlon[-1]:g},{ylat[-1]:g}]."
+            f"Regional range [{xstart:g},{ystart:g}]-[{xend:g},{yend:g}] is outside bathy "
+            f"[{xlon[0]:g},{ylat[0]:g}]-[{xlon[-1]:g},{ylat[-1]:g}]."
         )
 
     n_levels = int(mlvlxy0[0])
@@ -746,7 +746,7 @@ def _crop_bathy_for_regional_smc(
     lat_c = lat[j_lo:j_hi].copy()
     bathy_c = bathy_elev[j_lo:j_hi, i_lo:i_hi].copy()
     print(
-        f"Regional SMC: bathy crop lon [{i_lo}:{i_hi}] lat [{j_lo}:{j_hi}] → "
+        f"Regional SMC: bathy crop lon [{i_lo}:{i_hi}] lat [{j_lo}:{j_hi}] -> "
         f"{lon_c.size}x{lat_c.size} (full {nlon}x{nlat}).",
         flush=True,
     )
@@ -908,7 +908,7 @@ def main() -> None:
     if str(pysmcs_dir) not in sys.path:
         sys.path.insert(0, str(pysmcs_dir))
 
-    print("Importing PySMCs (smcellgen / smcellbdy)…", flush=True)
+    print("Importing PySMCs (smcellgen / smcellbdy)...", flush=True)
     from smcellbdy import smcellbdy
     from smcellgen import smcellgen
     print("PySMCs import done.", flush=True)
@@ -924,7 +924,7 @@ def main() -> None:
         raise SystemExit(f"Bathymetry file not found: {bathy_path}")
 
     print(
-        "Reading bathymetry NetCDF into memory (large global files may take several minutes)…",
+        "Reading bathymetry NetCDF into memory (large global files may take several minutes)...",
         flush=True,
     )
     print(f"  File: {bathy_path}", flush=True)
@@ -1116,7 +1116,7 @@ def main() -> None:
     wlevel = float(physics_cfg.get("wlevel", 0.0))
     dshalw = float(physics_cfg.get("dshalw", 0.0))
 
-    print(f"Generating cells (temp {cells_tmp.name}) → {final_cell.name}")
+    print(f"Generating cells (temp {cells_tmp.name}) -> {final_cell.name}")
     smcellgen(
         bathy_elev,
         ndzlonlat,
@@ -1136,7 +1136,7 @@ def main() -> None:
     msea = int(boundary_cfg.get("msea", 1))
     bdy_written = False
     if run_smcellbdy:
-        print(f"Generating boundaries (temp {bdys_tmp.name}) → {final_boundary.name}")
+        print(f"Generating boundaries (temp {bdys_tmp.name}) -> {final_boundary.name}")
         smcellbdy(
             bathy_elev,
             ndzlonlat,
