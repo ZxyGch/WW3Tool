@@ -57,6 +57,11 @@ from .structured_grid_paths import (
 
 REGION_MAP_WORKER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "region_map_worker.py")
 
+# Subprocess PIPE text mode defaults to locale encoding (e.g. GBK on Chinese Windows).
+# Grid tools and Python print() often emit UTF-8 → decode errors in reader threads without this.
+_SUBPROCESS_IO_ENCODING = "utf-8"
+_SUBPROCESS_IO_ERRORS = "replace"
+
 
 def _structured_grid_mask_path(folder: str):
     """Prefer ``grid.mask_nobound``; if missing, use ``grid.mask`` if present."""
@@ -1389,6 +1394,8 @@ class StepTwoServiceMixin:
                 [sys.executable, "-c", "import netCDF4, pandas"],
                 capture_output=True,
                 text=True,
+                encoding=_SUBPROCESS_IO_ENCODING,
+                errors=_SUBPROCESS_IO_ERRORS,
                 timeout=60,
             )
         except Exception as e:
@@ -1726,6 +1733,8 @@ class StepTwoServiceMixin:
                 [sys.executable, "-c", "import skimage.filters, skimage.measure"],
                 capture_output=True,
                 text=True,
+                encoding=_SUBPROCESS_IO_ENCODING,
+                errors=_SUBPROCESS_IO_ERRORS,
                 timeout=60,
             )
         except Exception as e:
@@ -1918,6 +1927,8 @@ class StepTwoServiceMixin:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding=_SUBPROCESS_IO_ENCODING,
+            errors=_SUBPROCESS_IO_ERRORS,
             bufsize=1,
             env=env,
         )
@@ -2186,6 +2197,8 @@ class StepTwoServiceMixin:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding=_SUBPROCESS_IO_ENCODING,
+                    errors=_SUBPROCESS_IO_ERRORS,
                     bufsize=1,
                     env=env,
                     close_fds=True,
@@ -3460,6 +3473,8 @@ create_grid(
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
+                        encoding=_SUBPROCESS_IO_ENCODING,
+                        errors=_SUBPROCESS_IO_ERRORS,
                         bufsize=1,
                         env=env
                     )
@@ -3661,7 +3676,9 @@ create_grid(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    universal_newlines=True,
+                    text=True,
+                    encoding=_SUBPROCESS_IO_ENCODING,
+                    errors=_SUBPROCESS_IO_ERRORS,
                     bufsize=1,
                     env=env
                 )
@@ -3764,6 +3781,8 @@ create_grid(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding=_SUBPROCESS_IO_ENCODING,
+            errors=_SUBPROCESS_IO_ERRORS,
             bufsize=1,
             env=env,
         )
