@@ -327,6 +327,38 @@ def _default_smcgside_build_target(f90_dir: Path) -> Path:
     return f90_dir / "SMCGSideMP"
 
 
+def _smcgside_manual_compile_lines(f90_dir: Path) -> str:
+    """Shell snippet to build SMCGSideMP; Windows needs .exe output name."""
+    out = "SMCGSideMP.exe" if sys.platform == "win32" else "SMCGSideMP"
+    return f"  cd {f90_dir}\n  gfortran -O2 -fopenmp SMCGSideMP.f90 -o {out}"
+
+
+def _gfortran_missing_instructions(f90_dir: Path) -> str:
+    lines = [
+        "SMCGSideMP not found; auto-build requires gfortran on PATH",
+        "(or set output.gfortran / FC in grid.json \"output\", or environment variable FC).",
+        "",
+    ]
+    if sys.platform == "win32":
+        lines.extend(
+            [
+                "Windows:",
+                "  • MSYS2 / MinGW-w64: https://www.msys2.org/  then in UCRT64 shell:",
+                "      pacman -S mingw-w64-ucrt-x86_64-gcc",
+                "    Add ...\\ucrt64\\bin to PATH (or run WW3Tool from that shell).",
+                "  • Or: winget install -e MSYS2.MSYS2  (then install gcc as above).",
+                "",
+            ]
+        )
+    else:
+        lines.append("macOS (Homebrew): brew install gcc")
+        lines.append("Linux: sudo apt install gfortran   # or your distro’s gcc-fortran")
+        lines.append("")
+    lines.append("Or build manually:")
+    lines.append(_smcgside_manual_compile_lines(f90_dir))
+    return "\n".join(lines)
+
+
 def _find_gfortran(output_cfg: dict[str, Any]) -> str | None:
     """Resolve gfortran: output.gfortran, env FC, then PATH."""
     override = output_cfg.get("gfortran")
@@ -365,14 +397,7 @@ def _build_smcgside_mp(script_dir: Path, output_cfg: dict[str, Any]) -> Path:
         )
     gfortran = _find_gfortran(output_cfg)
     if gfortran is None:
-        raise SystemExit(
-            "SMCGSideMP not found; auto-build requires gfortran in PATH "
-            "(or set output.gfortran / FC to the compiler).\n"
-            "Example: brew install gcc   # macOS\n"
-            "Or build manually:\n"
-            f"  cd {f90_dir}\n"
-            "  gfortran -O2 -fopenmp SMCGSideMP.f90 -o SMCGSideMP"
-        )
+        raise SystemExit(_gfortran_missing_instructions(f90_dir))
     out_exe = _default_smcgside_build_target(f90_dir)
     cmd = [gfortran, "-O2", "-fopenmp", str(src), "-o", str(out_exe)]
     print(f"Auto-building SMCGSideMP:\n  cd {f90_dir}\n  {' '.join(cmd)}", flush=True)
@@ -394,12 +419,12 @@ def _ensure_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) ->
     if found is not None:
         return found
     if not bool(output_cfg.get("smcgside_auto_build", True)):
+        f90 = (script_dir / "SMCGTools" / "F90SMC").resolve()
         raise SystemExit(
             "SMCGSideMP executable not found and output.smcgside_auto_build is false.\n"
-            "Build with:\n  cd "
-            + str((script_dir / "SMCGTools" / "F90SMC").resolve())
-            + "\n  gfortran -O2 -fopenmp SMCGSideMP.f90 -o SMCGSideMP\n"
-            "Or set SMCGSIDE_MP / output.smcgside_executable."
+            "Build with:\n"
+            + _smcgside_manual_compile_lines(f90)
+            + "\nOr set SMCGSIDE_MP / output.smcgside_executable."
         )
     return _build_smcgside_mp(script_dir, output_cfg)
 
@@ -713,7 +738,7 @@ def _crop_bathy_for_regional_smc(
     bathy_c = bathy_elev[j_lo:j_hi, i_lo:i_hi].copy()
     print(
         f"Regional SMC: bathy crop lon [{i_lo}:{i_hi}] lat [{j_lo}:{j_hi}] → "
-        f"{lon_c.size}×{lat_c.size} (full {nlon}×{nlat}).",
+        f"{lon_c.size}x{lat_c.size} (full {nlon}x{nlat}).",
         flush=True,
     )
     return lon_c, lat_c, bathy_c
@@ -1150,7 +1175,7 @@ def main() -> None:
         side_nlat = int(ww3_rect["ny"])
         print(
             "Regional SMC: rebased MCELS/BUNDY to active RECT "
-            f"shift=({shift_i},{shift_j}) size={side_nlon}×{side_nlat} "
+            f"shift=({shift_i},{shift_j}) size={side_nlon}x{side_nlat} "
             f"lon/lat start=({float(ww3_rect['x0']):.4f},{float(ww3_rect['y0']):.4f}).",
             flush=True,
         )
