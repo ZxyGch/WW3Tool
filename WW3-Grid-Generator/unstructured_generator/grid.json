@@ -26,7 +26,7 @@
     "hmax": 100.0,
     "hshr": 20.0,
     "nwav": 400,
-    "hmin": 100.0,
+    "hmin": 20.0,
     "dhdx": 0.05,
     "deep_ocean_threshold_m": 4000.0
   },

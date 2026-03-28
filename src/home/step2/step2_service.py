@@ -1215,6 +1215,28 @@ class StepTwoServiceMixin:
         ref_dir = os.path.normpath(os.path.abspath(ref_dir))
         return ref_dir
 
+    def _resolve_path_via_reference_data_setting(self, anchor_dir: str, rel_path: str):
+        """
+        解析相对 anchor_dir 的路径；若文件不存在且相对路径指向仓库默认的 reference_data
+        （如 ../reference_data/*.nc），再尝试 REFERENCE_DATA_PATH 下的同名文件。
+        """
+        rel_path = str(rel_path or "").strip()
+        if not rel_path:
+            return None
+        if os.path.isabs(rel_path):
+            p = os.path.normpath(rel_path)
+            return p if os.path.isfile(p) else None
+        primary = os.path.normpath(os.path.join(os.path.abspath(anchor_dir), rel_path))
+        if os.path.isfile(primary):
+            return primary
+        if "reference_data" in rel_path.replace("\\", "/").split("/"):
+            alt = os.path.normpath(
+                os.path.join(self._get_reference_data_path(), os.path.basename(rel_path))
+            )
+            if os.path.isfile(alt):
+                return alt
+        return None
+
     def _get_unstructured_generator_dir(self):
         """WW3-Grid-Generator/unstructured_generator（create_grid.py / unst_msh_gen / jigsaw-python）。"""
         return os.path.normpath(os.path.join(self._get_gridgen_path(), "unstructured_generator"))
@@ -1362,8 +1384,12 @@ class StepTwoServiceMixin:
                 inp = raw.get("input") or {}
                 rel = str(inp.get("bathymetry_file") or "").strip()
                 if rel:
-                    p = rel if os.path.isabs(rel) else os.path.normpath(os.path.join(smc_dir, rel))
-                    if os.path.isfile(p):
+                    p = (
+                        rel
+                        if os.path.isabs(rel)
+                        else self._resolve_path_via_reference_data_setting(smc_dir, rel)
+                    )
+                    if p and os.path.isfile(p):
                         return p
             except Exception:
                 pass
@@ -1688,8 +1714,8 @@ class StepTwoServiceMixin:
                 return None
             if os.path.isabs(dem_rel):
                 return dem_rel if os.path.isfile(dem_rel) else None
-            abs_dem = os.path.normpath(os.path.join(ug_dir, dem_rel))
-            return abs_dem if os.path.isfile(abs_dem) else None
+            abs_dem = self._resolve_path_via_reference_data_setting(ug_dir, dem_rel)
+            return abs_dem if abs_dem else None
         except Exception:
             return None
 

@@ -420,6 +420,28 @@ class SettingsMixin(SettingsServiceMixin):
             matlab_card_layout.setSpacing(5)
             matlab_card_layout.setContentsMargins(0, 0, 0, 0)
 
+            reference_data_label = QLabel(tr("reference_data_path", "Reference Data 路径:"))
+            self.reference_data_label = reference_data_label  # 保存引用以便后续更新
+            matlab_card_layout.addWidget(reference_data_label)
+            reference_data_row = QHBoxLayout()
+            self.settings_reference_data_edit = LineEdit()
+            self.settings_reference_data_edit.setPlaceholderText(
+                f"{tr('default_path', '默认路径')}：WW3Tool/WW3-Grid-Generator/reference_data"
+            )
+            reference_data_path = current_config.get("REFERENCE_DATA_PATH", "").strip()
+            if not reference_data_path:
+                reference_data_path = ""
+            else:
+                reference_data_path = os.path.normpath(reference_data_path)
+            self.settings_reference_data_edit.setText(reference_data_path)
+            self.settings_reference_data_edit.setStyleSheet(input_style)
+            reference_data_row.addWidget(self.settings_reference_data_edit, 1)
+            btn_choose_reference_data = PrimaryPushButton(tr("select", "选择"))
+            btn_choose_reference_data.setStyleSheet(button_style)
+            btn_choose_reference_data.clicked.connect(lambda: self._choose_reference_data_path())
+            reference_data_row.addWidget(btn_choose_reference_data)
+            matlab_card_layout.addLayout(reference_data_row)
+
             workdir_label = QLabel(tr("workdir_path", "默认工作目录:"))
             self.workdir_label = workdir_label  # 保存引用以便后续更新
             matlab_card_layout.addWidget(workdir_label)
@@ -546,7 +568,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_card_layout.setSpacing(5)
             grid_card_layout.setContentsMargins(0, 0, 0, 0)
 
-            # 路径设置（MATLAB、Reference Data）- 放在最上面
+            # MATLAB 路径（Reference Data 已放在「路径设置」卡片首行）
             matlab_label = QLabel(tr("matlab_path", "MATLAB 路径:"))
             self.matlab_label = matlab_label  # 保存引用以便后续更新
             grid_card_layout.addWidget(matlab_label)
@@ -564,26 +586,6 @@ class SettingsMixin(SettingsServiceMixin):
             btn_choose_matlab.clicked.connect(lambda: self._choose_matlab_path())
             matlab_row.addWidget(btn_choose_matlab)
             grid_card_layout.addLayout(matlab_row)
-
-            reference_data_label = QLabel(tr("reference_data_path", "Reference Data 路径:"))
-            self.reference_data_label = reference_data_label  # 保存引用以便后续更新
-            grid_card_layout.addWidget(reference_data_label)
-            reference_data_row = QHBoxLayout()
-            self.settings_reference_data_edit = LineEdit()
-            self.settings_reference_data_edit.setPlaceholderText(f"{tr('default_path', '默认路径')}：WW3Tool/WW3-Grid-Generator/reference_data")
-            reference_data_path = current_config.get("REFERENCE_DATA_PATH", "").strip()
-            if not reference_data_path:
-                reference_data_path = ""
-            else:
-                reference_data_path = os.path.normpath(reference_data_path)
-            self.settings_reference_data_edit.setText(reference_data_path)
-            self.settings_reference_data_edit.setStyleSheet(input_style)
-            reference_data_row.addWidget(self.settings_reference_data_edit, 1)
-            btn_choose_reference_data = PrimaryPushButton(tr("select", "选择"))
-            btn_choose_reference_data.setStyleSheet(button_style)
-            btn_choose_reference_data.clicked.connect(lambda: self._choose_reference_data_path())
-            reference_data_row.addWidget(btn_choose_reference_data)
-            grid_card_layout.addLayout(reference_data_row)
 
             # 使用网格布局确保输入框左右对齐
             grid_params_layout = QGridLayout()
