@@ -340,19 +340,28 @@ def _gfortran_missing_instructions(f90_dir: Path) -> str:
         "",
     ]
     if sys.platform == "win32":
-        lines.extend(
-            [
-                "Windows:",
-                "  • MSYS2 / MinGW-w64: https://www.msys2.org/  then in UCRT64 shell:",
-                "      pacman -S mingw-w64-ucrt-x86_64-gcc",
-                "    Add ...\\ucrt64\\bin to PATH (or run WW3Tool from that shell).",
-                "  • Or: winget install -e MSYS2.MSYS2  (then install gcc as above).",
-                "",
-            ]
+        lines.append(
+            "========================================================\n"
+            "Windows: install gfortran for SMCGSideMP auto-build\n"
+            "\n"
+            "1. Download and install MSYS2 from the official website (search: MSYS2).\n"
+            "2. Open the \"MSYS2 MinGW64\" terminal.\n"
+            "3. Run:\n"
+            "       pacman -S mingw-w64-x86_64-gcc-fortran\n"
+            "4. In PowerShell, append MinGW64 to your user Path, then restart this application:\n"
+            "       [Environment]::SetEnvironmentVariable(\n"
+            "         \"Path\",\n"
+            "         $env:Path + \";C:\\msys64\\mingw64\\bin\",\n"
+            "         \"User\"\n"
+            "       )\n"
+            "   If MSYS2 is not under C:\\msys64, change the path accordingly.\n"
+            "5. Close and reopen PowerShell / WW3Tool, then run SMC grid generation again.\n"
+            "========================================================"
         )
+        lines.append("")
     else:
         lines.append("macOS (Homebrew): brew install gcc")
-        lines.append("Linux: sudo apt install gfortran   # or your distro’s gcc-fortran")
+        lines.append("Linux: sudo apt install gfortran   # or your distro's gcc-fortran")
         lines.append("")
     lines.append("Or build manually:")
     lines.append(_smcgside_manual_compile_lines(f90_dir))
