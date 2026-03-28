@@ -64,6 +64,18 @@ REFERENCE_DATA_MIRROR_BAIDU = (
     "https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48"
 )
 
+_REFERENCE_DATA_DONE_BANNER = "=" * 70
+
+
+def log_reference_data_download_complete(log=print) -> None:
+    """Final banner after a successful run (GitHub bundle or ``--legacy``)."""
+    w = len(_REFERENCE_DATA_DONE_BANNER)
+    done_line = "reference_data download complete.".center(w)
+    log("", flush=True)
+    log(_REFERENCE_DATA_DONE_BANNER, flush=True)
+    log(done_line, flush=True)
+    log(_REFERENCE_DATA_DONE_BANNER, flush=True)
+
 
 def print_reference_data_mirror_help(
     log=print,
@@ -80,7 +92,9 @@ def print_reference_data_mirror_help(
         flush=True,
     )
     log(f"  Ydray:        {REFERENCE_DATA_MIRROR_YDRAY}", flush=True)
+    log("", flush=True)
     log(f"  OneDrive:     {REFERENCE_DATA_MIRROR_ONEDRIVE}", flush=True)
+    log("", flush=True)
     log(f"  Baidu Netdisk: {REFERENCE_DATA_MIRROR_BAIDU}", flush=True)
     log("", flush=True)
 
@@ -100,26 +114,29 @@ def _reporthook(
     name: str = "",
     log=print,
 ) -> None:
-    """Progress callback for urlretrieve; prints MB or percent every ~5% when size is known."""
+    """Progress callback for urlretrieve; prints ~every 5% when Content-Length is known (plus start & 100%)."""
     downloaded = block_num * block_size
     if total_size <= 0:
         # Server did not send Content-Length: print sparse MB updates only
         if block_num % 200 == 0 or block_num < 3:
             mb = downloaded / (1024 * 1024)
             log(f"  [{name}] Downloaded: {mb:.1f} MB", flush=True)
-            log("", flush=True)
         return
     downloaded = min(downloaded, total_size)
     pct = 100.0 * downloaded / total_size
     mb_d = downloaded / (1024 * 1024)
     mb_t = total_size / (1024 * 1024)
     prev_pct = (block_num - 1) * block_size * 100.0 / total_size if block_num else 0
-    if block_num == 0 or pct >= 99.5 or int(pct // 5) > int(prev_pct // 5):
+    # Do not use ``pct >= 99.5``: urlretrieve calls this for every block, so that would spam identical lines.
+    if (
+        block_num == 0
+        or downloaded >= total_size
+        or int(pct // 5) > int(prev_pct // 5)
+    ):
         log(
             f"  [{name}] Progress: {pct:.1f}% ({mb_d:.1f} / {mb_t:.1f} MB)",
             flush=True,
         )
-        log("", flush=True)
 
 
 def _zip_normalized_roots(namelist: list[str]) -> set[str]:
@@ -336,6 +353,8 @@ def main() -> None:
         main_legacy(root, ref_dir)
     else:
         download_reference_data_github(work_dir, ref_dir)
+
+    log_reference_data_download_complete()
 
 
 if __name__ == "__main__":

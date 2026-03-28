@@ -38,7 +38,7 @@ from PyQt6 import QtWidgets
 QSplitter = QtWidgets.QSplitter
 from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget
-from PyQt6.QtGui import QColor, QIcon
+from PyQt6.QtGui import QColor, QIcon, QTextCursor
 from qfluentwidgets import MessageBoxBase
 from PyQt6.QtWidgets import QTableWidgetItem, QHeaderView, QScrollArea
 from PyQt6.QtGui import QPixmap
@@ -68,7 +68,15 @@ class Log:
     def log(self, msg):
         """写入日志到 TextEdit 控件，并自动滚动到底部（优化版本，减少UI操作）"""
         if hasattr(self, 'log_text') and self.log_text:
-            self.log_text.appendPlainText(str(msg))
+            t = str(msg)
+            # appendPlainText("") 不会产生可见空行；子进程 print("", flush=True) 需 insertBlock
+            if t == "":
+                cur = self.log_text.textCursor()
+                cur.movePosition(QTextCursor.MoveOperation.End)
+                cur.insertBlock()
+                self.log_text.setTextCursor(cur)
+            else:
+                self.log_text.appendPlainText(t)
             # 不在此处调用 processEvents / 强制 viewport 刷新：日志爆发时易与 Fluent 滚动条
             # 的 value 同步重入，触发 RecursionError（不改变日志控件与滚动条实现）。
         else:

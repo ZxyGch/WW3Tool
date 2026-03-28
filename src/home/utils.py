@@ -35,7 +35,6 @@ class HomeState:
     @classmethod
     def set_grid_type(cls, grid_type):
         """设置当前网格类型"""
-        print("设置 grid_type：",grid_type)
         cls._grid_type = grid_type
     
     @classmethod
@@ -44,7 +43,7 @@ class HomeState:
         # 如果未设置，默认返回 False（普通网格）
         grid_type = cls.get_grid_type(tr("step2_grid_type_normal", "普通网格"))
         nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        print("nested_text: ",nested_text,"grid_type: ",grid_type)
+        
 
         return grid_type == nested_text
     

@@ -2194,8 +2194,8 @@ class StepTwoServiceMixin:
                     for line in iter(proc.stdout.readline, ""):
                         if not line:
                             break
-                        s = line.rstrip()
-                        if s and log_signal:
+                        s = line.rstrip("\r\n")
+                        if log_signal:
                             log_signal.emit(s)
                 proc.wait()
                 code = proc.returncode if proc.returncode is not None else -1
