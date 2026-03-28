@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Regional stereographic mesh (merged from former regional_mesh.py).
@@ -1113,10 +1114,23 @@ def _print_unstructured_run_banner() -> None:
     print("=" * 70 + "\n", flush=True)
 
 
-def _print_unstructured_complete_banner() -> None:
+def _print_grid_generation_summary(
+    output_dir: Path,
+    output_entries: list[tuple[str, str]],
+    elapsed_seconds: float,
+) -> None:
+    """Match structured_generator/pygridgen/create_grid.py completion block."""
     sys.stdout.flush()
     print("=" * 70, flush=True)
-    _print_banner_title_line("Mesh Generation Complete!")
+    title2 = "Grid Generation Complete!"
+    pad = max((70 - len(title2)) // 2, 0)
+    print(" " * pad + title2, flush=True)
+    print("=" * 70, flush=True)
+    print(f"Output directory: {output_dir.resolve()}", flush=True)
+    print("Output files:", flush=True)
+    for label, desc in output_entries:
+        print(f"  - {label} ({desc})", flush=True)
+    print(f"Total time: {elapsed_seconds:.2f} seconds", flush=True)
     print("=" * 70, flush=True)
 
 
@@ -1157,6 +1171,8 @@ def main() -> None:
                 extras.append(f"publish ww3 → {dest.resolve() / Path(bn).name}")
         print(f"Wrote {out_ini}; " + "; ".join(extras), file=sys.stderr)
         return
+
+    start_time = time.time()
 
     dem = cfg.get("DataFiles", "dem_file", fallback="").strip()
     if dem and not Path(dem).is_file():
@@ -1225,6 +1241,7 @@ def main() -> None:
             check=True,
         )
 
+    published_dest: Path | None = None
     if cfg.has_section("Output"):
         pub = cfg.get("Output", "ww3_publish_dir", fallback="").strip()
         if pub:
@@ -1240,9 +1257,25 @@ def main() -> None:
                 sys.exit(f"WW3 mesh not found for publish step: {src}")
             dest = dest_dir / name
             shutil.copy2(src, dest)
+            published_dest = dest
             print(f"Published WW3 mesh: {dest}", file=sys.stderr)
 
-    _print_unstructured_complete_banner()
+    entries: list[tuple[str, str]] = []
+    ww3_raw = cfg.get("MeshSettings", "ww3_mesh_file", fallback="grid.ww3").strip() or "grid.ww3"
+    mesh_p = Path(ww3_raw).resolve()
+    if mesh_p.is_file():
+        entries.append((mesh_p.name, "WW3 unstructured mesh"))
+    if cfg.has_option("MeshSettings", "mesh_file"):
+        gmsh_raw = cfg.get("MeshSettings", "mesh_file", fallback="").strip()
+        if gmsh_raw:
+            gmsh_p = Path(gmsh_raw).resolve()
+            if gmsh_p.is_file() and gmsh_p != mesh_p:
+                entries.append((gmsh_p.name, "Gmsh mesh"))
+    if published_dest is not None and published_dest.is_file():
+        entries.append((published_dest.name, "published WW3 mesh copy"))
+
+    elapsed_time = time.time() - start_time
+    _print_grid_generation_summary(run_dir, entries, elapsed_time)
 
 
 if __name__ == "__main__":

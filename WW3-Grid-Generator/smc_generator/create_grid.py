@@ -30,8 +30,10 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -275,17 +277,54 @@ def _write_side_mp_input(
 
 def _is_windows_pe_executable(path: Path) -> bool:
     """
-    True if *path* looks like a native Windows PE binary (MZ), not Linux ELF.
-    A stray ``SMCGSideMP`` built under WSL is often ELF; Windows then raises WinError 193.
+    True if *path* looks like a Windows PE binary (MZ header).
+
+    Windows needs PE; Linux/macOS will get ``Exec format error`` / ENOEXEC if they try to run it.
+    Conversely, ELF under Windows gives WinError 193.
     """
     try:
         with path.open("rb") as f:
             head = f.read(4)
     except OSError:
         return False
+    if len(head) < 2:
+        return False
     if head[:4] == b"\x7fELF":
         return False
     return head[:2] == b"MZ"
+
+
+def _is_elf_binary(path: Path) -> bool:
+    """True if *path* starts with ELF magic (Linux, *BSD, etc.)."""
+    try:
+        with path.open("rb") as f:
+            head = f.read(4)
+    except OSError:
+        return False
+    return head == b"\x7fELF"
+
+
+def _is_mach_o_binary(path: Path) -> bool:
+    """True if *path* looks like Mach-O or a universal (fat) binary (macOS)."""
+    try:
+        with path.open("rb") as f:
+            m = f.read(4)
+    except OSError:
+        return False
+    if len(m) < 4:
+        return False
+    le = struct.unpack("<I", m)[0]
+    be = struct.unpack(">I", m)[0]
+    # MH_MAGIC*, MH_CIGAM*, FAT_MAGIC (see mach-o/loader.h, mach-o/fat.h).
+    magics = (
+        0xFEEDFACE,
+        0xFEEDFACF,
+        0xCEFAEDFE,
+        0xCFFAEDFE,
+        0xCAFEBABE,
+        0xBEBAFECA,
+    )
+    return le in magics or be in magics
 
 
 def _smcgside_path_usable(path: Path) -> bool:
@@ -293,7 +332,12 @@ def _smcgside_path_usable(path: Path) -> bool:
         return False
     if sys.platform == "win32":
         return _is_windows_pe_executable(path)
-    return True
+    # Reject Windows PE on Unix (Errno 8 Exec format error).
+    if _is_windows_pe_executable(path):
+        return False
+    if sys.platform == "darwin":
+        return _is_mach_o_binary(path)
+    return _is_elf_binary(path)
 
 
 def _find_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) -> Path | None:
@@ -316,8 +360,16 @@ def _find_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) -> P
     else:
         candidates.append(pdir / "SMCGSideMP")
     for p in candidates:
+        if not p.is_file():
+            continue
         if _smcgside_path_usable(p):
             return p
+        if sys.platform != "win32" and _is_windows_pe_executable(p):
+            print(
+                f"Ignoring SMCGSideMP: Windows PE binary cannot run on this OS -> {p}\n"
+                "  (auto-build with gfortran or replace with a native ELF executable.)",
+                flush=True,
+            )
     return None
 
 
@@ -898,6 +950,7 @@ def main() -> None:
     script_dir = Path(__file__).resolve().parent
     config_path = _resolve_path(script_dir, args.config)
     _print_smc_run_banner()
+    start_time = time.time()
     config = _load_json(config_path)
     print(f"Loaded config: {config_path}", flush=True)
 
@@ -1287,13 +1340,31 @@ def main() -> None:
     with run_info_file.open("w", encoding="utf-8") as f:
         json.dump(run_doc, f, indent=2, ensure_ascii=False)
         f.write("\n")
-    print(
-        f"Wrote {run_info_file} (includes ww3_rect for WW3 &RECT_NML / SMCG base grid).",
-        flush=True,
-    )
-    print(f"Final outputs directory: {out_dir.resolve()}", flush=True)
+
+    elapsed_time = time.time() - start_time
+    out_abs = str(out_dir.resolve())
     print("=" * 70, flush=True)
-    print("Mesh Generation Complete!".center(70), flush=True)
+    title2 = "Grid Generation Complete!"
+    pad = max((70 - len(title2)) // 2, 0)
+    print(" " * pad + title2, flush=True)
+    print("=" * 70, flush=True)
+    print(f"Output directory: {out_abs}", flush=True)
+    print("Output files:", flush=True)
+
+    def _summary_file(name: str, desc: str) -> None:
+        if (out_dir / name).is_file():
+            print(f"  - {name} ({desc})", flush=True)
+
+    _summary_file(OUT_CELL_NAME, "SMC cells (MCELS)")
+    _summary_file(OUT_ISIDE_NAME, "ISIDE")
+    _summary_file(OUT_JSIDE_NAME, "JSIDE")
+    _summary_file(OUT_SUBTR_NAME, "SUBTR obstruction (zero)")
+    _summary_file(OUT_BOUNDARY_NAME, "boundary strip (BUNDY)")
+    _summary_file(OUT_ARCTIC_NAME, "Arctic cells (MBARC)")
+    _summary_file(OUT_AISID_NAME, "Arctic ISIDE (AISID)")
+    _summary_file(OUT_AJSID_NAME, "Arctic JSIDE (AJSID)")
+    _summary_file(OUT_RUN_INFO_NAME, "run config + ww3_rect (grid.json)")
+    print(f"Total time: {elapsed_time:.2f} seconds", flush=True)
     print("=" * 70, flush=True)
 
 
