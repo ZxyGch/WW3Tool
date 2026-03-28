@@ -1427,10 +1427,16 @@ class StepTwoServiceMixin:
         except Exception as e:
             return False, tr("step2_smc_dep_check_failed", "检测 SMC 依赖失败：{err}").format(err=e)
         if r.returncode != 0:
-            return False, tr(
+            err_hint = (r.stderr or r.stdout or "").strip()
+            if err_hint:
+                err_hint = err_hint.splitlines()[-1][:240]
+            base = tr(
                 "step2_smc_deps_missing",
                 "当前 Python 需安装 netCDF4、pandas。请在终端执行：{cmd}",
             ).format(cmd=f"{sys.executable} -m pip install netCDF4 pandas")
+            if err_hint:
+                return False, f"{base}\n({err_hint})"
+            return False, base
         bathy = self._get_smc_bathy_path()
         if not bathy:
             return False, tr(

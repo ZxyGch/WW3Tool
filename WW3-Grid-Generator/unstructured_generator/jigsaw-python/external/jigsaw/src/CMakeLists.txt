@@ -42,6 +42,8 @@ endif ()
 
 if (DEFINED MSVC_LIKE)
   add_compile_options (/W3)
+  # JIGSAW headers are UTF-8; without this, Chinese Windows (CP936) triggers C4819.
+  add_compile_options (/utf-8)
   add_compile_options (/openmp:llvm) # needed for openmp > 2.0
   add_compile_options (/fp:precise) # needed for adapt-fp
   cfg_compile_options (/GS- RELEASE) # disable buffer checks
