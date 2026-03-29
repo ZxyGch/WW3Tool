@@ -252,6 +252,39 @@ def _params_from_grid_nml(nml_path):
     return p
 
 
+def _resolve_boundary_mat_file(ref_dir, boundary):
+    """
+    Resolve the coastline ``.mat`` file from ``GRID_BOUND.BOUNDARY``.
+
+    Supported forms:
+    - legacy short names: ``full`` / ``high`` / ``inter`` / ``low`` / ``coarse``
+    - explicit basename stem: ``coastal_bound_osm_0.00003``
+    - explicit file name: ``coastal_bound_osm_0.00003.mat``
+    - relative / absolute path to any ``.mat`` file
+    """
+    raw = str(boundary).strip()
+    if not raw:
+        raw = "full"
+
+    if raw in {"full", "high", "inter", "low", "coarse"}:
+        return os.path.normpath(os.path.join(ref_dir, f"coastal_bound_{raw}.mat"))
+
+    cand = raw
+    if not cand.lower().endswith(".mat"):
+        cand = cand + ".mat"
+    if os.path.isabs(cand):
+        return os.path.normpath(cand)
+
+    rel_file = os.path.normpath(os.path.join(ref_dir, cand))
+    if os.path.exists(rel_file):
+        return rel_file
+
+    stem = raw[:-4] if raw.lower().endswith(".mat") else raw
+    if not stem.startswith("coastal_bound_"):
+        stem = f"coastal_bound_{stem}"
+    return os.path.normpath(os.path.join(ref_dir, f"{stem}.mat"))
+
+
 def create_grid(**kwargs):
     """
     Create a grid for WAVEWATCH III based on a rectilinear grid.
@@ -275,7 +308,9 @@ def create_grid(**kwargs):
     ref_grid : str
         Bathymetry source ('etopo1', 'etopo2', 'gebco') (default: 'gebco')
     boundary : str
-        GSHHS boundary level ('full','high','inter','low','coarse') (default: 'full')
+        Coastline boundary source. Supports legacy GSHHS levels
+        ('full','high','inter','low','coarse') or an explicit ``.mat`` file /
+        stem such as 'coastal_bound_osm_0.00003.mat'. (default: 'full')
     read_boundary : int
         Read boundary data? (default: 1)
     opt_poly : int
@@ -439,9 +474,7 @@ def create_grid(**kwargs):
     # 2. Read boundary data
     if params['read_boundary']:
         print('Step 2: Reading GSHHS boundary data...', flush=True)
-        boundary_file = os.path.normpath(
-            os.path.join(params['ref_dir'], f"coastal_bound_{params['boundary']}.mat")
-        )
+        boundary_file = _resolve_boundary_mat_file(params['ref_dir'], params['boundary'])
         
         if os.path.exists(boundary_file):
             mat_data = scipy.io.loadmat(boundary_file)

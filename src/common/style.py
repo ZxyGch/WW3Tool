@@ -499,6 +499,7 @@ class Style:
                 border-radius: 4px;
                 background-color: {bg_color};
                 padding-left: 2px;
+                line-height: 128%;
             }}
             PlainTextEdit:focus {{
                 border: 0.5px solid {border_color} !important;

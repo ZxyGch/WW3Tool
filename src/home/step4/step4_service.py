@@ -5,6 +5,7 @@ import json
 import re
 import glob
 import shutil
+import numpy as np
 from netCDF4 import Dataset, num2date
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
@@ -340,6 +341,13 @@ class StepFourServiceMixin:
                 
                 if time_units:
                     times = num2date(time_var[:], time_units, calendar=time_calendar)
+                    if hasattr(times, "compressed"):
+                        times = times.compressed()
+                    if isinstance(times, np.ndarray):
+                        times = times.ravel().tolist()
+                    elif not isinstance(times, (list, tuple)):
+                        times = [times]
+                    times = [t for t in times if hasattr(t, "strftime")]
                     if len(times) > 0:
                         time_start = times[0]
                         time_end = times[-1]

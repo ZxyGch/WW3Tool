@@ -43,7 +43,7 @@ from PyQt6.QtCore import QEvent, Qt
 QSplitter = QtWidgets.QSplitter
 from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, ComboBox, TableWidget
-from PyQt6.QtGui import QColor, QIcon
+from PyQt6.QtGui import QColor, QIcon, QKeySequence, QShortcut
 from qfluentwidgets import MessageBoxBase
 from PyQt6.QtWidgets import QTableWidgetItem, QHeaderView, QScrollArea, QSizePolicy
 from PyQt6.QtGui import QPixmap
@@ -64,6 +64,81 @@ from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make
 from setting.language_manager import tr
 from ..utils import create_header_card
 from ..step2.step2_service import StepTwoServiceMixin
+
+
+class _PointSelectMapDialog(MessageBoxBase):
+    """Step 3 point-picking dialog with the same card-style shell as Step 2 map view."""
+
+    def __init__(self, parent, *, content_aspect_wh: float | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("")
+        self._content_aspect_wh = (
+            float(content_aspect_wh) if content_aspect_wh and content_aspect_wh > 0 else 4.0 / 3.0
+        )
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+        self._content_host = QWidget()
+        self._content_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._content_layout = QVBoxLayout(self._content_host)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
+        self.viewLayout.addWidget(self._content_host, 1)
+
+        esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc.activated.connect(self._close_dialog)
+
+        if hasattr(self, "setClosableOnMaskClicked"):
+            self.setClosableOnMaskClicked(False)
+
+    def set_main_widget(self, content_widget: QWidget):
+        while self._content_layout.count():
+            item = self._content_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        content_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._content_layout.addWidget(content_widget, 1)
+
+    def _close_dialog(self):
+        QDialog.done(self, int(QDialog.DialogCode.Rejected))
+
+    def _avail_rect(self):
+        parent = self.parentWidget()
+        ratio_w, ratio_h = 0.88, 0.88
+        if parent is not None and parent.isVisible():
+            pr = parent.frameGeometry()
+            return int(pr.width() * ratio_w), int(pr.height() * ratio_h)
+        screen = QApplication.primaryScreen()
+        ag = screen.availableGeometry() if screen is not None else None
+        if ag is not None:
+            return int(ag.width() * 0.86), int(ag.height() * 0.88)
+        return 1240, 920
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(0, self._fit_to_parent_window)
+
+    def _fit_to_parent_window(self):
+        avail_w, avail_h = self._avail_rect()
+        min_w, min_h = 960, 640
+        max_w, max_h = 1920, 1080
+        a = float(np.clip(self._content_aspect_wh, 0.3, 14.0))
+        if avail_w / max(avail_h, 1) > a:
+            dh = avail_h
+            dw = int(round(dh * a))
+        else:
+            dw = avail_w
+            dh = int(round(dw / a))
+        dw = max(min_w, min(dw, max_w))
+        dh = max(min_h, min(dh, max_h))
+        card = getattr(self, "widget", None)
+        if card is not None:
+            card.setFixedSize(dw, dh)
+            card.updateGeometry()
+        else:
+            self.resize(dw, dh)
+
 
 class StepThreeServiceMixin:
     """第三步相关的业务逻辑 Mixin"""
@@ -1169,7 +1244,7 @@ class StepThreeServiceMixin:
         existing_markers = []
         existing_text_labels = []
         for point in existing_points:
-            marker, = ax.plot(point['lon'], point['lat'], 'go', markersize=8, 
+            marker, = ax.plot(point['lon'], point['lat'], 'go', markersize=6,
                    transform=ccrs.PlateCarree(), label=tr("step3_existing_points_label", "已有点位") if point == existing_points[0] else '')
             existing_markers.append(marker)
             
@@ -1278,7 +1353,7 @@ class StepThreeServiceMixin:
             current_index = len(existing_points) + len(selected_points)
             
             # 在地图上绘制选中的点位（点本身位置不变）
-            marker, = ax.plot(lon, lat, 'ro', markersize=12, 
+            marker, = ax.plot(lon, lat, 'ro', markersize=8,
                             transform=ccrs.PlateCarree(), 
                             label=tr("step3_new_selected_point", "新选点位") if len(selected_points) == 0 else '')
             selected_markers.append(marker)
@@ -1390,16 +1465,15 @@ class StepThreeServiceMixin:
         
         # 设置标题
         ax.set_title(tr("step3_select_on_map_subtitle", "在地图上选点（点击地图选择点位，可多选）"), fontsize=14, fontweight='bold')
+        fig.subplots_adjust(left=0.03, right=0.999, top=0.955, bottom=0.05)
         
-        # 使用QDialog显示地图，确保窗口关闭后才执行后续代码
-        dialog = QDialog(self)
-        dialog.setWindowTitle(tr("step3_select_on_map_title", "在地图上选点"))
-        dialog.resize(1400, 900)
-        
-        # 使用水平布局，地图在左侧，按钮在右侧
-        main_layout = QHBoxLayout(dialog)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        # Use the same card-style shell as Step 2 "View Map", but do not close on mask click.
+        dialog = _PointSelectMapDialog(self, content_aspect_wh=1.85)
+
+        content_widget = QWidget()
+        main_layout = QHBoxLayout(content_widget)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(1)
         
         # 将matplotlib图形嵌入到QDialog中（左侧）
         canvas = FigureCanvas(fig)
@@ -1407,7 +1481,8 @@ class StepThreeServiceMixin:
         
         # 按钮区域（右侧）
         button_layout = QVBoxLayout()
-        button_layout.setSpacing(10)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(6)
         button_layout.addStretch()  # 顶部空白
         
         btn_confirm = PrimaryPushButton(tr("step3_confirm_add_point", "确认并添加点位"))
@@ -1491,12 +1566,13 @@ class StepThreeServiceMixin:
         
         button_layout.addStretch()  # 底部空白
         
-        # 创建按钮容器，设置白色背景
+        # Create button container on the right
         button_widget = QWidget()
         button_widget.setLayout(button_layout)
-        button_widget.setFixedWidth(180)  # 增加宽度以完整显示按钮文字
-        button_widget.setStyleSheet("QWidget { background-color: white; }")
+        button_widget.setFixedWidth(128)
         main_layout.addWidget(button_widget, 0)  # 不拉伸
+
+        dialog.set_main_widget(content_widget)
         
         # 显示对话框（模态），只有在点击确认时才添加点位
         result = dialog.exec()

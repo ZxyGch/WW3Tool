@@ -547,9 +547,7 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         tools_content_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         
         # 添加一个标题
-        tools_title = QLabel(tr("tools", "常用工具"))
-        tools_title.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
-        tools_content_layout.addWidget(tools_title)
+        
 
         clean_card, clean_layout = create_header_card(
             tools_content_widget,

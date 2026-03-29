@@ -77,6 +77,9 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         # 外网格参数输入框网格
         outer_grid = QGridLayout()
         outer_grid.setSpacing(10)
+        # Align input columns with inner grid layout.
+        outer_grid.setColumnStretch(1, 1)
+        outer_grid.setColumnStretch(3, 1)
 
         # DX, DY 输入框
         self.dx_label = QLabel(tr("step2_dx", "DX:"))
@@ -135,7 +138,6 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         combo_style = self._get_combo_style()
         self.grid_type_label = QLabel(tr("step2_grid_type", "类型："))
         self.grid_type_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        outer_grid.addWidget(self.grid_type_label, 3, 0)
         self.grid_type_combo = ComboBox()
         normal_text = tr("step2_grid_type_normal", "普通网格")
         nested_text = tr("step2_grid_type_nested", "嵌套网格")
@@ -167,11 +169,21 @@ class HomeStepTwoCard(StepTwoServiceMixin):
                 pass
 
         QtCore.QTimer.singleShot(10, _set_grid_type_combo_alignment)
-        outer_grid.addWidget(self.grid_type_combo, 3, 1, 1, 3)
+
+        # "类型" 行单独放置，避免跨列下拉框影响外网格参数列宽
+        self.grid_type_row_widget = QWidget()
+        grid_type_row = QGridLayout()
+        grid_type_row.setContentsMargins(0, 0, 0, 0)
+        grid_type_row.setSpacing(10)
+        grid_type_row.setColumnStretch(1, 1)
+        grid_type_row.setColumnStretch(2, 1)
+        grid_type_row.setColumnStretch(3, 1)
+        grid_type_row.addWidget(self.grid_type_label, 0, 0)
+        grid_type_row.addWidget(self.grid_type_combo, 0, 1, 1, 3)
+        self.grid_type_row_widget.setLayout(grid_type_row)
 
         self.mesh_type_label = QLabel(tr("step2_mesh_type_label", "网格："))
         self.mesh_type_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        outer_grid.addWidget(self.mesh_type_label, 4, 0)
         self.mesh_type_combo = ComboBox()
         rectangle_text = tr("step2_mesh_type_rectangle", "矩形网格")
         curvilinear_text = tr("step2_mesh_type_curvilinear", "曲线网格")
@@ -194,7 +206,35 @@ class HomeStepTwoCard(StepTwoServiceMixin):
                 pass
 
         QtCore.QTimer.singleShot(10, _set_mesh_type_combo_alignment)
-        outer_grid.addWidget(self.mesh_type_combo, 4, 1, 1, 3)
+
+        # "网格" 行单独放置（嵌套网格时置于“从 wind.nc 读取范围”按钮上方）
+        self.mesh_type_row_widget = QWidget()
+        mesh_row = QGridLayout()
+        mesh_row.setContentsMargins(0, 0, 0, 0)
+        mesh_row.setSpacing(10)
+        # Match outer_grid column expansion so the combo width aligns with the "类型" row.
+        mesh_row.setColumnStretch(1, 1)
+        mesh_row.setColumnStretch(2, 1)
+        mesh_row.setColumnStretch(3, 1)
+        mesh_row.addWidget(self.mesh_type_label, 0, 0)
+        mesh_row.addWidget(self.mesh_type_combo, 0, 1, 1, 3)
+        self.mesh_type_row_widget.setLayout(mesh_row)
+
+        def _sync_step2_combo_row_label_widths():
+            try:
+                ref_w = max(
+                    self.dx_label.sizeHint().width(),
+                    self.lon_west_label.sizeHint().width(),
+                    self.lat_south_label.sizeHint().width(),
+                )
+                self.grid_type_label.setFixedWidth(ref_w)
+                self.mesh_type_label.setFixedWidth(ref_w)
+                grid_type_row.setColumnMinimumWidth(0, ref_w)
+                mesh_row.setColumnMinimumWidth(0, ref_w)
+            except Exception:
+                pass
+
+        QtCore.QTimer.singleShot(10, _sync_step2_combo_row_label_widths)
 
         # 非结构网格 spacing 参数（与 unstructured_generator/grid.json 中 Spacing 对应；仅在选择非结构网格时显示）
         self.unst_spacing_widget = QWidget()
@@ -270,7 +310,7 @@ class HomeStepTwoCard(StepTwoServiceMixin):
 
         self.unst_spacing_widget.setLayout(unst_grid)
         self.unst_spacing_widget.setVisible(False)
-        outer_grid.addWidget(self.unst_spacing_widget, 5, 0, 1, 4)
+        outer_grid.addWidget(self.unst_spacing_widget, 4, 0, 1, 4)
 
         # SMC 网格参数（create_grid.py 中 grid.n_levels / physics / boundary；输出目录由 Step2 固定为当前工作目录）
         self.smc_params_widget = QWidget()
@@ -303,7 +343,7 @@ class HomeStepTwoCard(StepTwoServiceMixin):
 
         self.smc_params_widget.setLayout(smc_grid)
         self.smc_params_widget.setVisible(False)
-        outer_grid.addWidget(self.smc_params_widget, 6, 0, 1, 4)
+        outer_grid.addWidget(self.smc_params_widget, 5, 0, 1, 4)
 
         outer_grid_layout.addLayout(outer_grid)
         self.outer_grid_widget.setLayout(outer_grid_layout)
@@ -361,6 +401,9 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         # 内网格参数输入框网格
         inner_grid = QGridLayout()
         inner_grid.setSpacing(10)
+        # Match outer grid column widths for alignment.
+        inner_grid.setColumnStretch(1, 1)
+        inner_grid.setColumnStretch(3, 1)
 
         # DX, DY 输入框
         inner_grid.addWidget(QLabel(tr("step2_dx", "DX:")), 0, 0)
@@ -415,6 +458,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.inner_grid_widget.setLayout(inner_grid_layout)
         self.inner_grid_widget.setVisible(False)  # 初始隐藏
         step2_card_layout.addWidget(self.inner_grid_widget)
+        step2_card_layout.addWidget(self.grid_type_row_widget)
+        step2_card_layout.addWidget(self.mesh_type_row_widget)
 
         # 从风场文件读取范围按钮
         btn_load_from_nc = PrimaryPushButton(tr("step2_load_from_nc", "从 wind.nc 读取范围"))
@@ -539,6 +584,12 @@ class HomeStepTwoCard(StepTwoServiceMixin):
             # 显示设置外网格和设置内网格按钮
             self.btn_setup_outer_grid.setVisible(True)
             self.btn_setup_inner_grid.setVisible(True)
+            # 嵌套网格：禁止切换网格类型
+            if hasattr(self, "mesh_type_combo"):
+                self.mesh_type_combo.setEnabled(False)
+                self.mesh_type_combo.setToolTip(
+                    tr("step2_mesh_type_locked_nested", "嵌套网格模式下不可切换网格类型")
+                )
             
             # 应用默认嵌套外网格 DX 和 DY
             from setting.config import load_config
@@ -563,6 +614,10 @@ class HomeStepTwoCard(StepTwoServiceMixin):
             # 隐藏设置外网格和设置内网格按钮
             self.btn_setup_outer_grid.setVisible(False)
             self.btn_setup_inner_grid.setVisible(False)
+            # 普通网格：允许切换网格类型
+            if hasattr(self, "mesh_type_combo"):
+                self.mesh_type_combo.setEnabled(True)
+                self.mesh_type_combo.setToolTip("")
 
     def _update_step2_grid_type_row_visibility(self):
         """非结构网格时隐藏「类型」（普通/嵌套）一行。"""
@@ -572,6 +627,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         stext = tr("step2_mesh_type_smc", "SMC 网格")
         mesh = getattr(self, "mesh_type_var", "")
         show = mesh not in (utext, stext)
+        if hasattr(self, "grid_type_row_widget"):
+            self.grid_type_row_widget.setVisible(show)
         self.grid_type_label.setVisible(show)
         self.grid_type_combo.setVisible(show)
 
@@ -631,11 +688,11 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         # 允许：矩形、SMC、非结构网格
         self.mesh_type_var = mesh_type
 
-        if mesh_type == unstructured_text:
+        if mesh_type in (smc_text, unstructured_text):
             try:
                 InfoBar.warning(
                     title=tr("tip", "提示"),
-                    content=tr("step2_mesh_type_experimental", "实验中，正在改进"),
+                    content=tr("step2_mesh_type_experimental", "实验中"),
                     duration=3000,
                     parent=self,
                 )

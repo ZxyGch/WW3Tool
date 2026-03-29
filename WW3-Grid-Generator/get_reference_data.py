@@ -340,6 +340,9 @@ def main() -> None:
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
+    print("=" * 70, flush=True)
+    print("Download Reference_data From GitHub Release 6.5 GB".center(70), flush=True)
+    print("=" * 70, flush=True)
     if args.ref_dir is not None:
         ref_dir = Path(args.ref_dir).expanduser().resolve()
         work_dir = ref_dir.parent

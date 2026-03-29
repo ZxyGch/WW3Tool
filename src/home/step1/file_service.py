@@ -9,6 +9,7 @@ from netCDF4 import Dataset
 from typing import Optional
 from setting.language_manager import tr
 from .file_path_manager import FilePathManager
+from .variable_detector import VariableDetector
 
 
 class FileService:
@@ -26,6 +27,12 @@ class FileService:
     
     def log(self, msg: str):
         """记录日志"""
+        if self.logger and hasattr(self.logger, 'log_signal'):
+            try:
+                self.logger.log_signal.emit(msg)
+                return
+            except Exception:
+                pass
         if self.logger and hasattr(self.logger, 'log'):
             self.logger.log(msg)
 
@@ -183,6 +190,9 @@ class FileService:
                     # 不抛出异常，继续处理，让调用者决定如何处理
 
             # 4. 如果存在时间变量格式问题，在工作目录的副本上进行修复
+            # 注意：不使用 renameVariable/renameDimension 重命名 valid_time -> time，
+            # 因为 netCDF4 在变量名与维度名相同时 rename 会导致数据损坏（全部变成 fill value）。
+            # 变量名标准化由 reorder_nc 的 non-same-file 路径自动完成。
             if needs_fix_calendar or needs_fix_units:
                 with Dataset(target_file, "r+") as f:
                     if time_var_name:
@@ -279,6 +289,18 @@ class FileService:
                             found_files[field] = nc_file
                         elif found_files[field] == os.path.join(selected_folder, f"{field}.nc"):
                             pass  # 单场文件优先
+
+            # 文件名未包含场信息时，尝试按变量检测补齐缺失场
+            missing_fields = [f for f in field_patterns.keys() if f not in found_files]
+            if missing_fields:
+                for nc_file in nc_files:
+                    detected = VariableDetector.detect_all_forcing_fields_in_file(nc_file)
+                    for field in list(missing_fields):
+                        if detected.get(field) and field not in found_files:
+                            found_files[field] = nc_file
+                            missing_fields.remove(field)
+                    if not missing_fields:
+                        break
             
             # 更新UI和状态
             for field_name, file_path in found_files.items():

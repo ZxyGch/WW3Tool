@@ -81,7 +81,7 @@ After generation, the output directory contains:
    - Units: fraction 0–1 (actual value = file value / 100)
    - Size: Ny × Nx (x block), Ny × Nx (y block)
 
-4. **`grid.meta`** (`write_ww3meta` output, consistent with MATLAB/Python `gridgen`)
+4. **`grid.meta`** (Actually, its format is NML, which will be synced to ww3_grid.nml.)
    - Format: ASCII text
    - Content: grid description for WAVEWATCH III `ww3_grid`
    - Includes: grid size, resolution, extent, etc.
@@ -171,7 +171,7 @@ create_grid 会默认自动读取 grid.nml
    - 单位：0-1 之间的比例(实际值 = 文件值 / 100)
    - 尺寸：Ny × Nx(x 方向)，Ny × Nx(y 方向)
 
-4. **`grid.meta`**(`write_ww3meta` 输出，与 MATLAB/Python `gridgen` 一致)
+4. **`grid.meta`**(实际上是 ww3_grid.nml，用于同步一些配置)
    - 格式：ASCII 文本文件
    - 内容：供 WAVEWATCH III `ww3_grid` 使用的网格描述
    - 包含：网格尺寸、分辨率、范围等信息

@@ -738,6 +738,10 @@ class NavigationMixin:
             # 检测并更新风场文件按钮文本（静默，不显示日志）
             self._update_wind_field_buttons()
             
+            # 检测并更新强迫场按钮（风场、流场、水位场、海冰场）
+            if hasattr(self, '_detect_and_fill_forcing_fields'):
+                self._detect_and_fill_forcing_fields()
+
             # 检测并更新波高文件按钮文本（静默，不显示日志）
             self._update_wave_height_file_buttons()
         except Exception as e:

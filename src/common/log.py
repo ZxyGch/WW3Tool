@@ -38,7 +38,7 @@ from PyQt6 import QtWidgets
 QSplitter = QtWidgets.QSplitter
 from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget
-from PyQt6.QtGui import QColor, QIcon, QTextCursor
+from PyQt6.QtGui import QColor, QIcon, QTextBlockFormat, QTextCursor
 from qfluentwidgets import MessageBoxBase
 from PyQt6.QtWidgets import QTableWidgetItem, QHeaderView, QScrollArea
 from PyQt6.QtGui import QPixmap
@@ -62,8 +62,42 @@ if main_dir not in sys.path:
 from setting.config import *
 from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make_wave_maps_worker
 
+# QPlainTextEdit 对 ProportionalHeight 行高常无效；用 LineDistanceHeight（像素级行间净距）+ 小块底边距。
+_LOG_LINE_SPACING_EXTRA_PX = 5
+
+try:
+    _LH_LINE_DISTANCE = int(QTextBlockFormat.LineHeightType.LineDistanceHeight)
+except AttributeError:
+    _LH_LINE_DISTANCE = 4  # LineDistanceHeight in Qt
+
+
 class Log:
     """Logging功能模块"""
+
+    def _apply_log_block_spacing_after_append(self, appended: str) -> None:
+        """增大日志行距：行间额外像素 + 微小段后留白（PlainTextEdit 上 ProportionalHeight 往往无视觉效果）。"""
+        if not hasattr(self, "log_text") or not self.log_text:
+            return
+        extra = float(
+            getattr(self, "_log_line_spacing_extra_px", _LOG_LINE_SPACING_EXTRA_PX)
+        )
+        extra = max(0.0, min(extra, 16.0))
+        bottom_margin = min(4.0, extra * 0.35 + 0.75)
+
+        cur = self.log_text.textCursor()
+        cur.movePosition(QTextCursor.MoveOperation.End)
+        n = max(1, (appended.count("\n") + 1) if appended else 1)
+        for _ in range(n):
+            cur.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            bf = QTextBlockFormat()
+            if extra > 0:
+                bf.setLineHeight(extra, _LH_LINE_DISTANCE)
+            bf.setBottomMargin(bottom_margin)
+            cur.setBlockFormat(bf)
+            if not cur.movePosition(QTextCursor.MoveOperation.PreviousBlock):
+                break
+        cur.movePosition(QTextCursor.MoveOperation.End)
+        self.log_text.setTextCursor(cur)
 
     def log(self, msg):
         """写入日志到 TextEdit 控件，并自动滚动到底部（优化版本，减少UI操作）"""
@@ -74,9 +108,20 @@ class Log:
                 cur = self.log_text.textCursor()
                 cur.movePosition(QTextCursor.MoveOperation.End)
                 cur.insertBlock()
+                extra = float(
+                    getattr(self, "_log_line_spacing_extra_px", _LOG_LINE_SPACING_EXTRA_PX)
+                )
+                extra = max(0.0, min(extra, 16.0))
+                bottom_margin = min(4.0, extra * 0.35 + 0.75)
+                bf = QTextBlockFormat()
+                if extra > 0:
+                    bf.setLineHeight(extra, _LH_LINE_DISTANCE)
+                bf.setBottomMargin(bottom_margin)
+                cur.setBlockFormat(bf)
                 self.log_text.setTextCursor(cur)
             else:
                 self.log_text.appendPlainText(t)
+                self._apply_log_block_spacing_after_append(t)
             # 不在此处调用 processEvents / 强制 viewport 刷新：日志爆发时易与 Fluent 滚动条
             # 的 value 同步重入，触发 RecursionError（不改变日志控件与滚动条实现）。
         else:

@@ -8,28 +8,47 @@ from typing import Dict, List
 
 class VariableDetector:
     """变量检测服务类"""
+
+    @staticmethod
+    def inspect_forcing_fields(file_path: str) -> Dict[str, object]:
+        """
+        单次打开文件，汇总风/流/水位/海冰检测结果，避免重复 I/O。
+
+        返回:
+            {
+                "detected": {"wind": bool, "current": bool, "level": bool, "ice": bool},
+                "fields": ["wind", ...]
+            }
+        """
+        detected = {"wind": False, "current": False, "level": False, "ice": False}
+        fields = []
+        try:
+            with Dataset(file_path, "r") as ds:
+                has_u10 = "u10" in ds.variables or "U10" in ds.variables
+                has_v10 = "v10" in ds.variables or "V10" in ds.variables
+                has_wndewd = "wndewd" in ds.variables or "WNDEWD" in ds.variables
+                has_wndnwd = "wndnwd" in ds.variables or "WNDNWD" in ds.variables
+                has_uwnd = "uwnd" in ds.variables or "UWND" in ds.variables
+                has_vwnd = "vwnd" in ds.variables or "VWND" in ds.variables
+                detected["wind"] = (has_u10 and has_v10) or (has_wndewd and has_wndnwd) or (has_uwnd and has_vwnd)
+
+                has_uo = "uo" in ds.variables or "UO" in ds.variables
+                has_vo = "vo" in ds.variables or "VO" in ds.variables
+                detected["current"] = has_uo and has_vo
+
+                detected["level"] = "zos" in ds.variables or "ZOS" in ds.variables
+                detected["ice"] = "siconc" in ds.variables or "SICONC" in ds.variables
+
+            fields = [name for name in ("wind", "current", "level", "ice") if detected[name]]
+        except Exception:
+            pass
+
+        return {"detected": detected, "fields": fields}
     
     @staticmethod
     def check_wind_variables(file_path: str) -> bool:
         """检查文件是否包含风场变量（接受 u10/v10 或 wndewd/wndnwd）"""
-        try:
-            with Dataset(file_path, "r") as ds:
-                # 检查 u10 和 v10
-                has_u10 = "u10" in ds.variables
-                has_v10 = "v10" in ds.variables
-
-                # 检查 wndewd 和 wndnwd（CFSR格式）
-                has_wndewd = "wndewd" in ds.variables or "WNDEWD" in ds.variables
-                has_wndnwd = "wndnwd" in ds.variables or "WNDNWD" in ds.variables
-
-                # 检查 uwnd 和 vwnd
-                has_uwnd = "uwnd" in ds.variables or "UWND" in ds.variables
-                has_vwnd = "vwnd" in ds.variables or "VWND" in ds.variables
-
-                # 如果包含任意一组变量，都认为是有效的风场文件
-                return (has_u10 and has_v10) or (has_wndewd and has_wndnwd) or (has_uwnd and has_vwnd)
-        except Exception:
-            return False
+        return bool(VariableDetector.inspect_forcing_fields(file_path)["detected"].get("wind"))
 
     @staticmethod
     def check_current_variables(file_path: str) -> bool:
@@ -71,37 +90,7 @@ class VariableDetector:
         
         返回包含的场名称列表，例如：['wind', 'current', 'level', 'ice']
         """
-        fields = []
-        try:
-            with Dataset(file_path, "r") as ds:
-                # 检查风场 (支持多种格式：u10/v10, wndewd/wndnwd, uwnd/vwnd)
-                has_u10 = "u10" in ds.variables or "U10" in ds.variables
-                has_v10 = "v10" in ds.variables or "V10" in ds.variables
-                has_wndewd = "wndewd" in ds.variables or "WNDEWD" in ds.variables
-                has_wndnwd = "wndnwd" in ds.variables or "WNDNWD" in ds.variables
-                has_uwnd = "uwnd" in ds.variables or "UWND" in ds.variables
-                has_vwnd = "vwnd" in ds.variables or "VWND" in ds.variables
-
-                if (has_u10 and has_v10) or (has_wndewd and has_wndnwd) or (has_uwnd and has_vwnd):
-                    fields.append("wind")
-
-                # 检查流场 (uo/vo)
-                has_uo = "uo" in ds.variables or "UO" in ds.variables
-                has_vo = "vo" in ds.variables or "VO" in ds.variables
-                if has_uo and has_vo:
-                    fields.append("current")
-
-                # 检查水位场 (zos)
-                if "zos" in ds.variables or "ZOS" in ds.variables:
-                    fields.append("level")
-
-                # 检查海冰场 (siconc)
-                if "siconc" in ds.variables or "SICONC" in ds.variables:
-                    fields.append("ice")
-        except Exception:
-            pass
-
-        return fields
+        return list(VariableDetector.inspect_forcing_fields(file_path)["fields"])
 
     @staticmethod
     def detect_all_forcing_fields_in_file(file_path: str) -> Dict[str, bool]:
@@ -110,28 +99,4 @@ class VariableDetector:
         
         返回包含的场名称字典，例如：{'wind': True, 'current': True, 'level': True, 'ice': False}
         """
-        detected = {}
-        try:
-            with Dataset(file_path, "r") as ds:
-                # 检测风场
-                has_u10 = "u10" in ds.variables
-                has_v10 = "v10" in ds.variables
-                has_wndewd = "wndewd" in ds.variables or "WNDEWD" in ds.variables
-                has_wndnwd = "wndnwd" in ds.variables or "WNDNWD" in ds.variables
-                has_uwnd = "uwnd" in ds.variables or "UWND" in ds.variables
-                has_vwnd = "vwnd" in ds.variables or "VWND" in ds.variables
-                detected['wind'] = (has_u10 and has_v10) or (has_wndewd and has_wndnwd) or (has_uwnd and has_vwnd)
-
-                # 检测流场
-                has_uo = "uo" in ds.variables
-                has_vo = "vo" in ds.variables
-                detected['current'] = has_uo and has_vo
-
-                # 检测水位场
-                detected['level'] = "zos" in ds.variables
-
-                # 检测海冰场
-                detected['ice'] = "siconc" in ds.variables
-        except Exception:
-            pass
-        return detected
+        return dict(VariableDetector.inspect_forcing_fields(file_path)["detected"])

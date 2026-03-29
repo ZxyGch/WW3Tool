@@ -2,21 +2,23 @@
 
 ## 基本介绍
 
+![](public/resource/README-media/截屏2026-03-29%2012.28.47.png)
+
 Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
 
-海浪模式 WAVEWATCH III 可视化运行软件 (简称 WW3Tool) 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可以完成基本的 WAVEWATCH III 流程化运行。
+WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可以完成基本的 WAVEWATCH III 流程化运行。
 
 本软件包括以下功能：
 
 1. 支持多种强迫场：风场 (ERA5，CFSR，CCMP)、流场 (Copernicus)、水位场(Copernicus)、海冰场(Copernicus)，包含对强迫场的自动修复功能 （纬度排序、时间修复、变量修复）
 
-2. gridgen，pygridgen 结构化矩形网格生成，JIGSAW 三角形非结构化网格生成，SMCGTools smc 网格生成，对于结构化矩形网格支持最多两层的嵌套网格模式（支持 Python 版本，不依赖 Matlab，Two-Way Nesting，相同强迫场数据）
+2. gridgen，pygridgen 结构化矩形网格生成，JIGSAW 三角形非结构化网格生成，SMCGTools SMC 网格生成，对于结构化矩形网格支持最多两层的嵌套网格模式
 
 3. 支持区域计算、二维谱点计算、航迹计算
 
-4. 支持 Slurm 脚本配置
+4. 支持 Slurm 脚本配置（ssh 配置、slurm 核数、节点数、CPU）
 
-5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，主要配置计算精度、输出精度、时间范围、二维谱点计算、航迹计算、谱分区输出、强迫场配置，网格文件配置
+5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，配置包括：网格文件配置、计算精度、输出精度、时间范围、二维谱点计算、航迹计算、谱分区输出、强迫场配置。
 
 6. 波高图、波高视频、等高线图、二维谱图、JASON3 卫星轨迹图、二维谱图
 
@@ -28,55 +30,40 @@ Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](htt
 
 如果你觉得这个工具不错，请给我一颗 ⭐️ 🥳
 
+
+
 ## 快速开始
 
 ```sh
-cd src
-
-pip install -r requirements.txt
-
-python main.py
+python run.py
 ```
 
 如果还有什么安装失败或缺失的包，请手动安装
 
-如果你是 Ubuntu 系统，建议
 
-```sh
-cd src
 
-sudo apt install python3-full python3-venv
-
-python3 -m venv venv
-source venv/bin/activate
-
-pip install -r requirements.txt
-
-python main.py
-```
-
-**注意：我们还需要下载 reference_data ，在下面有下载方法**
 
 ## 环境配置
 
-本软件支持 Python ≥ 3.8
-
-经测试可在以下系统环境下正常运行：
+本软件支持 Python ≥ 3.8，经测试可在以下系统环境下正常运行：
 
 - Windows 11
 - Ubuntu 24
 - macOS 15
 
-本软件不要求在本地安装 WAVEWATCH III，本地运行仅作为可选方案，也不推荐在本地环境中部署 WAVEWATCH III
-
-实际运行时，仅需确保服务器端已正确部署以下环境：
+本软件不要求在本地安装 WAVEWATCH III，本地运行仅作为可选方案，仅需确保服务器端已正确部署以下环境：
 
 - WAVEWATCH III
 - Slurm 作业调度系统
 
+
+
+
 ## 功能实现细节
 
 ### 创建工作目录
+
+![](public/resource/README-media/截屏2026-03-29%2012.46.28.png)
 
 程序启动时选择或创建工作目录，这一步是强制的，不允许跳过。
 
@@ -86,15 +73,21 @@ python main.py
 
 工作目录的默认路径是 WW3Tool/workSpace，在设置页面可以更改默认的工作目录
 
+
+
 ### 选择强迫场文件
 
 风场可以使用来自 [ERA5](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download) ， [CFSR](http://tds.hycom.org/thredds/catalog/datasets/force/ncep_cfsv2/netcdf/catalog.html) ，[CCMP](https://data.remss.com/ccmp/v03.1/) 的数据
 
 其他强迫场我暂时只尝试了 Copernicus 的流场、水位场、海冰场
 
+![](public/resource/README-media/截屏2026-03-29%2012.47.52.png)
+
 我已经在 WW3Tool/public/forcing 预先准备好了几个强迫场文件，你可以直接选择使用（当然，这只是为了测试）。
 
 由于 WAVEWATCH 要求纬度必须从小到大，而 ERA5 的风场数据纬度默认是从大到小，因此，我在这里加上了隐含的转换逻辑，会判断是否纬度是从小到大的，如果不是则会自动转换。
+
+![](public/resource/README-media/截屏2026-03-29%2012.48.29.png)
 
 并且对于 CFSR 的风场会自动修复变量名称符合 WW3 的要求
 
@@ -113,27 +106,70 @@ python main.py
 
 #### reference_data
 
-reference_data 必须下载，否则无法生成网格文件！
+reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它们是网格生成的必要数据，如果没有 reference_data，将无法生成网格文件。
 
-数据包内含 gebco、etopo1/2 及海岸边界等文件，解压后位于 `reference_data`。
+如果 WW3Tool/WW3-Grid-Generator/reference_data 没有找到这些数据文件，那么在第二步生成网格时会弹出一个下载窗口
 
-界面提示缺失时点击 **下载**：程序会从自动从 GitHub Release（`part_aa`～`part_ad` 四个分卷）下载，按顺序合并为 `reference_data.zip`，再解压到 `WW3-Grid-Generator/reference_data`。若自动下载过慢或失败，可使用 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48)。
+![](public/resource/README-media/截屏2026-03-29%2012.52.20.png)
 
-**手动下载的 reference_data 最后解压到 WW3Tool/WW3-Grid-Generator/reference_data**
+点击下载按钮：程序会从自动从 [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) 下载（大约 6.5GB）。
 
-#### 一般网格
+![](public/resource/README-media/截屏2026-03-29%2013.04.16.png)
 
-运行软件，选择从 wind.nc 读取范围，点击生成网格，会调用 WW3Tool/WW3-Grid-Generator 目录的代码生成网格文件到工作目录
+若 GitHub下载过慢或失败，可从 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48) 手动下载，解压到 WW3Tool/WW3-Grid-Generator/reference_data
 
-DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
-最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.nml（WW3 网格描述）、grid.mask_nobound
 
-#### 嵌套网格
 
-选择类型：嵌套网格
 
-嵌套网格我们使用的是 Two-way nesting，矩形网格，球面坐标系，其他网格暂时不支持（如果你知道怎么使用其他网格，请告诉我，我会添加到软件）
+
+
+
+#### 结构化矩形网格
+
+##### 单网格
+
+![](public/resource/README-media/截屏2026-03-29%2013.28.40.png)
+
+点击生成网格，会调用 WW3-Grid-Generator/structured_generator/pygridgen 生成网格文件到工作目录.
+
+DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
+
+最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.meta、grid.mask_nobound
+
+1. **`grid.bot`**
+   - 格式：ASCII 文本文件
+   - 内容：网格水深数据 (来)
+   - 单位：来 (实际值 = 文件值 / 1000)
+   - 尺寸：Ny × Nx
+
+2. **`grid.mask_nobound`**
+   - 格式：ASCII 文本文件
+   - 内容：陆海掩膜
+   - 值：0 = 陆地，1 = 海洋
+   - 尺寸：Ny × Nx
+
+3. **`grid.obst`**
+   - 格式：ASCII 文本文件
+   - 内容：x 和 y 方向的障碍物值
+   - 单位：0-1 之间的比例 (实际值 = 文件值 / 100)
+   - 尺寸：Ny × Nx (x 方向)，Ny × Nx (y 方向)
+
+4. **`grid.meta`**(实际上是 ww3_grid. nml，用于同步一些配置)
+   - 格式：ASCII 文本文件
+   - 内容：供 WAVEWATCH III `ww3_grid` 使用的网格描述
+   - 包含：网格尺寸、分辨率、范围等信息
+
+   生成的网格会自动缓存到 WW3Tool/WW3-Grid-Generator/cache
+
+
+   
+
+##### 嵌套网格
+
+![](public/resource/README-media/截屏2026-03-29%2013.49.42.png)
+
+嵌套网格我们使用的是 Two-way nesting
 
 我们在设置页面的规定了一个：嵌套网格收缩系数，我们默认设置为 1.1 倍
 
@@ -146,6 +182,10 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 我们在嵌套网格模式下生成的网格，会在当前工作目录创建两个文件夹：coarse 和 fine，其中 coarse 存放外网格，fine 存放内网格。
 
 当工作目录存在 coarse 和 fine 文件夹时，打开该目录会自动切换到嵌套网格模式，这对后续的很多操作都会产生影响，因此我们规定当本地已经存在 coarse 和 fine 文件夹或者已经存在其他网格文件，禁止切换网格类型。
+
+
+
+
 
 #### 网格缓存
 
@@ -177,13 +217,7 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 }
 ```
 
-#### MATLAB 与 Python 版本
 
-我们早期使用的是 ifremer 提供的 [gridgen](https://data-ww3.ifremer.fr/COURS/WAVES_SHORT_COURSE/TOOLS/GRIDGEN/) ，NOAA 官方的代码在 [https://github.com/NOAA-EMC/gridgen](https://github.com/NOAA-EMC/gridgen)
-
-但是由于都是 MATLAB 的，运行比较麻烦，因此我后来转换为了 Python 版本，目前默认使用的就是 Python 版本。
-
-如果你很想使用 MATLAB 的 Gridgen（完全不建议），可以到设置页面改成 MATLAB，同时需要在设置页面配置 MATLAB 的路径。
 
 #### 全球网格
 
@@ -209,17 +243,18 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 /
 ```
 
-#### gridgen 配置
 
-在设置页面，我们有 Gridgen 的配置，可以修改很多参数
 
-- GRIDGEN 版本：我们默认使用 Python 版本，因为速度相比于 MATLAB 快很多，而且不需要依赖于 MATLAB。
-- 默认普通网格 DX/DY 其实是网格的 X/Y 方向的间距，也就是说 DX/DY 越大，网格越小，精度越低。
-- 嵌套网格收缩系数：嵌套模式下，设置内外网格自动变化
-- 水深数据：有三种数据 gebco、etop1、etop2 ，通常我们使用 gebco ，因为精度高，etop2 次之，etop1 最低
-- 海岸边界精度：通常我们选择最高精度
+#### 查看地图
+
+注意虚线内的范围才是真正的地图范围
+![](public/resource/README-media/截屏2026-03-29%2016.59.47.png)
+
+
 
 ### 选择计算模式
+
+![](public/resource/README-media/截屏2026-03-29%2014.32.55.png)
 
 其实这三种计算模式计算量上是一样的，但是最终输出的结果有些不同，看似谱空间逐点计算模式和航迹模式似乎是只计算几个点，但是计算的实际是整个地图范围。
 
@@ -229,15 +264,25 @@ DX/DY 越小，精度越高，因为 DX/DY 网格之间的间距
 
 航迹模式就是 ww3_trnc
 
+在第四步的配置参数可以看出他们的配置区别
+
+
+
 #### 区域计算模式
 
-普通的输出模式
+普通的计算模式
+
+
 
 #### 谱空间逐点计算模式
 
+![](public/resource/README-media/截屏2026-03-29%2014.55.42.png)
+
 我们可以点击从地图上选点，会打开一个窗口
 
-我们在地图上点击选点，注意蓝色虚线方框内的是网格文件的范围，我们只能在这里面选点，选好后我们点击 **确认并添加点位** 按钮。
+我们在地图上点击选点，注意蓝色虚线方框内的是网格文件的范围，我们只能在这里面选点，选好后我们点击完成按钮。
+
+![](public/resource/README-media/截屏2026-03-29%2014.56.14.png)
 
 随后，在第四步的确认参数时会在工作目录生成一个 points.list 文件
 
@@ -254,26 +299,42 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
 
-![[public/resource/README-media/截屏2026-02-01 12.16.50.png]]
+![](public/resource/README-media/截屏2026-03-29%2015.49.57.png)
 
 我们可以画出二维谱图
 
+![](workSpace/global/photo/spectrum/spectrum_3_time_20250104_120000.png)
+
+
 #### 航迹模式
+
+![](public/resource/README-media/截屏2026-03-29%2015.52.47.png)
 
 和谱空间逐点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
 
 ```
-WAVEWATCH III TRACK LOCATIONS DATA     
-20250103 000000   115.4   19.7    0
-20250103 000000   127.6   19.7    1
-20250103 000000   127.6   15.6    2
+WAVEWATCH III TRACK LOCATIONS DATA 
+20250103 000000   113.121   19.314    0
+20250104 000000   126.442   21.132    1
+20250105 000000   126.365   16.356    2
 ```
 
-最后我们会使用 ww3_trnc 输出一个 ww3.2025
+最后我们会使用 ww3_trnc 输出一个 ww3.2025_trck.nc
+
+
+
+
 
 ### 配置运行参数
 
-我们使用的是航迹模式，这个模式会比普通的区域计算模式多一些日志
+
+![](public/resource/README-media/截屏2026-03-29%2016.37.17.png)
+
+![](public/resource/README-media/截屏2026-03-29%2016.14.29.png)
+我们添加了风场、水位场、流场作为强迫场，冰场可以添加，但是我们生成的网格区域没有冰，因此在这里不做展示。
+
+我们使用的是航迹模式，这个模式会比普通的区域计算模式多一些配置日志，顺便把航迹模式的特有的配置讲解一下。
+
 
 ```log
 ✅ 已复制 10 个 public/ww3 文件到当前工作目录
@@ -283,19 +344,27 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
 ✅ 已更新 ww3_shel.nml：DOMAIN%START=20250103, DOMAIN%STOP=20250105, DATE%FIELD%STRIDE=1800s
 ✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
+✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
+✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
 ✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
 ✅ 已生成 track_i.ww3 文件
 ✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（航迹模式）
 ✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
+
+
 #### 普通网格
 
-首先，我们会把 WW3Tool/bin/public/ww3 目录下的所有文件复制到当前工作目录
+首先，我们会把 WW3Tool/public/ww3 目录下的所有文件复制到当前工作目录
 
 ```
-✅ 已复制 10 个 public/ww3 文件到：/Users/zxy/ocean/WW3Tool/workSpace/qq
+✅ 已复制 10 个 public/ww3 文件到当前工作目录
 ```
+
+其中包含 
+
+![](public/resource/README-media/截屏2026-03-29%2016.18.02.png)
 
 ---
 
@@ -308,26 +377,35 @@ WAVEWATCH III TRACK LOCATIONS DATA
 我们会把 grid.meta 的
 
 ```
-   'RECT'  T 'NONE'
-401      401 
- 3.00       3.00      60.00 
-110.0000       10.0000       1.00
-```
+&GRID_NML
+  GRID%TYPE            =  'RECT'
+  GRID%COORD           =  'SPHE'
+  GRID%CLOS            =  'NONE'
+/
 
-部分，转换到 ww3_grid.nml 的
 
-```
 &RECT_NML
-   RECT%NX           =  401
-   RECT%NY           =  401
-   RECT%SX           =  3.000000
-   RECT%SY           =  3.000000
-   RECT%SF           =  60.000000
-   RECT%X0           =  110.000000
-   RECT%Y0           =  10.000000
-   RECT%SF           =  60.000000
+  RECT%NX              =  201
+  RECT%NY              =  201
+  RECT%SX              =   0.100000000000
+  RECT%SY              =   0.100000000000
+  RECT%X0              =  110.0000
+  RECT%Y0              =   10.0000
+/
+
+&DEPTH_NML
+  DEPTH%SF             = 0.001
+  DEPTH%FILENAME       = 'grid.bot'
+/
+
+&OBST_NML
+  OBST%SF              = 0.010
+  OBST%FILENAME        = 'grid.obst'
 /
 ```
+
+同步到 ww3_grid.nml 相同的位置
+
 
 ---
 
@@ -356,6 +434,11 @@ ww3_ounf.nml 的 FIELD%LIST
   FIELD%TYPE             =  4
 /
 ```
+
+谱分区的输出方案在设置页面可以配置 
+
+![](public/resource/README-media/截屏2026-03-29%2016.26.34.png)
+
 
 ---
 
@@ -416,15 +499,24 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 &OUTPUT_DATE_NML
   DATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
+  DATE%TRACK          = '20250103 000000' '1800' '20250105 000000'
   DATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
 /
 ```
 
-其中日期即为起始日期，另外 DATE%FIELD 中间的 '1800' 是计算时间步长
+其中日期即为起始日期，另外 DATE%FIELD 和 DATE%TRACK 中间的 '1800' 是计算时间步长
+
+其中 DATE%TRACK 是航迹模式会单独添加的一条，默认是没有的。
 
 ---
 
-然后我们修改 ww3_prnc.nml 的时间范围
+```log
+✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
+✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
+✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
+```
+
+然后我们修改 ww3_prnc.nml 的时间范围，这是为了在之后的 ww3_prnc 限制时间范围
 
 ```sh
 &FORCING_NML
@@ -441,7 +533,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 然后我们根据选择的强迫场生成 ww3_prnc_current.nml ww3_prnc_level.nml，对于冰场，冰场的浓度和厚度会分成两个 ww3_prnc_ice.nml 和 ww3_prnc_ice1.nml
 
-我们会根据强迫场修改强迫场的开关，每个强迫场开关只能打开一个，但是在后续处理的时候我们会多次使用 ww3_prnc
+我们会根据强迫场修改强迫场的开关，每个 ww3_prnc.nml 文件的强迫场开关 FORCING%FIELD% 只能打开一个（设为 T），但是在后续处理的时候我们会把每个  ww3_prnc_.nml 重命名为 ww3_prnc.nml ，因为 ww3_prnc 只能固定读取  ww3_prnc.nml
 
 我们还修改了强迫场的文件名和强迫场变量
 
@@ -453,7 +545,23 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
   FILE%VAR(1)        = 'u10'
   FILE%VAR(2)        = 'v10'
 /
+
+&FILE_NML
+  FILE%FILENAME      = 'current_level.nc'
+  FILE%LONGITUDE     = 'longitude'
+  FILE%LATITUDE      = 'latitude'
+  FILE%VAR(1)        = 'uo'
+  FILE%VAR(2)        = 'vo'
+/
+
+&FILE_NML
+  FILE%FILENAME      = 'current_level.nc'
+  FILE%LONGITUDE     = 'longitude'
+  FILE%LATITUDE      = 'latitude'
+  FILE%VAR(1)        = 'zos'
+/
 ```
+
 
 ---
 
@@ -468,10 +576,13 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
   INPUT%FORCING%WINDS         = 'T'
   INPUT%FORCING%WATER_LEVELS  = 'T'
   INPUT%FORCING%CURRENTS      = 'T'
-  INPUT%FORCING%ICE_CONC      = 'T'
-  INPUT%FORCING%ICE_PARAM1    = 'T'
+  INPUT%FORCING%ICE_CONC      = 'F'
+  INPUT%FORCING%ICE_PARAM1    = 'F'
 /
 ```
+
+
+
 
 ---
 
@@ -480,6 +591,17 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 ```log
 ✅ 已生成 track_i.ww3 文件
 ```
+
+track_i.ww3 的格式
+
+```
+WAVEWATCH III TRACK LOCATIONS DATA 
+20250103 000000   113.1   19.3    0
+20250104 000000   126.4   21.1    1
+20250105 000000   126.4   16.4    2
+```
+
+
 
 ---
 
@@ -503,7 +625,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 ✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
-航迹模式下我们还会修改 ww3_trnc.nml
+修改 ww3_trnc.nml 
 
 ```
 &TRACK_NML
@@ -525,9 +647,18 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 &OUTS E3D = 0 /
 ```
 
+
+
 #### 嵌套网格
 
+
+
+![](public/resource/README-media/截屏2026-03-29%2017.02.34.png)
+![](public/resource/README-media/截屏2026-03-29%2017.03.44.png)
+
 我们首先生成了嵌套网格，在工作目录创建了 coarse 和 fine 目录，然后选择了二维谱计算模式。
+
+
 
 ```log
 ======================================================================
@@ -627,6 +758,10 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 至于其他的 Log ，很容易理解，我们只是按照普通网格的方式处理了内外网格
 
 值得注意的是，我们修改了 ww3_prnc.nml：FILE%FILENAME = '../wind.nc' ，这是为了避免强迫场文件占用两倍的空间，所以指向了共同的引用。
+
+
+
+
 
 ### 本地运行
 
@@ -788,7 +923,7 @@ HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcd
 
 ### JASON 3 数据
 
-ftp:/ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
+ftp://ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
 
 ## 授权协议
 

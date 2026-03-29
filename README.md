@@ -4,9 +4,7 @@
 
 ## Overview
 
-![](public/resource/README-media/fc7b85ba67ff2766afc43e74bcf683d9407c0e63.svg)
-
-![](public/resource/README-media/9c73882ce0c8f81ed4b1195dded3c8b1fe365e19.png)
+![](public/resource/README-media/截屏2026-03-29%2012.12.03.png)
 
 Youtube: https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D
 
@@ -33,29 +31,11 @@ If you find this tool useful, please give me a star 🥳
 ## Quick Start
 
 ``` sh
-cd src
-
-pip install -r requirements.txt
-
-python main.py
+python run.py
 ```
 
 If any packages fail to install or are missing, please install them manually.
 
-If you are using Ubuntu, it is recommended
-
-``` sh
-cd src
-
-sudo apt install python3-full python3-venv
-
-python3 -m venv venv
-source venv/bin/activate
-
-pip install -r requirements.txt
-
-python main.py
-```
 
 
 
@@ -895,7 +875,7 @@ Sea ice includes Sea ice area fraction and Sea ice thickness.
 
 ### JASON 3 Data
 
-ftp:/ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
+ftp://ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
 
 
 ## License

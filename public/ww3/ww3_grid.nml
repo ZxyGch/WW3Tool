@@ -314,7 +314,7 @@
   RECT%NY           =  201
   RECT%SX           =  3.00
   RECT%SY           =  3.00
-  RECT%SF           =  60.00
+  RECT%SF           =  1.00
   RECT%X0           =  -15.0000
   RECT%Y0           =  65.0000
   RECT%SF0          =  1.00

@@ -1273,7 +1273,14 @@ class SettingsMixin(SettingsServiceMixin):
 
             # === 谱分区输出 ===
             spectral_output_card = HeaderCardWidget(settings_content)
-            spectral_output_card.setTitle(tr("spectral_output_title", "谱分区输出"))
+            spectral_output_card.setTitle(tr("spectral_output_title", "谱分区输出方案配置"))
+            spectral_output_card.setStyleSheet("""
+                HeaderCardWidget QLabel {
+                    font-weight: normal;
+                    margin-left: 0px;
+                    padding-left: 0px;
+                }
+            """)
             
             spectral_output_card.headerLayout.setContentsMargins(11, 10, 11, 12)
             spectral_output_card_layout = QVBoxLayout()

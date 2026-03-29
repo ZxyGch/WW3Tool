@@ -12,11 +12,15 @@ import os
 import glob
 import shutil
 import threading
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from netCDF4 import Dataset, num2date
 
+from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFileDialog
-from qfluentwidgets import InfoBar
+from qfluentwidgets import InfoBar, MessageBoxBase
 from setting.language_manager import tr
 from setting.config import get_forcing_field_default_dir
 
@@ -25,6 +29,162 @@ from .variable_detector import VariableDetector
 from .file_path_manager import FilePathManager
 from .file_service import FileService
 from .netcdf_info_service import NetCDFInfoService
+
+
+def _transform_wind_chunks_for_pool(u10_chunk, v10_chunk, transpose_order, lat_needs_flip, lon_needs_flip):
+    """子进程执行的纯数组变换，避免直接碰 NetCDF 文件句柄。"""
+
+    def _transform(chunk):
+        chunk = np.asarray(chunk)
+        changed = False
+        if transpose_order is not None:
+            chunk = np.transpose(chunk, transpose_order)
+            changed = True
+        if lat_needs_flip:
+            chunk = chunk[:, ::-1, :]
+            changed = True
+        if lon_needs_flip:
+            chunk = chunk[:, :, ::-1]
+            changed = True
+        return np.ascontiguousarray(chunk) if changed else chunk
+
+    return _transform(u10_chunk), _transform(v10_chunk)
+
+
+def _get_available_memory_bytes():
+    """尽量获取当前可用内存，用于动态调整分块大小。"""
+    try:
+        import psutil
+        return int(psutil.virtual_memory().available)
+    except Exception:
+        pass
+
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        avail_pages = os.sysconf("SC_AVPHYS_PAGES")
+        available = int(page_size * avail_pages)
+        if available > 0:
+            return available
+    except Exception:
+        pass
+
+    try:
+        import re
+        import subprocess
+
+        output = subprocess.check_output(["vm_stat"], text=True, stderr=subprocess.DEVNULL)
+        page_size = 4096
+        m = re.search(r"page size of (\d+) bytes", output)
+        if m:
+            page_size = int(m.group(1))
+
+        pages = {}
+        for line in output.splitlines():
+            mm = re.match(r"^([^:]+):\s+([0-9]+)\.$", line.strip())
+            if mm:
+                pages[mm.group(1)] = int(mm.group(2))
+
+        available_pages = (
+            pages.get("Pages free", 0)
+            + pages.get("Pages inactive", 0)
+            + pages.get("Pages speculative", 0)
+        )
+        available = int(available_pages * page_size)
+        if available > 0:
+            return available
+    except Exception:
+        pass
+
+    return 0
+
+
+class _ForcingConvertBridge(QtCore.QObject):
+    """跨线程通知第一步转换结束。"""
+
+    finished = QtCore.pyqtSignal(object)
+
+
+class _RotatingLoadingSpinner(QtWidgets.QWidget):
+    """简单旋转加载环，避免依赖额外组件。"""
+
+    def __init__(self, parent=None, diameter=52):
+        super().__init__(parent)
+        self._angle = 0
+        self._thickness = 5
+        self.setFixedSize(diameter, diameter)
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self._advance)
+        self._timer.start()
+
+    def _advance(self):
+        self._angle = (self._angle + 12) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        _ = event
+        rect = self.rect().adjusted(6, 6, -6, -6)
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        track_pen = QtGui.QPen(QtGui.QColor(220, 224, 230), self._thickness)
+        track_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(track_pen)
+        painter.drawArc(rect, 0, 360 * 16)
+
+        accent = None
+        try:
+            from qfluentwidgets import themeColor
+            accent = themeColor()
+        except Exception:
+            accent = self.palette().color(QtGui.QPalette.ColorRole.Highlight)
+        if not accent or not accent.isValid():
+            accent = QtGui.QColor(0, 122, 204)
+        arc_pen = QtGui.QPen(accent, self._thickness)
+        arc_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(arc_pen)
+        painter.drawArc(rect, int(-self._angle * 16), int(110 * 16))
+
+
+class _ForcingConvertLoadingDialog(MessageBoxBase):
+    """第一步转换强迫场文件时的加载弹窗，沿用第二步卡片式外壳。"""
+
+    def __init__(self, parent, message: str):
+        super().__init__(parent)
+        self.setWindowTitle("")
+        self.hideYesButton()
+        self.hideCancelButton()
+        self.buttonLayout.parent().setVisible(False)
+        if hasattr(self, "setClosableOnMaskClicked"):
+            self.setClosableOnMaskClicked(True)
+
+        container = QtWidgets.QWidget(self)
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(24, 16, 24, 16)
+        layout.setSpacing(14)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        spinner = _RotatingLoadingSpinner(container, diameter=56)
+        layout.addWidget(spinner, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        title = QtWidgets.QLabel(tr("step1_forcing_convert_loading_title", "正在处理强迫场文件…"))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 18px; font-weight: 600;")
+        layout.addWidget(title)
+
+        self._message_label = QtWidgets.QLabel(message)
+        self._message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._message_label.setWordWrap(True)
+        self._message_label.setStyleSheet("font-size: 13px;")
+        layout.addWidget(self._message_label)
+
+        self.viewLayout.addWidget(container, 1)
+        self.setMinimumWidth(420)
+        self.setMinimumHeight(220)
+        self.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+
+    def set_message(self, message: str):
+        self._message_label.setText(message)
 
 
 class StepOneFunctionsMixin:
@@ -90,105 +250,20 @@ class StepOneFunctionsMixin:
         if not file_path:
             return
 
-        self.netcdf_info_service.print_nc_file_info(file_path)
-
-        if not self.variable_detector.check_wind_variables(file_path):
-            InfoBar.warning(
-                title=tr("wind_file_missing_vars", "缺少风场变量"),
-                content=tr("wind_file_missing_vars_msg", "文件不包含风场变量（u10/v10），请选择正确的风场文件"),
-                duration=3000,
-                parent=self
-            )
-            return
-
         if not getattr(self, 'selected_folder', None):
             self.log(tr("log_please_select_workdir", "❌ 请先选择或创建工作目录！"))
             return
 
-        from setting.config import load_config
-        config = load_config()
-        auto_associate = config.get("FORCING_FIELD_AUTO_ASSOCIATE", True)
-        process_mode = config.get("FORCING_FIELD_FILE_PROCESS_MODE", "copy")
-        fields = self.variable_detector.detect_forcing_fields(file_path)
+        self._show_forcing_convert_dialog()
 
-
-        if not fields:
-            fields = ["wind"]
-        
-        if auto_associate:
-            target_filename = self.file_path_manager.generate_forcing_filename(fields, auto_associate=True)
-        else:
-            target_filename = self.file_path_manager.generate_forcing_filename(["wind"], auto_associate=False)
-        
-        target_file = os.path.join(self.selected_folder, target_filename)
-        
-        if auto_associate and len(fields) > 1:
-            self.log(tr("log_detected_multi_forcing", "ℹ️ 检测到文件包含多个强迫场: {fields}").format(
-                fields=', '.join(fields)))
-            self.log(tr("log_file_will_save_as", "📁 文件将保存为: {filename}").format(filename=target_filename))
-       
-        need_process = True
-        
-        if os.path.exists(target_file):
-            try:
-                if os.path.samefile(file_path, target_file):
-                    self.log(tr("log_file_exists_same", "ℹ️ 文件已存在于工作目录且与源文件相同: {filename}").format(
-                        filename=target_filename))
-                    need_process = False
-                else:
-                    self.log(tr("log_target_exists_overwrite", "ℹ️ 目标文件已存在，将覆盖: {filename}").format(
-                        filename=target_filename))
-            except OSError:
-                self.log(tr("log_target_exists_overwrite", "ℹ️ 目标文件已存在，将覆盖: {filename}").format(
-                    filename=target_filename))
-        detected_fields = {}
-        
-        if auto_associate:
-            detected_fields = self.variable_detector.detect_all_forcing_fields_in_file(file_path)
-        
-        if need_process:
-            copied_file = self.file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)
-            if not copied_file:
-                self.log(tr("log_copy_fix_failed", "❌ 复制或修复文件失败！"))
-                return
-        
-        actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path
-        
-        if process_mode == "move" and need_process:
-            actual_file_path = target_file
-            normalized_file_path = os.path.normpath(target_file)
-        else:
-            normalized_file_path = os.path.normpath(file_path)
-        
-        self.selected_origin_file = actual_file_path
-        
-        if auto_associate and detected_fields:
-            if detected_fields.get("current", False):
-                self.file_path_manager.set_file_path(self, "current", actual_file_path, target_filename)
-            if detected_fields.get("level", False):
-                self.file_path_manager.set_file_path(self, "level", actual_file_path, target_filename)
-            if detected_fields.get("ice", False):
-                self.file_path_manager.set_file_path(self, "ice", actual_file_path, target_filename)
-        
-        # 精简日志：不输出自动转换过程中的提示
-        
-        # 使用目标文件名更新按钮（actual_file_path 是目标文件路径）
-        file_name = os.path.basename(actual_file_path)
-        
-        if len(file_name) > 30:
-            file_name = file_name[:27] + "..."
-        
-        # 更新所有相关的按钮（step1 + plot）
-        if hasattr(self, '_set_wind_file_button_text'):
-            self._set_wind_file_button_text(file_name, filled=True)
-        elif hasattr(self, 'btn_choose_wind_file'):
-            self._set_home_forcing_button_text(self.btn_choose_wind_file, file_name, filled=True)
-        
-        self._update_forcing_fields_display()
-        
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(500, lambda: self._load_latlon_from_source_file(file_path))
-        threading.Thread(target=self._convert_file_thread, daemon=True).start()
+        threading.Thread(
+            target=self._convert_file_thread,
+            args=({
+                "file_path": file_path,
+                "selected_folder": self.selected_folder,
+            },),
+            daemon=True,
+        ).start()
 
 
 
@@ -538,6 +613,13 @@ class StepOneFunctionsMixin:
                             time_calendar = getattr(time_var, 'calendar', 'gregorian')
                             if time_units:
                                 times = num2date(time_var[:], time_units, calendar=time_calendar)
+                                if hasattr(times, "compressed"):
+                                    times = times.compressed()
+                                if isinstance(times, np.ndarray):
+                                    times = times.ravel().tolist()
+                                elif not isinstance(times, (list, tuple)):
+                                    times = [times]
+                                times = [t for t in times if hasattr(t, "strftime")]
                                 if len(times) > 0:
                                     time_start, time_end = times[0], times[-1]
                                     self.log(tr("time_range", "⏰ 时间范围：{start} ~ {end}").format(
@@ -1008,12 +1090,184 @@ class StepOneFunctionsMixin:
             # 检测失败不影响主流程
             pass
 
-    def _convert_file_thread(self):
-        """在后台线程中执行文件转换"""
+    def _convert_file_thread(self, task_info):
+        """在后台线程中执行文件复制/移动与转换。"""
         try:
-            self.reorder_nc()
+            file_path = task_info["file_path"]
+            selected_folder = task_info["selected_folder"]
+            actual_file_path = None
+            target_filename = None
+            auto_associate = True
+            detected_fields = {}
+
+            inspect_result = self.variable_detector.inspect_forcing_fields(file_path)
+            detected_fields = inspect_result.get("detected", {}) or {}
+            fields = inspect_result.get("fields", []) or []
+
+            if not detected_fields.get("wind", False):
+                result = {"success": False, "reason": "invalid_wind"}
+                return
+
+            from setting.config import load_config
+            config = load_config()
+            auto_associate = config.get("FORCING_FIELD_AUTO_ASSOCIATE", True)
+            process_mode = config.get("FORCING_FIELD_FILE_PROCESS_MODE", "copy")
+
+            if not fields:
+                fields = ["wind"]
+
+            if auto_associate:
+                target_filename = self.file_path_manager.generate_forcing_filename(fields, auto_associate=True)
+            else:
+                target_filename = self.file_path_manager.generate_forcing_filename(["wind"], auto_associate=False)
+
+            target_file = os.path.join(selected_folder, target_filename)
+
+            if auto_associate and len(fields) > 1:
+                self.log_signal.emit(tr("log_detected_multi_forcing", "ℹ️ 检测到文件包含多个强迫场: {fields}").format(
+                    fields=', '.join(fields)))
+                self.log_signal.emit(tr("log_file_will_save_as", "📁 文件将保存为: {filename}").format(filename=target_filename))
+
+            need_process = True
+            if os.path.exists(target_file):
+                try:
+                    if os.path.samefile(file_path, target_file):
+                        self.log_signal.emit(tr("log_file_exists_same", "ℹ️ 文件已存在于工作目录且与源文件相同: {filename}").format(
+                            filename=target_filename))
+                        need_process = False
+                    else:
+                        self.log_signal.emit(tr("log_target_exists_overwrite", "ℹ️ 目标文件已存在，将覆盖: {filename}").format(
+                            filename=target_filename))
+                except OSError:
+                    self.log_signal.emit(tr("log_target_exists_overwrite", "ℹ️ 目标文件已存在，将覆盖: {filename}").format(
+                        filename=target_filename))
+
+            wind_only_direct = detected_fields.get("wind", False) and not any(
+                detected_fields.get(name, False) for name in ("current", "level", "ice")
+            )
+
+            if wind_only_direct:
+                os.makedirs(selected_folder, exist_ok=True)
+                reorder_ok = self.reorder_nc(origin_file_path=file_path, output_file_path=target_file)
+                if not reorder_ok:
+                    raise RuntimeError(tr("log_write_file_failed", "❌ 写入新文件失败"))
+
+                actual_file_path = target_file
+                self.selected_origin_file = actual_file_path
+
+                same_source_target = False
+                try:
+                    if os.path.exists(target_file):
+                        same_source_target = os.path.samefile(file_path, target_file)
+                except OSError:
+                    same_source_target = False
+
+                if process_mode == "move" and not same_source_target and os.path.exists(file_path):
+                    os.remove(file_path)
+            else:
+                if need_process:
+                    copied_file = self.file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)
+                    if not copied_file:
+                        raise RuntimeError(tr("log_copy_fix_failed", "❌ 复制或修复文件失败！"))
+
+                actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path
+                self.selected_origin_file = actual_file_path
+                reorder_ok = self.reorder_nc(origin_file_path=actual_file_path)
+                if not reorder_ok:
+                    raise RuntimeError(tr("log_write_file_failed", "❌ 写入新文件失败"))
         except Exception as e:
             self.log_signal.emit(tr("log_convert_error", "❌ 转换过程出错: {error}").format(error=e))
+            result = {"success": False, "error": str(e)}
+        finally:
+            bridge = self._ensure_forcing_convert_bridge()
+            if 'result' not in locals():
+                result = {
+                    "success": True,
+                    "actual_file_path": actual_file_path,
+                    "target_filename": target_filename,
+                    "file_path": file_path,
+                    "auto_associate": auto_associate,
+                    "detected_fields": detected_fields,
+                }
+            bridge.finished.emit(result)
+
+    def _ensure_forcing_convert_bridge(self):
+        bridge = getattr(self, "_forcing_convert_bridge", None)
+        if bridge is None:
+            bridge = _ForcingConvertBridge(self)
+            bridge.finished.connect(self._on_forcing_convert_finished, Qt.ConnectionType.QueuedConnection)
+            self._forcing_convert_bridge = bridge
+        return bridge
+
+    def _show_forcing_convert_dialog(self, file_name: str = ""):
+        self._ensure_forcing_convert_bridge()
+        message = tr(
+            "step1_forcing_convert_loading_message",
+            "请稍候…"
+        )
+        dlg = getattr(self, "_forcing_convert_dialog", None)
+        if dlg is None:
+            dlg = _ForcingConvertLoadingDialog(self, message)
+            self._forcing_convert_dialog = dlg
+        else:
+            dlg.set_message(message)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.processEvents()
+
+    def _on_forcing_convert_finished(self, result):
+        dlg = getattr(self, "_forcing_convert_dialog", None)
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+            self._forcing_convert_dialog = None
+        if not result or not result.get("success"):
+            if result and result.get("reason") == "invalid_wind":
+                InfoBar.warning(
+                    title=tr("wind_file_missing_vars", "缺少风场变量"),
+                    content=tr("wind_file_missing_vars_msg", "文件不包含风场变量（u10/v10），请选择正确的风场文件"),
+                    duration=3000,
+                    parent=self
+                )
+            return
+
+        actual_file_path = result["actual_file_path"]
+        target_filename = result["target_filename"]
+        auto_associate = result.get("auto_associate", True)
+        detected_fields = result.get("detected_fields", {})
+
+        self.selected_origin_file = actual_file_path
+
+        if auto_associate and detected_fields:
+            if detected_fields.get("current", False):
+                self.file_path_manager.set_file_path(self, "current", actual_file_path, target_filename)
+            if detected_fields.get("level", False):
+                self.file_path_manager.set_file_path(self, "level", actual_file_path, target_filename)
+            if detected_fields.get("ice", False):
+                self.file_path_manager.set_file_path(self, "ice", actual_file_path, target_filename)
+
+        file_name = os.path.basename(actual_file_path)
+        if len(file_name) > 30:
+            file_name = file_name[:27] + "..."
+
+        if hasattr(self, '_set_wind_file_button_text'):
+            self._set_wind_file_button_text(file_name, filled=True)
+        elif hasattr(self, 'btn_choose_wind_file'):
+            self._set_home_forcing_button_text(self.btn_choose_wind_file, file_name, filled=True)
+
+        self._update_forcing_fields_display()
+        QtCore.QTimer.singleShot(0, lambda: self._load_latlon_from_source_file(actual_file_path))
+        InfoBar.success(
+            title=tr("step1_forcing_convert_success_title", "处理完成"),
+            content=tr("step1_forcing_convert_success_content", "强迫场文件已处理完成：{filename}").format(
+                filename=os.path.basename(actual_file_path),
+            ),
+            duration=3000,
+            parent=self
+        )
 
     def _load_latlon_from_source_file(self, file_path):
         """从原始文件读取经纬度范围并填充到输入框"""
@@ -1077,7 +1331,7 @@ class StepOneFunctionsMixin:
             # 静默失败，不输出错误信息（因为这是自动操作）
             pass
 
-    def reorder_nc(self):
+    def reorder_nc(self, origin_file_path=None, output_file_path=None):
         """
         将数据按照纬度从小到大排列 (WW3 要求)
         从 main_tk.py 迁移过来的转换函数
@@ -1088,39 +1342,44 @@ class StepOneFunctionsMixin:
                 self.log_signal.emit(tr("log_select_folder_first", "❌ 请先选择或创建文件夹！"))
             else:
                 self.log(tr("log_select_folder_first", "❌ 请先选择或创建文件夹！"))
-            return
-        if not self.selected_origin_file:
+            return False
+
+        source_file = origin_file_path or self.selected_origin_file
+        if not source_file:
             if hasattr(self, 'log_signal'):
                 self.log_signal.emit(tr("log_select_origin_file_first", "❌ 请先选择原始数据文件！"))
             else:
                 self.log(tr("log_select_origin_file_first", "❌ 请先选择原始数据文件！"))
-            return
+            return False
 
-        # 如果工作目录已经有包含 wind 的文件（已复制并修复），使用它；否则使用原始文件
-        # 查找工作目录中包含 wind 的文件（可能是 wind.nc 或 wind_current_level_ice.nc 等）
-        wind_files = glob.glob(os.path.join(self.selected_folder, "*wind*.nc"))
-        if wind_files:
-            # 如果有多个，优先选择 wind.nc，否则选择第一个
-            wind_nc_path = os.path.join(self.selected_folder, "wind.nc")
-            if wind_nc_path in wind_files:
-                origin_data_path = wind_nc_path
-            else:
-                origin_data_path = wind_files[0]
+        if origin_file_path:
+            origin_data_path = origin_file_path
         else:
-            origin_data_path = self.selected_origin_file
+            # 如果工作目录已经有包含 wind 的文件（已复制并修复），使用它；否则使用原始文件
+            # 查找工作目录中包含 wind 的文件（可能是 wind.nc 或 wind_current_level_ice.nc 等）
+            wind_files = glob.glob(os.path.join(self.selected_folder, "*wind*.nc"))
+            if wind_files:
+                # 如果有多个，优先选择 wind.nc，否则选择第一个
+                wind_nc_path = os.path.join(self.selected_folder, "wind.nc")
+                if wind_nc_path in wind_files:
+                    origin_data_path = wind_nc_path
+                else:
+                    origin_data_path = wind_files[0]
+            else:
+                origin_data_path = source_file
 
-        new_data_file_path = os.path.join(self.selected_folder, "wind.nc")
+        new_data_file_path = output_file_path or os.path.join(self.selected_folder, "wind.nc")
 
         try:
             with Dataset(origin_data_path, "r") as src:
-                # 兼容不同命名的经纬度/时间变量
+                src.set_auto_mask(False)
+
                 def _pick_var_name(candidates):
                     for name in candidates:
                         if name in src.variables:
                             return name
                     return None
 
-                # 支持更多变量名变体，包括 CFSR 和 CCMP 格式
                 lon_name = _pick_var_name(["longitude", "lon", "LONGITUDE", "LON", "Longitude", "longitude"])
                 lat_name = _pick_var_name(["latitude", "lat", "LATITUDE", "LAT", "Latitude", "latitude"])
                 time_name = _pick_var_name(["valid_time", "time", "Time", "TIME", "t", "MT", "mt", "time"])
@@ -1132,19 +1391,14 @@ class StepOneFunctionsMixin:
                 if not time_name:
                     raise KeyError(tr("log_time_var_not_found", "未找到时间变量（valid_time/time/MT）"))
 
-                longitude = src.variables[lon_name][:]
-                latitude = src.variables[lat_name][:]
+                longitude = np.asarray(src.variables[lon_name][:])
+                latitude = np.asarray(src.variables[lat_name][:])
                 time_var_obj = src.variables[time_name]
-                time = time_var_obj[:]
+                time = np.asarray(time_var_obj[:])
 
-                # 获取原始时间单位，用于后续转换
                 original_time_units = getattr(time_var_obj, 'units', None)
                 original_time_calendar = getattr(time_var_obj, 'calendar', 'gregorian')
 
-                # 支持多种格式的风场变量名：
-                # - 标准格式：u10/v10
-                # - CFSR 格式：wndewd/wndnwd
-                # - CCMP 格式：uwnd/vwnd, uwnd10m/vwnd10m
                 u10_name = _pick_var_name(
                     ["u10", "U10", "wndewd", "WNDEWD", "eastward_wind", "u", "uwnd", "UWND", "uwnd10m", "UWND10M"])
                 v10_name = _pick_var_name(
@@ -1155,25 +1409,18 @@ class StepOneFunctionsMixin:
                 if not v10_name:
                     raise KeyError(tr("log_v10_var_not_found", "未找到北向风变量（v10/wndnwd/vwnd）"))
 
-                u10 = src.variables[u10_name][:]
-                v10 = src.variables[v10_name][:]
+                src_u10_var = src.variables[u10_name]
+                src_v10_var = src.variables[v10_name]
+                u10_shape = src_u10_var.shape
+                v10_shape = src_v10_var.shape
+                u10_dims = src_u10_var.dimensions if hasattr(src_u10_var, 'dimensions') else None
 
-                # 检测并调整维度顺序，确保为 (time, lat, lon)
-                u10_shape = u10.shape
-                v10_shape = v10.shape
-
-                # 获取维度名称（如果存在）
-                u10_dims = src.variables[u10_name].dimensions if hasattr(src.variables[u10_name],
-                                                                         'dimensions') else None
-
-                # 如果维度顺序不是 (time, lat, lon)，需要转置
                 transpose_order = None
-                if len(u10_shape) == 3:
-                    # 检查维度顺序
-                    # 标准顺序应该是 (time, lat, lon)
-                    # 但 CFSR 可能是 (time, lon, lat) 或其他顺序
+                time_dim_idx = 0
+                lat_dim_idx = 1
+                lon_dim_idx = 2
 
-                    # 通过维度名称判断
+                if len(u10_shape) == 3:
                     if u10_dims:
                         time_dim_idx = None
                         lat_dim_idx = None
@@ -1187,13 +1434,9 @@ class StepOneFunctionsMixin:
                             elif dim_name == lon_name or lon_name in dim_name or dim_name in lon_name:
                                 lon_dim_idx = i
 
-                        # 如果找到了所有维度，且顺序不是 (time, lat, lon)，则转置
                         if time_dim_idx is not None and lat_dim_idx is not None and lon_dim_idx is not None:
                             if not (time_dim_idx == 0 and lat_dim_idx == 1 and lon_dim_idx == 2):
-                                # 需要转置到 (time, lat, lon)
                                 transpose_order = [time_dim_idx, lat_dim_idx, lon_dim_idx]
-                                u10 = np.transpose(u10, transpose_order)
-                                v10 = np.transpose(v10, transpose_order)
                                 if hasattr(self, 'log_signal'):
                                     self.log_signal.emit(tr("log_dim_order_transposed",
                                                             "🔄 检测到维度顺序为 {dims}，已转置为 (time, lat, lon)").format(
@@ -1203,18 +1446,11 @@ class StepOneFunctionsMixin:
                                                 "🔄 检测到维度顺序为 {dims}，已转置为 (time, lat, lon)").format(
                                         dims=u10_dims))
                     else:
-                        # 如果没有维度名称，通过形状推断
-                        # 假设第一个维度是时间，后两个是空间维度
-                        # 如果 lat 的长度匹配第二个维度，lon 的长度匹配第三个维度，则顺序正确
-                        # 否则需要转置
                         if u10_shape[1] == len(latitude) and u10_shape[2] == len(longitude):
-                            # 顺序正确 (time, lat, lon)
-                            pass
+                            time_dim_idx, lat_dim_idx, lon_dim_idx = 0, 1, 2
                         elif u10_shape[1] == len(longitude) and u10_shape[2] == len(latitude):
-                            # 顺序是 (time, lon, lat)，需要转置为 (time, lat, lon)
+                            time_dim_idx, lat_dim_idx, lon_dim_idx = 0, 2, 1
                             transpose_order = (0, 2, 1)
-                            u10 = np.transpose(u10, transpose_order)
-                            v10 = np.transpose(v10, transpose_order)
                             if hasattr(self, 'log_signal'):
                                 self.log_signal.emit(tr("log_dim_order_tlonlat",
                                                         "🔄 检测到维度顺序为 (time, lon, lat)，已转置为 (time, lat, lon)"))
@@ -1222,7 +1458,6 @@ class StepOneFunctionsMixin:
                                 self.log(tr("log_dim_order_tlonlat",
                                             "🔄 检测到维度顺序为 (time, lon, lat)，已转置为 (time, lat, lon)"))
                         else:
-                            # 无法匹配，发出警告
                             warning_msg = tr("log_dim_order_uncertain",
                                              "⚠️ 警告：无法确定维度顺序！数据形状={shape}, 纬度长度={lat_len}, 经度长度={lon_len}").format(
                                 shape=u10_shape, lat_len=len(latitude), lon_len=len(longitude))
@@ -1230,40 +1465,56 @@ class StepOneFunctionsMixin:
                                 self.log_signal.emit(warning_msg)
                             else:
                                 self.log(warning_msg)
+                else:
+                    raise ValueError(tr("log_data_dim_unsupported", "风场数据维度不受支持：{shape}").format(shape=u10_shape))
 
-                # 确保是 numpy 数组
-                if not isinstance(u10, np.ndarray):
-                    u10 = np.array(u10)
-                if not isinstance(v10, np.ndarray):
-                    v10 = np.array(v10)
+                expected_lat_len = u10_shape[lat_dim_idx] if lat_dim_idx is not None else None
+                expected_lon_len = u10_shape[lon_dim_idx] if lon_dim_idx is not None else None
+                if expected_lat_len is not None and expected_lat_len != len(latitude):
+                    error_msg = tr("log_lat_dim_mismatch",
+                                   "⚠️ 警告：数据纬度维度 ({expected}) 与纬度变量长度 ({actual}) 不匹配！").format(
+                        expected=expected_lat_len, actual=len(latitude))
+                    if hasattr(self, 'log_signal'):
+                        self.log_signal.emit(error_msg)
+                    else:
+                        self.log(error_msg)
+                if expected_lon_len is not None and expected_lon_len != len(longitude):
+                    error_msg = tr("log_lon_dim_mismatch",
+                                   "⚠️ 警告：数据经度维度 ({expected}) 与经度变量长度 ({actual}) 不匹配！").format(
+                        expected=expected_lon_len, actual=len(longitude))
+                    if hasattr(self, 'log_signal'):
+                        self.log_signal.emit(error_msg)
+                    else:
+                        self.log(error_msg)
 
-                # 验证数据形状是否与经纬度长度匹配
-                if len(u10.shape) == 3:
-                    expected_lat_len = u10.shape[1]  # 第二个维度应该是纬度
-                    expected_lon_len = u10.shape[2]  # 第三个维度应该是经度
-                    if expected_lat_len != len(latitude):
-                        error_msg = tr("log_lat_dim_mismatch",
-                                       "⚠️ 警告：数据纬度维度 ({expected}) 与纬度变量长度 ({actual}) 不匹配！").format(
-                            expected=expected_lat_len, actual=len(latitude))
-                        if hasattr(self, 'log_signal'):
-                            self.log_signal.emit(error_msg)
-                        else:
-                            self.log(error_msg)
-                    if expected_lon_len != len(longitude):
-                        error_msg = tr("log_lon_dim_mismatch",
-                                       "⚠️ 警告：数据经度维度 ({expected}) 与经度变量长度 ({actual}) 不匹配！").format(
-                            expected=expected_lon_len, actual=len(longitude))
-                        if hasattr(self, 'log_signal'):
-                            self.log_signal.emit(error_msg)
-                        else:
-                            self.log(error_msg)
+                lon_dtype = src.variables[lon_name].dtype
+                lat_dtype = src.variables[lat_name].dtype
+                time_dtype = time_var_obj.dtype
+                u10_dtype = src_u10_var.dtype
+                v10_dtype = src_v10_var.dtype
+
+                def _snapshot_filters(var_obj):
+                    try:
+                        if hasattr(var_obj, "filters"):
+                            return var_obj.filters()
+                    except Exception:
+                        pass
+                    return None
+
+                u10_filters = _snapshot_filters(src_u10_var)
+                v10_filters = _snapshot_filters(src_v10_var)
+
+                if time_dim_idx is None or lat_dim_idx is None or lon_dim_idx is None:
+                    raise ValueError(tr("log_dim_order_uncertain",
+                                        "⚠️ 警告：无法确定维度顺序！数据形状={shape}, 纬度长度={lat_len}, 经度长度={lon_len}").format(
+                        shape=u10_shape, lat_len=len(latitude), lon_len=len(longitude)))
 
         except Exception as e:
             if hasattr(self, 'log_signal'):
                 self.log_signal.emit(tr("log_read_origin_failed", "❌ 读取原始文件失败: {error}").format(error=e))
             else:
                 self.log(tr("log_read_origin_failed", "❌ 读取原始文件失败: {error}").format(error=e))
-            return
+            return False
 
         # 检查经纬度是否从大到小，如果是则转换为从小到大
         # 检查经度方向
@@ -1274,123 +1525,139 @@ class StepOneFunctionsMixin:
         # 根据检查结果决定是否翻转
         if lon_needs_flip:
             longitude = longitude[::-1]
-            u10 = u10[:, :, ::-1]
-            v10 = v10[:, :, ::-1]
-            pass
 
         if lat_needs_flip:
             latitude = latitude[::-1]
-            u10 = u10[:, ::-1, :]
-            v10 = v10[:, ::-1, :]
-            pass
 
-        if not lon_needs_flip and not lat_needs_flip:
-            pass
+        needs_standardize = (
+            lon_name.lower() != "longitude"
+            or lat_name.lower() != "latitude"
+            or time_name.lower() != "time"
+            or u10_name.lower() != "u10"
+            or v10_name.lower() != "v10"
+        )
+        time_units_standard = bool(original_time_units) and original_time_units.strip().lower() == "seconds since 1970-01-01"
 
-        # 如果源文件就是目标 wind.nc，直接原地写回，保持原始压缩与大小
         try:
-            same_file = os.path.samefile(origin_data_path, new_data_file_path)
+            same_target_file = os.path.samefile(origin_data_path, new_data_file_path)
         except OSError:
-            same_file = False
+            same_target_file = False
 
-        # 若变量名/维度名不是标准格式，强制重写为标准格式
+        if same_target_file and not lon_needs_flip and not lat_needs_flip and transpose_order is None and needs_standardize is False and time_units_standard:
+            if hasattr(self, 'log_signal'):
+                self.log_signal.emit(tr("lat_flip_complete", "✅ 已完成纬度重排并保存至: {path}").format(path=new_data_file_path))
+            else:
+                self.log(tr("lat_flip_complete", "✅ 已完成纬度重排并保存至: {path}").format(path=new_data_file_path))
+            return True
+
+        def _transform_chunk_local(chunk):
+            chunk = np.asarray(chunk)
+            changed = False
+            if transpose_order is not None:
+                chunk = np.transpose(chunk, transpose_order)
+                changed = True
+            if lat_needs_flip:
+                chunk = chunk[:, ::-1, :]
+                changed = True
+            if lon_needs_flip:
+                chunk = chunk[:, :, ::-1]
+                changed = True
+            return np.ascontiguousarray(chunk) if changed else chunk
+
+        points_per_step = max(1, len(latitude) * len(longitude))
+        bytes_per_value = max(np.dtype(u10_dtype).itemsize, np.dtype(v10_dtype).itemsize)
+        bytes_per_step_pair = points_per_step * bytes_per_value * 2
+        estimated_total_bytes = len(time) * points_per_step * bytes_per_value * 2
+        available_memory_bytes = _get_available_memory_bytes()
+        if available_memory_bytes > 0:
+            full_load_threshold_bytes = min(3 * 1024 * 1024 * 1024, max(768 * 1024 * 1024, available_memory_bytes // 4))
+            target_chunk_bytes = min(2 * 1024 * 1024 * 1024, max(768 * 1024 * 1024, available_memory_bytes // 5))
+        else:
+            full_load_threshold_bytes = 512 * 1024 * 1024
+            target_chunk_bytes = 1536 * 1024 * 1024
+
+        chunk_time = max(1, min(len(time), target_chunk_bytes // max(1, bytes_per_step_pair)))
+        chunk_time = min(chunk_time, 256)
+        max_workers = min(2, max(1, (os.cpu_count() or 1) - 1))
+        file_size_bytes = 0
         try:
-            needs_standardize = (
-                lon_name.lower() != "longitude"
-                or lat_name.lower() != "latitude"
-                or time_name.lower() not in ("time", "valid_time")
-                or u10_name.lower() != "u10"
-                or v10_name.lower() != "v10"
-            )
-        except Exception:
-            needs_standardize = True
+            file_size_bytes = os.path.getsize(origin_data_path)
+        except OSError:
+            pass
+        use_full_load_transform = estimated_total_bytes <= full_load_threshold_bytes
+        use_parallel_transform = (
+            not use_full_load_transform
+            and len(time) >= 96
+            and len(time) > chunk_time
+            and max(1, (len(time) + chunk_time - 1) // chunk_time) >= 8
+            and max_workers > 1
+            and file_size_bytes >= 2 * 1024 * 1024 * 1024
+            and points_per_step <= 300000
+        )
+        transform_order = tuple(transpose_order) if transpose_order is not None else None
+        total_chunks = max(1, (len(time) + chunk_time - 1) // chunk_time)
+        progress_log_interval = 1 if total_chunks <= 12 else max(1, total_chunks // 8)
 
-        if needs_standardize:
-            same_file = False
+        def _build_time_major_chunksizes(dtype):
+            plane_bytes = max(1, len(latitude) * len(longitude) * np.dtype(dtype).itemsize)
+            target_storage_chunk_bytes = 16 * 1024 * 1024
+            time_chunk = max(1, min(len(time), target_storage_chunk_bytes // plane_bytes))
+            time_chunk = min(time_chunk, 16)
+            return (time_chunk, len(latitude), len(longitude))
 
-        if same_file:
-            try:
-                with Dataset(new_data_file_path, "r+") as dst:
-                    if lon_name in dst.variables:
-                        dst.variables[lon_name][:] = longitude
-                    if lat_name in dst.variables:
-                        dst.variables[lat_name][:] = latitude
-                    if time_name in dst.variables:
-                        dst.variables[time_name][:] = time
-
-                    u10_out = u10
-                    v10_out = v10
-                    if transpose_order is not None:
-                        inverse_order = np.argsort(transpose_order)
-                        u10_out = np.transpose(u10, inverse_order)
-                        v10_out = np.transpose(v10, inverse_order)
-
-                    if u10_name in dst.variables:
-                        dst.variables[u10_name][:] = u10_out
-                    if v10_name in dst.variables:
-                        dst.variables[v10_name][:] = v10_out
-
-                if hasattr(self, 'log_signal'):
-                    self.log_signal.emit(tr("lat_flip_complete", "✅ 已完成纬度重排并保存至: {path}").format(path=new_data_file_path))
-                else:
-                    self.log(tr("lat_flip_complete", "✅ 已完成纬度重排并保存至: {path}").format(path=new_data_file_path))
-                return
-            except Exception as e:
-                if hasattr(self, 'log_signal'):
-                    self.log_signal.emit(tr("log_write_file_failed", "❌ 写入新文件失败: {error}").format(error=e))
-                else:
-                    self.log(tr("log_write_file_failed", "❌ 写入新文件失败: {error}").format(error=e))
-                return
+        output_u10_chunksizes = _build_time_major_chunksizes(u10_dtype)
+        output_v10_chunksizes = _build_time_major_chunksizes(v10_dtype)
 
         try:
-            with Dataset(new_data_file_path, "w", format="NETCDF4") as dst:
-                # 定义维度
+            temp_output_path = new_data_file_path + ".reorder_tmp"
+            if os.path.exists(temp_output_path):
+                os.remove(temp_output_path)
+
+            with Dataset(origin_data_path, "r") as src, Dataset(temp_output_path, "w", format="NETCDF4") as dst:
+                src.set_auto_mask(False)
+                try:
+                    dst.set_fill_off()
+                except Exception:
+                    pass
+                src_u10_var = src.variables[u10_name]
+                src_v10_var = src.variables[v10_name]
                 dst.createDimension("longitude", len(longitude))
                 dst.createDimension("latitude", len(latitude))
                 dst.createDimension("time", len(time))
 
-                # 定义变量（注意 fill_value 要在这里指定）
-                # 仅做纬度重排，不做压缩；尽量保持原始数据类型
-                lon_dtype = src.variables[lon_name].dtype
-                lat_dtype = src.variables[lat_name].dtype
-                time_dtype = src.variables[time_name].dtype
-                u10_dtype = src.variables[u10_name].dtype
-                v10_dtype = src.variables[v10_name].dtype
+                # 使用 with src 块中缓存的 dtype
                 lon_var = dst.createVariable("longitude", lon_dtype, ("longitude",))
                 lat_var = dst.createVariable("latitude", lat_dtype, ("latitude",))
                 time_var = dst.createVariable("time", time_dtype, ("time",))
-                def _build_var_kwargs(var_obj):
+
+                def _build_var_kwargs_from_filters(filters, output_chunksizes):
                     kwargs = {"fill_value": -32767.0}
                     try:
-                        if hasattr(var_obj, "filters"):
-                            filters = var_obj.filters()
-                            if filters and filters.get("zlib"):
-                                kwargs["zlib"] = True
-                                if "complevel" in filters and filters["complevel"] is not None:
-                                    kwargs["complevel"] = filters["complevel"]
-                                if "shuffle" in filters and filters["shuffle"] is not None:
-                                    kwargs["shuffle"] = filters["shuffle"]
-                                if "fletcher32" in filters and filters["fletcher32"] is not None:
-                                    kwargs["fletcher32"] = filters["fletcher32"]
-                                if "chunksizes" in filters and filters["chunksizes"] is not None:
-                                    kwargs["chunksizes"] = filters["chunksizes"]
-                                if "least_significant_digit" in filters and filters["least_significant_digit"] is not None:
-                                    kwargs["least_significant_digit"] = filters["least_significant_digit"]
+                        if filters and filters.get("zlib"):
+                            kwargs["zlib"] = True
+                            if filters.get("complevel") is not None:
+                                kwargs["complevel"] = filters["complevel"]
+                            if filters.get("shuffle") is not None:
+                                kwargs["shuffle"] = filters["shuffle"]
+                            if filters.get("fletcher32") is not None:
+                                kwargs["fletcher32"] = filters["fletcher32"]
+                            if output_chunksizes is not None:
+                                kwargs["chunksizes"] = output_chunksizes
+                            if filters.get("least_significant_digit") is not None:
+                                kwargs["least_significant_digit"] = filters["least_significant_digit"]
                     except Exception:
-                        # 如果读取过滤器失败，保持无压缩写入
                         pass
                     return kwargs
 
-                def _create_data_var(name, dtype, src_var):
+                def _create_data_var(name, dtype, cached_filters, output_chunksizes):
                     try:
                         return dst.createVariable(
                             name,
                             dtype,
                             ("time", "latitude", "longitude"),
-                            **_build_var_kwargs(src_var),
+                            **_build_var_kwargs_from_filters(cached_filters, output_chunksizes),
                         )
                     except Exception:
-                        # 回退：不使用过滤器参数
                         return dst.createVariable(
                             name,
                             dtype,
@@ -1398,8 +1665,8 @@ class StepOneFunctionsMixin:
                             fill_value=-32767.0,
                         )
 
-                u10_var = _create_data_var("u10", u10_dtype, src.variables[u10_name])
-                v10_var = _create_data_var("v10", v10_dtype, src.variables[v10_name])
+                u10_var = _create_data_var("u10", u10_dtype, u10_filters, output_u10_chunksizes)
+                v10_var = _create_data_var("v10", v10_dtype, v10_filters, output_v10_chunksizes)
 
                 # 写入数据
                 lon_var[:] = longitude
@@ -1417,6 +1684,8 @@ class StepOneFunctionsMixin:
                         try:
                             # 使用 num2date 将原始时间转换为 datetime 对象
                             time_datetimes = num2date(time, original_time_units, calendar=original_time_calendar)
+                            if hasattr(time_datetimes, "compressed"):
+                                time_datetimes = time_datetimes.compressed()
                             # 转换为 seconds since 1970-01-01
                             from datetime import datetime
                             epoch = datetime(1970, 1, 1)
@@ -1445,8 +1714,82 @@ class StepOneFunctionsMixin:
                     # 如果没有时间单位信息，直接使用原始值
                     time_var[:] = time
 
-                u10_var[:] = u10
-                v10_var[:] = v10
+                if use_full_load_transform:
+                    u10_all = _transform_chunk_local(src_u10_var[:])
+                    v10_all = _transform_chunk_local(src_v10_var[:])
+                    u10_var[:] = u10_all
+                    v10_var[:] = v10_all
+                elif use_parallel_transform:
+                    if hasattr(self, 'log_signal'):
+                        self.log_signal.emit(
+                            tr("log_parallel_chunk_transform", "🔄 已启用并行分块处理（{workers} 个进程）").format(
+                                workers=max_workers))
+                    ctx = multiprocessing.get_context("spawn")
+                    with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as executor:
+                        pending = None
+                        for start in range(0, len(time), chunk_time):
+                            end = min(start + chunk_time, len(time))
+                            chunk_index = start // chunk_time + 1
+                            should_log_progress = (
+                                chunk_index == 1
+                                or chunk_index == total_chunks
+                                or chunk_index % progress_log_interval == 0
+                            )
+                            if hasattr(self, 'log_signal') and should_log_progress:
+                                self.log_signal.emit(tr("step1_debug_chunk_progress",
+                                                        "🔍 [调试] 正在处理分块 {current}/{total}（time: {start}~{end}）").format(
+                                    current=chunk_index,
+                                    total=total_chunks,
+                                    start=start,
+                                    end=end - 1,
+                                ))
+                            read_slices = [slice(None)] * len(u10_shape)
+                            read_slices[time_dim_idx] = slice(start, end)
+                            u10_chunk = np.asarray(src_u10_var[tuple(read_slices)])
+                            v10_chunk = np.asarray(src_v10_var[tuple(read_slices)])
+                            future = executor.submit(
+                                _transform_wind_chunks_for_pool,
+                                u10_chunk,
+                                v10_chunk,
+                                transform_order,
+                                lat_needs_flip,
+                                lon_needs_flip,
+                            )
+                            if pending is not None:
+                                prev_start, prev_end, prev_future = pending
+                                prev_u10, prev_v10 = prev_future.result()
+                                u10_var[prev_start:prev_end, :, :] = prev_u10
+                                v10_var[prev_start:prev_end, :, :] = prev_v10
+                            pending = (start, end, future)
+
+                        if pending is not None:
+                            prev_start, prev_end, prev_future = pending
+                            prev_u10, prev_v10 = prev_future.result()
+                            u10_var[prev_start:prev_end, :, :] = prev_u10
+                            v10_var[prev_start:prev_end, :, :] = prev_v10
+                else:
+                    for start in range(0, len(time), chunk_time):
+                        end = min(start + chunk_time, len(time))
+                        chunk_index = start // chunk_time + 1
+                        should_log_progress = (
+                            chunk_index == 1
+                            or chunk_index == total_chunks
+                            or chunk_index % progress_log_interval == 0
+                        )
+                        if hasattr(self, 'log_signal') and should_log_progress:
+                            self.log_signal.emit(tr("step1_debug_chunk_progress",
+                                                    "🔍 [调试] 正在处理分块 {current}/{total}（time: {start}~{end}）").format(
+                                current=chunk_index,
+                                total=total_chunks,
+                                start=start,
+                                end=end - 1,
+                            ))
+                        read_slices = [slice(None)] * len(u10_shape)
+                        read_slices[time_dim_idx] = slice(start, end)
+                        u10_chunk = _transform_chunk_local(src_u10_var[tuple(read_slices)])
+                        v10_chunk = _transform_chunk_local(src_v10_var[tuple(read_slices)])
+                        u10_var[start:end, :, :] = u10_chunk
+                        v10_var[start:end, :, :] = v10_chunk
 
                 # 添加属性
                 lon_var.description = "LONGITUDE, WEST IS NEGATIVE"
@@ -1473,14 +1816,23 @@ class StepOneFunctionsMixin:
                 v10_var.units = "m/s"
                 v10_var.level = "10m"
 
+            os.replace(temp_output_path, new_data_file_path)
+
             if hasattr(self, 'log_signal'):
                 self.log_signal.emit(
                     tr("lat_flip_complete", "✅ 已完成纬度重排并保存至: {path}").format(path=new_data_file_path))
             else:
                 self.log(tr("lat_flip_complete", "✅ 已完成纬度重排并保存至: {path}").format(path=new_data_file_path))
+            return True
 
         except Exception as e:
+            try:
+                if 'temp_output_path' in locals() and os.path.exists(temp_output_path):
+                    os.remove(temp_output_path)
+            except Exception:
+                pass
             if hasattr(self, 'log_signal'):
                 self.log_signal.emit(tr("log_write_file_failed", "❌ 写入新文件失败: {error}").format(error=e))
             else:
                 self.log(tr("log_write_file_failed", "❌ 写入新文件失败: {error}").format(error=e))
+            return False

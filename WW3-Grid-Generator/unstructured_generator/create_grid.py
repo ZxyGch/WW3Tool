@@ -1115,18 +1115,22 @@ def _print_unstructured_run_banner() -> None:
 
 
 def _print_grid_generation_summary(
-    output_dir: Path,
+    *,
+    mesh_workspace_dir: Path,
+    ww3_publish_dir: Path | None,
     output_entries: list[tuple[str, str]],
     elapsed_seconds: float,
 ) -> None:
-    """Match structured_generator/pygridgen/create_grid.py completion block."""
+    """Completion block (structured-style banner); paths match grid.json Output section."""
     sys.stdout.flush()
     print("=" * 70, flush=True)
     title2 = "Grid Generation Complete!"
     pad = max((70 - len(title2)) // 2, 0)
     print(" " * pad + title2, flush=True)
     print("=" * 70, flush=True)
-    print(f"Output directory: {output_dir.resolve()}", flush=True)
+    print(f"mesh_workspace_dir: {mesh_workspace_dir.resolve()}", flush=True)
+    if ww3_publish_dir is not None:
+        print(f"ww3_publish_dir: {ww3_publish_dir.resolve()}", flush=True)
     print("Output files:", flush=True)
     for label, desc in output_entries:
         print(f"  - {label} ({desc})", flush=True)
@@ -1241,7 +1245,7 @@ def main() -> None:
             check=True,
         )
 
-    published_dest: Path | None = None
+    ww3_publish_resolved: Path | None = None
     if cfg.has_section("Output"):
         pub = cfg.get("Output", "ww3_publish_dir", fallback="").strip()
         if pub:
@@ -1257,7 +1261,7 @@ def main() -> None:
                 sys.exit(f"WW3 mesh not found for publish step: {src}")
             dest = dest_dir / name
             shutil.copy2(src, dest)
-            published_dest = dest
+            ww3_publish_resolved = dest_dir
             print(f"Published WW3 mesh: {dest}", file=sys.stderr)
 
     entries: list[tuple[str, str]] = []
@@ -1271,11 +1275,14 @@ def main() -> None:
             gmsh_p = Path(gmsh_raw).resolve()
             if gmsh_p.is_file() and gmsh_p != mesh_p:
                 entries.append((gmsh_p.name, "Gmsh mesh"))
-    if published_dest is not None and published_dest.is_file():
-        entries.append((published_dest.name, "published WW3 mesh copy"))
 
     elapsed_time = time.time() - start_time
-    _print_grid_generation_summary(run_dir, entries, elapsed_time)
+    _print_grid_generation_summary(
+        mesh_workspace_dir=run_dir,
+        ww3_publish_dir=ww3_publish_resolved,
+        output_entries=entries,
+        elapsed_seconds=elapsed_time,
+    )
 
 
 if __name__ == "__main__":

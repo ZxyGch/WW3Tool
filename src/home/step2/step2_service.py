@@ -2041,6 +2041,7 @@ class StepTwoServiceMixin:
         unst_cache_dir = self._check_unst_mesh_cache(cache_key)
 
         sp = cfg_obj.get("spacing") or {}
+        self.log_signal.emit("=" * 70)
         self.log_signal.emit(
             tr(
                 "step2_unst_params",

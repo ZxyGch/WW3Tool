@@ -4156,12 +4156,21 @@ class ModifyWW3NML:
         points_list_path = os.path.join(target_dir, "points.list")
         
         try:
+            def _fmt_point_coord(v):
+                s = f"{float(v):.8f}".rstrip("0").rstrip(".")
+                if "." not in s:
+                    s += ".0"
+                return s
+
             # 写入文件（清空原有内容）
             with open(points_list_path, "w", encoding="utf-8") as f:
                 for point in points_data:
                     # 格式：经度 纬度 '名称'
-                    # 注意：WW3 要求经度纬度为整数（.0f 格式）
-                    f.write(f"{point['lon']:.0f} {point['lat']:.0f} '{point['name']}'\n")
+                    f.write(
+                        f"{_fmt_point_coord(point['lon'])} "
+                        f"{_fmt_point_coord(point['lat'])} "
+                        f"'{point['name']}'\n"
+                    )
             
             self.log(tr("step4_points_list_created", "✅ 已创建 points.list 文件，包含 {count} 个点位").format(count=len(points_data)))
         
@@ -4348,6 +4357,12 @@ class ModifyWW3NML:
             track_file_path = os.path.join(self.selected_folder, "track_i.ww3")
         
         try:
+            def _fmt_track_coord(v):
+                s = f"{float(v):.8f}".rstrip("0").rstrip(".")
+                if "." not in s:
+                    s += ".0"
+                return s
+
             # 读取表格数据（跳过表头行，列顺序：0-时间, 1-经度, 2-纬度, 3-名称）
             track_points = []
             for i in range(1, self.track_points_table.rowCount()):
@@ -4390,7 +4405,12 @@ class ModifyWW3NML:
             for point in track_points:
                 # 格式：日期时间 经度 纬度 名称
                 # 例如：20250103 000000   112.5   12.0    Track1
-                line = f"{point['datetime']}   {point['lon']:.1f}   {point['lat']:.1f}    {point['name']}\n"
+                line = (
+                    f"{point['datetime']}   "
+                    f"{_fmt_track_coord(point['lon'])}   "
+                    f"{_fmt_track_coord(point['lat'])}    "
+                    f"{point['name']}\n"
+                )
                 lines.append(line)
             
             # 写入文件

@@ -22,6 +22,12 @@ class NetCDFInfoService:
     
     def log(self, msg: str):
         """记录日志"""
+        if self.logger and hasattr(self.logger, 'log_signal'):
+            try:
+                self.logger.log_signal.emit(msg)
+                return
+            except Exception:
+                pass
         if self.logger and hasattr(self.logger, 'log'):
             self.logger.log(msg)
     
@@ -96,6 +102,13 @@ class NetCDFInfoService:
 
                         if time_units:
                             times = num2date(time_var[:], time_units, calendar=time_calendar)
+                            if hasattr(times, "compressed"):
+                                times = times.compressed()
+                            if isinstance(times, np.ndarray):
+                                times = times.ravel().tolist()
+                            elif not isinstance(times, (list, tuple)):
+                                times = [times]
+                            times = [t for t in times if hasattr(t, "strftime")]
                             if len(times) > 0:
                                 time_start = times[0]
                                 time_end = times[-1]
