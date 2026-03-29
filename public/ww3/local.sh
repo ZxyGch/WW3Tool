@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -o pipefail
-ulimit -s unlimited
+
 
 # MPI process count for local run (keep consistent with previous)
 MPI_NPROCS=10

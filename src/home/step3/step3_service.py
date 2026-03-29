@@ -1465,18 +1465,20 @@ class StepThreeServiceMixin:
         
         # 设置标题
         ax.set_title(tr("step3_select_on_map_subtitle", "在地图上选点（点击地图选择点位，可多选）"), fontsize=14, fontweight='bold')
-        fig.subplots_adjust(left=0.03, right=0.999, top=0.955, bottom=0.05)
+        fig.subplots_adjust(left=0.01, right=0.995, top=0.955, bottom=0.05)
         
         # Use the same card-style shell as Step 2 "View Map", but do not close on mask click.
-        dialog = _PointSelectMapDialog(self, content_aspect_wh=1.85)
+        # Narrower aspect reduces the extra horizontal whitespace around the map.
+        dialog = _PointSelectMapDialog(self, content_aspect_wh=1.25)
 
         content_widget = QWidget()
         main_layout = QHBoxLayout(content_widget)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.setSpacing(1)
+        main_layout.setContentsMargins(2, 2, 2, 2)
+        main_layout.setSpacing(0)
         
         # 将matplotlib图形嵌入到QDialog中（左侧）
         canvas = FigureCanvas(fig)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         main_layout.addWidget(canvas, 1)  # 拉伸因子为1，占据主要空间
         
         # 按钮区域（右侧）

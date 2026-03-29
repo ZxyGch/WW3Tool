@@ -437,6 +437,9 @@ class StepFourServiceMixin:
         # 如果不是谱空间逐点计算模式，跳过 ww3_ounp.nml
         if not is_spectral_mode:
             skip_files.append("ww3_ounp.nml")
+        # 嵌套网格模式下，local.sh 仅保留在工作目录，不复制到 coarse/fine
+        if is_nested_grid:
+            skip_files.append("local.sh")
 
         try:
             # 遍历 public 目录下的文件并复制

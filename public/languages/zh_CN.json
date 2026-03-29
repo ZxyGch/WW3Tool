@@ -532,7 +532,7 @@
   "step4_public_files_start": "🔄 【工作目录】开始处理公共文件...",
   "step4_outer_grid_start": "🔄 【外网格】开始处理外网格...",
   "step4_inner_grid_start": "🔄 【内网格】开始处理内网格...",
-  "step4_special_files_copied": "✅ 已复制 {files} 到工作目录：{path}",
+  "step4_special_files_copied": "✅ 已复制 {files} 到当前工作目录",
   "step4_ww3_multi_updated": "✅ 已更新 ww3_multi.nml：起始={start}, 结束={end}, 计算精度={precision}s",
   "step2_grid_visualization_complete": "✅ {grid_name}可视化完成，图片已保存到: {photo_dir}",
   "step2_grid_viz_done": "✅ 网格可视化已生成。",

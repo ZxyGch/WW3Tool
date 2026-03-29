@@ -186,6 +186,13 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 
 
+#### SMC 网格
+
+
+#### 非结构化三角形网格
+
+
+
 
 #### 网格缓存
 
@@ -217,31 +224,6 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 }
 ```
 
-
-
-#### 全球网格
-
-如果是全球范围的网格，风场文件的范围一般并不是标准的全球范围，我们会弹出提示是否生成全球范围的网格。
-
-目前全球范围的模拟还存在问题，我对这方面了解的很少，希望得到你的帮助
-
-我目前对全球网格会修改 MATLAB Gridgen 的 gird.nml 的  IS_GLOBAL = 0 设置为 1
-
-以及生成的 grid.meta 改   'RECT'  T 'NONE'  为    'RECT'  T 'SMPL'
-
-这样在第四步的确认参数的时候，我们会检测到  grid.meta  的   'RECT'  T 'SMPL' 修改 ww3_grid.nml 的 GRID%CLOS         =  'SMPL'
-
-```
-&GRID_NML
-  GRID%NAME         =  'I Love ZhangXiaoPeng'
-  GRID%NML          =  'namelists.nml'
-  GRID%TYPE         =  'RECT'
-  GRID%COORD        =  'SPHE'
-  GRID%CLOS         =  'SMPL'
-  GRID%ZLIM         =  -0.1
-  GRID%DMIN         =  2.5
-/
-```
 
 
 
@@ -659,18 +641,16 @@ WAVEWATCH III TRACK LOCATIONS DATA
 我们首先生成了嵌套网格，在工作目录创建了 coarse 和 fine 目录，然后选择了二维谱计算模式。
 
 
-
 ```log
 ======================================================================
 🔄 【工作目录】开始处理公共文件...
-✅ 已复制 server.sh, ww3_multi.nml 到工作目录：/Users/zxy/ocean/WW3Tool/workSpace/nest
+✅ 已复制 server.sh, ww3_multi.nml, local.sh 到当前工作目录
 ✅ 已更新 server.sh：-J=202501, -p=CPU6240R, -n=48, -N=1, MPI_NPROCS=48, CASENAME=202501, ST=ST2
-✅ 已更新 ww3_multi.nml：起始=20250103, 结束=20250105, 计算精度=1800s，强迫场=风场、流场、水位场、海冰场、海冰厚度，计算资源：coarse=0.50, fine=0.50，ALLTYPE%POINT%FILE = './fine/points.list'，ALLDATE%POINT = '20250103 000000' '1800' '20250105 235959'，ALLTYPE%FIELD%LIST = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS' (谱分区输出)
+✅ 已更新 ww3_multi.nml：起始=20250103, 结束=20250105, 计算精度=1800s，强迫场=风场、流场、水位场、海冰场、海冰厚度，计算资源：coarse=0.60, fine=0.40，ALLTYPE%POINT%FILE = './fine/points.list'，ALLDATE%POINT = '20250103 000000' '1800' '20250105 235959'，ALLTYPE%FIELD%LIST = 'WND HS T02 FP DIR PHS PTP PDIR PWS TWS PNR' (谱分区输出)
 
 ======================================================================
 🔄 【外网格】开始处理外网格...
 ✅ 已复制 9 个 public/ww3 文件到当前工作目录
-✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
 ✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
 ✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
 ✅ 已更新 ww3_shel.nml（谱空间逐点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
@@ -688,6 +668,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ======================================================================
 🔄 【内网格】开始处理内网格...
 ✅ 已复制 9 个 public/ww3 文件到当前工作目录
+✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
 ✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
 ✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
 ✅ 已更新 ww3_shel.nml（谱空间逐点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
@@ -706,10 +687,10 @@ WAVEWATCH III TRACK LOCATIONS DATA
 我们第四步确认参数，观察 Log 输出
 
 ```log
-已复制 server.sh, ww3_multi.nml 到工作目录：/Users/zxy/ocean/WW3Tool/nest
+✅ 已复制 server.sh, ww3_multi.nml, local.sh 到当前工作目录
 ```
 
-我们首先把 WW3Tool/public/ww3 目录的 server.sh 和 ww3_multi.nml 复制到了工作目录。
+我们首先把 WW3Tool/public/ww3 目录的 server.sh, local. sh, ww3_multi.nml 复制到了工作目录。
 
 我们引入了 ww3_multi.nml 修改了起始时间，计算精度，强迫场，这其实和 ww3_shel.nml 类似
 
@@ -751,13 +732,34 @@ WAVEWATCH III TRACK LOCATIONS DATA
 /
 ```
 
-注意 MODEL (2)%FORCING%WINDS = 'native' 其中的 native 表示开始，no 表示关闭
+其中
+
+INPUT (I)%FORCING%ICE_CONC = 冰浓度
+INPUT (I)%FORCING%ICE_PARAM1 = 冰厚度
+
+关于海冰强迫场目前程序还有很多没有完善的问题。
+
+注意 MODEL (2)%FORCING%WINDS = 'native' 其中的 native 表示开启，no 表示关闭
 
 MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 至于其他的 Log ，很容易理解，我们只是按照普通网格的方式处理了内外网格
 
 值得注意的是，我们修改了 ww3_prnc.nml：FILE%FILENAME = '../wind.nc' ，这是为了避免强迫场文件占用两倍的空间，所以指向了共同的引用。
+
+
+
+
+#### 谱空间逐点计算模式
+
+```log
+✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
+✅ 已创建 points.list 文件，包含 4 个点位
+✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（谱空间逐点计算模式）
+```
+
+上一节的日志中，这三个日志是关于谱空间逐点计算模式的日志，这些日志都很好理解
+
 
 
 
@@ -769,7 +771,22 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 如果选择本地执行，确保你已经在本地配置好了 WAVEWATCH III，选择 bin 目录，其中应该包含下面这些程序
 
+```
+gx_outf    ww3_bound  ww3_grid   ww3_ounf   ww3_outp   ww3_shel   
+
+ww3_trck   gx_outp    ww3_gint   ww3_gspl   ww3_ounp   ww3_prep   
+
+ww3_strt   ww3_trnc   ww3_bounc  ww3_grib   ww3_multi  ww3_outf   
+
+ww3_prnc   ww3_systrk ww3_uprstr
+```
+
+
+
+
 ### 连接服务器
+
+![](public/resource/README-media/截屏2026-03-29%2023.47.34.png)
 
 首先，你需要配置 ssh 账号和密码，在设置页面我们找到服务器配置这个选项
 
@@ -779,7 +796,12 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 如果在第六步提交计算任务到 Slurm ，还会显示任务队列
 
+
+
+
 ### 服务器操作
+
+
 
 查看任务队列就是在服务器执行了 squeue -l
 
@@ -804,6 +826,8 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到航迹模式
 
 自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel.nml 的计算精度，时间范围，谱分区方案
+
+
 
 ### 设置页面
 
@@ -851,25 +875,36 @@ sinfo
 
 你需要填写 SSH 账号，以及默认的登录路径，在这个路径，每次的工作目录都会上传到这里。
 
-400
+
 
 #### ST 版本管理
 
 实际上，这个就是你编译的不同版本的 WAVEWATCH，你只需填写它们的路径即可
 
-400
+
 
 ### 绘图界面
 
 #### 风场绘图
 
+![](public/resource/README-media/54c004948927395c7eb51ecc337f6752a7bc31c2.png)
+
 #### 二维谱绘图
+
+![](public/resource/README-media/bf6f51063f2c2ac60f608bd42d7ff85e21bd0f7b.png)
 
 #### 波高图
 
+![](public/resource/README-media/3021c4434de128e783c2b06f6ba4c1fe876cf416.png)
+![](public/resource/README-media/bde9091a001999fdacde4c1f804fc5c025a9995f.png)
 #### 风涌浪图
 
+![](public/resource/README-media/30f4c0333842e78da6437616709d0c884177e7b5.png)
+![](public/resource/README-media/1968aff8588d84dab9e4750a8e97be006177d709.png)
+
 #### 卫星拟合图
+
+![](public/resource/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
 
 ## 文件获取
 
@@ -880,6 +915,21 @@ sinfo
 [https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download)
 
 下图是 ERA5 的数据下载，你需要先注册一个账号才能下载，注册账号需要注意你的英文名字不能是随机的字母，否则无法注册。
+
+
+![](public/resource/README-media/7b5a66fa59267d896d32953edbd4b398b59989d3.png)
+
+![](public/resource/README-media/49723f276ff95abc61c5a37578dd195e241e86c1.png)
+
+![](public/resource/README-media/344439033b50144dc811dc44c58c9ccec1a47605.png)
+
+![](public/resource/README-media/3d2a902b95c03729037e8ebae50def9a272c42c1.png)
+
+
+
+
+
+
 
 #### CFSR
 
@@ -897,7 +947,11 @@ HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcd
 
 如果你发现无法输入经纬度，则取消选中 Disable horizontal subsetting
 
+![](public/resource/README-media/20305146a39edf9f584b455200bab685abb455f6.png)
+
 然后点击下面的 Time range 标签，输入时间范围，最后 submit
+
+
 
 #### CCMP
 
@@ -913,6 +967,10 @@ HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcd
 
 然后输入范围和时间即可，最后点击 DOWNLOAD
 
+![](public/resource/README-media/224d9c7b204410af0f2bb5fa7fbe85d37697748d.png)
+
+
+
 ### 下载冰场
 
 [https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/download?dataset=cmems_mod_glo_phy_my_0.083deg_P1D-m_202311](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/download?dataset=cmems_mod_glo_phy_my_0.083deg_P1D-m_202311)
@@ -920,6 +978,10 @@ HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcd
 可以下载海冰场和流场
 
 海冰包括海冰覆盖 Sea ice area fraction 、海冰厚度场 Sea ice thickness
+
+![](public/resource/README-media/d64991a6199b7e91b49be401afeca00ffde51619.png)
+
+
 
 ### JASON 3 数据
 

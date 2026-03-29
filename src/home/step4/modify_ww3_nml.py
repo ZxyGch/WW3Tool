@@ -1623,7 +1623,7 @@ class ModifyWW3NML:
 
 
     def _copy_public_special_files_to_workdir(self):
-        """复制公共文件（server.sh 和 ww3_multi.nml）到工作目录"""
+        """复制公共文件（server.sh、ww3_multi.nml、local.sh）到工作目录"""
         # 获取项目根目录下的 public/ww3 路径
         # BASE_DIR 已经在文件开头通过 from setting.config import * 导入
         src_dir = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "public", "ww3")
@@ -1672,7 +1672,7 @@ class ModifyWW3NML:
             else:
                 self.log(tr("server_sh_not_found", "⚠️ 未找到 server.sh 文件：{path}").format(path=server_script_path))
             
-            # 只有在嵌套网格模式下才复制 ww3_multi.nml
+            # 只有在嵌套网格模式下才复制 ww3_multi.nml / local.sh
             if is_nested_grid:
                 multi_nml_path = os.path.join(src_dir, "ww3_multi.nml")
                 if os.path.isfile(multi_nml_path):
@@ -1680,9 +1680,15 @@ class ModifyWW3NML:
                     shutil.copy2(multi_nml_path, dst_path)
                     copied_files.append("ww3_multi.nml")
 
+                local_sh_path = os.path.join(src_dir, "local.sh")
+                if os.path.isfile(local_sh_path):
+                    dst_path = os.path.join(self.selected_folder, "local.sh")
+                    shutil.copy2(local_sh_path, dst_path)
+                    copied_files.append("local.sh")
+
             if copied_files:
                 files_str = ', '.join(copied_files)
-                self.log(tr("step4_special_files_copied", "✅ 已复制 {files} 到工作目录：{path}").format(files=files_str, path=self.selected_folder))
+                self.log(tr("step4_special_files_copied", "✅ 已复制 {files} 到当前工作目录").format(files=files_str))
         except Exception as e:
             self.log(tr("copy_public_files_error", "❌ 复制公共文件时出错：{error}").format(error=e))
 

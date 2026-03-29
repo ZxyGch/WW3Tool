@@ -115,12 +115,14 @@ class HomeLocalRun:
         """内部执行本地 WW3 运行（在后台线程中调用）"""
         self._local_run_proc = None
         try:
-            # 获取本地脚本路径
-            # __file__ 是 main/home/home_local_run.py，需要回到项目根目录
-            script_dir = os.path.dirname(os.path.abspath(__file__))  # main/home
-            main_dir = os.path.dirname(script_dir)  # main
-            project_root = os.path.dirname(main_dir)  # 项目根目录
-            local_script_path = os.path.normpath(os.path.join(project_root, "public", "ww3", "local.sh"))
+            # 获取本地脚本路径：优先使用当前工作目录的 local.sh
+            local_script_path = os.path.normpath(os.path.join(self.selected_folder, "local.sh"))
+            if not os.path.exists(local_script_path):
+                # __file__ 是 main/home/home_local_run.py，需要回到项目根目录
+                script_dir = os.path.dirname(os.path.abspath(__file__))  # main/home
+                main_dir = os.path.dirname(script_dir)  # main
+                project_root = os.path.dirname(main_dir)  # 项目根目录
+                local_script_path = os.path.normpath(os.path.join(project_root, "public", "ww3", "local.sh"))
             
             if not os.path.exists(local_script_path):
                 self.log_signal.emit(tr("step5_local_script_not_found", "❌ 找不到本地脚本：{path}").format(path=local_script_path))
