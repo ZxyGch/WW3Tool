@@ -276,7 +276,6 @@ The three columns are longitude, latitude, and point name. If a working director
 
 After WW3 runs, you get `ww3.2025_spec.nc` in the plotting page.
 
-![](public/resource/README-media/截屏2026-03-30%2015.18.40.png)
 
 You can plot 2D spectra:
 
