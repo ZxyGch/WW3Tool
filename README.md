@@ -2,7 +2,7 @@
 
 ## Overview
 
-![](public/resource/README-media/截屏2026-03-30%2014.55.49.png)
+![](public/resource/README-media/截屏2026-03-30%2016.01.54.png)
 
 Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
 
@@ -62,7 +62,7 @@ WAVEWATCH III is not required for local installation. Local runs are optional, a
 
 ### Create a working directory
 
-![](public/resource/README-media/截屏2026-03-30%2014.56.50.png)
+![](public/resource/README-media/截屏2026-03-30%2016.01.22.png)
 
 At startup, you must select or create a working directory. This step is mandatory and cannot be skipped.
 
@@ -108,11 +108,11 @@ The `reference_data` package contains gebco, etopo1/2, coastline boundaries, and
 
 If `WW3Tool/WW3-Grid-Generator/reference_data` does not contain these files, a download window will appear in step 2.
 
-![](public/resource/README-media/截屏2026-03-30%2014.57.58.png)
+![](public/resource/README-media/截屏2026-03-30%2016.02.47.png)
 
 Click Download: the program will download from [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) (~6.5GB).
 
-![](public/resource/README-media/截屏2026-03-30%2014.58.33.png)
+![](public/resource/README-media/截屏2026-03-30%2016.03.00.png)
 
 If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to `WW3Tool/WW3-Grid-Generator/reference_data`.
 
@@ -122,7 +122,7 @@ If GitHub is too slow or fails, you can download from [OneDrive](https://tiangon
 
 ##### Single grid
 
-![](public/resource/README-media/截屏2026-03-30%2015.00.05.png)
+![](public/resource/README-media/截屏2026-03-30%2016.04.17.png)
 
 Click Generate Grid to call `WW3-Grid-Generator/structured_generator/pygridgen` and generate grid files into the working directory.
 
@@ -155,11 +155,16 @@ Finally, four files will be created in the working directory: `grid.bot`, `grid.
 
 Generated grids are automatically cached in `WW3Tool/WW3-Grid-Generator/cache`.
 
+![](workSpace/2026-03-30_16-06-30/photo/grid/grid_bathymetry.png)
+![](workSpace/2026-03-30_16-06-30/photo/grid/grid_obstruction_x.png)
+![](workSpace/2026-03-30_16-06-30/photo/grid/grid_obstruction_y.png)
+
 
 
 ##### Nested grids
 
-![](public/resource/README-media/截屏2026-03-30%2015.01.23.png)
+![](public/resource/README-media/截屏2026-03-30%2016.04.46.png)
+
 Nested grids use two-way nesting.
 
 In Settings we define a nesting shrink factor, default 1.1x.
@@ -171,6 +176,9 @@ In nested mode, grid generation runs twice: once for the outer grid and once for
 In nested mode, two folders are created in the working directory: `coarse` (outer grid) and `fine` (inner grid).
 
 When a working directory contains `coarse` and `fine`, opening it automatically switches to nested mode, which affects many later operations. Therefore, if `coarse`/`fine` or other grid files already exist, switching grid types is disabled.
+
+
+
 
 
 
@@ -217,12 +225,13 @@ Each cache folder also contains `params.json`:
 
 The dashed outline shows the actual map range.
 
-![](public/resource/README-media/截屏2026-03-30%2015.01.48.png)
+![](public/resource/README-media/截屏2026-03-30%2016.05.34.png)
+
 
 
 ### Choose calculation mode
 
-![](public/resource/README-media/截屏2026-03-30%2015.02.16.png)
+![](public/resource/README-media/截屏2026-03-30%2016.07.37.png)
 
 These three modes have similar computational cost, but the outputs differ. Spectral point mode and track mode look like only a few points are computed, but the whole map is still computed.
 
@@ -244,13 +253,13 @@ Standard calculation mode.
 
 #### Spectral point mode
 
-![](public/resource/README-media/截屏2026-03-30%2015.02.33.png)
+![](public/resource/README-media/截屏2026-03-30%2016.07.58.png)
 
 Click to select points from the map and a window will open.
 
 Click points on the map; the blue dashed box is the grid range, and you can only select points within it. After selecting, click Finish.
 
-![](public/resource/README-media/截屏2026-03-30%2015.02.16.png)
+![](public/resource/README-media/截屏2026-03-30%2016.07.37.png)
 
 Then, in step 4, a `points.list` file is created in the working directory:
 
@@ -276,7 +285,7 @@ You can plot 2D spectra:
 
 #### Track mode
 
-![](public/resource/README-media/截屏2026-03-30%2015.19.25.png)
+![](public/resource/README-media/截屏2026-03-30%2016.08.38.png)
 
 Similar to spectral point mode, but with an extra time column. In step 4 a file is generated: `track_i.ww3`, format:
 
@@ -294,7 +303,7 @@ Finally, `ww3_trnc` outputs `ww3.2025_trck.nc`.
 ### Configure run parameters
 
 
-![](public/resource/README-media/截屏2026-03-30%2015.36.11.png)
+![](public/resource/README-media/截屏2026-03-30%2016.11.17.png)
 
 We added wind, water level, and current as forcing fields. Ice can be added, but our grid region has no ice, so it is not shown here.
 
@@ -402,7 +411,8 @@ Then we modify the spectral partition output scheme:
 
 The spectral partition output scheme can be configured in Settings.
 
-![](public/resource/README-media/截屏2026-03-30%2015.38.23.png)
+![](public/resource/README-media/截屏2026-03-30%2016.11.49.png)
+
 
 ---
 
@@ -614,7 +624,7 @@ For spectral point mode, we also modify `namelists.nml`:
 
 #### Nested grid
 
-![](public/resource/README-media/截屏2026-03-30%2015.42.47.png)
+![](public/resource/README-media/截屏2026-03-30%2016.12.11.png)
 
 We first generate nested grids and create `coarse` and `fine` folders in the working directory, then choose spectral point mode.
 
@@ -743,7 +753,7 @@ In the previous section, these three logs are for spectral point mode, and they 
 
 ### Local run
 
-![](public/resource/README-media/截屏2026-03-30%2015.46.13.png)
+![](public/resource/README-media/截屏2026-03-30%2016.14.15.png)
 
 Local run executes `local.sh`.
 
@@ -764,7 +774,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 ### Connect to server
 
-![](public/resource/README-media/截屏2026-03-30%2015.46.34.png)
+![](public/resource/README-media/截屏2026-03-30%2016.14.40.png)
 
 First, configure your SSH username and password in Settings under server configuration.
 
@@ -774,24 +784,23 @@ Click Connect Server. On success, a CPU usage ranking will show and refresh ever
 
 If you submit a Slurm job in step 6, the job queue will also be shown.
 
-![](public/resource/README-media/截屏2026-03-30%2015.49.40.png)
+![](public/resource/README-media/截屏2026-03-30%2016.14.56.png)
 
 
 
 ### Server operations
 
-
-
 Viewing the job queue runs `squeue -l` on the server.
 
 Upload working directory uploads the current directory to the server working directory (configured in Settings).
 
-![](public/resource/README-media/截屏2026-03-30%2015.48.10.png)
+![](public/resource/README-media/截屏2026-03-30%2016.15.39.png)
+
 Submit job runs the `server.sh` script on the server. If successful (all commands run normally), it will create `success.log` in the server working directory with all WW3 logs. If it fails, it creates `fail.log` with all logs. If it is still running, the log file is `run.log`.
 
 So to check completion, see if `success.log` or `fail.log` exists. If `run.log` exists, the server is still running.
 
-![](public/resource/README-media/截屏2026-03-30%2015.50.16.png)
+![](public/resource/README-media/截屏2026-03-30%2015.59.30.png)
 
 Clear folder clears the current server working directory.
 
@@ -882,12 +891,9 @@ This shows the CPU list (if Slurm is installed).
 
 Then open Settings in the software, find Slurm parameters, click CPU Management, and set it to your server's CPU.
 
-![](public/resource/README-media/截屏2026-03-30%2015.51.09.png)
-
+![](public/resource/README-media/截屏2026-03-30%2016.16.02.png)
 
 #### Server connection
-
-![](public/resource/README-media/截屏2026-03-30%2015.46.34.png)
 
 Fill in SSH account info and a default login path. All working directories will be uploaded there.
 
@@ -895,7 +901,7 @@ Fill in SSH account info and a default login path. All working directories will 
 
 #### ST version management
 
-![](public/resource/README-media/截屏2026-03-30%2015.51.48.png)
+![](public/resource/README-media/截屏2026-03-30%2016.16.17.png)
 
 This is the WAVEWATCH builds you compiled; just fill in their paths.
 
