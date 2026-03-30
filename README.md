@@ -2,7 +2,7 @@
 
 ## Overview
 
-![](public/resource/README-media/截屏2026-03-30%2016.01.54.png)
+![](public/resource/README-media/2026-03-30%2016.01.54.png)
 
 Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
 
@@ -62,7 +62,7 @@ WAVEWATCH III is not required for local installation. Local runs are optional, a
 
 ### Create a working directory
 
-![](public/resource/README-media/截屏2026-03-30%2016.01.22.png)
+![](public/resource/README-media/2026-03-30%2016.01.22.png)
 
 At startup, you must select or create a working directory. This step is mandatory and cannot be skipped.
 
@@ -80,13 +80,13 @@ Wind fields can use data from [ERA5](https://cds.climate.copernicus.eu/datasets/
 
 For other forcing fields I have only tested Copernicus currents, water levels, and sea ice.
 
-![](public/resource/README-media/截屏2026-03-29%2012.47.52.png)
+![](public/resource/README-media/2026-03-29%2012.47.52.png)
 
 I have pre-prepared several forcing files in `WW3Tool/public/forcing`, you can select them directly (for testing only).
 
 WAVEWATCH requires latitude to be increasing, but ERA5 wind data latitude is decreasing by default. I added logic to detect and automatically flip if latitude is not increasing.
 
-![](public/resource/README-media/截屏2026-03-30%2016.21.18.png)
+![](public/resource/README-media/2026-03-30%2016.21.18.png)
 
 CFSR wind variables are also automatically renamed to match WW3 requirements.
 
@@ -108,11 +108,11 @@ The `reference_data` package contains gebco, etopo1/2, coastline boundaries, and
 
 If `WW3Tool/WW3-Grid-Generator/reference_data` does not contain these files, a download window will appear in step 2.
 
-![](public/resource/README-media/截屏2026-03-30%2016.02.47.png)
+![](public/resource/README-media/2026-03-30%2016.02.47.png)
 
 Click Download: the program will download from [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) (~6.5GB).
 
-![](public/resource/README-media/截屏2026-03-30%2016.03.00.png)
+![](public/resource/README-media/2026-03-30%2016.03.00.png)
 
 If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to `WW3Tool/WW3-Grid-Generator/reference_data`.
 
@@ -122,7 +122,7 @@ If GitHub is too slow or fails, you can download from [OneDrive](https://tiangon
 
 ##### Single grid
 
-![](public/resource/README-media/截屏2026-03-30%2016.04.17.png)
+![](public/resource/README-media/2026-03-30%2016.04.17.png)
 
 Click Generate Grid to call `WW3-Grid-Generator/structured_generator/pygridgen` and generate grid files into the working directory.
 
@@ -163,7 +163,7 @@ Generated grids are automatically cached in `WW3Tool/WW3-Grid-Generator/cache`.
 
 ##### Nested grids
 
-![](public/resource/README-media/截屏2026-03-30%2016.04.46.png)
+![](public/resource/README-media/2026-03-30%2016.04.46.png)
 
 Nested grids use two-way nesting.
 
@@ -225,13 +225,13 @@ Each cache folder also contains `params.json`:
 
 The dashed outline shows the actual map range.
 
-![](public/resource/README-media/截屏2026-03-30%2016.05.34.png)
+![](public/resource/README-media/2026-03-30%2016.05.34.png)
 
 
 
 ### Choose calculation mode
 
-![](public/resource/README-media/截屏2026-03-30%2016.07.37.png)
+![](public/resource/README-media/2026-03-30%2016.07.37.png)
 
 These three modes have similar computational cost, but the outputs differ. Spectral point mode and track mode look like only a few points are computed, but the whole map is still computed.
 
@@ -253,13 +253,13 @@ Standard calculation mode.
 
 #### Spectral point mode
 
-![](public/resource/README-media/截屏2026-03-30%2016.07.58.png)
+![](public/resource/README-media/2026-03-30%2016.07.58.png)
 
 Click to select points from the map and a window will open.
 
 Click points on the map; the blue dashed box is the grid range, and you can only select points within it. After selecting, click Finish.
 
-![](public/resource/README-media/截屏2026-03-30%2016.07.37.png)
+![](public/resource/README-media/2026-03-30%2016.07.37.png)
 
 Then, in step 4, a `points.list` file is created in the working directory:
 
@@ -284,7 +284,7 @@ You can plot 2D spectra:
 
 #### Track mode
 
-![](public/resource/README-media/截屏2026-03-30%2016.08.38.png)
+![](public/resource/README-media/2026-03-30%2016.08.38.png)
 
 Similar to spectral point mode, but with an extra time column. In step 4 a file is generated: `track_i.ww3`, format:
 
@@ -302,7 +302,7 @@ Finally, `ww3_trnc` outputs `ww3.2025_trck.nc`.
 ### Configure run parameters
 
 
-![](public/resource/README-media/截屏2026-03-30%2016.11.17.png)
+![](public/resource/README-media/2026-03-30%2016.11.17.png)
 
 We added wind, water level, and current as forcing fields. Ice can be added, but our grid region has no ice, so it is not shown here.
 
@@ -337,7 +337,7 @@ First, all files under `WW3Tool/public/ww3` are copied to the current working di
 
 These include:
 
-![](public/resource/README-media/截屏2026-03-29%2016.18.02.png)
+![](public/resource/README-media/2026-03-29%2016.18.02.png)
 
 ---
 
@@ -410,7 +410,7 @@ Then we modify the spectral partition output scheme:
 
 The spectral partition output scheme can be configured in Settings.
 
-![](public/resource/README-media/截屏2026-03-30%2016.11.49.png)
+![](public/resource/README-media/2026-03-30%2016.11.49.png)
 
 
 ---
@@ -623,7 +623,7 @@ For spectral point mode, we also modify `namelists.nml`:
 
 #### Nested grid
 
-![](public/resource/README-media/截屏2026-03-30%2016.12.11.png)
+![](public/resource/README-media/2026-03-30%2016.12.11.png)
 
 We first generate nested grids and create `coarse` and `fine` folders in the working directory, then choose spectral point mode.
 
@@ -752,7 +752,7 @@ In the previous section, these three logs are for spectral point mode, and they 
 
 ### Local run
 
-![](public/resource/README-media/截屏2026-03-30%2016.14.15.png)
+![](public/resource/README-media/2026-03-30%2016.14.15.png)
 
 Local run executes `local.sh`.
 
@@ -773,7 +773,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 ### Connect to server
 
-![](public/resource/README-media/截屏2026-03-30%2016.14.40.png)
+![](public/resource/README-media/2026-03-30%2016.14.40.png)
 
 First, configure your SSH username and password in Settings under server configuration.
 
@@ -783,7 +783,7 @@ Click Connect Server. On success, a CPU usage ranking will show and refresh ever
 
 If you submit a Slurm job in step 6, the job queue will also be shown.
 
-![](public/resource/README-media/截屏2026-03-30%2016.14.56.png)
+![](public/resource/README-media/2026-03-30%2016.14.56.png)
 
 
 
@@ -793,13 +793,13 @@ Viewing the job queue runs `squeue -l` on the server.
 
 Upload working directory uploads the current directory to the server working directory (configured in Settings).
 
-![](public/resource/README-media/截屏2026-03-30%2016.15.39.png)
+![](public/resource/README-media/2026-03-30%2016.15.39.png)
 
 Submit job runs the `server.sh` script on the server. If successful (all commands run normally), it will create `success.log` in the server working directory with all WW3 logs. If it fails, it creates `fail.log` with all logs. If it is still running, the log file is `run.log`.
 
 So to check completion, see if `success.log` or `fail.log` exists. If `run.log` exists, the server is still running.
 
-![](public/resource/README-media/截屏2026-03-30%2015.59.30.png)
+![](public/resource/README-media/2026-03-30%2015.59.30.png)
 
 Clear folder clears the current server working directory.
 
@@ -854,7 +854,7 @@ WW3 configuration is the default values in step 4 and the Confirm Parameters but
 
 File splitting is `TIMESPLIT` in `ww3_ounf.nml`, `ww3_ounp.nml`, `ww3_trnc.nml`. If your time range is 3 months, monthly or yearly split is suitable; daily split produces one file per day.
 
-![](public/resource/README-media/截屏2026-03-30%2015.50.52.png)
+![](public/resource/README-media/2026-03-30%2015.50.52.png)
 
 Spectrum parameters, numerical integration timestep, and nearshore configuration are in `ww3_grid.nml`. Changing them here updates both WW3Tool and the current working directory `ww3_grid.nml` (if it exists).
 
@@ -890,7 +890,7 @@ This shows the CPU list (if Slurm is installed).
 
 Then open Settings in the software, find Slurm parameters, click CPU Management, and set it to your server's CPU.
 
-![](public/resource/README-media/截屏2026-03-30%2016.16.02.png)
+![](public/resource/README-media/2026-03-30%2016.16.02.png)
 
 #### Server connection
 
@@ -900,7 +900,7 @@ Fill in SSH account info and a default login path. All working directories will 
 
 #### ST version management
 
-![](public/resource/README-media/截屏2026-03-30%2016.16.17.png)
+![](public/resource/README-media/2026-03-30%2016.16.17.png)
 
 This is the WAVEWATCH builds you compiled; just fill in their paths.
 

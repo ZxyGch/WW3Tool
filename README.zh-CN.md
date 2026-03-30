@@ -2,7 +2,7 @@
 
 ## 基本介绍
 
-![](public/resource/README-media/截屏2026-03-29%2012.28.47.png)
+![](public/resource/README-media/2026-03-29%2012.28.47.png)
 
 Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
 
@@ -63,7 +63,7 @@ python run.py
 
 ### 创建工作目录
 
-![](public/resource/README-media/截屏2026-03-29%2012.46.28.png)
+![](public/resource/README-media/2026-03-29%2012.46.28.png)
 
 程序启动时选择或创建工作目录，这一步是强制的，不允许跳过。
 
@@ -81,13 +81,13 @@ python run.py
 
 其他强迫场我暂时只尝试了 Copernicus 的流场、水位场、海冰场
 
-![](public/resource/README-media/截屏2026-03-29%2012.47.52.png)
+![](public/resource/README-media/2026-03-29%2012.47.52.png)
 
 我已经在 WW3Tool/public/forcing 预先准备好了几个强迫场文件，你可以直接选择使用（当然，这只是为了测试）。
 
 由于 WAVEWATCH 要求纬度必须从小到大，而 ERA5 的风场数据纬度默认是从大到小，因此，我在这里加上了隐含的转换逻辑，会判断是否纬度是从小到大的，如果不是则会自动转换。
 
-![](public/resource/README-media/截屏2026-03-29%2012.48.29.png)
+![](public/resource/README-media/2026-03-29%2012.48.29.png)
 
 并且对于 CFSR 的风场会自动修复变量名称符合 WW3 的要求
 
@@ -110,11 +110,11 @@ reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它�
 
 如果 WW3Tool/WW3-Grid-Generator/reference_data 没有找到这些数据文件，那么在第二步生成网格时会弹出一个下载窗口
 
-![](public/resource/README-media/截屏2026-03-29%2012.52.20.png)
+![](public/resource/README-media/2026-03-29%2012.52.20.png)
 
 点击下载按钮：程序会从自动从 [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) 下载（大约 6.5GB）。
 
-![](public/resource/README-media/截屏2026-03-29%2013.04.16.png)
+![](public/resource/README-media/2026-03-29%2013.04.16.png)
 
 若 GitHub下载过慢或失败，可从 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48) 手动下载，解压到 WW3Tool/WW3-Grid-Generator/reference_data
 
@@ -129,7 +129,7 @@ reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它�
 
 ##### 单网格
 
-![](public/resource/README-media/截屏2026-03-29%2013.28.40.png)
+![](public/resource/README-media/2026-03-29%2013.28.40.png)
 
 点击生成网格，会调用 WW3-Grid-Generator/structured_generator/pygridgen 生成网格文件到工作目录.
 
@@ -167,7 +167,7 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 ##### 嵌套网格
 
-![](public/resource/README-media/截屏2026-03-29%2013.49.42.png)
+![](public/resource/README-media/2026-03-29%2013.49.42.png)
 
 嵌套网格我们使用的是 Two-way nesting
 
@@ -230,13 +230,13 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 #### 查看地图
 
 注意虚线内的范围才是真正的地图范围
-![](public/resource/README-media/截屏2026-03-29%2016.59.47.png)
+![](public/resource/README-media/2026-03-29%2016.59.47.png)
 
 
 
 ### 选择计算模式
 
-![](public/resource/README-media/截屏2026-03-29%2014.32.55.png)
+![](public/resource/README-media/2026-03-29%2014.32.55.png)
 
 其实这三种计算模式计算量上是一样的，但是最终输出的结果有些不同，看似谱空间逐点计算模式和航迹模式似乎是只计算几个点，但是计算的实际是整个地图范围。
 
@@ -258,13 +258,13 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 #### 谱空间逐点计算模式
 
-![](public/resource/README-media/截屏2026-03-29%2014.55.42.png)
+![](public/resource/README-media/2026-03-29%2014.55.42.png)
 
 我们可以点击从地图上选点，会打开一个窗口
 
 我们在地图上点击选点，注意蓝色虚线方框内的是网格文件的范围，我们只能在这里面选点，选好后我们点击完成按钮。
 
-![](public/resource/README-media/截屏2026-03-29%2014.56.14.png)
+![](public/resource/README-media/2026-03-29%2014.56.14.png)
 
 随后，在第四步的确认参数时会在工作目录生成一个 points.list 文件
 
@@ -281,7 +281,7 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
 
-![](public/resource/README-media/截屏2026-03-29%2015.49.57.png)
+![](public/resource/README-media/2026-03-29%2015.49.57.png)
 
 我们可以画出二维谱图
 
@@ -290,7 +290,7 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 
 #### 航迹模式
 
-![](public/resource/README-media/截屏2026-03-29%2015.52.47.png)
+![](public/resource/README-media/2026-03-29%2015.52.47.png)
 
 和谱空间逐点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
 
@@ -310,9 +310,9 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ### 配置运行参数
 
 
-![](public/resource/README-media/截屏2026-03-29%2016.37.17.png)
+![](public/resource/README-media/2026-03-29%2016.37.17.png)
 
-![](public/resource/README-media/截屏2026-03-29%2016.14.29.png)
+![](public/resource/README-media/2026-03-29%2016.14.29.png)
 我们添加了风场、水位场、流场作为强迫场，冰场可以添加，但是我们生成的网格区域没有冰，因此在这里不做展示。
 
 我们使用的是航迹模式，这个模式会比普通的区域计算模式多一些配置日志，顺便把航迹模式的特有的配置讲解一下。
@@ -346,7 +346,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 
 其中包含 
 
-![](public/resource/README-media/截屏2026-03-29%2016.18.02.png)
+![](public/resource/README-media/2026-03-29%2016.18.02.png)
 
 ---
 
@@ -419,7 +419,7 @@ ww3_ounf.nml 的 FIELD%LIST
 
 谱分区的输出方案在设置页面可以配置 
 
-![](public/resource/README-media/截屏2026-03-29%2016.26.34.png)
+![](public/resource/README-media/2026-03-29%2016.26.34.png)
 
 
 ---
@@ -635,8 +635,8 @@ WAVEWATCH III TRACK LOCATIONS DATA
 
 
 
-![](public/resource/README-media/截屏2026-03-29%2017.02.34.png)
-![](public/resource/README-media/截屏2026-03-29%2017.03.44.png)
+![](public/resource/README-media/2026-03-29%2017.02.34.png)
+![](public/resource/README-media/2026-03-29%2017.03.44.png)
 
 我们首先生成了嵌套网格，在工作目录创建了 coarse 和 fine 目录，然后选择了二维谱计算模式。
 
@@ -767,7 +767,7 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 ### 本地运行
 
-![](public/resource/README-media/截屏2026-03-30%2014.06.33.png)
+![](public/resource/README-media/2026-03-30%2014.06.33.png)
 
 本地运行实际执行的是 local.sh
 
@@ -788,7 +788,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 ### 连接服务器
 
-![](public/resource/README-media/截屏2026-03-29%2023.47.34.png)
+![](public/resource/README-media/2026-03-29%2023.47.34.png)
 
 首先，你需要配置 ssh 账号和密码，在设置页面我们找到服务器配置这个选项
 
@@ -798,7 +798,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 如果在第六步提交计算任务到 Slurm ，还会显示任务队列
 
-![](public/resource/README-media/截屏2026-03-30%2016.39.48.png)
+![](public/resource/README-media/2026-03-30%2016.39.48.png)
 
 
 
@@ -806,11 +806,11 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 查看任务队列就是在服务器执行了 squeue -l
 
-![](public/resource/README-media/截屏2026-03-30%2016.40.35.png)
+![](public/resource/README-media/2026-03-30%2016.40.35.png)
 
 上传工作目录到服务器，就是把当前工作目录上传到服务器工作目录，这在设置页面有配置
 
-![](public/resource/README-media/截屏2026-03-30%2016.41.08.png)
+![](public/resource/README-media/2026-03-30%2016.41.08.png)
 
 提交计算任务就是在服务器执行了 server.sh 这个脚本，如果运行成功(所有指令正常运行)，会在服务器工作目录生成一个 success.log，包含所有的 WW3执行 Log，如果失败，则会生成一个 fail.log 同样包含所有的 WW3 执行 log，如果没有完成，还在执行，这个 log 文件的名字是 run.log
 
@@ -870,7 +870,7 @@ WW3 配置就是主页第四步的默认值，确认参数按钮。
 
 文件分割就是 ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 的 TIMESPLIT，比如你计算的时间范围是 3 个月，那么你选择月分割或年分割比较合适，如果你选择日分割，则会每天一个文件。
 
-![](public/resource/README-media/截屏2026-03-30%2016.42.49.png)
+![](public/resource/README-media/2026-03-30%2016.42.49.png)
 
 频谱参数配置、数值积分时间步长、近岸配置都是 ww3_grid.nml 的配置，在这里修改会同时修改 WW3Tool 和当前工作目录的 ww3_grid.nml （如果存在）
 
@@ -907,12 +907,12 @@ sinfo
 
 然后打开软件的设置页面，找到 Slurm 参数一栏，点击 CPU 管理，改成你的服务器的 CPU
 
-![](public/resource/README-media/截屏2026-03-30%2016.42.16.png)
+![](public/resource/README-media/2026-03-30%2016.42.16.png)
 
 
 #### 服务器连接
 
-![](public/resource/README-media/截屏2026-03-29%2023.47.34.png)
+![](public/resource/README-media/2026-03-29%2023.47.34.png)
 
 你需要填写 SSH 账号，以及默认的登录路径，在这个路径，每次的工作目录都会上传到这里。
 
@@ -920,7 +920,7 @@ sinfo
 
 #### ST 版本管理
 
-![](public/resource/README-media/截屏2026-03-30%2016.42.31.png)
+![](public/resource/README-media/2026-03-30%2016.42.31.png)
 
 实际上，这个就是你编译的不同版本的 WAVEWATCH，你只需填写它们的路径即可
 
