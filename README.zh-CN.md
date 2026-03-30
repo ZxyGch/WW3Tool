@@ -798,21 +798,19 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 如果在第六步提交计算任务到 Slurm ，还会显示任务队列
 
-![](public/resource/README-media/截屏2026-03-30%2014.11.38.png)
+![](public/resource/README-media/截屏2026-03-30%2016.39.48.png)
 
 
 
 ### 服务器操作
 
-![](public/resource/README-media/截屏2026-03-30%2014.26.04.png)
-
 查看任务队列就是在服务器执行了 squeue -l
 
-![](public/resource/README-media/截屏2026-03-30%2014.30.05.png)
+![](public/resource/README-media/截屏2026-03-30%2016.40.35.png)
 
 上传工作目录到服务器，就是把当前工作目录上传到服务器工作目录，这在设置页面有配置
 
-![](public/resource/README-media/截屏2026-03-30%2014.30.33.png)
+![](public/resource/README-media/截屏2026-03-30%2016.41.08.png)
 
 提交计算任务就是在服务器执行了 server.sh 这个脚本，如果运行成功(所有指令正常运行)，会在服务器工作目录生成一个 success.log，包含所有的 WW3执行 Log，如果失败，则会生成一个 fail.log 同样包含所有的 WW3 执行 log，如果没有完成，还在执行，这个 log 文件的名字是 run.log
 
@@ -872,7 +870,7 @@ WW3 配置就是主页第四步的默认值，确认参数按钮。
 
 文件分割就是 ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 的 TIMESPLIT，比如你计算的时间范围是 3 个月，那么你选择月分割或年分割比较合适，如果你选择日分割，则会每天一个文件。
 
-![](public/resource/README-media/截屏2026-03-30%2014.42.43.png)
+![](public/resource/README-media/截屏2026-03-30%2016.42.49.png)
 
 频谱参数配置、数值积分时间步长、近岸配置都是 ww3_grid.nml 的配置，在这里修改会同时修改 WW3Tool 和当前工作目录的 ww3_grid.nml （如果存在）
 
@@ -909,12 +907,12 @@ sinfo
 
 然后打开软件的设置页面，找到 Slurm 参数一栏，点击 CPU 管理，改成你的服务器的 CPU
 
-![](public/resource/README-media/截屏2026-03-30%2014.44.08.png)
+![](public/resource/README-media/截屏2026-03-30%2016.42.16.png)
 
 
 #### 服务器连接
 
-![](public/resource/README-media/截屏2026-03-30%2014.44.38.png)
+![](public/resource/README-media/截屏2026-03-29%2023.47.34.png)
 
 你需要填写 SSH 账号，以及默认的登录路径，在这个路径，每次的工作目录都会上传到这里。
 
@@ -922,7 +920,7 @@ sinfo
 
 #### ST 版本管理
 
-![](public/resource/README-media/截屏2026-03-30%2014.45.16.png)
+![](public/resource/README-media/截屏2026-03-30%2016.42.31.png)
 
 实际上，这个就是你编译的不同版本的 WAVEWATCH，你只需填写它们的路径即可
 
