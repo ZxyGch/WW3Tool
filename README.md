@@ -1,5 +1,7 @@
 # WW3Tool
 
+简体中文版本：[README.zh-CN](README.zh-CN.md)
+
 ## Overview
 
 ![](public/resource/README-media/2026-03-30%2016.01.54.png)
