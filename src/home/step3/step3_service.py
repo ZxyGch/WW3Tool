@@ -788,7 +788,13 @@ class StepThreeServiceMixin:
                 parent=self
             )
             return
-        
+
+        # 使用当前软件字体（若可用）设置 Matplotlib
+        chinese_font = self._pick_ui_font_for_matplotlib() if hasattr(self, "_pick_ui_font_for_matplotlib") else None
+        if chinese_font:
+            plt.rcParams['font.sans-serif'] = [chinese_font]
+            plt.rcParams['axes.unicode_minus'] = False
+
         # 读取所有点位（跳过表头行）
         points = []
         for i in range(1, self.spectral_points_table.rowCount()):
@@ -973,24 +979,25 @@ class StepThreeServiceMixin:
             target_table_obj = self.spectral_points_table
             has_time_column = False
         
-        # 设置中文字体支持
-        chinese_font = None
+        # 设置中文字体支持（优先使用当前软件字体）
+        chinese_font = self._pick_ui_font_for_matplotlib() if hasattr(self, "_pick_ui_font_for_matplotlib") else None
         try:
-            import platform
-            system = platform.system()
-            if system == 'Windows':
-                chinese_fonts = ['Microsoft YaHei', 'SimHei', 'SimSun', 'KaiTi']
-            elif system == 'Darwin':  # macOS
-                chinese_fonts = ['PingFang SC', 'STHeiti', 'Arial Unicode MS', 'Heiti SC']
-            else:  # Linux
-                chinese_fonts = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Droid Sans Fallback']
-            
-            from matplotlib import font_manager
-            available_fonts = [f.name for f in font_manager.fontManager.ttflist]
-            for font in chinese_fonts:
-                if font in available_fonts:
-                    chinese_font = font
-                    break
+            if not chinese_font:
+                import platform
+                system = platform.system()
+                if system == 'Windows':
+                    chinese_fonts = ['Microsoft YaHei', 'SimHei', 'SimSun', 'KaiTi']
+                elif system == 'Darwin':  # macOS
+                    chinese_fonts = ['PingFang SC', 'STHeiti', 'Arial Unicode MS', 'Heiti SC']
+                else:  # Linux
+                    chinese_fonts = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Droid Sans Fallback']
+                
+                from matplotlib import font_manager
+                available_fonts = [f.name for f in font_manager.fontManager.ttflist]
+                for font in chinese_fonts:
+                    if font in available_fonts:
+                        chinese_font = font
+                        break
             
             if chinese_font:
                 plt.rcParams['font.sans-serif'] = [chinese_font]

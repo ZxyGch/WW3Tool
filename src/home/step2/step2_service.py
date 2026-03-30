@@ -431,6 +431,22 @@ class _RegionMapDialog(MessageBoxBase):
 class StepTwoServiceMixin:
     """第二步相关的业务逻辑 Mixin"""
 
+    def _pick_ui_font_for_matplotlib(self) -> str | None:
+        """Prefer the app's UI font for matplotlib if available."""
+        try:
+            app = QApplication.instance()
+            if app is None:
+                return None
+            family = app.font().family()
+            if not family:
+                return None
+            from matplotlib import font_manager
+
+            available = {f.name for f in font_manager.fontManager.ttflist}
+            return family if family in available else None
+        except Exception:
+            return None
+
     def _cleanup_region_map_temp_files(self):
         for p in getattr(self, "_region_map_temp_paths", None) or []:
             try:
@@ -574,7 +590,14 @@ class StepTwoServiceMixin:
             self.grid_type_combo.setCurrentText(normal_text)
             self.grid_type_combo.blockSignals(False)
             if hasattr(self, "_set_step2_grid_type"):
-                self._set_step2_grid_type(normal_text)
+                # 自动切换时跳过“目录内已有文件禁止切换”的拦截
+                self._set_step2_grid_type(normal_text, skip_block_check=True)
+            else:
+                from ..utils import HomeState
+                HomeState.set_grid_type(normal_text)
+                self.grid_type_var = normal_text
+                if hasattr(self, "_update_step4_wavewatch_title"):
+                    self._update_step4_wavewatch_title()
 
     @staticmethod
     def _parse_grid_ww3_lon_lat_bounds(ww3_path):
@@ -1005,26 +1028,27 @@ class StepTwoServiceMixin:
             display_lat_min = outer_lat_min - 2.0
             display_lat_max = outer_lat_max + 2.0
 
-        # 设置中文字体支持
-        chinese_font = None
+        # 设置中文字体支持（优先使用当前软件字体）
+        chinese_font = self._pick_ui_font_for_matplotlib()
         try:
-            # 尝试使用系统中文字体
-            system = platform.system()
-            if system == 'Windows':
-                # Windows 系统常用中文字体
-                chinese_fonts = ['Microsoft YaHei', 'SimHei', 'SimSun', 'KaiTi']
-            elif system == 'Darwin':  # macOS
-                chinese_fonts = ['PingFang SC', 'STHeiti', 'Arial Unicode MS', 'Heiti SC']
-            else:  # Linux
-                chinese_fonts = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Droid Sans Fallback']
+            if not chinese_font:
+                # 尝试使用系统中文字体
+                system = platform.system()
+                if system == 'Windows':
+                    # Windows 系统常用中文字体
+                    chinese_fonts = ['Microsoft YaHei', 'SimHei', 'SimSun', 'KaiTi']
+                elif system == 'Darwin':  # macOS
+                    chinese_fonts = ['PingFang SC', 'STHeiti', 'Arial Unicode MS', 'Heiti SC']
+                else:  # Linux
+                    chinese_fonts = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Droid Sans Fallback']
 
-            # 查找可用的中文字体
-            from matplotlib import font_manager
-            available_fonts = [f.name for f in font_manager.fontManager.ttflist]
-            for font in chinese_fonts:
-                if font in available_fonts:
-                    chinese_font = font
-                    break
+                # 查找可用的中文字体
+                from matplotlib import font_manager
+                available_fonts = [f.name for f in font_manager.fontManager.ttflist]
+                for font in chinese_fonts:
+                    if font in available_fonts:
+                        chinese_font = font
+                        break
 
             if not chinese_font:
                 warnings.filterwarnings('ignore', category=UserWarning, module='cartopy')

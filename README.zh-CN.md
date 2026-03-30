@@ -767,6 +767,8 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 ### 本地运行
 
+![](public/resource/README-media/截屏2026-03-30%2014.06.33.png)
+
 本地运行实际执行的是 local.sh
 
 如果选择本地执行，确保你已经在本地配置好了 WAVEWATCH III，选择 bin 目录，其中应该包含下面这些程序
@@ -796,36 +798,44 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 如果在第六步提交计算任务到 Slurm ，还会显示任务队列
 
+![](public/resource/README-media/截屏2026-03-30%2014.11.38.png)
 
 
 
 ### 服务器操作
 
-
+![](public/resource/README-media/截屏2026-03-30%2014.26.04.png)
 
 查看任务队列就是在服务器执行了 squeue -l
 
+![](public/resource/README-media/截屏2026-03-30%2014.30.05.png)
+
 上传工作目录到服务器，就是把当前工作目录上传到服务器工作目录，这在设置页面有配置
 
-提交计算任务就是在服务器执行了 server.sh 这个脚本，如果运行成功(所有指令正常运行)，会在服务器工作目录生成一个 success.log，包含所有的执行 Log，如果失败，则会生成一个 fail.log 同样包含所有的执行 log
+![](public/resource/README-media/截屏2026-03-30%2014.30.33.png)
 
-检查是否已完成就是检测是否存在 success. log 或 fail. log
+提交计算任务就是在服务器执行了 server.sh 这个脚本，如果运行成功(所有指令正常运行)，会在服务器工作目录生成一个 success.log，包含所有的 WW3执行 Log，如果失败，则会生成一个 fail.log 同样包含所有的 WW3 执行 log，如果没有完成，还在执行，这个 log 文件的名字是 run.log
+
+因此检查是否已完成可以检测是否存在 success.log 或 fail.log，如果是 run. log 说明服务器还在执行。
 
 清空文件夹就是清空当前服务器工作目录文件夹
 
-下载结果到本地会自动下载所有 ww3nc 文件，如果是嵌套网格模式，只会下载 fine 内的结果文件。
+下载结果到本地会自动下载所有 ww3.nc 文件，如果是嵌套网格模式，只会下载 fine 内的结果文件。
 
-下载 log 文件就是下载 success. log 或 fail. log
+下载 log 文件就是下载 success.log 或 fail.log
+
+
+
 
 ### 自动操作
 
-打开一个工作目录，会自动检测是否已经存在转换了的强迫场文件，自动填充到按钮
+打开一个工作目录，会自动检测是否已经存在转换了的强迫场文件(根据文件名 wind.nc, level.nc,current.nc)，自动填充到强迫场按钮
 
-自动读取网格文件的范围和精度，填充第二步，检测是否保护 coarse 和 fine 文件夹，自动切换到嵌套网格模式
+自动读取网格文件的范围和精度，填充第二步，检测是否包含 coarse 和 fine 文件夹，自动切换到嵌套网格模式
 
-自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到航迹模式
+自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到航迹模式，并且自动导入文件中的点列表。
 
-自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel.nml 的计算精度，时间范围，谱分区方案
+自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel.nml 的计算精度，时间范围，谱分区方案。
 
 
 
@@ -845,19 +855,47 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 文件处理方式就是对原本的强迫场文件的处理方式：复制或剪切。
 
+有些强迫场文件非常大，如果采用复制的方式那么占用的电脑空间显然成倍增加。
+
+
+
 #### JASON 数据路径
 
 JASON 数据路径就是绘图的时候用的，比如你想看模拟的结果和 JASON 3 卫星的观测的波高对比。
 
+![](public/resource/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
+
+
 #### WW3 配置
 
-WW3 配置就是主页第四步的默认值，确认参数会修改 ww3_shel.nml 和 ww3_multi.nml 计算精度，ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 输出精度
+WW3 配置就是主页第四步的默认值，确认参数按钮。
 
 文件分割就是 ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 的 TIMESPLIT，比如你计算的时间范围是 3 个月，那么你选择月分割或年分割比较合适，如果你选择日分割，则会每天一个文件。
 
+![](public/resource/README-media/截屏2026-03-30%2014.42.43.png)
+
 频谱参数配置、数值积分时间步长、近岸配置都是 ww3_grid.nml 的配置，在这里修改会同时修改 WW3Tool 和当前工作目录的 ww3_grid.nml （如果存在）
 
-谱分区输出是 ww3_shel.nml、 ww3_ounf、ww3_ounp 的配置
+```swift
+&SPECTRUM_NML
+  SPECTRUM%XFR       =  1.1
+  SPECTRUM%FREQ1     =  0.04118
+  SPECTRUM%NK        =  32
+  SPECTRUM%NTH       =  24
+/
+
+&TIMESTEPS_NML
+  TIMESTEPS%DTMAX        =  900
+  TIMESTEPS%DTXY         =  320
+  TIMESTEPS%DTKTH        =  300
+  TIMESTEPS%DTMIN        =  15
+/
+```
+
+谱分区输出是 ww3_shel.nml、 ww3_ounf.nml、ww3_ounp.nml 的配置
+
+
+
 
 #### CPU 配置
 
@@ -871,13 +909,20 @@ sinfo
 
 然后打开软件的设置页面，找到 Slurm 参数一栏，点击 CPU 管理，改成你的服务器的 CPU
 
+![](public/resource/README-media/截屏2026-03-30%2014.44.08.png)
+
+
 #### 服务器连接
+
+![](public/resource/README-media/截屏2026-03-30%2014.44.38.png)
 
 你需要填写 SSH 账号，以及默认的登录路径，在这个路径，每次的工作目录都会上传到这里。
 
 
 
 #### ST 版本管理
+
+![](public/resource/README-media/截屏2026-03-30%2014.45.16.png)
 
 实际上，这个就是你编译的不同版本的 WAVEWATCH，你只需填写它们的路径即可
 
