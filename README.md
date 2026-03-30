@@ -86,7 +86,7 @@ I have pre-prepared several forcing files in `WW3Tool/public/forcing`, you can s
 
 WAVEWATCH requires latitude to be increasing, but ERA5 wind data latitude is decreasing by default. I added logic to detect and automatically flip if latitude is not increasing.
 
-![](public/resource/README-media/截屏2026-03-30%2014.57.16.png)
+![](public/resource/README-media/截屏2026-03-30%2016.21.18.png)
 
 CFSR wind variables are also automatically renamed to match WW3 requirements.
 
