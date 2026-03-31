@@ -62,8 +62,8 @@ if main_dir not in sys.path:
 from setting.config import *
 from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make_wave_maps_worker
 
-# QPlainTextEdit 对 ProportionalHeight 行高常无效；用 LineDistanceHeight（像素级行间净距）+ 小块底边距。
-_LOG_LINE_SPACING_EXTRA_PX = 5
+# 日志区改用 QTextEdit 系控件后，使用更明显的像素级额外行距。
+_LOG_LINE_SPACING_EXTRA_PX = 3
 
 try:
     _LH_LINE_DISTANCE = int(QTextBlockFormat.LineHeightType.LineDistanceHeight)
@@ -74,54 +74,49 @@ except AttributeError:
 class Log:
     """Logging功能模块"""
 
-    def _apply_log_block_spacing_after_append(self, appended: str) -> None:
-        """增大日志行距：行间额外像素 + 微小段后留白（PlainTextEdit 上 ProportionalHeight 往往无视觉效果）。"""
-        if not hasattr(self, "log_text") or not self.log_text:
-            return
+    def _create_log_block_format(self) -> QTextBlockFormat:
+        """返回统一的日志段落格式，让行距调整稳定生效。"""
         extra = float(
             getattr(self, "_log_line_spacing_extra_px", _LOG_LINE_SPACING_EXTRA_PX)
         )
         extra = max(0.0, min(extra, 16.0))
         bottom_margin = min(4.0, extra * 0.35 + 0.75)
 
-        cur = self.log_text.textCursor()
-        cur.movePosition(QTextCursor.MoveOperation.End)
-        n = max(1, (appended.count("\n") + 1) if appended else 1)
-        for _ in range(n):
-            cur.movePosition(QTextCursor.MoveOperation.StartOfBlock)
-            bf = QTextBlockFormat()
-            if extra > 0:
-                bf.setLineHeight(extra, _LH_LINE_DISTANCE)
-            bf.setBottomMargin(bottom_margin)
-            cur.setBlockFormat(bf)
-            if not cur.movePosition(QTextCursor.MoveOperation.PreviousBlock):
-                break
-        cur.movePosition(QTextCursor.MoveOperation.End)
-        self.log_text.setTextCursor(cur)
+        block_format = QTextBlockFormat()
+        if extra > 0:
+            block_format.setLineHeight(extra, _LH_LINE_DISTANCE)
+        block_format.setBottomMargin(bottom_margin)
+        return block_format
+
+    def _append_log_text(self, text: str) -> None:
+        """以段落方式追加纯文本，确保每一行都应用统一行距。"""
+        if not hasattr(self, "log_text") or not self.log_text:
+            return
+
+        cursor = self.log_text.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        block_format = self._create_log_block_format()
+
+        document = self.log_text.document()
+        is_empty = document.blockCount() == 1 and document.firstBlock().text() == ""
+        parts = text.split("\n") if text else [""]
+
+        for index, part in enumerate(parts):
+            if is_empty and index == 0:
+                cursor.setBlockFormat(block_format)
+            else:
+                cursor.insertBlock(block_format)
+
+            if part:
+                cursor.insertText(part)
+
+        self.log_text.setTextCursor(cursor)
 
     def log(self, msg):
         """写入日志到 TextEdit 控件，并自动滚动到底部（优化版本，减少UI操作）"""
         if hasattr(self, 'log_text') and self.log_text:
             t = str(msg)
-            # appendPlainText("") 不会产生可见空行；子进程 print("", flush=True) 需 insertBlock
-            if t == "":
-                cur = self.log_text.textCursor()
-                cur.movePosition(QTextCursor.MoveOperation.End)
-                cur.insertBlock()
-                extra = float(
-                    getattr(self, "_log_line_spacing_extra_px", _LOG_LINE_SPACING_EXTRA_PX)
-                )
-                extra = max(0.0, min(extra, 16.0))
-                bottom_margin = min(4.0, extra * 0.35 + 0.75)
-                bf = QTextBlockFormat()
-                if extra > 0:
-                    bf.setLineHeight(extra, _LH_LINE_DISTANCE)
-                bf.setBottomMargin(bottom_margin)
-                cur.setBlockFormat(bf)
-                self.log_text.setTextCursor(cur)
-            else:
-                self.log_text.appendPlainText(t)
-                self._apply_log_block_spacing_after_append(t)
+            self._append_log_text(t)
             # 不在此处调用 processEvents / 强制 viewport 刷新：日志爆发时易与 Fluent 滚动条
             # 的 value 同步重入，触发 RecursionError（不改变日志控件与滚动条实现）。
         else:
@@ -147,6 +142,7 @@ class Log:
                 # 如果当前行不为空，删除它
                 if cursor.hasSelection():
                     cursor.removeSelectedText()
+                cursor.setBlockFormat(self._create_log_block_format())
                 # 插入新内容
                 cursor.insertText(msg)
                 # 移动到末尾
@@ -167,4 +163,3 @@ class Log:
                 self.log_text.clear()
         except Exception as e:
             print(f"清空日志失败: {e}")
-

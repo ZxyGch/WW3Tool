@@ -39,7 +39,7 @@ import cv2
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import QEvent, Qt
 QSplitter = QtWidgets.QSplitter
-from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme, PlainTextEdit, MessageBox
+from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme, MessageBox
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget, CheckBox
 from PyQt6.QtGui import QColor, QIcon, QFontDatabase, QFont
 from qfluentwidgets import MessageBoxBase
@@ -313,8 +313,8 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         right_log_layout = QVBoxLayout(right_log_frame)
         right_log_layout.setContentsMargins(5, 1, 10, 11)  # 上边距设为0
 
-        # 日志文本区域（PlainTextEdit 自带滚动条）
-        self.log_text = PlainTextEdit()
+        # 日志文本区域（使用 TextEdit，便于可靠应用更大的段落/行距）
+        self.log_text = TextEdit()
         base_font = self.font()
         mono_font = QFont(base_font)
         fallback_monos = [
@@ -339,18 +339,26 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         main_splitter.addWidget(left_content)
         main_splitter.addWidget(right_log_frame)
 
-        # 设置比例：左侧1，右侧2（即1:2的比例，左侧占1/3，右侧占2/3）
-        main_splitter.setStretchFactor(0, 1)  # 左侧权重1
-        main_splitter.setStretchFactor(1, 2)  # 右侧权重2
+        try:
+            current_language = str(load_config().get("LANGUAGE", "zh_CN"))
+        except Exception:
+            current_language = "zh_CN"
 
-        # 设置初始大小比例（1:2），确保左侧占1/3，右侧占2/3
-        # 使用setSizes来设置初始大小（像素值），这里使用相对值，splitter会自动按比例分配
-        # 如果窗口宽度是1200，则左侧400，右侧800
-        # 但为了确保比例正确，我们在窗口显示后通过QTimer设置
+        # 非中文模式下左侧略微增大一点，给英文等更长文案留一点空间
+        left_ratio = 0.347 if current_language != "zh_CN" else (1 / 3)
+        right_ratio = 1.0 - left_ratio
+        left_stretch = int(round(left_ratio * 100))
+        right_stretch = max(1, 100 - left_stretch)
+
+        # 设置比例：中文约 1:2；非中文模式左侧略微增大
+        main_splitter.setStretchFactor(0, left_stretch)
+        main_splitter.setStretchFactor(1, right_stretch)
+
+        # 设置初始大小比例，确保窗口初次显示时就采用对应语言的左右占比
         def set_splitter_ratio():
             if hasattr(self, 'width') and self.width() > 0:
                 total_width = self.width()
-                left_width = total_width // 3
+                left_width = int(total_width * left_ratio)
                 right_width = total_width - left_width
                 main_splitter.setSizes([left_width, right_width])
         

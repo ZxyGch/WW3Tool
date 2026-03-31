@@ -494,18 +494,17 @@ class Style:
             bg_color = "transparent"  # 浅灰色背景，与 HeaderCardWidget 在浅色主题下的背景色一致
 
         text_edit.setStyleSheet(f"""
-            PlainTextEdit {{
+            PlainTextEdit, TextEdit, QTextEdit {{
                 border: 0.5px solid {border_color} !important;
                 border-radius: 4px;
                 background-color: {bg_color};
                 padding-left: 2px;
-                line-height: 128%;
             }}
-            PlainTextEdit:focus {{
+            PlainTextEdit:focus, TextEdit:focus, QTextEdit:focus {{
                 border: 0.5px solid {border_color} !important;
                 padding-left: 2px;
             }}
-            PlainTextEdit:hover {{
+            PlainTextEdit:hover, TextEdit:hover, QTextEdit:hover {{
                 border: 0.5px solid {border_color} !important;
                 padding-left: 2px;
             }}
@@ -861,4 +860,3 @@ class Style:
     def _update_log_border_style(self):
         """根据当前主题更新日志区域的边框样式"""
         self._update_textedit_style(self.log_text)
-

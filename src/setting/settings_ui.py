@@ -113,11 +113,16 @@ class SettingsMixin(SettingsServiceMixin):
             language_card_layout.setSpacing(5)
             language_card_layout.setContentsMargins(0, 0, 0, 0)
 
+            interface_form_layout = QGridLayout()
+            interface_form_layout.setContentsMargins(0, 0, 0, 0)
+            interface_form_layout.setHorizontalSpacing(12)
+            interface_form_layout.setVerticalSpacing(5)
+            interface_form_layout.setColumnStretch(1, 1)
+
             # 语言选择
-            language_row = QHBoxLayout()
             language_label = QLabel(tr("language_select", "语言:"))
             language_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            language_row.addWidget(language_label)
+            interface_form_layout.addWidget(language_label, 0, 0)
             
             # 导入语言管理模块（如果还没有导入）
             from setting.language_manager import get_supported_languages, set_language
@@ -192,16 +197,14 @@ class SettingsMixin(SettingsServiceMixin):
             # 让ComboBox占满剩余宽度，并设置相同的最小宽度以确保对齐
             combo_min_width = 200  # 设置一个合理的最小宽度
             self.settings_language_combo.setMinimumWidth(combo_min_width)
-            language_row.addWidget(self.settings_language_combo, 1)  # 拉伸因子为1，占满剩余空间
-            language_card_layout.addLayout(language_row)
+            interface_form_layout.addWidget(self.settings_language_combo, 0, 1)
 
             # 主题选择（暂时隐藏，默认跟随系统）
             show_theme_option = False
             if show_theme_option:
-                theme_row = QHBoxLayout()
                 theme_label = QLabel(tr("theme_select", "界面主题:"))
                 theme_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                theme_row.addWidget(theme_label)
+                interface_form_layout.addWidget(theme_label, 1, 0)
                 
                 # 创建主题选择下拉框
                 self.settings_theme_combo = ComboBox()
@@ -256,14 +259,13 @@ class SettingsMixin(SettingsServiceMixin):
                 self.settings_theme_combo.currentIndexChanged.connect(self._on_theme_combo_changed)
                 
                 # 让ComboBox占满剩余宽度
-                theme_row.addWidget(self.settings_theme_combo, 1)  # 拉伸因子为1，占满剩余空间
-                language_card_layout.addLayout(theme_row)
+                interface_form_layout.addWidget(self.settings_theme_combo, 1, 1)
 
             # 运行方式选择
-            run_mode_row = QHBoxLayout()
             run_mode_label = QLabel(tr("run_mode_select", "运行方式:"))
             run_mode_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            run_mode_row.addWidget(run_mode_label)
+            run_mode_row_index = 2 if show_theme_option else 1
+            interface_form_layout.addWidget(run_mode_label, run_mode_row_index, 0)
             
             # 创建运行方式选择下拉框
             self.settings_run_mode_combo = ComboBox()
@@ -318,8 +320,8 @@ class SettingsMixin(SettingsServiceMixin):
             self.settings_run_mode_combo.currentIndexChanged.connect(self._on_run_mode_changed)
             
             # 让ComboBox占满剩余宽度
-            run_mode_row.addWidget(self.settings_run_mode_combo, 1)  # 拉伸因子为1，占满剩余空间
-            language_card_layout.addLayout(run_mode_row)
+            interface_form_layout.addWidget(self.settings_run_mode_combo, run_mode_row_index, 1)
+            language_card_layout.addLayout(interface_form_layout)
 
             language_card.viewLayout.setContentsMargins(11, 10, 11, 12)
             language_card.viewLayout.addLayout(language_card_layout)
@@ -1431,30 +1433,31 @@ class SettingsMixin(SettingsServiceMixin):
                 self.output_vars_checkboxes[var_code] = checkbox
             
             # 方案管理区域
+            scheme_form_layout = QGridLayout()
+            scheme_form_layout.setContentsMargins(0, 0, 0, 0)
+            scheme_form_layout.setHorizontalSpacing(12)
+            scheme_form_layout.setVerticalSpacing(5)
+            scheme_form_layout.setColumnStretch(1, 1)
+
             # 方案名称输入框（标签和输入框一行）
-            scheme_name_layout = QHBoxLayout()
-            scheme_name_layout.setSpacing(5)
             scheme_name_label = QLabel(tr("scheme_name_label", "方案名称："))
-            scheme_name_layout.addWidget(scheme_name_label)
+            scheme_form_layout.addWidget(scheme_name_label, 0, 0)
             
             self.output_vars_scheme_name_edit = LineEdit()
             self.output_vars_scheme_name_edit.setText(tr("default_scheme", "默认方案"))
             self.output_vars_scheme_name_edit.setStyleSheet(input_style)
             self.output_vars_scheme_name_edit.setPlaceholderText(tr("scheme_name_placeholder", "输入方案名称"))
-            scheme_name_layout.addWidget(self.output_vars_scheme_name_edit)
-            spectral_output_card_layout.addLayout(scheme_name_layout)
+            scheme_form_layout.addWidget(self.output_vars_scheme_name_edit, 0, 1)
             
             # 当前方案下拉选择框（标签和下拉框一行）
-            current_scheme_layout = QHBoxLayout()
-            current_scheme_layout.setSpacing(5)
             current_scheme_label = QLabel(tr("current_scheme", "当前方案："))
-            current_scheme_layout.addWidget(current_scheme_label)
+            scheme_form_layout.addWidget(current_scheme_label, 1, 0)
             
             self.output_vars_scheme_combo = ComboBox()
             self.output_vars_scheme_combo.setStyleSheet(combo_style)
             self.output_vars_scheme_combo.currentTextChanged.connect(self._on_scheme_changed)
-            current_scheme_layout.addWidget(self.output_vars_scheme_combo, 1)  # 设置拉伸因子为1，让下拉框展开
-            spectral_output_card_layout.addLayout(current_scheme_layout)
+            scheme_form_layout.addWidget(self.output_vars_scheme_combo, 1, 1)
+            spectral_output_card_layout.addLayout(scheme_form_layout)
             
             # 确认按钮（单独一行）
             confirm_output_vars_button = PrimaryPushButton(tr("confirm_output_vars", "确认"))
