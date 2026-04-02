@@ -332,6 +332,7 @@ class NavigationMixin:
                 icon=clear_icon,
                 text=tr("clear_log", "清空日志"),
                 onClick=self.clear_log,
+                selectable=False,
                 position=NavigationItemPosition.BOTTOM
             )
             return
@@ -347,6 +348,7 @@ class NavigationMixin:
                     icon=clear_icon,
                     text=tr("clear_log", "清空日志"),
                     onClick=self.clear_log,
+                    selectable=False,
                     position=NavigationItemPosition.BOTTOM
                 )
         except:
@@ -355,47 +357,67 @@ class NavigationMixin:
 
 
     def _add_open_workdir_button(self):
-        """添加打开工作目录按钮到侧边栏顶部（主页按钮下面第二个）"""
+        """添加打开工作目录按钮到侧边栏顶部最上面。"""
         from setting.language_manager import tr
-        # 方法1: 尝试使用 addItem 添加导航项
         try:
-            # 使用 FOLDER 图标
             folder_icon = getattr(FluentIcon, 'LINK', None) or getattr(FluentIcon, 'FOLDER_OPEN', None) or getattr(FluentIcon, 'DOCUMENT', None) or FluentIcon.FOLDER
-            self.navigationInterface.addItem(
-                routeKey='open-workdir',
-                icon=folder_icon,
-                text=tr("open_workdir", "打开工作目录"),
-                onClick=self.open_workdir,
-                position=NavigationItemPosition.TOP
-            )
+            if hasattr(self.navigationInterface, 'insertItem'):
+                self.navigationInterface.insertItem(
+                    2,
+                    routeKey='open-workdir',
+                    icon=folder_icon,
+                    text=tr("open_workdir", "打开工作目录"),
+                    onClick=self.open_workdir,
+                    selectable=False,
+                    position=NavigationItemPosition.TOP
+                )
+            else:
+                self.navigationInterface.addItem(
+                    routeKey='open-workdir',
+                    icon=folder_icon,
+                    text=tr("open_workdir", "打开工作目录"),
+                    onClick=self.open_workdir,
+                    selectable=False,
+                    position=NavigationItemPosition.TOP
+                )
             return
-        except Exception as e:
+        except Exception:
             pass
 
 
     def _add_choose_workdir_button(self):
-        """添加选择工作目录按钮到侧边栏顶部（主页按钮下面第三个）"""
+        """添加选择工作目录按钮到侧边栏顶部第二个。"""
         from setting.language_manager import tr
-        # 方法1: 尝试使用 addItem 添加导航项
         try:
-            # 使用 FOLDER_ADD 图标
             folder_add_icon = getattr(FluentIcon, 'FOLDER_ADD', None) or getattr(FluentIcon, 'FOLDER', None) or FluentIcon.DOCUMENT
-            self.navigationInterface.addItem(
-                routeKey='choose-workdir',
-                icon=folder_add_icon,
-                text=tr("choose_workdir", "选择工作目录"),
-                onClick=self.show_folder_dialog,
-                position=NavigationItemPosition.TOP
-            )
+            if hasattr(self.navigationInterface, 'insertItem'):
+                self.navigationInterface.insertItem(
+                    3,
+                    routeKey='choose-workdir',
+                    icon=folder_add_icon,
+                    text=tr("choose_workdir", "选择工作目录"),
+                    onClick=self.show_folder_dialog,
+                    selectable=False,
+                    position=NavigationItemPosition.TOP
+                )
+            else:
+                self.navigationInterface.addItem(
+                    routeKey='choose-workdir',
+                    icon=folder_add_icon,
+                    text=tr("choose_workdir", "选择工作目录"),
+                    onClick=self.show_folder_dialog,
+                    selectable=False,
+                    position=NavigationItemPosition.TOP
+                )
             return
-        except Exception as e:
+        except Exception:
             pass
 
         # 方法2: 如果 addItem 不可用，尝试使用 addSubItem
 
 
     def _add_plot_button(self):
-        """添加科研绘图按钮到侧边栏顶部（主页按钮下面第一个）"""
+        """添加科研绘图按钮到侧边栏顶部，排在主页后面。"""
         try:
             # 使用 IOT 图标
             try:
@@ -470,9 +492,9 @@ class NavigationMixin:
 
     def _add_all_navigation_buttons(self):
         """添加所有导航按钮到侧边栏（按指定顺序）"""
-        # 按钮顺序：主页、打开工作目录、选择工作目录、科研绘图、常用工具、设置、清除日志
-        # 注意：主页按钮已经在 addSubInterface 中添加，这里只添加其他按钮
-        
+        # 按钮顺序：打开工作目录、选择工作目录、主页、科研绘图、常用工具、设置、清除日志
+        # 注意：主页按钮已经在 addSubInterface 中添加，这里只插入其他按钮到它前后
+
         # 1. 打开工作目录
         if hasattr(self, '_add_open_workdir_button'):
             self._add_open_workdir_button()
@@ -481,7 +503,7 @@ class NavigationMixin:
         if hasattr(self, '_add_choose_workdir_button'):
             self._add_choose_workdir_button()
         
-        # 3. 科研绘图
+        # 3. 科研绘图（主页之后）
         if hasattr(self, '_add_plot_button'):
             self._add_plot_button()
         
