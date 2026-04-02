@@ -16,6 +16,7 @@ import os
 import sys
 import time
 
+import netCDF4
 import numpy as np
 import scipy.io
 
@@ -77,6 +78,15 @@ sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure'
 _USE_DEFAULT_GRID_NML = object()
 
 
+_BOUNDARY_ALIAS_TO_FILE = {
+    "full": "coastal_bound_full.mat",
+    "high": "coastal_bound_high.mat",
+    "inter": "coastal_bound_inter.mat",
+    "low": "coastal_bound_low.mat",
+    "coarse": "coastal_bound_coarse.mat",
+}
+
+
 def _extract_array(data):
     """Extract a 1D numpy array from nested MATLAB-style structures."""
     if isinstance(data, np.ndarray):
@@ -86,6 +96,76 @@ def _extract_array(data):
             return np.array([])
         return data.flatten()
     return np.array(data).flatten()
+
+
+def _coerce_scalar(value, default=None, cast=float):
+    """Convert MATLAB/scipy-loaded scalar-ish values to a Python scalar."""
+    if value is None:
+        return default
+    if isinstance(value, np.ndarray):
+        if value.size == 0:
+            return default
+        return _coerce_scalar(value.flat[0], default=default, cast=cast)
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return default
+        return _coerce_scalar(value[0], default=default, cast=cast)
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _mat_struct_to_dicts(struct_array):
+    """Convert a MATLAB struct array loaded by scipy into a list of dicts."""
+    if isinstance(struct_array, list):
+        return [item for item in struct_array if isinstance(item, dict)]
+    if not isinstance(struct_array, np.ndarray):
+        return [struct_array] if isinstance(struct_array, dict) else []
+    if struct_array.dtype.names is None:
+        items = struct_array.tolist()
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+        return [items] if isinstance(items, dict) else []
+
+    records = []
+    for poly in struct_array.flatten():
+        poly_dict = {}
+        for field_name in poly.dtype.names:
+            field_data = poly[field_name]
+            scalar_int = {"n", "level"}
+            scalar_float = {"west", "east", "south", "north", "height", "width"}
+            if field_name in scalar_int:
+                poly_dict[field_name] = _coerce_scalar(field_data, default=0, cast=int)
+            elif field_name in scalar_float:
+                poly_dict[field_name] = _coerce_scalar(field_data, default=0.0, cast=float)
+            else:
+                flat = _extract_array(field_data)
+                if flat.size == 1:
+                    poly_dict[field_name] = _coerce_scalar(flat, default=0.0, cast=float)
+                else:
+                    poly_dict[field_name] = flat
+        records.append(poly_dict)
+    return records
+
+
+def _load_boundary_structs(boundary_file):
+    """Load a coastline MAT file into a normalized list of polygon dicts."""
+    mat_data = scipy.io.loadmat(boundary_file)
+    return _mat_struct_to_dicts(mat_data["bound"])
+
+
+def _load_optional_boundary_structs(ref_dir, fname_poly):
+    """
+    Load user-defined polygons while preserving MATLAB create_grid.m semantics.
+
+    Optional polygons are processed independently from the main coastline
+    dataset and only applied in the second clean-mask pass.
+    """
+    bound_user, count = optional_bound(ref_dir, fname_poly)
+    if count <= 0 or not isinstance(bound_user, list) or bound_user[0] == -1:
+        return [], 0
+    return _normalize_boundaries(bound_user), count
 
 
 def _split_dateline(poly):
@@ -199,7 +279,6 @@ def _normalize_boundaries(bound):
 def _params_from_grid_nml(nml_path):
     """
     Map FORTRAN-style grid.nml sections to create_grid ``params`` keys.
-    Only TYPE='rect' is supported for the Python pipeline.
     """
     init = read_namelist(nml_path, "GRID_INIT")
     out = read_namelist(nml_path, "OUTGRID")
@@ -209,10 +288,6 @@ def _params_from_grid_nml(nml_path):
 
     gtype = str(out.get("type", "rect")).lower().strip()
     gtype = gtype.strip("'\"")
-    if gtype != "rect":
-        raise ValueError(
-            f"Python create_grid supports OUTGRID TYPE 'rect' only; got {gtype!r} in {nml_path}"
-        )
 
     def _strip_quotes(s):
         if isinstance(s, str) and len(s) >= 2 and s[0] in "'\"" and s[-1] == s[0]:
@@ -224,12 +299,14 @@ def _params_from_grid_nml(nml_path):
         "out_dir": init["data_dir"],
         "fname": _strip_quotes(str(init.get("fname", "grid"))),
         "fname_poly": _strip_quotes(str(init.get("fname_poly", "user_polygons.flag"))),
+        "type": gtype,
         "dx": float(out["dx"]),
         "dy": float(out["dy"]),
         "lon_range": [float(out["lon_west"]), float(out["lon_east"])],
         "lat_range": [float(out["lat_south"]), float(out["lat_north"])],
         "IS_GLOBAL": int(out.get("is_global", 0)),
         "ref_grid": _strip_quotes(str(bathy.get("ref_grid", "gebco"))).lower(),
+        "lonfrom": float(bathy.get("lonfrom", -180)),
         "var_x": _strip_quotes(str(bathy.get("xvar", "lon"))),
         "var_y": _strip_quotes(str(bathy.get("yvar", "lat"))),
         "var_z": _strip_quotes(str(bathy.get("zvar", "elevation"))),
@@ -258,16 +335,20 @@ def _resolve_boundary_mat_file(ref_dir, boundary):
 
     Supported forms:
     - legacy short names: ``full`` / ``high`` / ``inter`` / ``low`` / ``coarse``
-    - explicit basename stem: ``coastal_bound_osm_0.00003``
-    - explicit file name: ``coastal_bound_osm_0.00003.mat``
+    - explicit basename stem: ``coastal_bound_full``
+    - explicit file name: ``coastal_bound_full.mat``
     - relative / absolute path to any ``.mat`` file
     """
     raw = str(boundary).strip()
     if not raw:
         raw = "full"
+    raw_lower = raw.lower()
+    if raw_lower == "ultra":
+        raw = "full"
+        raw_lower = "full"
 
-    if raw in {"full", "high", "inter", "low", "coarse"}:
-        return os.path.normpath(os.path.join(ref_dir, f"coastal_bound_{raw}.mat"))
+    if raw_lower in _BOUNDARY_ALIAS_TO_FILE:
+        return os.path.normpath(os.path.join(ref_dir, _BOUNDARY_ALIAS_TO_FILE[raw_lower]))
 
     cand = raw
     if not cand.lower().endswith(".mat"):
@@ -283,6 +364,60 @@ def _resolve_boundary_mat_file(ref_dir, boundary):
     if not stem.startswith("coastal_bound_"):
         stem = f"coastal_bound_{stem}"
     return os.path.normpath(os.path.join(ref_dir, f"{stem}.mat"))
+
+
+def _write_namelists_marker(out_dir, fname):
+    """Mirror MATLAB's small namelist marker file."""
+    marker_path = os.path.join(out_dir, f"namelists_{fname}.nml")
+    with open(marker_path, "w", encoding="utf-8", newline="\n") as fid:
+        fid.write("END OF NAMELISTS\n")
+    return marker_path
+
+
+def _write_ascii_matrix(fname, data, fmt):
+    """Write a 2D matrix with a configurable float/int format."""
+    out_dir = os.path.dirname(fname)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(fname, "w", encoding="utf-8", newline="\n") as fid:
+        arr = np.asarray(data)
+        for row in arr:
+            fid.write(" ".join(fmt.format(v) for v in row) + "\n")
+
+
+def _load_curv_arrays(fname_bathy, xvar, yvar, zvar):
+    """Load curvilinear lon/lat/depth arrays from a NetCDF bathymetry file."""
+    with netCDF4.Dataset(fname_bathy, "r") as ds:
+        lon_raw = np.asarray(ds.variables[xvar][:], dtype=np.float32)
+        lat_raw = np.asarray(ds.variables[yvar][:], dtype=np.float32)
+        dep_var = ds.variables[zvar]
+        depth_raw = np.asarray(dep_var[:], dtype=np.float32)
+        fill_value = getattr(dep_var, "_FillValue", None)
+
+    lon = lon_raw.T
+    lat = lat_raw.T
+    depth = depth_raw.T
+
+    if lon.ndim == 1 and lat.ndim == 1:
+        lon, lat = np.meshgrid(lon, lat)
+    elif lon.ndim != 2 or lat.ndim != 2:
+        raise ValueError(
+            f"Curvilinear workflow expects 2D lon/lat (or matching 1D vectors); "
+            f"got lon ndim={lon.ndim}, lat ndim={lat.ndim}"
+        )
+
+    if depth.ndim == 1:
+        if lon.shape[0] == 1:
+            depth = depth[np.newaxis, :]
+        else:
+            depth = depth[:, np.newaxis]
+
+    if depth.shape != lon.shape:
+        raise ValueError(
+            f"Depth shape {depth.shape} does not match lon/lat shape {lon.shape} in {fname_bathy}"
+        )
+
+    return lon.astype(np.float32), lat.astype(np.float32), depth.astype(np.float32), fill_value
 
 
 def create_grid(**kwargs):
@@ -310,7 +445,7 @@ def create_grid(**kwargs):
     boundary : str
         Coastline boundary source. Supports legacy GSHHS levels
         ('full','high','inter','low','coarse') or an explicit ``.mat`` file /
-        stem such as 'coastal_bound_osm_0.00003.mat'. (default: 'full')
+        stem such as 'coastal_bound_full.mat'. (default: 'full')
     read_boundary : int
         Read boundary data? (default: 1)
     opt_poly : int
@@ -371,11 +506,13 @@ def create_grid(**kwargs):
         'ref_dir': os.path.join(project_root, 'reference_data'),
         'out_dir': os.path.join(project_root, 'result'),
         'fname': 'grid',
+        'type': 'rect',
         'dx': 0.05,
         'dy': 0.05,
         'lon_range': [110, 130],
         'lat_range': [10, 30],
         'ref_grid': 'gebco',
+        'lonfrom': -180,
         'boundary': 'full',
         'read_boundary': 1,
         'opt_poly': 0,
@@ -429,13 +566,14 @@ def create_grid(**kwargs):
     # Force unbuffered output for real-time logging
     sys.stdout.flush()
     print('=' * 70, flush=True)
-    title = 'Structured Rectangular Grid Generation By Gridgen Python Version'
+    title = 'Structured Grid Generation By Gridgen Python Version'
     pad = max((70 - len(title)) // 2, 0)
     print(' ' * pad + title, flush=True)
     print('=' * 70, flush=True)
     if fname_nml_abs:
         print(f"grid.nml: {fname_nml_abs}", flush=True)
     print(f"Grid name: {params['fname']}", flush=True)
+    print(f"Grid type: {params['type']}", flush=True)
     print(f"Bathymetry source: {params['ref_grid']}", flush=True)
     print(f"Resolution: {params['dx']:.4f} x {params['dy']:.4f} degrees", flush=True)
     print(f"Domain: [{params['lon_range'][0]:.2f}, {params['lon_range'][1]:.2f}] x "
@@ -471,81 +609,145 @@ def create_grid(**kwargs):
     print(f'  Grid size: {lon.shape[1]} x {lon.shape[0]} points', flush=True)
     print('  Done.\n', flush=True)
     
+    gtype = str(params.get("type", "rect")).lower().strip()
+    if gtype == "curv":
+        fname_bathy = os.path.join(params["ref_dir"], f"{params['ref_grid']}.nc")
+        if not os.path.isfile(fname_bathy):
+            raise FileNotFoundError(f"Bathymetry file not found: {fname_bathy}")
+
+        print("Step 1b: Reading curvilinear bathymetry, lon, and lat...", flush=True)
+        lon, lat, depth, fill_value = _load_curv_arrays(
+            fname_bathy, params["var_x"], params["var_y"], params["var_z"]
+        )
+        print(f"  Curvilinear grid size: {lon.shape[1]} x {lon.shape[0]} points", flush=True)
+        print("  Done.\n", flush=True)
+
+        print("Step 2: Creating curvilinear land-sea mask...", flush=True)
+        m4 = np.ones(depth.shape, dtype=np.int32)
+        ny, nx = m4.shape
+        m4[0, :] = 2
+        m4[ny - 1, :] = 2
+        m4[:, 0] = 2
+        m4[:, nx - 1] = 2
+
+        dry_mask = depth == float(params["DRY_VAL"])
+        nan_mask = np.isnan(depth)
+        fill_mask = np.zeros_like(dry_mask)
+        if fill_value is not None:
+            fill_mask = depth == np.float32(fill_value)
+        land_mask = dry_mask | nan_mask | fill_mask
+        m4[land_mask] = 0
+
+        depth_out = np.array(depth, copy=True)
+        depth_out[dry_mask] = 0
+        depth_out[nan_mask] = 0
+        depth_out[fill_mask] = 0
+        print(f"  Sea points: {np.sum(m4 != 0)}", flush=True)
+        print(f"  Land points: {np.sum(m4 == 0)}", flush=True)
+        print("  Done.\n", flush=True)
+
+        print("Step 3: Creating zero obstructions for curvilinear workflow...", flush=True)
+        sx1 = np.zeros_like(depth_out, dtype=np.float32)
+        sy1 = np.zeros_like(depth_out, dtype=np.float32)
+        print("  Done.\n", flush=True)
+
+        print("Step 4: Writing WAVEWATCH III output files...", flush=True)
+        depth_scale = 1000
+        obstr_scale = 100
+
+        write_ww3file(
+            os.path.join(params["out_dir"], f"{params['fname']}.bot"),
+            np.round(depth_out * depth_scale).astype(int),
+        )
+        write_ww3file(os.path.join(params["out_dir"], f"{params['fname']}.mask"), m4.astype(int))
+        write_ww3file(
+            os.path.join(params["out_dir"], f"{params['fname']}.mask_nobound"),
+            m4.astype(int),
+        )
+        _write_ascii_matrix(
+            os.path.join(params["out_dir"], f"{params['fname']}.lon"),
+            lon,
+            "{:.10f}",
+        )
+        _write_ascii_matrix(
+            os.path.join(params["out_dir"], f"{params['fname']}.lat"),
+            lat,
+            "{:.10f}",
+        )
+        write_ww3obstr(
+            os.path.join(params["out_dir"], f"{params['fname']}.obst"),
+            np.round(sx1 * obstr_scale).astype(int),
+            np.round(sy1 * obstr_scale).astype(int),
+        )
+
+        meta_prefix = os.path.join(params["out_dir"], params["fname"])
+        meta_prefix = os.path.abspath(meta_prefix).replace("\\", "/")
+        write_ww3meta(
+            meta_prefix,
+            fname_nml_abs,
+            "CURV",
+            lon,
+            lat,
+            1.0 / depth_scale,
+            1.0 / obstr_scale,
+            1.0,
+            is_global_override=params["IS_GLOBAL"],
+        )
+        marker_path = _write_namelists_marker(params["out_dir"], params["fname"])
+        print(f"  Written: {params['fname']}.bot", flush=True)
+        print(f"  Written: {params['fname']}.mask", flush=True)
+        print(f"  Written: {params['fname']}.mask_nobound", flush=True)
+        print(f"  Written: {params['fname']}.lon", flush=True)
+        print(f"  Written: {params['fname']}.lat", flush=True)
+        print(f"  Written: {params['fname']}.obst (all zeros)", flush=True)
+        print("  Written: grid.meta", flush=True)
+        print(f"  Written: {os.path.basename(marker_path)}", flush=True)
+        print("  Done.\n", flush=True)
+
+        elapsed_time = time.time() - start_time
+        print("=" * 70, flush=True)
+        title2 = "Grid Generation Complete!"
+        pad = max((70 - len(title2)) // 2, 0)
+        print(" " * pad + title2, flush=True)
+        print("=" * 70, flush=True)
+        print(f"Output directory: {params['out_dir']}", flush=True)
+        print("Output files:", flush=True)
+        print(f"  - {params['fname']}.bot  (bathymetry)", flush=True)
+        print(f"  - {params['fname']}.mask / .mask_nobound (land-sea mask)", flush=True)
+        print(f"  - {params['fname']}.lon / .lat (curvilinear coordinates)", flush=True)
+        print(f"  - {params['fname']}.obst (obstructions, all zeros)", flush=True)
+        print("  - grid.meta (WW3 grid description, CURV)", flush=True)
+        print(f"  - namelists_{params['fname']}.nml", flush=True)
+        print(f"Total time: {elapsed_time:.2f} seconds", flush=True)
+        print("=" * 70, flush=True)
+        return
+    if gtype != "rect":
+        raise ValueError(
+            f"Python create_grid currently implements gridgen parity for TYPE='rect' and "
+            f"the separate TYPE='curv' workflow only; got {gtype!r}."
+        )
+
     # 2. Read boundary data
+    bound_user = []
+    Nu = 0
     if params['read_boundary']:
         print('Step 2: Reading GSHHS boundary data...', flush=True)
         boundary_file = _resolve_boundary_mat_file(params['ref_dir'], params['boundary'])
         
         if os.path.exists(boundary_file):
-            mat_data = scipy.io.loadmat(boundary_file)
-            bound = mat_data['bound']
-            
-            # Convert MATLAB struct array to Python list of dicts
-            if isinstance(bound, np.ndarray):
-                if bound.dtype.names is not None:
-                    # Structured array
-                    # MATLAB struct arrays are typically (1, N) shape when loaded by scipy
-                    # Use .size to get total number of elements, or flatten first
-                    bound_flat = bound.flatten()
-                    N = bound_flat.size
-                    bound_list = []
-                    for i in range(N):
-                        poly = bound_flat[i]
-                        
-                        poly_dict = {}
-                        for field_name in poly.dtype.names:
-                            field_data = poly[field_name]
-                            if isinstance(field_data, np.ndarray):
-                                if field_data.size == 1:
-                                    if field_name in ['n', 'level']:
-                                        poly_dict[field_name] = int(field_data.item())
-                                    elif field_name in ['west', 'east', 'south', 'north', 'height', 'width']:
-                                        poly_dict[field_name] = float(field_data.item())
-                                    else:
-                                        poly_dict[field_name] = float(field_data.item())
-                                else:
-                                    if field_data.dtype == object:
-                                        if field_data.size > 0:
-                                            first_elem = field_data.flat[0]
-                                            if isinstance(first_elem, np.ndarray):
-                                                poly_dict[field_name] = first_elem.flatten()
-                                            else:
-                                                poly_dict[field_name] = np.array(field_data.flat).flatten()
-                                        else:
-                                            poly_dict[field_name] = np.array([])
-                                    else:
-                                        poly_dict[field_name] = field_data.flatten()
-                            else:
-                                poly_dict[field_name] = field_data
-                        
-                        bound_list.append(poly_dict)
-                    bound = bound_list
-                else:
-                    bound = bound.tolist()
-            elif isinstance(bound, list):
-                pass
-            else:
-                bound = [bound]
-            
-            N = len(bound) if isinstance(bound, list) else 1
+            bound = _load_boundary_structs(boundary_file)
+            N = len(bound)
             print(f'  Loaded {N} boundary polygons', flush=True)
             
             # Load optional polygons if requested
-            Nu = 0
             if params['opt_poly'] == 1:
                 fname_poly = os.path.normpath(
                     os.path.join(params['ref_dir'], params['fname_poly'])
                 )
                 if os.path.exists(fname_poly):
-                    # optional_bound expects ref_dir and the full path to the flag file
-                    bound_user, Nu = optional_bound(params['ref_dir'], fname_poly)
+                    bound_user, Nu = _load_optional_boundary_structs(params['ref_dir'], fname_poly)
                     if Nu > 0:
                         print(f'  Loaded {Nu} user-defined polygons', flush=True)
-                        # Append user polygons to bound list
-                        if isinstance(bound_user, list) and len(bound_user) > 0 and bound_user[0] != -1:
-                            bound.extend(bound_user)
-                            N = len(bound)
-                            print(f'  Total boundary polygons after adding user polygons: {N}', flush=True)
                     else:
                         print('  No user-defined polygons enabled in flag file', flush=True)
                         params['opt_poly'] = 0
@@ -566,6 +768,8 @@ def create_grid(**kwargs):
     else:
         print('Step 2: Skipping boundary data (read_boundary = 0)\n', flush=True)
         bound = []
+        bound_user = []
+        Nu = 0
     
     # 3. Generate bathymetry
     print(f"Step 3: Generating bathymetry from {params['ref_grid']}...", flush=True)
@@ -615,12 +819,20 @@ def create_grid(**kwargs):
         
         coord = [lat_start, lon_start, lat_end, lon_end]
         b, N1 = compute_boundary(coord, bound, params['MIN_DIST'])
+        if params['opt_poly'] == 1 and Nu > 0:
+            b_opt, N2 = compute_boundary(coord, bound_user, params['MIN_DIST'])
+        else:
+            b_opt, N2 = [], 0
         sys.stdout.flush()
         print(f'  Found {N1} boundary segments in grid domain', flush=True)
+        if params['opt_poly'] == 1:
+            print(f'  Found {N2} optional boundary segments in grid domain', flush=True)
         print('  Done.\n', flush=True)
     else:
         b = []
         N1 = 0
+        b_opt = []
+        N2 = 0
         print('Step 4: Skipping boundary computation\n', flush=True)
     
     # 5. Create initial land-sea mask
@@ -647,16 +859,24 @@ def create_grid(**kwargs):
         print('Step 7: Cleaning mask using boundary polygons...', flush=True)
         sys.stdout.flush()
         m2 = clean_mask(lon, lat, m, b_split, params['LIM_VAL'], params['OFFSET'])
+        if params['opt_poly'] == 1 and N2 != 0:
+            m3 = clean_mask(lon, lat, m2, b_opt, params['LIM_VAL'], params['OFFSET'])
+        else:
+            m3 = m2
         print(f'  Wet cells after cleaning: {np.sum(m2 == 1)}', flush=True)
         print(f'  Dry cells after cleaning: {np.sum(m2 == 0)}', flush=True)
+        if params['opt_poly'] == 1 and N2 != 0:
+            print(f'  Wet cells after optional polygons: {np.sum(m3 == 1)}', flush=True)
+            print(f'  Dry cells after optional polygons: {np.sum(m3 == 0)}', flush=True)
         print('  Done.\n', flush=True)
     else:
         m2 = m
+        m3 = m2
         print('Step 7: Skipping mask cleaning (no boundaries)\n', flush=True)
     
     # 8. Remove lakes and small water bodies
     print('Step 8: Removing lakes and small water bodies...', flush=True)
-    m4, mask_map = remove_lake(m2, params['LAKE_TOL'], params['IS_GLOBAL'])
+    m4, mask_map = remove_lake(m3, params['LAKE_TOL'], params['IS_GLOBAL'])
     print(f'  Final wet cells: {np.sum(m4 == 1)}', flush=True)
     print(f'  Final dry cells: {np.sum(m4 == 0)}', flush=True)
     print('  Done.\n', flush=True)
@@ -711,6 +931,8 @@ def create_grid(**kwargs):
         is_global_override=params["IS_GLOBAL"],
     )
     print("  Written: grid.nml (WW3 grid description)", flush=True)
+    marker_path = _write_namelists_marker(params['out_dir'], params['fname'])
+    print(f"  Written: {os.path.basename(marker_path)}", flush=True)
     print('  Done.\n', flush=True)
     
     # Summary
@@ -729,6 +951,7 @@ def create_grid(**kwargs):
     else:
         print(f"  - {params['fname']}.obst (obstructions, all zeros)", flush=True)
     print("  - grid.nml (WW3 grid description, same as MATLAB gridgen)", flush=True)
+    print(f"  - namelists_{params['fname']}.nml", flush=True)
     print(f'Total time: {elapsed_time:.2f} seconds', flush=True)
     print('=' * 70, flush=True)
 

@@ -48,7 +48,7 @@ from setting.config import (
     get_project_gridgen_path,
 )
 from .grid_viz_worker import VIZ_PREFIX, cache_is_current, cached_image_paths, smc_run_metadata_path
-from .rect_grid_desc_parse import parse_rect_grid_description, rect_lon_lat_mesh
+from .rect_grid_desc_parse import parse_structured_grid_description, structured_lon_lat_mesh
 from .structured_grid_paths import (
     structured_grid_desc_basenames_to_copy,
     structured_grid_desc_path,
@@ -85,6 +85,42 @@ REFERENCE_DATA_REQUIRED_FILES = [
     "etopo2.nc",
     "gebco.nc",
 ]
+
+
+STRUCTURED_BOUNDARY_MAT_FILES = {
+    "full": "coastal_bound_full.mat",
+    "high": "coastal_bound_high.mat",
+    "inter": "coastal_bound_inter.mat",
+    "low": "coastal_bound_low.mat",
+    "coarse": "coastal_bound_coarse.mat",
+}
+
+
+def _resolve_structured_boundary_mat_file(ref_dir: str, boundary: str) -> str:
+    """Resolve structured-grid coastline boundary input to a concrete ``.mat`` file."""
+    raw = str(boundary or "").strip()
+    if not raw:
+        raw = "full"
+    raw_lower = raw.lower()
+    if raw_lower == "ultra":
+        raw = "full"
+        raw_lower = "full"
+
+    if raw_lower in STRUCTURED_BOUNDARY_MAT_FILES:
+        return os.path.join(ref_dir, STRUCTURED_BOUNDARY_MAT_FILES[raw_lower])
+
+    cand = raw if raw.lower().endswith(".mat") else f"{raw}.mat"
+    if os.path.isabs(cand):
+        return cand
+
+    rel_file = os.path.join(ref_dir, cand)
+    if os.path.exists(rel_file):
+        return rel_file
+
+    stem = raw[:-4] if raw.lower().endswith(".mat") else raw
+    if not stem.startswith("coastal_bound_"):
+        stem = f"coastal_bound_{stem}"
+    return os.path.join(ref_dir, f"{stem}.mat")
 
 
 def _flatten_nested_reference_data_dir(ref_dir: str, log_emit=None) -> None:
@@ -2325,7 +2361,7 @@ class StepTwoServiceMixin:
             if bathymetry is None:
                 bathymetry = config.get("BATHYMETRY", "GEBCO")
             if coastline_precision is None:
-                coastline_precision = config.get("COASTLINE_PRECISION", tr("step2_coastline_precision_full", "最高"))
+                coastline_precision = config.get("COASTLINE_PRECISION", "full")
         if gridgen_backend is None:
             config = load_config()
             gv = config.get("GRIDGEN_VERSION", "MATLAB")
@@ -2593,7 +2629,7 @@ class StepTwoServiceMixin:
 
         Nx, Ny = None, None
         try:
-            d = parse_rect_grid_description(grid_desc_path)
+            d = parse_structured_grid_description(grid_desc_path)
             if d:
                 Nx, Ny = d["nx"], d["ny"]
         except Exception as e:
@@ -2819,13 +2855,13 @@ class StepTwoServiceMixin:
         try:
             # 获取嵌套收缩系数 N
             config = load_config()
-            n_str = config.get("NESTED_CONTRACTION_COEFFICIENT", "3").strip()
+            n_str = config.get("NESTED_CONTRACTION_COEFFICIENT", "1.3").strip()
             try:
                 N = float(n_str)
                 if N <= 0:
                     raise ValueError(tr("step2_invalid_nested_coeff", "嵌套收缩系数必须大于0"))
             except (ValueError, TypeError):
-                self.log(tr("step2_invalid_nested_coeff", "❌ 无效的嵌套收缩系数: {n_str}，请使用数字（推荐 3 或 2）").format(n_str=n_str))
+                self.log(tr("step2_invalid_nested_coeff", "❌ 无效的嵌套收缩系数: {n_str}，请使用数字（推荐 1.3）").format(n_str=n_str))
                 return
 
             # 获取外网格参数
@@ -2899,13 +2935,13 @@ class StepTwoServiceMixin:
         try:
             # 获取嵌套收缩系数 N
             config = load_config()
-            n_str = config.get("NESTED_CONTRACTION_COEFFICIENT", "3").strip()
+            n_str = config.get("NESTED_CONTRACTION_COEFFICIENT", "1.3").strip()
             try:
                 N = float(n_str)
                 if N <= 0:
                     raise ValueError(tr("step2_invalid_nested_coeff", "嵌套收缩系数必须大于0"))
             except (ValueError, TypeError):
-                self.log(tr("step2_invalid_nested_coeff", "❌ 无效的嵌套收缩系数: {n_str}，请使用数字（推荐 3 或 2）").format(n_str=n_str))
+                self.log(tr("step2_invalid_nested_coeff", "❌ 无效的嵌套收缩系数: {n_str}，请使用数字（推荐 1.3）").format(n_str=n_str))
                 return
 
             # 获取内网格参数
@@ -3442,7 +3478,7 @@ class StepTwoServiceMixin:
 
             # 从配置中读取水深数据和海岸边界精度
             bathymetry_config = current_config.get("BATHYMETRY", "GEBCO")
-            coastline_precision_config = current_config.get("COASTLINE_PRECISION", tr("step2_coastline_precision_full", "最高"))
+            coastline_precision_config = current_config.get("COASTLINE_PRECISION", "full")
             
             # 转换参数值格式：GEBCO/ETOP1/ETOP2 -> gebco/etopo1/etopo2
             bathymetry_map = {
@@ -3453,17 +3489,18 @@ class StepTwoServiceMixin:
             ref_grid = bathymetry_map.get(bathymetry_config.upper(), "gebco")
             
             # 转换海岸边界精度
-            full_text = tr("step2_coastline_precision_full", "最高")
-            high_text = tr("step2_coastline_precision_high", "高")
-            inter_text = tr("step2_coastline_precision_inter", "中")
-            low_text = tr("step2_coastline_precision_low", "低")
-            coarse_text = tr("coastline_coarse", "粗")
+            full_text = tr("step2_coastline_precision_full", "full")
+            high_text = tr("step2_coastline_precision_high", "high")
+            inter_text = tr("step2_coastline_precision_inter", "inter")
+            low_text = tr("step2_coastline_precision_low", "low")
+            coarse_text = tr("coastline_coarse", "coarse")
             coastline_map = {
                 full_text: "full",
                 high_text: "high",
                 inter_text: "inter",
                 low_text: "low",
                 coarse_text: "coarse",
+                "ultra": "full",
                 "最高": "full",
                 "高": "high",
                 "中": "inter",
@@ -3474,13 +3511,24 @@ class StepTwoServiceMixin:
                 "Medium": "inter",
                 "Low": "low",
                 "Coarse": "coarse",
+                "Ultra": "full",
                 "full": "full",
                 "high": "high",
                 "inter": "inter",
                 "low": "low",
-                "coarse": "coarse"
+                "coarse": "coarse",
+                "ultra": "full"
             }
             boundary = coastline_map.get(str(coastline_precision_config), "full")
+            boundary_file = _resolve_structured_boundary_mat_file(ref_dir, boundary)
+            if not os.path.exists(boundary_file):
+                self.log_signal.emit(
+                    tr(
+                        "step2_boundary_file_missing",
+                        "❌ 未找到边界文件：{path}（精度: {boundary}），请先准备对应的 coastal_bound_*.mat 或降低精度"
+                    ).format(path=boundary_file, boundary=boundary)
+                )
+                return False
             
             gridgen_backend = "python" if gridgen_version == "Python" else "matlab"
             # 检查缓存（使用原始配置值；按 gridgen 后端区分缓存）
@@ -3627,7 +3675,7 @@ create_grid(
                 
                 # 从配置中读取水深数据和海岸边界精度
                 bathymetry_config = current_config.get("BATHYMETRY", "GEBCO")
-                coastline_precision_config = current_config.get("COASTLINE_PRECISION", tr("step2_coastline_precision_full", "最高"))
+                coastline_precision_config = current_config.get("COASTLINE_PRECISION", "full")
                 
                 # 转换参数值格式：GEBCO/ETOP1/ETOP2 -> gebco/etopo1/etopo2
                 bathymetry_map = {
@@ -3638,11 +3686,11 @@ create_grid(
                 ref_grid = bathymetry_map.get(bathymetry_config.upper(), "gebco")
                 
                 # 转换海岸边界精度
-                full_text = tr("step2_coastline_precision_full", "最高")
-                high_text = tr("step2_coastline_precision_high", "高")
-                inter_text = tr("step2_coastline_precision_inter", "中")
-                low_text = tr("step2_coastline_precision_low", "低")
-                coarse_text = tr("coastline_coarse", "粗")
+                full_text = tr("step2_coastline_precision_full", "full")
+                high_text = tr("step2_coastline_precision_high", "high")
+                inter_text = tr("step2_coastline_precision_inter", "inter")
+                low_text = tr("step2_coastline_precision_low", "low")
+                coarse_text = tr("coastline_coarse", "coarse")
                 coastline_map = {
                     full_text: "full",
                     "最高": "full",
@@ -3654,15 +3702,17 @@ create_grid(
                     "低": "low",
                     coarse_text: "coarse",
                     "粗": "coarse",
+                    "Ultra": "full",
                     "full": "full",
                     "high": "high",
                     "inter": "inter",
                     "low": "low",
                     "coarse": "coarse",
+                    "ultra": "full",
                 }
                 boundary = coastline_map.get(coastline_precision_config, "full")
-                
-                boundary_file = os.path.join(ref_dir, f"coastal_bound_{boundary}.mat")
+
+                boundary_file = _resolve_structured_boundary_mat_file(ref_dir, boundary)
                 if not os.path.exists(boundary_file):
                     self.log_signal.emit(
                         tr(
@@ -4250,7 +4300,7 @@ create_grid(
     def _read_ww3meta(self, fname):
         """读取 grid.nml（&RECT_NML）或旧版 ASCII，返回经纬度数组"""
         try:
-            lon, lat = rect_lon_lat_mesh(fname)
+            lon, lat = structured_lon_lat_mesh(fname)
             if lon is None:
                 self.log(tr("step2_read_meta_failed", "❌ 读取 grid.meta 文件失败"))
                 return None, None

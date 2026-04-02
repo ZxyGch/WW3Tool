@@ -117,10 +117,19 @@ def _flat_grid_meta_ok(path: str) -> bool:
             c = f.read(8000)
     except OSError:
         return False
-    return all(
-        s in c
-        for s in ("RECT%NX", "RECT%NY", "RECT%SX", "RECT%SY", "RECT%X0", "RECT%Y0")
+    rect_ok = all(
+        s in c for s in ("RECT%NX", "RECT%NY", "RECT%SX", "RECT%SY", "RECT%X0", "RECT%Y0")
     )
+    curv_ok = all(
+        s in c
+        for s in (
+            "CURV%NX",
+            "CURV%NY",
+            "CURV%XCOORD%FILENAME",
+            "CURV%YCOORD%FILENAME",
+        )
+    )
+    return rect_ok or curv_ok
 
 
 def _structured_grid_desc_path(grid_dir: str) -> str | None:
@@ -923,7 +932,7 @@ def _rect_grid_desc_module():
 def read_ww3meta(fname: str):
     """Structured grid: MATLAB-style ``grid.nml`` (&RECT_NML) or legacy ASCII."""
     try:
-        lon, lat = _rect_grid_desc_module().rect_lon_lat_mesh(fname)
+        lon, lat = _rect_grid_desc_module().structured_lon_lat_mesh(fname)
         if lon is None:
             return None, None
         return lon, lat

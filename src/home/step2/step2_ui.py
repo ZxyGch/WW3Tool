@@ -186,10 +186,9 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         self.mesh_type_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.mesh_type_combo = ComboBox()
         rectangle_text = tr("step2_mesh_type_rectangle", "矩形网格")
-        curvilinear_text = tr("step2_mesh_type_curvilinear", "曲线网格")
         smc_text = tr("step2_mesh_type_smc", "SMC 网格")
         unstructured_text = tr("step2_mesh_type_unstructured", "非结构网格")
-        self.mesh_type_combo.addItems([rectangle_text, curvilinear_text, smc_text, unstructured_text])
+        self.mesh_type_combo.addItems([rectangle_text, smc_text, unstructured_text])
         self.mesh_type_var = rectangle_text
         self.mesh_type_combo.setCurrentText(rectangle_text)
         self.mesh_type_combo.currentTextChanged.connect(self._set_step2_mesh_type)
@@ -663,27 +662,8 @@ class HomeStepTwoCard(StepTwoServiceMixin):
         from qfluentwidgets import InfoBar
 
         rectangle_text = tr("step2_mesh_type_rectangle", "矩形网格")
-        curvilinear_text = tr("step2_mesh_type_curvilinear", "曲线网格")
         smc_text = tr("step2_mesh_type_smc", "SMC 网格")
         unstructured_text = tr("step2_mesh_type_unstructured", "非结构网格")
-
-        # 上一次允许保留的选择（曲线网格尚未实现，需回退）
-        prev_mesh = getattr(self, "mesh_type_var", None) or rectangle_text
-
-        if mesh_type == curvilinear_text:
-            self.mesh_type_combo.blockSignals(True)
-            self.mesh_type_combo.setCurrentText(prev_mesh)
-            self.mesh_type_combo.blockSignals(False)
-            try:
-                InfoBar.warning(
-                    title=tr("tip", "提示"),
-                    content=tr("step2_mesh_type_not_implemented", "尚未实现"),
-                    duration=3000,
-                    parent=self,
-                )
-            except Exception:
-                pass
-            return
 
         # 允许：矩形、SMC、非结构网格
         self.mesh_type_var = mesh_type

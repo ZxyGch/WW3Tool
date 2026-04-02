@@ -33,6 +33,7 @@ def parse_rect_flat_meta(lines: list[str]) -> dict | None:
     needed = ("nx", "ny", "sx", "sy", "x0", "y0")
     if all(k in vals for k in needed):
         return {
+            "grid_type": "RECT",
             "nx": int(vals["nx"]),
             "ny": int(vals["ny"]),
             "sx": float(vals["sx"]),
@@ -86,6 +87,7 @@ def parse_rect_from_namelist(lines: list[str]) -> dict | None:
     needed = ("nx", "ny", "sx", "sy", "x0", "y0")
     if all(k in vals for k in needed):
         return {
+            "grid_type": "RECT",
             "nx": int(vals["nx"]),
             "ny": int(vals["ny"]),
             "sx": float(vals["sx"]),
@@ -130,6 +132,7 @@ def parse_rect_legacy_ascii(lines: list[str]) -> dict | None:
     x0 = float(L3[0]) / sf0
     y0 = float(L3[1]) / sf0
     return {
+        "grid_type": "RECT",
         "nx": nx,
         "ny": ny,
         "sx": sx_deg,
@@ -139,6 +142,86 @@ def parse_rect_legacy_ascii(lines: list[str]) -> dict | None:
         "sf": sf,
         "sf0": sf0,
     }
+
+
+def parse_curv_flat_meta(lines: list[str]) -> dict | None:
+    vals: dict[str, float | int | str] = {}
+    for raw in lines:
+        line = raw.split("!")[0].strip()
+        if not line or line.startswith("$") or "=" not in line:
+            continue
+        key, _, rhs = line.partition("=")
+        key_u = key.strip().upper()
+        tok = rhs.strip().strip("'\"")
+        if not tok:
+            continue
+        tok = tok.split()[0].strip("'\"")
+        if key_u == "CURV%NX":
+            vals["nx"] = int(float(tok))
+        elif key_u == "CURV%NY":
+            vals["ny"] = int(float(tok))
+        elif key_u == "CURV%XCOORD%SF":
+            vals["xcoord_sf"] = float(tok)
+        elif key_u == "CURV%XCOORD%FILENAME":
+            vals["xcoord_filename"] = str(tok)
+        elif key_u == "CURV%YCOORD%SF":
+            vals["ycoord_sf"] = float(tok)
+        elif key_u == "CURV%YCOORD%FILENAME":
+            vals["ycoord_filename"] = str(tok)
+    needed = ("nx", "ny", "xcoord_sf", "xcoord_filename", "ycoord_sf", "ycoord_filename")
+    if all(k in vals for k in needed):
+        return {
+            "grid_type": "CURV",
+            "nx": int(vals["nx"]),
+            "ny": int(vals["ny"]),
+            "xcoord_sf": float(vals["xcoord_sf"]),
+            "xcoord_filename": str(vals["xcoord_filename"]),
+            "ycoord_sf": float(vals["ycoord_sf"]),
+            "ycoord_filename": str(vals["ycoord_filename"]),
+        }
+    return None
+
+
+def parse_curv_from_namelist(lines: list[str]) -> dict | None:
+    in_curv = False
+    vals: dict[str, float | int | str] = {}
+    for raw in lines:
+        line = raw.split("!")[0].rstrip()
+        s = line.strip()
+        if not s:
+            continue
+        u = s.upper()
+        if u.startswith("&CURV_NML"):
+            in_curv = True
+            vals = {}
+            continue
+        if in_curv:
+            if s.startswith("/"):
+                break
+            if "CURV%NX" in u and "=" in s:
+                vals["nx"] = int(float(_strip_assign_rhs(s)))
+            elif "CURV%NY" in u and "=" in s:
+                vals["ny"] = int(float(_strip_assign_rhs(s)))
+            elif "CURV%XCOORD%SF" in u and "=" in s:
+                vals["xcoord_sf"] = float(_strip_assign_rhs(s))
+            elif "CURV%XCOORD%FILENAME" in u and "=" in s:
+                vals["xcoord_filename"] = _strip_assign_rhs(s)
+            elif "CURV%YCOORD%SF" in u and "=" in s:
+                vals["ycoord_sf"] = float(_strip_assign_rhs(s))
+            elif "CURV%YCOORD%FILENAME" in u and "=" in s:
+                vals["ycoord_filename"] = _strip_assign_rhs(s)
+    needed = ("nx", "ny", "xcoord_sf", "xcoord_filename", "ycoord_sf", "ycoord_filename")
+    if all(k in vals for k in needed):
+        return {
+            "grid_type": "CURV",
+            "nx": int(vals["nx"]),
+            "ny": int(vals["ny"]),
+            "xcoord_sf": float(vals["xcoord_sf"]),
+            "xcoord_filename": str(vals["xcoord_filename"]),
+            "ycoord_sf": float(vals["ycoord_sf"]),
+            "ycoord_filename": str(vals["ycoord_filename"]),
+        }
+    return None
 
 
 # Keys copied into ww3_grid.nml during Step 4 (flat or full &..._NML meta); all others ignored.
@@ -215,6 +298,27 @@ def parse_rect_grid_description(path: str) -> dict | None:
     return parse_rect_legacy_ascii(lines)
 
 
+def parse_structured_grid_description(path: str) -> dict | None:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+    rect = parse_rect_flat_meta(lines)
+    if rect:
+        return rect
+    rect = parse_rect_from_namelist(lines)
+    if rect:
+        return rect
+    rect = parse_rect_legacy_ascii(lines)
+    if rect:
+        return rect
+    curv = parse_curv_flat_meta(lines)
+    if curv:
+        return curv
+    return parse_curv_from_namelist(lines)
+
+
 def rect_lon_lat_mesh(path: str):
     """Return (lon, lat) 2D ndarray mesh in degrees, or (None, None)."""
     import numpy as np
@@ -226,4 +330,33 @@ def rect_lon_lat_mesh(path: str):
     lon1d = d["x0"] + np.arange(nx, dtype=float) * d["sx"]
     lat1d = d["y0"] + np.arange(ny, dtype=float) * d["sy"]
     lon, lat = np.meshgrid(lon1d, lat1d)
+    return lon, lat
+
+
+def structured_lon_lat_mesh(path: str):
+    import os
+    import numpy as np
+
+    d = parse_structured_grid_description(path)
+    if not d:
+        return None, None
+    if d.get("grid_type") == "RECT":
+        return rect_lon_lat_mesh(path)
+
+    base_dir = os.path.dirname(path)
+    lon_path = os.path.join(base_dir, str(d["xcoord_filename"]))
+    lat_path = os.path.join(base_dir, str(d["ycoord_filename"]))
+    if not os.path.isfile(lon_path) or not os.path.isfile(lat_path):
+        return None, None
+    try:
+        lon = np.loadtxt(lon_path, dtype=float)
+        lat = np.loadtxt(lat_path, dtype=float)
+    except Exception:
+        return None, None
+    lon = np.atleast_2d(lon) / float(d.get("xcoord_sf", 1.0) or 1.0)
+    lat = np.atleast_2d(lat) / float(d.get("ycoord_sf", 1.0) or 1.0)
+    if lon.shape != lat.shape:
+        return None, None
+    if lon.shape != (int(d["ny"]), int(d["nx"])):
+        return None, None
     return lon, lat

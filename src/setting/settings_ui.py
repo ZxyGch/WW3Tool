@@ -625,9 +625,9 @@ class SettingsMixin(SettingsServiceMixin):
             # 嵌套收缩系数
             nested_coeff_label = QLabel(tr("nested_coeff", "嵌套网格收缩系数:"))
             self.settings_nested_coeff_edit = LineEdit()
-            self.settings_nested_coeff_edit.setText(current_config.get("NESTED_CONTRACTION_COEFFICIENT", "3"))
+            self.settings_nested_coeff_edit.setText(current_config.get("NESTED_CONTRACTION_COEFFICIENT", "1.3"))
             self.settings_nested_coeff_edit.setStyleSheet(input_style)
-            self.settings_nested_coeff_edit.setPlaceholderText(tr("nested_coeff_recommended", "推荐 3 或 2"))
+            self.settings_nested_coeff_edit.setPlaceholderText(tr("nested_coeff_recommended", "推荐 1.3"))
             grid_params_layout.addWidget(nested_coeff_label, 3, 0)
             grid_params_layout.addWidget(self.settings_nested_coeff_edit, 3, 1)
 
@@ -664,20 +664,12 @@ class SettingsMixin(SettingsServiceMixin):
             # 海岸边界精度
             coastline_label = QLabel(tr("coastline_precision", "海岸边界精度:"))
             self.settings_coastline_combo = ComboBox()
-            self.settings_coastline_combo.addItems([
-                tr("coastline_highest", "最高"),
-                tr("coastline_high", "高"),
-                tr("coastline_medium", "中"),
-                tr("coastline_low", "低"),
-                tr("coastline_coarse", "粗")
-            ])
-            # 获取当前语言下的默认值
-            default_coastline = tr("coastline_highest", "最高")
+            self.settings_coastline_combo.addItems(["full", "high", "inter", "low", "coarse"])
             # 从配置读取的值可能是中文或英文，需要匹配当前语言的选项
-            saved_coastline = current_config.get("COASTLINE_PRECISION", "")
+            saved_coastline = current_config.get("COASTLINE_PRECISION", "full")
             
-            # 如果保存的值是中文，需要转换为当前语言的对应值
-            # 中文到索引的映射：最高=0, 高=1, 中=2, 低=3
+            # 兼容旧版中文/英文标签，以及新版 gridgen nml 代码值。
+            # 历史上的 ultra 选项已移除，这里统一回落到 full。
             coastline_map_zh = {
                 tr("coastline_highest", "最高"): 0,
                 tr("coastline_high", "高"): 1,
@@ -686,6 +678,7 @@ class SettingsMixin(SettingsServiceMixin):
                 tr("coastline_coarse", "粗"): 4
             }
             coastline_map_en = {
+                "Ultra": 0,
                 "Highest": 0,
                 "High": 1,
                 "Medium": 2,
@@ -693,6 +686,7 @@ class SettingsMixin(SettingsServiceMixin):
                 "Coarse": 4
             }
             coastline_map_code = {
+                "ultra": 0,
                 "full": 0,
                 "high": 1,
                 "inter": 2,
@@ -717,7 +711,7 @@ class SettingsMixin(SettingsServiceMixin):
                 if index >= 0:
                     self.settings_coastline_combo.setCurrentIndex(index)
                 else:
-                    # 如果找不到，默认选择第一个（最高）
+                    # 如果找不到，默认选择 full
                     self.settings_coastline_combo.setCurrentIndex(0)
             self.settings_coastline_combo.setStyleSheet(combo_style)
             grid_params_layout.addWidget(coastline_label, 7, 0)

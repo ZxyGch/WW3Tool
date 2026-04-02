@@ -4,7 +4,7 @@ from __future__ import annotations
 import glob
 import os
 
-from .rect_grid_desc_parse import parse_rect_grid_description
+from .rect_grid_desc_parse import parse_structured_grid_description
 
 
 def _is_ww3_full_nml_file(path: str) -> bool:
@@ -21,7 +21,7 @@ def structured_grid_desc_path(folder: str) -> str | None:
     if not folder or not os.path.isdir(folder):
         return None
     gm = os.path.join(folder, "grid.meta")
-    if os.path.isfile(gm) and parse_rect_grid_description(gm):
+    if os.path.isfile(gm) and parse_structured_grid_description(gm):
         return gm
     gn = os.path.join(folder, "grid.nml")
     if os.path.isfile(gn) and _is_ww3_full_nml_file(gn):
@@ -38,7 +38,7 @@ def structured_grid_desc_path(folder: str) -> str | None:
 
 
 def structured_grid_desc_basenames_to_copy(folder: str) -> list[str]:
-    if os.path.isfile(os.path.join(folder, "grid.meta")) and parse_rect_grid_description(
+    if os.path.isfile(os.path.join(folder, "grid.meta")) and parse_structured_grid_description(
         os.path.join(folder, "grid.meta")
     ):
         return ["grid.meta"]

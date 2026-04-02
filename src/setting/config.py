@@ -428,13 +428,13 @@ DEFAULT_CONFIG = {
     "LONGITUDE_EAST": "",
 
     # 嵌套网格收缩系数（用于嵌套网格的精细区域收缩）
-    "NESTED_CONTRACTION_COEFFICIENT": "1.1",
+    "NESTED_CONTRACTION_COEFFICIENT": "1.3",
     
     # 水深数据（"GEBCO"、"ETOP1"、"ETOP2"）
     "BATHYMETRY": "GEBCO",
     
-    # 海岸边界精度（"最高"、"高"、"中"、"低"）
-    "COASTLINE_PRECISION": "最高",
+    # 海岸边界精度（"full"、"high"、"inter"、"low"、"coarse"）
+    "COASTLINE_PRECISION": "full",
     
     # ---------- Jason-3 数据配置 ----------
     # 本地 Jason-3 数据存储路径
