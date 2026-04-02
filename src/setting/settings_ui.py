@@ -444,7 +444,7 @@ class SettingsMixin(SettingsServiceMixin):
             reference_data_row.addWidget(btn_choose_reference_data)
             matlab_card_layout.addLayout(reference_data_row)
 
-            workdir_label = QLabel(tr("workdir_path", "默认工作目录:"))
+            workdir_label = QLabel(tr("workdir_path", "工作目录:"))
             self.workdir_label = workdir_label  # 保存引用以便后续更新
             matlab_card_layout.addWidget(workdir_label)
             workdir_row = QHBoxLayout()
@@ -462,7 +462,7 @@ class SettingsMixin(SettingsServiceMixin):
             workdir_row.addWidget(btn_choose_workdir)
             matlab_card_layout.addLayout(workdir_row)
 
-            forcing_field_dir_label = QLabel(tr("forcing_field_dir_path", "默认打开的强迫场文件的目录:"))
+            forcing_field_dir_label = QLabel(tr("forcing_field_dir_path", "打开的强迫场文件目录:"))
             self.forcing_field_dir_label = forcing_field_dir_label  # 保存引用以便后续更新
             matlab_card_layout.addWidget(forcing_field_dir_label)
             forcing_field_dir_row = QHBoxLayout()
@@ -501,7 +501,7 @@ class SettingsMixin(SettingsServiceMixin):
             ww3_config_row.addWidget(btn_open_ww3_config)
             matlab_card_layout.addLayout(ww3_config_row)
 
-            ww3bin_label = QLabel(tr("ww3bin_path", "默认 WW3BIN 路径:"))
+            ww3bin_label = QLabel(tr("ww3bin_path", "WW3BIN 路径:"))
             self.ww3bin_label = ww3bin_label  # 保存引用以便后续更新
             matlab_card_layout.addWidget(ww3bin_label)
             ww3bin_row = QHBoxLayout()
@@ -519,7 +519,7 @@ class SettingsMixin(SettingsServiceMixin):
             ww3bin_row.addWidget(btn_choose_ww3bin)
             matlab_card_layout.addLayout(ww3bin_row)
 
-            jason_label = QLabel(tr("jason_path", "默认 JASON 数据路径:"))
+            jason_label = QLabel(tr("jason_path", "JASON 数据路径:"))
             self.jason_label = jason_label  # 保存引用以便后续更新
             matlab_card_layout.addWidget(jason_label)
             jason_row = QHBoxLayout()
@@ -607,7 +607,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_params_layout.addWidget(self.settings_gridgen_version_combo, 0, 1)
 
             # DX
-            dx_label = QLabel(tr("default_dx", "默认普通网格DX:"))
+            dx_label = QLabel(tr("default_dx", "普通网格DX:"))
             self.settings_dx_edit = LineEdit()
             self.settings_dx_edit.setText(current_config.get("DX", ""))
             self.settings_dx_edit.setStyleSheet(input_style)
@@ -615,7 +615,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_params_layout.addWidget(self.settings_dx_edit, 1, 1)
 
             # DY
-            dy_label = QLabel(tr("default_dy", "默认普通网格DY:"))
+            dy_label = QLabel(tr("default_dy", "普通网格DY:"))
             self.settings_dy_edit = LineEdit()
             self.settings_dy_edit.setText(current_config.get("DY", ""))
             self.settings_dy_edit.setStyleSheet(input_style)
@@ -632,7 +632,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_params_layout.addWidget(self.settings_nested_coeff_edit, 3, 1)
 
             # 默认嵌套外网格 DX
-            nested_outer_dx_label = QLabel(tr("nested_outer_dx", "默认嵌套外网格DX:"))
+            nested_outer_dx_label = QLabel(tr("nested_outer_dx", "嵌套外网格DX:"))
             self.settings_nested_outer_dx_edit = LineEdit()
             self.settings_nested_outer_dx_edit.setText(current_config.get("NESTED_OUTER_DX", "0.05"))
             self.settings_nested_outer_dx_edit.setStyleSheet(input_style)
@@ -640,7 +640,7 @@ class SettingsMixin(SettingsServiceMixin):
             grid_params_layout.addWidget(self.settings_nested_outer_dx_edit, 4, 1)
 
             # 默认嵌套外网格 DY
-            nested_outer_dy_label = QLabel(tr("nested_outer_dy", "默认嵌套外网格DY:"))
+            nested_outer_dy_label = QLabel(tr("nested_outer_dy", "嵌套外网格DY:"))
             self.settings_nested_outer_dy_edit = LineEdit()
             self.settings_nested_outer_dy_edit.setText(current_config.get("NESTED_OUTER_DY", "0.05"))
             self.settings_nested_outer_dy_edit.setStyleSheet(input_style)
@@ -716,6 +716,54 @@ class SettingsMixin(SettingsServiceMixin):
             self.settings_coastline_combo.setStyleSheet(combo_style)
             grid_params_layout.addWidget(coastline_label, 7, 0)
             grid_params_layout.addWidget(self.settings_coastline_combo, 7, 1)
+
+            min_dist_label = QLabel(tr("gridgen_min_dist", "海岸边界最小距离:"))
+            self.settings_min_dist_edit = LineEdit()
+            self.settings_min_dist_edit.setText(current_config.get("MIN_DIST", "20"))
+            self.settings_min_dist_edit.setStyleSheet(input_style)
+            self.settings_min_dist_edit.setPlaceholderText("20")
+            grid_params_layout.addWidget(min_dist_label, 8, 0)
+            grid_params_layout.addWidget(self.settings_min_dist_edit, 8, 1)
+
+            cut_off_label = QLabel(tr("gridgen_cut_off", "湿干阈值:"))
+            self.settings_cut_off_edit = LineEdit()
+            self.settings_cut_off_edit.setText(current_config.get("CUT_OFF", "0"))
+            self.settings_cut_off_edit.setStyleSheet(input_style)
+            self.settings_cut_off_edit.setPlaceholderText("0")
+            grid_params_layout.addWidget(cut_off_label, 9, 0)
+            grid_params_layout.addWidget(self.settings_cut_off_edit, 9, 1)
+
+            lim_bathy_label = QLabel(tr("gridgen_lim_bathy", "湿格比例:"))
+            self.settings_lim_bathy_edit = LineEdit()
+            self.settings_lim_bathy_edit.setText(current_config.get("LIM_BATHY", "0.4"))
+            self.settings_lim_bathy_edit.setStyleSheet(input_style)
+            self.settings_lim_bathy_edit.setPlaceholderText("0.4")
+            grid_params_layout.addWidget(lim_bathy_label, 10, 0)
+            grid_params_layout.addWidget(self.settings_lim_bathy_edit, 10, 1)
+
+            lim_val_label = QLabel(tr("gridgen_lim_val", "边界覆盖阈值:"))
+            self.settings_lim_val_edit = LineEdit()
+            self.settings_lim_val_edit.setText(current_config.get("LIM_VAL", "0.5"))
+            self.settings_lim_val_edit.setStyleSheet(input_style)
+            self.settings_lim_val_edit.setPlaceholderText("0.5")
+            grid_params_layout.addWidget(lim_val_label, 11, 0)
+            grid_params_layout.addWidget(self.settings_lim_val_edit, 11, 1)
+
+            split_lim_label = QLabel(tr("gridgen_split_lim", "边界切分阈值:"))
+            self.settings_split_lim_edit = LineEdit()
+            self.settings_split_lim_edit.setText(current_config.get("SPLIT_LIM", "0"))
+            self.settings_split_lim_edit.setStyleSheet(input_style)
+            self.settings_split_lim_edit.setPlaceholderText("0")
+            grid_params_layout.addWidget(split_lim_label, 12, 0)
+            grid_params_layout.addWidget(self.settings_split_lim_edit, 12, 1)
+
+            lake_tol_label = QLabel(tr("gridgen_lake_tol", "湖泊清理阈值:"))
+            self.settings_lake_tol_edit = LineEdit()
+            self.settings_lake_tol_edit.setText(current_config.get("LAKE_TOL", "50"))
+            self.settings_lake_tol_edit.setStyleSheet(input_style)
+            self.settings_lake_tol_edit.setPlaceholderText("50")
+            grid_params_layout.addWidget(lake_tol_label, 13, 0)
+            grid_params_layout.addWidget(self.settings_lake_tol_edit, 13, 1)
 
             grid_card_layout.addLayout(grid_params_layout)
 
@@ -958,7 +1006,7 @@ class SettingsMixin(SettingsServiceMixin):
             compute_params_layout.setSpacing(5)
 
             # 核数
-            kernel_label = QLabel(tr("default_kernel", "默认核数:"))
+            kernel_label = QLabel(tr("default_kernel", "核数:"))
             self.settings_kernel_edit = LineEdit()
             self.settings_kernel_edit.setText(current_config.get("KERNEL_NUM", ""))
             self.settings_kernel_edit.setStyleSheet(input_style)
@@ -966,7 +1014,7 @@ class SettingsMixin(SettingsServiceMixin):
             compute_params_layout.addWidget(self.settings_kernel_edit, 0, 1)
 
             # 节点数
-            node_label = QLabel(tr("default_node", "默认节点数:"))
+            node_label = QLabel(tr("default_node", "节点数:"))
             self.settings_node_edit = LineEdit()
             self.settings_node_edit.setText(current_config.get("NODE_NUM", ""))
             self.settings_node_edit.setStyleSheet(input_style)
@@ -1005,7 +1053,7 @@ class SettingsMixin(SettingsServiceMixin):
             ww3_config_layout.setSpacing(5)
 
             # 计算精度
-            compute_prec_label = QLabel(tr("default_compute_precision", "默认计算精度:"))
+            compute_prec_label = QLabel(tr("default_compute_precision", "计算精度:"))
             self.settings_compute_precision_edit = LineEdit()
             self.settings_compute_precision_edit.setText(current_config.get("COMPUTE_PRECISION", ""))
             self.settings_compute_precision_edit.setStyleSheet(input_style)
@@ -1013,7 +1061,7 @@ class SettingsMixin(SettingsServiceMixin):
             ww3_config_layout.addWidget(self.settings_compute_precision_edit, 0, 1)
 
             # 输出精度
-            output_prec_label = QLabel(tr("default_output_precision", "默认输出精度:"))
+            output_prec_label = QLabel(tr("default_output_precision", "输出精度:"))
             self.settings_output_precision_edit = LineEdit()
             self.settings_output_precision_edit.setText(current_config.get("OUTPUT_PRECISION", ""))
             self.settings_output_precision_edit.setStyleSheet(input_style)

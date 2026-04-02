@@ -435,6 +435,24 @@ DEFAULT_CONFIG = {
     
     # 海岸边界精度（"full"、"high"、"inter"、"low"、"coarse"）
     "COASTLINE_PRECISION": "full",
+
+    # pygridgen 海岸边界最小距离阈值
+    "MIN_DIST": "20",
+
+    # pygridgen 干湿判别底层水深阈值
+    "CUT_OFF": "0",
+
+    # pygridgen 目标格点所需湿单元比例
+    "LIM_BATHY": "0.4",
+
+    # pygridgen 边界 polygon 覆盖阈值
+    "LIM_VAL": "0.5",
+
+    # pygridgen 边界切分阈值
+    "SPLIT_LIM": "0",
+
+    # pygridgen 湖泊清理阈值
+    "LAKE_TOL": "50",
     
     # ---------- Jason-3 数据配置 ----------
     # 本地 Jason-3 数据存储路径

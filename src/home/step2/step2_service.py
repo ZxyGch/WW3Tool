@@ -96,6 +96,28 @@ STRUCTURED_BOUNDARY_MAT_FILES = {
 }
 
 
+PYGRIDGEN_RUNTIME_DEFAULTS = {
+    "MIN_DIST": 20.0,
+    "CUT_OFF": 0.0,
+    "LIM_BATHY": 0.4,
+    "LIM_VAL": 0.5,
+    "SPLIT_LIM": 0.0,
+    "LAKE_TOL": 50.0,
+}
+
+
+def _load_pygridgen_runtime_params(config: dict | None = None) -> dict[str, float]:
+    cfg = config or {}
+    params: dict[str, float] = {}
+    for key, default in PYGRIDGEN_RUNTIME_DEFAULTS.items():
+        raw = cfg.get(key, default)
+        try:
+            params[key] = float(str(raw).strip())
+        except (TypeError, ValueError):
+            params[key] = float(default)
+    return params
+
+
 def _resolve_structured_boundary_mat_file(ref_dir: str, boundary: str) -> str:
     """Resolve structured-grid coastline boundary input to a concrete ``.mat`` file."""
     raw = str(boundary or "").strip()
@@ -2352,7 +2374,7 @@ class StepTwoServiceMixin:
         os.makedirs(gridgen_cache_dir, exist_ok=True)
         return gridgen_cache_dir
 
-    def _get_grid_cache_key(self, dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry=None, coastline_precision=None, gridgen_backend=None):
+    def _get_grid_cache_key(self, dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry=None, coastline_precision=None, gridgen_backend=None, pygridgen_params=None):
         """生成网格参数的缓存键（哈希值）。Python 与 MATLAB gridgen 使用不同后端键，缓存互不共用。"""
         import hashlib
         # 如果参数未提供，从配置中读取
@@ -2381,6 +2403,11 @@ class StepTwoServiceMixin:
             'coastline_precision': str(coastline_precision),
             'gridgen_backend': gridgen_backend,
         }
+        if gridgen_backend == "python":
+            if pygridgen_params is None:
+                cfg = load_config()
+                pygridgen_params = _load_pygridgen_runtime_params(cfg)
+            params['pygridgen_params'] = pygridgen_params
         # 将参数序列化为JSON字符串（排序键以确保一致性）
         params_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
         # 生成SHA256哈希值
@@ -2404,7 +2431,7 @@ class StepTwoServiceMixin:
 
     def _save_grid_to_cache(self, cache_key, source_dir, dx_value=None, dy_value=None,
                            lon_west=None, lon_east=None, lat_south=None, lat_north=None, ref_dir=None, bathymetry=None, coastline_precision=None,
-                           gridgen_backend=None):
+                           gridgen_backend=None, pygridgen_params=None):
         """将生成的网格保存到缓存"""
         cache_dir = self._get_grid_cache_dir()
         cache_path = os.path.join(cache_dir, cache_key)
@@ -2443,6 +2470,7 @@ class StepTwoServiceMixin:
                 'bathymetry': bathymetry,
                 'coastline_precision': coastline_precision,
                 'gridgen_backend': gridgen_backend,
+                'pygridgen_params': pygridgen_params,
             }
         }
         params_file = os.path.join(cache_path, 'params.json')
@@ -3520,6 +3548,7 @@ class StepTwoServiceMixin:
                 "ultra": "full"
             }
             boundary = coastline_map.get(str(coastline_precision_config), "full")
+            pygridgen_params = _load_pygridgen_runtime_params(current_config)
             boundary_file = _resolve_structured_boundary_mat_file(ref_dir, boundary)
             if not os.path.exists(boundary_file):
                 self.log_signal.emit(
@@ -3534,7 +3563,7 @@ class StepTwoServiceMixin:
             # 检查缓存（使用原始配置值；按 gridgen 后端区分缓存）
             cache_key = self._get_grid_cache_key(
                 dx_value, dy_value, lon_west, lon_east, lat_south, lat_north, ref_dir,
-                bathymetry_config, coastline_precision_config, gridgen_backend
+                bathymetry_config, coastline_precision_config, gridgen_backend, pygridgen_params
             )
             cache_path = self._check_grid_cache(cache_key)
 
@@ -3564,6 +3593,12 @@ create_grid(
             ref_dir={repr(ref_dir)},
             ref_grid={repr(ref_grid)},
             boundary={repr(boundary)},
+            MIN_DIST={pygridgen_params["MIN_DIST"]},
+            CUT_OFF={pygridgen_params["CUT_OFF"]},
+            LIM_BATHY={pygridgen_params["LIM_BATHY"]},
+            LIM_VAL={pygridgen_params["LIM_VAL"]},
+            SPLIT_LIM={pygridgen_params["SPLIT_LIM"]},
+            LAKE_TOL={pygridgen_params["LAKE_TOL"]},
             IS_GLOBAL={1 if is_global else 0},
         )                
         '''
@@ -3636,7 +3671,7 @@ create_grid(
                             self._save_grid_to_cache(
                                 cache_key, output_dir_norm, dx_value, dy_value,
                                 lon_west, lon_east, lat_south, lat_north, ref_dir, bathymetry_config, coastline_precision_config,
-                                gridgen_backend,
+                                gridgen_backend, pygridgen_params,
                             )
                             self.log_signal.emit(tr("step2_cache_saved", "✅ 已保存网格到缓存（{key}...）").format(key=cache_key[:8]))
                         except Exception as cache_error:

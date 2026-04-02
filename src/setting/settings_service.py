@@ -631,6 +631,12 @@ class SettingsServiceMixin:
                 "NESTED_OUTER_DX": self.settings_nested_outer_dx_edit.text().strip(),
                 "NESTED_OUTER_DY": self.settings_nested_outer_dy_edit.text().strip(),
                 "BATHYMETRY": self.settings_bathymetry_combo.currentText() if hasattr(self, 'settings_bathymetry_combo') else "GEBCO",
+                "MIN_DIST": self.settings_min_dist_edit.text().strip() if hasattr(self, 'settings_min_dist_edit') else DEFAULT_CONFIG.get("MIN_DIST", "20"),
+                "CUT_OFF": self.settings_cut_off_edit.text().strip() if hasattr(self, 'settings_cut_off_edit') else DEFAULT_CONFIG.get("CUT_OFF", "0"),
+                "LIM_BATHY": self.settings_lim_bathy_edit.text().strip() if hasattr(self, 'settings_lim_bathy_edit') else DEFAULT_CONFIG.get("LIM_BATHY", "0.4"),
+                "LIM_VAL": self.settings_lim_val_edit.text().strip() if hasattr(self, 'settings_lim_val_edit') else DEFAULT_CONFIG.get("LIM_VAL", "0.5"),
+                "SPLIT_LIM": self.settings_split_lim_edit.text().strip() if hasattr(self, 'settings_split_lim_edit') else DEFAULT_CONFIG.get("SPLIT_LIM", "0"),
+                "LAKE_TOL": self.settings_lake_tol_edit.text().strip() if hasattr(self, 'settings_lake_tol_edit') else DEFAULT_CONFIG.get("LAKE_TOL", "50"),
                 # 保存海岸线精度时，保存为索引对应的中文值（用于兼容性）
                 # 这样即使切换语言，也能正确加载
                 "COASTLINE_PRECISION": (

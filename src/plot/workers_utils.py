@@ -60,6 +60,7 @@ def ww3_prepare_lon_lat_1d(lon, lat, nt_time):
     """将坐标压成与场变量一致的 1D 节点序列。
 
     支持：
+    - 规则网格的 ``(lon,)`` + ``(lat,)`` 1D 坐标
     - (node,) / (node, 1)
     - (time, node) 与 time 维等于 nt_time 时取 time=0（坐标不随时间变化）
     - (node, time) 与 time 维等于 nt_time 时取 time=0
@@ -68,10 +69,13 @@ def ww3_prepare_lon_lat_1d(lon, lat, nt_time):
     lat = np.asarray(lat, dtype=float)
     lon = np.squeeze(lon)
     lat = np.squeeze(lat)
+    if lon.ndim == 1 and lat.ndim == 1:
+        # Structured WW3 grids commonly use separate 1D lon/lat axes whose
+        # lengths differ (nx != ny); that is valid and should not be treated as
+        # a pointwise coordinate mismatch.
+        return lon, lat
     if lon.shape != lat.shape:
         raise ValueError("longitude and latitude shape mismatch")
-    if lon.ndim == 1:
-        return lon, lat
     if lon.ndim == 2:
         r, c = lon.shape
         if nt_time is not None:
