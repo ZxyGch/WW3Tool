@@ -21,3 +21,5 @@ jason3
 *.nc
 grid.nml
 public/config.json
+ndbc
+

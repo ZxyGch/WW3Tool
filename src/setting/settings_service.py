@@ -344,7 +344,7 @@ class SettingsServiceMixin:
         """选择 JASON 数据路径"""
         start = self.settings_jason_edit.text().strip() if hasattr(self, 'settings_jason_edit') else ""
         if not start or not os.path.exists(start):
-            start = os.path.expanduser("~")
+            start = ensure_project_data_dir("JASON_PATH", "jason3")
 
         # 规范化起始路径（Windows 上会转换为反斜杠格式）
         start = os.path.normpath(start)

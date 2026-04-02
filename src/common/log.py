@@ -64,6 +64,7 @@ from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make
 
 # 日志区改用 QTextEdit 系控件后，使用更明显的像素级额外行距。
 _LOG_LINE_SPACING_EXTRA_PX = 3
+_LOG_MAX_BLOCKS = 5000
 
 try:
     _LH_LINE_DISTANCE = int(QTextBlockFormat.LineHeightType.LineDistanceHeight)

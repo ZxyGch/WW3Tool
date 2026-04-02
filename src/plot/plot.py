@@ -47,6 +47,7 @@ from .plot_wind import WindFieldPlotMixin
 from .plot_spectrum import SpectrumPlotMixin
 from .plot_wave_height import WaveHeightPlotMixin
 from .plot_jason3 import Jason3PlotMixin
+from .plot_ndbc import NDBCPlotMixin
 
 # 在 Windows 上需要设置启动方法
 if hasattr(multiprocessing, 'set_start_method'):
@@ -56,7 +57,7 @@ if hasattr(multiprocessing, 'set_start_method'):
         pass
 
 
-class PlotMixin(SpectrumPlotMixin, WindFieldPlotMixin, WaveHeightPlotMixin, Jason3PlotMixin):
+class PlotMixin(SpectrumPlotMixin, WindFieldPlotMixin, WaveHeightPlotMixin, Jason3PlotMixin, NDBCPlotMixin):
     """科研绘图功能模块"""
     
     def _create_plot_page(self):
@@ -102,6 +103,12 @@ class PlotMixin(SpectrumPlotMixin, WindFieldPlotMixin, WaveHeightPlotMixin, Jaso
             plot_content_layout.setSpacing(8)
             plot_content_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
 
+            # Jason-3 卫星观测数据块 - 使用分离的模块
+            self._create_jason3_ui(plot_content_widget, plot_content_layout, button_style, input_style)
+
+            # NDBC 观测数据块 - 基础 UI
+            self._create_ndbc_ui(plot_content_widget, plot_content_layout, button_style, input_style)
+
             # 风场绘图块 - 使用分离的模块
             self._create_wind_field_ui(plot_content_widget, plot_content_layout, button_style, input_style)
 
@@ -110,9 +117,6 @@ class PlotMixin(SpectrumPlotMixin, WindFieldPlotMixin, WaveHeightPlotMixin, Jaso
 
             # 波高图绘制块 - 使用分离的模块
             self._create_wave_height_ui(plot_content_widget, plot_content_layout, button_style, input_style)
-
-            # Jason-3 卫星观测数据块 - 使用分离的模块
-            self._create_jason3_ui(plot_content_widget, plot_content_layout, button_style, input_style)
 
             # 设置滚动区域的内容
             plot_scroll_area.setWidget(plot_content_widget)

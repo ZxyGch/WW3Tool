@@ -524,9 +524,7 @@ class SettingsMixin(SettingsServiceMixin):
             matlab_card_layout.addWidget(jason_label)
             jason_row = QHBoxLayout()
             self.settings_jason_edit = LineEdit()
-            jason_path = current_config.get("JASON_PATH", "").strip()
-            if jason_path:
-                jason_path = os.path.normpath(jason_path)  # 规范化路径（Windows 上会转换为反斜杠格式）
+            jason_path = ensure_project_data_dir("JASON_PATH", "jason3")
             self.settings_jason_edit.setText(jason_path)
             self.settings_jason_edit.setStyleSheet(input_style)
             jason_row.addWidget(self.settings_jason_edit, 1)

@@ -39,7 +39,7 @@ import cv2
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import QEvent, Qt
 QSplitter = QtWidgets.QSplitter
-from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, InfoBar, setTheme, Theme, MessageBox
+from qfluentwidgets import FluentWindow, PrimaryPushButton, LineEdit, TextEdit, PlainTextEdit, InfoBar, setTheme, Theme, MessageBox
 from qfluentwidgets import NavigationItemPosition, NavigationWidget, FluentIcon, HeaderCardWidget, ComboBox, TableWidget, CheckBox
 from PyQt6.QtGui import QColor, QIcon, QFontDatabase, QFont
 from qfluentwidgets import MessageBoxBase
@@ -71,7 +71,7 @@ from setting.language_manager import tr
 from plot.workers import _match_ww3_jason3_worker, _run_jason3_swh_worker, _make_wave_maps_worker, _make_contour_maps_worker, _generate_all_spectrum_worker, _generate_selected_spectrum_worker
 
 from common.style import Style
-from common.log import Log
+from common.log import Log, _LOG_MAX_BLOCKS
 from plot.file_tool import FileOpsMixin
 from home.step1.step1_ui import HomeStepOneCard
 from home.step2.step2_ui import HomeStepTwoCard
@@ -313,8 +313,8 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         right_log_layout = QVBoxLayout(right_log_frame)
         right_log_layout.setContentsMargins(5, 1, 10, 11)  # 上边距设为0
 
-        # 日志文本区域（使用 TextEdit，便于可靠应用更大的段落/行距）
-        self.log_text = TextEdit()
+        # 日志文本区域（使用 PlainTextEdit，长时间日志追加时比富文本控件更省内存）
+        self.log_text = PlainTextEdit()
         base_font = self.font()
         mono_font = QFont(base_font)
         fallback_monos = [
@@ -328,7 +328,16 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         mono_font.setFamily(chosen)
         self.log_text.setFont(mono_font)
         self.log_text.setReadOnly(True)
+        self.log_text.setUndoRedoEnabled(False)
+        try:
+            self.log_text.setAcceptRichText(False)
+        except Exception:
+            pass
         self.log_text.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        try:
+            self.log_text.document().setMaximumBlockCount(_LOG_MAX_BLOCKS)
+        except Exception:
+            pass
         
         # 使用主题适配的边框样式
         self._update_log_border_style()
@@ -875,6 +884,12 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
         # 检测并更新波高文件按钮文本（静默，不显示日志）
         if hasattr(self, '_update_wave_height_file_buttons'):
             self._update_wave_height_file_buttons()
+
+        # 检测并更新 JASON3 / NDBC 风场和波高按钮文本（静默，不显示日志）
+        if hasattr(self, '_update_jason3_file_buttons'):
+            self._update_jason3_file_buttons()
+        if hasattr(self, '_update_ndbc_file_buttons'):
+            self._update_ndbc_file_buttons()
         
     def _show_info_bar(self, info_type, title, content):
         """显示 InfoBar 消息（通过信号调用，在主线程中执行）"""

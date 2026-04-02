@@ -17,6 +17,11 @@ os.makedirs(PUBLIC_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(PUBLIC_DIR, "config.json")
 
 
+def get_project_root():
+    """返回项目根目录（WW3Tool）。"""
+    return os.path.dirname(os.path.dirname(BASE_DIR))
+
+
 def get_project_gridgen_path():
     """固定为项目根目录下的 WW3-Grid-Generator/（网格工具根目录），不从设置或 GRIDGEN_PATH 覆盖。"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -458,7 +463,11 @@ DEFAULT_CONFIG = {
     # 本地 Jason-3 数据存储路径
     "JASON_PATH": "",
 
-    # 已移除 Jason-3 自动下载相关配置
+    # 本地 NDBC 数据存储路径
+    "NDBC_PATH": "",
+
+    # NOAA/NCEI Jason-3 数据根目录
+    "JASON3_DOWNLOAD_BASE_URL": "https://www.ncei.noaa.gov/data/oceans/jason3/",
     
     # ---------- 工作目录配置 ----------
     # 默认工作目录路径（用于存储 WW3 运行结果）
@@ -616,6 +625,24 @@ def save_config(config):
         return False
 
 
+def ensure_project_data_dir(config_key, folder_name):
+    """确保指定数据目录存在；若配置为空或路径不存在，则回退到项目根目录下的默认子目录。"""
+    project_root = get_project_root()
+    default_dir = os.path.normpath(os.path.join(project_root, folder_name))
+
+    config = load_config()
+    raw_path = str(config.get(config_key, "") or "").strip()
+    target_dir = os.path.normpath(raw_path) if raw_path and os.path.isdir(raw_path) else default_dir
+
+    os.makedirs(target_dir, exist_ok=True)
+
+    if str(config.get(config_key, "") or "").strip() != target_dir:
+        config[config_key] = target_dir
+        save_config(config)
+
+    return target_dir
+
+
 def get_forcing_field_default_dir():
     """获取默认的强迫场文件目录（供第一步选场等使用）。"""
     try:
@@ -630,7 +657,7 @@ def get_forcing_field_default_dir():
             if os.path.exists(forcing_dir):
                 return forcing_dir
         # 默认目录：项目根目录下的 public/forcing
-        default_dir = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "public", "forcing")
+        default_dir = os.path.join(get_project_root(), "public", "forcing")
         if os.path.exists(default_dir):
             return default_dir
     except Exception:
@@ -651,8 +678,7 @@ LATITUDE_NORTH = None
 LONGITUDE_WEST = None
 LONGITUDE_EAST = None
 JASON_PATH = None
-JASON_REMOTE_PATH = None
-JASON_HARMONY_URL = None
+JASON3_DOWNLOAD_BASE_URL = None
 CPU_GROUP = None
 DEFAULT_CPU = None
 KERNEL_NUM = None
@@ -672,7 +698,7 @@ def reload_config():
     """重新加载配置并更新全局变量"""
     global _config, MATLAB_PATH, GRIDGEN_PATH, GRIDGEN_BIN_PATH
     global DX, DY, LATITUDE_SORTH, LATITUDE_NORTH, LONGITUDE_WEST, LONGITUDE_EAST
-    global JASON_PATH, JASON_REMOTE_PATH, JASON_HARMONY_URL
+    global JASON_PATH, JASON3_DOWNLOAD_BASE_URL
     global CPU_GROUP, DEFAULT_CPU, KERNEL_NUM, NODE_NUM
     global COMPUTE_PRECISION, OUTPUT_PRECISION, ST_OPTIONS, WW3BIN_PATH
     global SERVER_HOST, SERVER_PORT, SERVER_USER, SERVER_PASSWORD, SERVER_PATH
@@ -706,10 +732,10 @@ def reload_config():
     else:
         JASON_PATH = jason_path
     
-    # Jason-3 服务器目录（用于自动下载 Jason-3 数据）
-    JASON_REMOTE_PATH = _config.get("JASON_REMOTE_PATH", DEFAULT_CONFIG.get("JASON_REMOTE_PATH", "")).strip()
-    # Jason-3 Harmony OGC-API URL（可选，用于在线获取数据）
-    JASON_HARMONY_URL = _config.get("JASON_HARMONY_URL", DEFAULT_CONFIG.get("JASON_HARMONY_URL", "")).strip()
+    JASON3_DOWNLOAD_BASE_URL = _config.get(
+        "JASON3_DOWNLOAD_BASE_URL",
+        DEFAULT_CONFIG.get("JASON3_DOWNLOAD_BASE_URL", ""),
+    ).strip()
     
     # 第四步和第五步的常量
     CPU_GROUP = _config.get("CPU_GROUP", DEFAULT_CONFIG["CPU_GROUP"])

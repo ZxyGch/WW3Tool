@@ -2,9 +2,26 @@
 
 set -o pipefail
 
+ulimit -Sv 24000000
 
-# MPI process count for local run (keep consistent with previous)
-MPI_NPROCS=10
+# MPI process count for local run:
+# 1. Prefer explicit override from environment variable WW3_MPI_NPROCS
+# 2. Otherwise use the number of online logical CPUs
+# 3. Fallback to 1 if detection fails
+MPI_NPROCS="${WW3_MPI_NPROCS:-}"
+if [ -z "$MPI_NPROCS" ]; then
+    if command -v getconf >/dev/null 2>&1; then
+        MPI_NPROCS="$(getconf _NPROCESSORS_ONLN 2>/dev/null)"
+    fi
+fi
+if [ -z "$MPI_NPROCS" ] && command -v sysctl >/dev/null 2>&1; then
+    MPI_NPROCS="$(sysctl -n hw.logicalcpu 2>/dev/null)"
+fi
+case "$MPI_NPROCS" in
+    ''|*[!0-9]*|0)
+        MPI_NPROCS=1
+        ;;
+esac
 
 # Treat current directory as script root (assumes running in case directory)
 SCRIPT_ROOT="$(pwd)"
@@ -14,6 +31,8 @@ LOG="$SCRIPT_ROOT/run.log"
 SUCCESS_LOG="$SCRIPT_ROOT/success.log"
 FAIL_LOG="$SCRIPT_ROOT/fail.log"
 rm -f "$LOG" "$SUCCESS_LOG" "$FAIL_LOG"
+
+echo "Using MPI_NPROCS=$MPI_NPROCS" | tee -a "$LOG"
 
 # Run ww3_prnc for multiple forcing files
 run_prnc_with_fields() {

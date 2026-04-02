@@ -15,6 +15,26 @@ from .workers_utils import (
     ww3_hs_collocation_flat,
 )
 
+JASON3_FILE_PREFIXES = ("JA3_GPN_", "JA3_IPN_", "JA3_OPN_")
+JASON3_MAX_REASONABLE_SWH = 12.0
+
+
+def _read_jason3_wind_array(data_group, ku_group):
+    """读取 Jason-3 风速变量，兼容不同产品版本的字段命名。"""
+    if 'wind_speed_alt_mle3' in ku_group.variables:
+        return ku_group.variables['wind_speed_alt_mle3'][:].astype(float)
+    if 'wind_speed_alt' in ku_group.variables:
+        return ku_group.variables['wind_speed_alt'][:].astype(float)
+    if 'wind_speed_alt_adaptive' in ku_group.variables:
+        return ku_group.variables['wind_speed_alt_adaptive'][:].astype(float)
+    if 'rad_wind_speed' in data_group.variables:
+        return data_group.variables['rad_wind_speed'][:].astype(float)
+    if 'wind_speed_mod_u' in data_group.variables and 'wind_speed_mod_v' in data_group.variables:
+        wind_u = data_group.variables['wind_speed_mod_u'][:].astype(float)
+        wind_v = data_group.variables['wind_speed_mod_v'][:].astype(float)
+        return np.sqrt(wind_u ** 2 + wind_v ** 2)
+    return None
+
 
 def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, result_queue, max_dist_deg=0.125, time_window_hours=0.5):
     """在子进程中执行匹配计算的独立函数"""
@@ -171,13 +191,18 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                 year = f"{int(timeinput[0]):04d}"
                 month = f"{int(timeinput[1]):02d}"
                 day = f"{int(timeinput[2]):02d}"
-                # 支持 JA3_GPN_ 和 JA3_IPN_ 两种格式
+                # 支持 JA3_GPN_ / JA3_IPN_ / JA3_OPN_ 三种格式
                 pattern_gpn = f"JA3_GPN_*{year}{month}{day}_*.nc"
                 pattern_ipn = f"JA3_IPN_*{year}{month}{day}_*.nc"
-                ncfiles = list(jasonpath.glob(pattern_gpn)) + list(jasonpath.glob(pattern_ipn))
+                pattern_opn = f"JA3_OPN_*{year}{month}{day}_*.nc"
+                ncfiles = list(jasonpath.glob(pattern_gpn)) + list(jasonpath.glob(pattern_ipn)) + list(jasonpath.glob(pattern_opn))
             else:
-                # 支持 JA3_GPN_ 和 JA3_IPN_ 两种格式
-                all_files = list(jasonpath.glob('JA3_GPN_*.nc')) + list(jasonpath.glob('JA3_IPN_*.nc'))
+                # 支持 JA3_GPN_ / JA3_IPN_ / JA3_OPN_ 三种格式
+                all_files = (
+                    list(jasonpath.glob('JA3_GPN_*.nc')) +
+                    list(jasonpath.glob('JA3_IPN_*.nc')) +
+                    list(jasonpath.glob('JA3_OPN_*.nc'))
+                )
                 pattern = re.compile(r'(\d{8}_\d{6})_(\d{8}_\d{6})')
                 start_dt = datetime(*timeinput[0, :6].astype(int))
                 end_dt = datetime(*timeinput[1, :6].astype(int))
@@ -216,9 +241,10 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                         latitude_tmp = data_group.variables['latitude'][:].astype(float)
                         longitude_tmp = data_group.variables['longitude'][:].astype(float)
                         time_tmp = data_group.variables['time'][:].astype(float)
-                        wind_tmp = data_group.variables['wind_speed_alt_mle3'][:].astype(float)
                         ku_group = data_group.groups['ku']
                         swh_tmp = ku_group.variables['swh_ocean'][:].astype(float)
+                        wind_tmp = _read_jason3_wind_array(data_group, ku_group)
+                        has_wind = wind_tmp is not None
                         longitude_tmp = ((longitude_tmp + 180.0) % 360.0) - 180.0
                         idx_spatial = ((longitude_tmp >= lon_lat[0]) & (longitude_tmp <= lon_lat[1]) &
                                        (latitude_tmp >= lon_lat[2]) & (latitude_tmp <= lon_lat[3]))
@@ -226,7 +252,6 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                             continue
                         latitude_tmp = latitude_tmp[idx_spatial]
                         longitude_tmp = longitude_tmp[idx_spatial]
-                        wind_tmp = wind_tmp[idx_spatial]
                         swh_tmp = swh_tmp[idx_spatial]
                         time_tmp = time_tmp[idx_spatial]
                         time_tmp = time_tmp / (24 * 60 * 60)
@@ -238,14 +263,20 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                             continue
                         latitude_tmp = latitude_tmp[idx_time]
                         longitude_tmp = longitude_tmp[idx_time]
-                        wind_tmp = wind_tmp[idx_time]
                         swh_tmp = swh_tmp[idx_time]
                         time_tmp = time_tmp[idx_time]
+                        if has_wind:
+                            wind_tmp = wind_tmp[idx_spatial]
+                            wind_tmp = wind_tmp[idx_time]
+                        else:
+                            wind_tmp = np.full(swh_tmp.shape, np.nan, dtype=float)
                         invalid_values = [0, 32767, 9999, 65535]
                         valid_idx = (~np.isnan(swh_tmp) &
-                                     ~np.isnan(wind_tmp) &
-                                     ~np.isin(swh_tmp, invalid_values) &
-                                     ~np.isin(wind_tmp, invalid_values))
+                                     (swh_tmp > 0) &
+                                     (swh_tmp <= JASON3_MAX_REASONABLE_SWH) &
+                                     ~np.isin(swh_tmp, invalid_values))
+                        if has_wind:
+                            valid_idx &= (~np.isnan(wind_tmp) & ~np.isin(wind_tmp, invalid_values))
                         if np.sum(valid_idx) == 0:
                             continue
                         latitude_tmp = latitude_tmp[valid_idx]
@@ -337,7 +368,7 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
         swh_jason3 = np.array(swh_jason3)
         swh_ww3 = np.array(swh_ww3)
 
-        log('============================================================')
+        log('======================================================================')
         log('Matching completed!')
         log(f'Total matched points: {len(swh_jason3)}')
 
@@ -465,11 +496,12 @@ def _run_jason3_swh_worker(lon_lat, time_range, jason_folder, out_folder, log_qu
         
         log("\n" + tr("plotting_jason_searching_files", "=========== Jason-3: Searching Files ==========="))
         
-        # 找到时间范围内的文件（包括GDR和IGDR）
+        # 找到时间范围内的文件（包括 GDR / IGDR / OGDR）
         time_pattern = r"(\d{8}_\d{6})_(\d{8}_\d{6})"
-        nc_files_gdr = [f for f in os.listdir(jason_folder) if f.startswith("JA3_GPN_") and f.endswith(".nc")]
-        nc_files_igdr = [f for f in os.listdir(jason_folder) if f.startswith("JA3_IPN_") and f.endswith(".nc")]
-        nc_files = nc_files_gdr + nc_files_igdr
+        nc_files = [
+            f for f in os.listdir(jason_folder)
+            if f.endswith(".nc") and f.startswith(JASON3_FILE_PREFIXES)
+        ]
         
         valid_files = []
         local_file_ranges = []
@@ -651,7 +683,7 @@ def _run_jason3_swh_worker(lon_lat, time_range, jason_folder, out_folder, log_qu
                 log(tr("plotting_jason_before_filter", "   去除无效值前: {count} 个数据点").format(count=len(lat_tmp)))
             
             # 去除无效值
-            mask2 = (~np.isnan(swh_tmp)) & (swh_tmp != 0)
+            mask2 = (~np.isnan(swh_tmp)) & (swh_tmp > 0) & (swh_tmp <= JASON3_MAX_REASONABLE_SWH)
             lat_tmp = lat_tmp[mask2]
             lon_tmp = lon_tmp[mask2]
             swh_tmp = swh_tmp[mask2]
@@ -838,9 +870,14 @@ class Jason3ServiceMixin:
             day = f"{int(timeinput[2]):02d}"
             pattern_gpn = f"JA3_GPN_*{year}{month}{day}_*.nc"
             pattern_ipn = f"JA3_IPN_*{year}{month}{day}_*.nc"
-            ncfiles = list(jasonpath.glob(pattern_gpn)) + list(jasonpath.glob(pattern_ipn))
+            pattern_opn = f"JA3_OPN_*{year}{month}{day}_*.nc"
+            ncfiles = list(jasonpath.glob(pattern_gpn)) + list(jasonpath.glob(pattern_ipn)) + list(jasonpath.glob(pattern_opn))
         else:
-            all_files = list(jasonpath.glob('JA3_GPN_*.nc')) + list(jasonpath.glob('JA3_IPN_*.nc'))
+            all_files = (
+                list(jasonpath.glob('JA3_GPN_*.nc')) +
+                list(jasonpath.glob('JA3_IPN_*.nc')) +
+                list(jasonpath.glob('JA3_OPN_*.nc'))
+            )
             pattern = re.compile(r'(\d{8}_\d{6})_(\d{8}_\d{6})')
 
             start_dt = datetime(*timeinput[0, :6].astype(int))
@@ -878,10 +915,10 @@ class Jason3ServiceMixin:
                     latitude_tmp = data_group.variables['latitude'][:].astype(float)
                     longitude_tmp = data_group.variables['longitude'][:].astype(float)
                     time_tmp = data_group.variables['time'][:].astype(float)
-                    wind_tmp = data_group.variables['wind_speed_alt_mle3'][:].astype(float)
-
                     ku_group = data_group.groups['ku']
                     swh_tmp = ku_group.variables['swh_ocean'][:].astype(float)
+                    wind_tmp = _read_jason3_wind_array(data_group, ku_group)
+                    has_wind = wind_tmp is not None
 
                     longitude_tmp = ((longitude_tmp + 180.0) % 360.0) - 180.0
 
@@ -893,7 +930,6 @@ class Jason3ServiceMixin:
 
                     latitude_tmp = latitude_tmp[idx_spatial]
                     longitude_tmp = longitude_tmp[idx_spatial]
-                    wind_tmp = wind_tmp[idx_spatial]
                     swh_tmp = swh_tmp[idx_spatial]
                     time_tmp = time_tmp[idx_spatial]
 
@@ -906,16 +942,22 @@ class Jason3ServiceMixin:
                         continue
                     latitude_tmp = latitude_tmp[idx_time]
                     longitude_tmp = longitude_tmp[idx_time]
-                    wind_tmp = wind_tmp[idx_time]
                     swh_tmp = swh_tmp[idx_time]
                     time_tmp = time_tmp[idx_time]
+                    if has_wind:
+                        wind_tmp = wind_tmp[idx_spatial]
+                        wind_tmp = wind_tmp[idx_time]
+                    else:
+                        wind_tmp = np.full(swh_tmp.shape, np.nan, dtype=float)
 
                     invalid_values = [0, 32767, 9999, 65535]
 
                     valid_idx = (~np.isnan(swh_tmp) &
-                                 ~np.isnan(wind_tmp) &
-                                 ~np.isin(swh_tmp, invalid_values) &
-                                 ~np.isin(wind_tmp, invalid_values))
+                                 (swh_tmp > 0) &
+                                 (swh_tmp <= JASON3_MAX_REASONABLE_SWH) &
+                                 ~np.isin(swh_tmp, invalid_values))
+                    if has_wind:
+                        valid_idx &= (~np.isnan(wind_tmp) & ~np.isin(wind_tmp, invalid_values))
 
                     if np.sum(valid_idx) == 0:
                         continue
@@ -964,7 +1006,7 @@ class Jason3ServiceMixin:
 
         if verbose:
             self.log_signal.emit(f'Success: Total {len(latitude)} points loaded')
-            self.log_signal.emit('============================================================')
+            self.log_signal.emit('======================================================================')
 
         return jason
 
@@ -1088,7 +1130,7 @@ class Jason3ServiceMixin:
         swh_jason3 = np.array(swh_jason3)
         swh_ww3 = np.array(swh_ww3)
 
-        self.log_signal.emit('============================================================')
+        self.log_signal.emit('======================================================================')
         self.log_signal.emit('Matching completed!')
         self.log_signal.emit(f'Total matched points: {len(swh_jason3)}')
 

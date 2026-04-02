@@ -435,6 +435,9 @@ class NavigationMixin:
 
             # 检测并更新 JASON3 风场/波高按钮文本（静默，不显示日志）
             self._update_jason3_file_buttons()
+
+            # 检测并更新 NDBC 风场/波高按钮文本（静默，不显示日志）
+            self._update_ndbc_file_buttons()
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -718,6 +721,68 @@ class NavigationMixin:
         except Exception:
             pass  # 静默处理错误
 
+    def _update_ndbc_file_buttons(self):
+        """检测并更新 NDBC 风场/波高文件按钮文本（静默，不显示日志）"""
+        try:
+            import os
+            import glob
+            from setting.language_manager import tr
+
+            wind_path = None
+            if hasattr(self, 'selected_folder') and self.selected_folder:
+                if getattr(self, 'selected_origin_file', None) and os.path.exists(self.selected_origin_file):
+                    wind_path = self.selected_origin_file
+                else:
+                    default_wind = os.path.join(self.selected_folder, "wind.nc")
+                    if os.path.exists(default_wind):
+                        wind_path = default_wind
+                    else:
+                        wind_candidates = glob.glob(os.path.join(self.selected_folder, "wind_*.nc"))
+                        if wind_candidates:
+                            wind_path = sorted(wind_candidates)[0]
+
+            if wind_path:
+                self.selected_origin_file = wind_path
+                if hasattr(self, 'btn_choose_ndbc_wind_file') and self.btn_choose_ndbc_wind_file:
+                    file_name = os.path.basename(wind_path)
+                    display_name = file_name[:27] + "..." if len(file_name) > 30 else file_name
+                    self.btn_choose_ndbc_wind_file.setText(display_name)
+                    if hasattr(self, '_set_plot_button_filled'):
+                        self._set_plot_button_filled(self.btn_choose_ndbc_wind_file, True)
+            else:
+                if hasattr(self, 'btn_choose_ndbc_wind_file') and self.btn_choose_ndbc_wind_file:
+                    default_text = tr("step1_choose_wind", "选择风场文件")
+                    self.btn_choose_ndbc_wind_file.setText(default_text)
+                    if hasattr(self, '_set_plot_button_filled'):
+                        self._set_plot_button_filled(self.btn_choose_ndbc_wind_file, False)
+
+            wave_path = None
+            if hasattr(self, 'selected_folder') and self.selected_folder:
+                if getattr(self, 'selected_wave_height_file', None) and os.path.exists(self.selected_wave_height_file):
+                    wave_path = self.selected_wave_height_file
+                else:
+                    wave_candidates = glob.glob(os.path.join(self.selected_folder, "ww3*.nc"))
+                    wave_candidates = [p for p in wave_candidates if "spec" not in os.path.basename(p).lower()]
+                    if wave_candidates:
+                        wave_path = sorted(wave_candidates)[0]
+
+            if wave_path:
+                self.selected_wave_height_file = wave_path
+                if hasattr(self, 'btn_choose_ndbc_wave_file') and self.btn_choose_ndbc_wave_file:
+                    file_name = os.path.basename(wave_path)
+                    display_name = file_name[:27] + "..." if len(file_name) > 30 else file_name
+                    self.btn_choose_ndbc_wave_file.setText(display_name)
+                    if hasattr(self, '_set_plot_button_filled'):
+                        self._set_plot_button_filled(self.btn_choose_ndbc_wave_file, True)
+            else:
+                if hasattr(self, 'btn_choose_ndbc_wave_file') and self.btn_choose_ndbc_wave_file:
+                    default_text = tr("plotting_choose_wave_height", "选择波高文件")
+                    self.btn_choose_ndbc_wave_file.setText(default_text)
+                    if hasattr(self, '_set_plot_button_filled'):
+                        self._set_plot_button_filled(self.btn_choose_ndbc_wave_file, False)
+        except Exception:
+            pass
+
     def show_home(self):
         """显示主页"""
         try:
@@ -899,4 +964,3 @@ class NavigationMixin:
         self.log(tr("current_workdir", "📂 当前工作目录：{path}").format(path=self.selected_folder))
         self._list_directory_contents(self.selected_folder)
         self.log("=" * 70)
-

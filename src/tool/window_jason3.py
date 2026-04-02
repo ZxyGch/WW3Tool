@@ -1,393 +1,691 @@
 """
-Jason3 功能模块
-包含 JASON-3 数据下载逻辑，数据读取与匹配逻辑在 plot.workers_jason3.Jason3ServiceMixin
+Jason-3 download helpers for the plotting page.
 """
+
+import multiprocessing
 import os
 import re
-import glob
-import threading
-import multiprocessing
+import json
+import tempfile
+import hashlib
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from multiprocessing import Process, Queue
+from urllib.parse import urljoin
+
 import requests
-if hasattr(multiprocessing, 'set_start_method'):
+from PyQt6 import QtCore
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from plot.workers_jason3 import Jason3ServiceMixin
+from setting.config import DEFAULT_CONFIG, load_config, ensure_project_data_dir
+from setting.language_manager import tr
+
+if hasattr(multiprocessing, "set_start_method"):
     try:
-        multiprocessing.set_start_method('spawn', force=True)
+        multiprocessing.set_start_method("spawn", force=True)
     except RuntimeError:
         pass
-from multiprocessing import Process, Queue
-import numpy as np
-from datetime import datetime, timedelta
-from PyQt6 import QtCore
-from setting.config import *
-from setting.language_manager import tr
-from plot.workers_jason3 import Jason3ServiceMixin
+
+
+_JASON3_TIME_PATTERN = re.compile(r"(\d{8}_\d{6})_(\d{8}_\d{6})")
+_HTML_HREF_PATTERN = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
+_CATALOG_TIMEOUT = (20, 60)
+_DOWNLOAD_TIMEOUT = (20, 180)
+_CATALOG_CACHE_TTL_SECONDS = 24 * 60 * 60
+_CATALOG_SCAN_WORKERS = 4
+_HTTP_RETRY_TOTAL = 3
+_HTTP_RETRY_BACKOFF_FACTOR = 0.8
+_JASON3_SOURCE_SPECS = (
+    ("GDR", "gdr/gdr/", ("JA3_GPN_",)),
+    ("IGDR", "igdr/igdr/", ("JA3_IPN_",)),
+    ("OGDR", "ogdr/ogdr/", ("JA3_OPN_",)),
+)
+
+
+def _queue_log(log_queue, message, update=False):
+    try:
+        if update:
+            log_queue.put(("__UPDATE__", message))
+        else:
+            log_queue.put(message)
+    except Exception:
+        pass
+
+
+def _parse_time_range(time_range):
+    start_str, end_str = time_range
+    start_dt = datetime.strptime(start_str + "_000000", "%Y%m%d_%H%M%S")
+    end_dt = datetime.strptime(end_str + "_235959", "%Y%m%d_%H%M%S")
+    return start_dt, end_dt
+
+
+def _parse_filename_time_range(filename):
+    match = _JASON3_TIME_PATTERN.search(filename)
+    if not match:
+        return None
+    return (
+        datetime.strptime(match.group(1), "%Y%m%d_%H%M%S"),
+        datetime.strptime(match.group(2), "%Y%m%d_%H%M%S"),
+    )
+
+
+def _ranges_overlap(start_a, end_a, start_b, end_b):
+    return end_a >= start_b and start_a <= end_b
+
+
+def _fetch_text(session, url):
+    response = session.get(url, timeout=_CATALOG_TIMEOUT)
+    response.raise_for_status()
+    return response.text
+
+
+def _build_retry_session():
+    session = requests.Session()
+    session.headers.update({"User-Agent": "WW3Tool Jason3 Downloader"})
+
+    retry = Retry(
+        total=_HTTP_RETRY_TOTAL,
+        connect=_HTTP_RETRY_TOTAL,
+        read=_HTTP_RETRY_TOTAL,
+        status=_HTTP_RETRY_TOTAL,
+        backoff_factor=_HTTP_RETRY_BACKOFF_FACTOR,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET", "HEAD"]),
+        raise_on_status=False,
+        respect_retry_after_header=True,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=_CATALOG_SCAN_WORKERS, pool_maxsize=_CATALOG_SCAN_WORKERS)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+def _iter_days(start_dt, end_dt):
+    current_day = start_dt.date()
+    end_day = end_dt.date()
+    while current_day <= end_day:
+        yield current_day
+        current_day += timedelta(days=1)
+
+
+def _covered_days_for_filename(filename, start_dt, end_dt):
+    file_time = _parse_filename_time_range(filename)
+    if not file_time:
+        return set()
+    file_start, file_end = file_time
+    if not _ranges_overlap(file_start, file_end, start_dt, end_dt):
+        return set()
+    covered = set()
+    for current_day in _iter_days(max(file_start, start_dt), min(file_end, end_dt)):
+        covered.add(current_day)
+    return covered
+
+
+def _extract_links(html_text):
+    return _HTML_HREF_PATTERN.findall(html_text)
+
+
+def _catalog_cache_path(cache_key):
+    digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
+    return os.path.join(tempfile.gettempdir(), f"ww3tool_jason3_catalog_cache_{digest}.json")
+
+
+def _load_catalog_cache(cache_key):
+    cache_path = _catalog_cache_path(cache_key)
+    if not os.path.exists(cache_path):
+        return None
+
+    try:
+        with open(cache_path, "r", encoding="utf-8") as file_obj:
+            cache = json.load(file_obj)
+    except Exception:
+        return None
+
+    if cache.get("cache_key") != cache_key:
+        return None
+
+    updated_at = cache.get("updated_at", 0)
+    if not isinstance(updated_at, (int, float)):
+        return None
+
+    age_seconds = datetime.now().timestamp() - float(updated_at)
+    if age_seconds > _CATALOG_CACHE_TTL_SECONDS:
+        return None
+
+    files = cache.get("files")
+    if not isinstance(files, dict):
+        return None
+
+    return files
+
+
+def _save_catalog_cache(cache_key, files):
+    cache_path = _catalog_cache_path(cache_key)
+    payload = {
+        "cache_key": cache_key,
+        "updated_at": datetime.now().timestamp(),
+        "files": files,
+    }
+    try:
+        with open(cache_path, "w", encoding="utf-8") as file_obj:
+            json.dump(payload, file_obj, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _build_source_url(base_root_url, relative_path):
+    root = base_root_url.rstrip("/") + "/"
+    return urljoin(root, relative_path)
+
+
+def _source_cache_key(source_name, source_url):
+    return f"{source_name}:{source_url}"
+
+
+def _collect_cycle_directories(session, source_url):
+    html_text = _fetch_text(session, source_url)
+    cycle_urls = []
+    for href in _extract_links(html_text):
+        if "cycle" not in href.lower():
+            continue
+        if not href.endswith("/"):
+            continue
+        cycle_urls.append(urljoin(source_url, href))
+    return sorted(set(cycle_urls))
+
+
+def _scan_cycle_directory(cycle_url, prefixes):
+    session = _build_retry_session()
+    try:
+        html_text = _fetch_text(session, cycle_url)
+    finally:
+        session.close()
+
+    cycle_candidates = {}
+    for href in _extract_links(html_text):
+        filename = os.path.basename(href.rstrip("/"))
+        if not filename or not filename.endswith(".nc"):
+            continue
+        if not filename.startswith(prefixes):
+            continue
+        cycle_candidates[filename] = urljoin(cycle_url, href)
+
+    return cycle_candidates
+
+
+def _scan_cycle_directory_with_retry(cycle_url, prefixes):
+    last_exc = None
+    for attempt in range(2):
+        try:
+            return _scan_cycle_directory(cycle_url, prefixes)
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(0.6)
+    raise last_exc
+
+
+def _filter_remote_candidates(files, start_dt, end_dt):
+    matched = []
+    for filename, file_url in files.items():
+        file_time = _parse_filename_time_range(filename)
+        if not file_time:
+            continue
+        file_start, file_end = file_time
+        if _ranges_overlap(file_start, file_end, start_dt, end_dt):
+            matched.append((filename, file_url))
+    return sorted(matched, key=lambda item: item[0])
+
+
+def _source_priority(start_dt, end_dt):
+    today = datetime.now().date()
+    days_from_end = (today - end_dt.date()).days
+    if days_from_end <= 2:
+        return ("OGDR", "IGDR", "GDR")
+    if days_from_end <= 60:
+        return ("IGDR", "GDR", "OGDR")
+    return ("GDR", "IGDR", "OGDR")
+
+
+def _collect_source_files(session, base_root_url, source_name, relative_path, prefixes, log_queue):
+    source_url = _build_source_url(base_root_url, relative_path)
+    cache_key = _source_cache_key(source_name, source_url)
+    cached_files = _load_catalog_cache(cache_key)
+    if cached_files:
+        _queue_log(
+            log_queue,
+            tr(
+                "plotting_jason_catalog_cache_hit",
+                "⚡ 使用本地远程索引缓存，跳过远程全量扫描。",
+            ) + f" [{source_name}]",
+        )
+        return cached_files
+
+    _queue_log(
+        log_queue,
+        tr("plotting_jason_fetch_catalog", "🔄 正在查询 NCEI Jason-3 目录...") + f" [{source_name}]",
+    )
+
+    cycle_urls = _collect_cycle_directories(session, source_url)
+    _queue_log(
+        log_queue,
+        tr(
+            "plotting_jason_cycle_catalogs_found",
+            "📚 远程目录中找到 {count} 个 cycle catalog",
+        ).format(count=len(cycle_urls)) + f" [{source_name}]",
+    )
+
+    _queue_log(
+        log_queue,
+        tr(
+            "plotting_jason_parallel_scan_start",
+            "🚀 正在并发构建远程文件索引...",
+        ) + f" [{source_name}]",
+    )
+
+    all_files = {}
+    completed = 0
+    with ThreadPoolExecutor(max_workers=_CATALOG_SCAN_WORKERS) as executor:
+        future_map = {
+            executor.submit(_scan_cycle_directory_with_retry, cycle_url, prefixes): cycle_url
+            for cycle_url in cycle_urls
+        }
+        total = len(future_map)
+
+        for future in as_completed(future_map):
+            completed += 1
+            cycle_url = future_map[future]
+            if completed == 1 or completed % 25 == 0 or completed == total:
+                _queue_log(
+                    log_queue,
+                    tr(
+                        "plotting_jason_cycle_scan_progress",
+                        "🔍 正在扫描远程目录 {current}/{total}",
+                    ).format(current=completed, total=total) + f" [{source_name}]",
+                    update=True,
+                )
+
+            try:
+                all_files.update(future.result())
+            except Exception as exc:
+                _queue_log(
+                    log_queue,
+                    tr(
+                        "plotting_jason_catalog_fetch_failed",
+                        "⚠️ 读取远程目录失败：{url} -> {error}",
+                    ).format(url=cycle_url, error=exc),
+                )
+
+    _save_catalog_cache(cache_key, all_files)
+    _queue_log(
+        log_queue,
+        tr(
+            "plotting_jason_catalog_cache_saved",
+            "💾 已缓存远程文件索引，后续下载会更快。",
+        ) + f" [{source_name}]",
+    )
+    return all_files
+
+
+def _collect_remote_candidates(session, base_root_url, start_dt, end_dt, log_queue):
+    source_map = {name: (relative_path, prefixes) for name, relative_path, prefixes in _JASON3_SOURCE_SPECS}
+    requested_days = set(_iter_days(start_dt, end_dt))
+    covered_days = set()
+    merged_candidates = {}
+
+    for source_name in _source_priority(start_dt, end_dt):
+        relative_path, prefixes = source_map[source_name]
+        files = _collect_source_files(
+            session, base_root_url, source_name, relative_path, prefixes, log_queue
+        )
+        source_matches = _filter_remote_candidates(files, start_dt, end_dt)
+
+        for filename, file_url in source_matches:
+            merged_candidates.setdefault(filename, file_url)
+            covered_days.update(_covered_days_for_filename(filename, start_dt, end_dt))
+
+        _queue_log(
+            log_queue,
+            tr(
+                "plotting_jason_remote_candidates_found",
+                "✅ 找到 {count} 个符合时间范围的远程文件",
+            ).format(count=len(source_matches)) + f" [{source_name}]",
+        )
+
+        missing_days = sorted(requested_days - covered_days)
+        if not missing_days:
+            _queue_log(
+                log_queue,
+                tr(
+                    "plotting_jason_source_coverage_complete",
+                    "✅ 当前产品层级已覆盖所需日期，无需继续回退。",
+                ),
+            )
+            break
+
+        if source_name != _source_priority(start_dt, end_dt)[-1]:
+            missing_text = ", ".join(day.strftime("%Y%m%d") for day in missing_days[:6])
+            if len(missing_days) > 6:
+                missing_text += ", ..."
+            _queue_log(
+                log_queue,
+                tr(
+                    "plotting_jason_source_missing_days",
+                    "⚠️ 当前产品层级仍缺少 {count} 天，继续尝试下一档：{days}",
+                ).format(count=len(missing_days), days=missing_text),
+            )
+
+    matched = sorted(merged_candidates.items(), key=lambda item: item[0])
+    _queue_log(
+        log_queue,
+        tr(
+            "plotting_jason_remote_candidates_found",
+            "✅ 找到 {count} 个符合时间范围的远程文件",
+        ).format(count=len(matched)),
+    )
+    return matched
+
+
+def _download_jason3_worker(time_range, local_folder, base_catalog_url, log_queue, result_queue):
+    try:
+        from setting.language_manager import load_language
+
+        current_config = load_config()
+        load_language(current_config.get("LANGUAGE", "zh_CN"))
+
+        start_dt, end_dt = _parse_time_range(time_range)
+
+        session = _build_retry_session()
+
+        remote_candidates = _collect_remote_candidates(
+            session, base_catalog_url, start_dt, end_dt, log_queue
+        )
+        if not remote_candidates:
+            _queue_log(
+                log_queue,
+                tr(
+                    "plotting_jason_download_no_remote_files",
+                    "⚠️ 远程目录中没有符合时间范围的 Jason-3 文件。",
+                ),
+            )
+            result_queue.put(
+                {"ok": False, "downloaded": 0, "skipped": 0, "failed": 0, "total": 0}
+            )
+            log_queue.put("__DONE__")
+            return
+
+        local_existing = set(os.listdir(local_folder))
+        to_download = []
+        skipped = 0
+        for filename, file_url in remote_candidates:
+            if filename in local_existing:
+                skipped += 1
+                continue
+            to_download.append((filename, file_url))
+
+        if skipped:
+            _queue_log(
+                log_queue,
+                tr(
+                    "plotting_jason_skip_existing_files",
+                    "ℹ️ 跳过 {count} 个本地已存在的文件",
+                ).format(count=skipped),
+            )
+
+        if not to_download:
+            _queue_log(
+                log_queue,
+                tr(
+                    "plotting_jason_download_already_complete",
+                    "✅ 当前时间范围所需文件已在本地，无需下载。",
+                ),
+            )
+            result_queue.put(
+                {
+                    "ok": True,
+                    "downloaded": 0,
+                    "skipped": skipped,
+                    "failed": 0,
+                    "total": len(remote_candidates),
+                }
+            )
+            log_queue.put("__DONE__")
+            return
+
+        downloaded = 0
+        failed = 0
+
+        for filename, file_url in to_download:
+            local_path = os.path.join(local_folder, filename)
+            temp_path = local_path + ".part"
+            _queue_log(
+                log_queue,
+                tr(
+                    "plotting_jason_start_file_download",
+                    "⬇️ 开始下载 {file}",
+                ).format(file=filename),
+            )
+
+            try:
+                with session.get(file_url, stream=True, timeout=_DOWNLOAD_TIMEOUT) as response:
+                    response.raise_for_status()
+                    total_size = int(response.headers.get("Content-Length", "0") or "0")
+                    transferred = 0
+                    last_percent = -1
+
+                    with open(temp_path, "wb") as file_obj:
+                        for chunk in response.iter_content(chunk_size=1024 * 256):
+                            if not chunk:
+                                continue
+                            file_obj.write(chunk)
+                            transferred += len(chunk)
+
+                            if total_size > 0:
+                                percent = int(transferred / total_size * 100)
+                                if percent > last_percent:
+                                    last_percent = percent
+                                    _queue_log(
+                                        log_queue,
+                                        tr(
+                                            "plotting_jason_download_progress",
+                                            "下载 Jason-3 {file} ... {percent}%",
+                                        ).format(file=filename, percent=percent),
+                                        update=True,
+                                    )
+
+                os.replace(temp_path, local_path)
+                downloaded += 1
+                _queue_log(
+                    log_queue,
+                    tr(
+                        "plotting_jason_file_download_complete",
+                        "✅ 下载完成 {file}",
+                    ).format(file=filename),
+                    update=True,
+                )
+            except Exception as exc:
+                failed += 1
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except OSError:
+                    pass
+                _queue_log(
+                    log_queue,
+                    tr(
+                        "plotting_jason_download_failed_file",
+                        "❌ 下载 Jason-3 文件失败：{file} -> {error}",
+                    ).format(file=filename, error=exc),
+                )
+
+        _queue_log(
+            log_queue,
+            tr(
+                "plotting_jason_download_summary",
+                "📦 下载完成：共 {total} 个候选文件，新增 {downloaded} 个，跳过 {skipped} 个，失败 {failed} 个。",
+            ).format(
+                total=len(remote_candidates),
+                downloaded=downloaded,
+                skipped=skipped,
+                failed=failed,
+            ),
+        )
+        result_queue.put(
+            {
+                "ok": failed == 0,
+                "downloaded": downloaded,
+                "skipped": skipped,
+                "failed": failed,
+                "total": len(remote_candidates),
+            }
+        )
+    except Exception as exc:
+        _queue_log(
+            log_queue,
+            tr(
+                "plotting_jason_download_process_failed",
+                "❌ JASON3 下载失败：{error}",
+            ).format(error=exc),
+        )
+        result_queue.put({"ok": False, "downloaded": 0, "skipped": 0, "failed": 1, "total": 0})
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+        try:
+            log_queue.put("__DONE__")
+        except Exception:
+            pass
 
 
 class Jason3Mixin(Jason3ServiceMixin):
-    """Jason3功能模块（下载逻辑）"""
+    """Jason-3 download features for the UI."""
 
-    def _run_download_jason3_process(self, time_range, local_folder, download_url=None, callback=None):
-        """在子进程中执行 Jason-3 数据下载操作（使用 multiprocessing 避免阻塞 UI）"""
-        # 自动下载逻辑已移除
-        return
-        # 创建队列用于子进程和主进程之间的通信
+    def download_jason3_range(self):
+        """Download Jason-3 files for the requested date range."""
+        start_str = self.shel_start_step9_edit.text().strip() if hasattr(self, "shel_start_step9_edit") else ""
+        end_str = self.shel_end_step9_edit.text().strip() if hasattr(self, "shel_end_step9_edit") else ""
+        if not start_str or not end_str:
+            self.log_signal.emit(tr("plotting_fill_time_range", "❌ 请填写开始和结束时间（格式：YYYYMMDD）"))
+            return
+
+        if not re.fullmatch(r"\d{8}", start_str) or not re.fullmatch(r"\d{8}", end_str):
+            self.log_signal.emit(
+                tr(
+                    "plotting_jason_invalid_time_format",
+                    "❌ 时间格式错误，请使用 YYYYMMDD。",
+                )
+            )
+            return
+
+        try:
+            start_dt = datetime.strptime(start_str, "%Y%m%d")
+            end_dt = datetime.strptime(end_str, "%Y%m%d")
+        except ValueError:
+            self.log_signal.emit(
+                tr(
+                    "plotting_jason_invalid_time_format",
+                    "❌ 时间格式错误，请使用 YYYYMMDD。",
+                )
+            )
+            return
+
+        if start_dt > end_dt:
+            self.log_signal.emit(
+                tr(
+                    "plotting_jason_start_after_end",
+                    "❌ 开始时间不能晚于结束时间。",
+                )
+            )
+            return
+
+        local_folder = self.jason_folder_edit.text().strip() if hasattr(self, "jason_folder_edit") else ""
+        if not local_folder or not os.path.isdir(local_folder):
+            local_folder = ensure_project_data_dir("JASON_PATH", "jason3")
+            if hasattr(self, "jason_folder_edit") and self.jason_folder_edit:
+                self.jason_folder_edit.setText(local_folder)
+
+        self.btn_download_jason3.setEnabled(False)
+        self.btn_download_jason3.setText(tr("plotting_jason_downloading", "下载中..."))
+        self._run_download_jason3_process([start_str, end_str], local_folder)
+
+    def _run_download_jason3_process(self, time_range, local_folder):
+        """Run Jason-3 download in a background process."""
+        current_config = load_config()
+        base_catalog_url = current_config.get(
+            "JASON3_DOWNLOAD_BASE_URL",
+            DEFAULT_CONFIG.get("JASON3_DOWNLOAD_BASE_URL", ""),
+        ).strip() or DEFAULT_CONFIG["JASON3_DOWNLOAD_BASE_URL"]
+
         log_queue = Queue()
         result_queue = Queue()
-
-        # 如果没有提供下载 URL，从配置中读取
-        if download_url is None:
-            from setting.config import load_config
-            current_config = load_config()
-            download_url = current_config.get("JASON3_DOWNLOAD_URL", "").strip()
-            if not download_url:
-                # 使用默认值
-                download_url = "ftp-oceans.ncei.noaa.gov/nodc/data/jason3-igdr/igdr/igdr/"
-
-        # 启动子进程
         process = Process(
             target=_download_jason3_worker,
-            args=(time_range, local_folder, log_queue, result_queue, download_url)
+            args=(time_range, local_folder, base_catalog_url, log_queue, result_queue),
         )
         process.start()
 
-        # 在主线程中监听日志队列并更新UI
         def _poll_logs():
             try:
-                # 非阻塞检查队列
                 done = False
                 while True:
                     try:
-                        msg = log_queue.get_nowait()
-                        if msg == "__DONE__":
+                        message = log_queue.get_nowait()
+                        if message == "__DONE__":
                             done = True
                             break
-                        # 检查是否是更新消息（用于进度更新）
-                        if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "__UPDATE__":
-                            self.log_update_last_line_signal.emit(msg[1])
+                        if (
+                            isinstance(message, tuple)
+                            and len(message) == 2
+                            and message[0] == "__UPDATE__"
+                        ):
+                            self.log_update_last_line_signal.emit(message[1])
                         else:
-                            self.log_signal.emit(msg)
-                    except:
+                            self.log_signal.emit(message)
+                    except Exception:
                         break
 
-                # 检查进程是否完成
                 if not done and process.is_alive():
-                    # 继续轮询
-                    QtCore.QTimer.singleShot(100, _poll_logs)  # 每100ms检查一次
-                else:
-                    # 进程完成，获取最后的结果
-                    if not done:
-                        # 如果还没收到完成信号，再尝试获取一次
-                        try:
-                            while True:
-                                try:
-                                    msg = log_queue.get_nowait()
-                                    if msg == "__DONE__":
-                                        done = True
-                                        break
-                                    if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "__UPDATE__":
-                                        self.log_update_last_line_signal.emit(msg[1])
-                                    else:
-                                        self.log_signal.emit(msg)
-                                except:
-                                    break
-                        except:
-                            pass
+                    QtCore.QTimer.singleShot(100, _poll_logs)
+                    return
 
-                    # 获取结果
-                    try:
-                        result = result_queue.get_nowait()
-                        if not result:
-                            self.log_signal.emit("⚠️ 下载失败或未找到符合时间范围的文件")
-                    except:
-                        pass
-
-                    # 等待进程结束
+                if process.is_alive():
                     process.join(timeout=1)
-                    if process.is_alive():
-                        process.terminate()
-                        process.join()
-                    
-                    # 如果提供了回调函数，在下载完成后调用
-                    if callback:
-                        try:
-                            callback()
-                        except Exception as e:
-                            self.log_signal.emit(f"⚠️ 执行下载完成回调时出错：{e}")
+                if process.is_alive():
+                    process.terminate()
+                    process.join()
 
-            except Exception as e:
-                self.log_signal.emit(f"❌ 轮询下载进度时出错：{e}")
+                try:
+                    result = result_queue.get_nowait()
+                    if result.get("failed", 0) > 0:
+                        self.log_signal.emit(
+                            tr(
+                                "plotting_jason_download_partial_failed",
+                                "⚠️ 部分文件下载失败，请查看上方日志。",
+                            )
+                        )
+                except Exception:
+                    pass
 
-        # 开始轮询
+            except Exception as exc:
+                self.log_signal.emit(
+                    tr(
+                        "plotting_jason_download_process_failed",
+                        "❌ JASON3 下载失败：{error}",
+                    ).format(error=exc)
+                )
+            finally:
+                self._restore_download_jason3_button()
+
         _poll_logs()
 
-    def _download_jason3_for_range(self, time_range, local_folder, lon_lat=None):
-        """
-        如果本地指定时间范围内没有 Jason-3 文件，则尝试从 NOAA FTP 服务器下载到 local_folder。
-        在子进程中执行下载，并显示进度。
-        返回 True 表示下载后本地已有对应时间范围文件，False 表示仍然没有。
-        """
-        # 自动下载逻辑已移除
-        return False
-        start_str, end_str = time_range
-        # 文件名格式：JA3_GPN_2PfP078_254_20180331_193738_20180331_203351.nc
-        time_pattern = r"(\d{8}_\d{6})_(\d{8}_\d{6})"
-        start_dt = datetime.strptime(start_str + "_000000", "%Y%m%d_%H%M%S")
-        end_dt = datetime.strptime(end_str + "_235959", "%Y%m%d_%H%M%S")
-
-        if not os.path.isdir(local_folder):
-            os.makedirs(local_folder, exist_ok=True)
-
-        def _has_local_files():
-            """检查是否有文件在时间范围内（不检查是否所有天数都被覆盖）"""
-            nc_files = [f for f in os.listdir(local_folder) if f.startswith("JA3_GPN_") and f.endswith(".nc")]
-            for f in nc_files:
-                m = re.search(time_pattern, f)
-                if not m:
-                    continue
-                t1 = datetime.strptime(m.group(1), "%Y%m%d_%H%M%S")
-                t2 = datetime.strptime(m.group(2), "%Y%m%d_%H%M%S")
-                if t2 >= start_dt and t1 <= end_dt:
-                    return True
-            return False
-
-        # 检查是否有缺失的天数
-        def _check_missing_days():
-            """检查目标时间范围内哪些天数没有被覆盖"""
-            # 检查本地已下载的文件（包括GDR和IGDR）
-            if not os.path.isdir(local_folder):
-                # 如果文件夹不存在，返回所有天数
-                return [start_dt.date() + timedelta(days=i) for i in range((end_dt.date() - start_dt.date()).days + 1)]
-            
-            local_nc_files = [f for f in os.listdir(local_folder) if (f.startswith("JA3_GPN_") or f.startswith("JA3_IPN_")) and f.endswith(".nc")]
-            local_file_ranges = []
-            
-            for filename in local_nc_files:
-                # 匹配GDR和IGDR格式（两者格式相同）
-                m = re.search(time_pattern, filename)
-                if m:
-                    try:
-                        file_start = datetime.strptime(m.group(1), "%Y%m%d_%H%M%S")
-                        file_end = datetime.strptime(m.group(2), "%Y%m%d_%H%M%S")
-                        # 检查是否在目标时间范围内（有重叠即可）
-                        if file_end >= start_dt and file_start <= end_dt:
-                            local_file_ranges.append((file_start, file_end))
-                    except ValueError:
-                        continue
-            
-            missing_days = []
-            current_date = start_dt.date()
-            end_date = end_dt.date()
-            
-            while current_date <= end_date:
-                # 检查这一天是否有数据文件覆盖
-                # 使用更宽松的条件：只要文件的时间范围与这一天有重叠，就认为覆盖了
-                day_start = datetime.combine(current_date, datetime.min.time())
-                day_end = datetime.combine(current_date, datetime.max.time())
-                
-                has_data = False
-                for file_start, file_end in local_file_ranges:
-                    # 检查文件时间范围是否与这一天有重叠
-                    if file_end >= day_start and file_start <= day_end:
-                        has_data = True
-                        break
-                
-                if not has_data:
-                    missing_days.append(current_date)
-                
-                current_date += timedelta(days=1)
-            
-            return missing_days
-
-        # 检查是否有缺失的天数
-        missing_days = _check_missing_days()
-        
-        # 如果所有天数都有数据，直接返回
-        if not missing_days:
-            return True
-        
-        # 有缺失天数，需要下载
-        if missing_days:
-            self.log_signal.emit(f"⚠️ 发现 {len(missing_days)} 个缺失的天数：{', '.join([d.strftime('%Y%m%d') for d in missing_days])}")
-            
-            # 检查是否开启了自动下载
-            from setting.config import load_config
-            current_config = load_config()
-            auto_download = current_config.get("JASON3_AUTO_DOWNLOAD_MISSING", True)
-            if isinstance(auto_download, str):
-                auto_download = auto_download.lower() in ('true', '1', 'yes')
-            
-            if not auto_download:
-                self.log_signal.emit("⚠️ 自动下载功能已关闭，请手动下载缺失的数据或开启自动下载功能")
-                return False
-            
-            download_url = current_config.get("JASON3_DOWNLOAD_URL", "").strip()
-            if not download_url:
-                self.log_signal.emit("⚠️ 未配置 JASON3 下载链接，无法自动下载")
-                return False
-            
-            self.log_signal.emit(f"🔄 开始下载缺失日期的数据（使用下载链接：{download_url}）...")
-        else:
-            # 没有缺失天数，直接返回
-            return True
-        
-        # 使用同步方式等待下载完成
-        from PyQt6.QtCore import QEventLoop, QTimer
-        download_complete = [False]
-        download_result = [False]
-        
-        # 先创建 loop，以便在回调中使用
-        loop = QEventLoop()
-        
-        def _on_download_complete():
-            """下载完成后的回调"""
-            # 等待更长时间，确保所有文件已完全写入磁盘
-            import time
-            self.log_signal.emit("🔄 等待文件写入完成...")
-            time.sleep(3)  # 等待3秒确保文件完全写入
-            
-            # 再次检查缺失天数
-            remaining_missing = _check_missing_days()
-            if not remaining_missing:
-                download_result[0] = True
-                self.log_signal.emit("✅ 所有缺失天数的数据已下载完成")
-            else:
-                download_result[0] = False
-                # 列出本地文件以便调试
-                if os.path.isdir(local_folder):
-                    local_files = [f for f in os.listdir(local_folder) if (f.startswith("JA3_GPN_") or f.startswith("JA3_IPN_")) and f.endswith(".nc")]
-                    self.log_signal.emit(f"⚠️ 仍有 {len(remaining_missing)} 个缺失天数：{', '.join([d.strftime('%Y%m%d') for d in remaining_missing])}")
-                    if local_files:
-                        self.log_signal.emit(f"   本地文件数量：{len(local_files)}")
-                        # 显示最近下载的文件（最多5个）
-                        recent_files = sorted(local_files, reverse=True)[:5]
-                        for f in recent_files:
-                            self.log_signal.emit(f"   - {f}")
-            download_complete[0] = True
-            if loop.isRunning():
-                loop.quit()
-        
-        # 在子进程中执行下载（包括补充下载缺失天数）
-        # download_url 已经在上面从配置中读取了
-        self._run_download_jason3_process(time_range, local_folder, download_url=download_url, callback=_on_download_complete)
-        timeout_timer = QTimer()
-        timeout_timer.setSingleShot(True)
-        
-        def _on_timeout():
-            if not download_complete[0]:
-                self.log_signal.emit("⚠️ 下载等待超时（120秒）")
-            loop.quit()
-        
-        timeout_timer.timeout.connect(_on_timeout)
-        timeout_timer.start(120000)  # 120秒超时
-        
-        # 定期检查下载是否完成
-        check_timer = QTimer()
-        
-        def _check_complete():
-            if download_complete[0]:
-                loop.quit()
-        
-        check_timer.timeout.connect(_check_complete)
-        check_timer.start(500)  # 每500ms检查一次
-        
-        # 启动事件循环等待
-        loop.exec()
-        
-        # 停止定时器
-        timeout_timer.stop()
-        check_timer.stop()
-        
-        if download_complete[0]:
-            # 如果下载成功，再等待一小段时间确保文件完全写入
-            if download_result[0]:
-                import time
-                time.sleep(2)  # 等待2秒确保文件完全写入
-            return download_result[0]
-        else:
-            # 超时，但下载可能仍在进行中
-            self.log_signal.emit("⚠️ 下载超时，但下载仍在后台进行中...")
-            # 等待下载进程真正完成
-            self.log_signal.emit("🔄 等待下载进程完成...")
-            # 再次检查缺失天数，并等待一段时间
-            import time
-            time.sleep(5)  # 等待5秒让下载继续
-            remaining_missing = _check_missing_days()
-            if not remaining_missing:
-                return True
-            else:
-                # 仍有缺失，返回False，不继续绘图（等待下载完成）
-                return False
-
-        # 如果仍然没有，尝试从服务器下载（如已配置）
-        if self.ssh and JASON_REMOTE_PATH:
-            remote_dir = JASON_REMOTE_PATH
-            self.log_signal.emit(f"🔄 本地未找到指定时间范围的 Jason-3 文件，尝试从服务器下载：{remote_dir}")
-
-            try:
-                sftp = self.ssh.open_sftp()
-            except Exception as e:
-                self.log_signal.emit(f"❌ 无法打开服务器 SFTP 连接，下载 Jason-3 数据失败：{e}")
-                sftp = None
-
-            if sftp is not None:
-                try:
-                    try:
-                        files = sftp.listdir(remote_dir)
-                    except IOError as e:
-                        self.log_signal.emit(f"❌ 无法列出远程 Jason-3 目录: {remote_dir} -> {e}")
-                        sftp.close()
-                        sftp = None
-                    if sftp is not None:
-                        matched = []
-                        for name in files:
-                            if not (name.startswith("JA3_GPN_") and name.endswith(".nc")):
-                                continue
-                            m = re.search(time_pattern, name)
-                            if not m:
-                                continue
-                            t1 = datetime.strptime(m.group(1), "%Y%m%d_%H%M%S")
-                            t2 = datetime.strptime(m.group(2), "%Y%m%d_%H%M%S")
-                            if t2 >= start_dt and t1 <= end_dt:
-                                matched.append(name)
-
-                        if not matched:
-                            self.log_signal.emit("⚠️ 服务器上未找到符合时间范围的 Jason-3 文件。")
-                        else:
-                            os.makedirs(local_folder, exist_ok=True)
-
-                            for name in matched:
-                                remote_path = f"{remote_dir.rstrip('/')}/{name}"
-                                local_path = os.path.join(local_folder, name)
-                                try:
-                                    filesize = sftp.stat(remote_path).st_size
-                                    last_percent = [0]
-
-                                    def progress(transferred, total=filesize):
-                                        if total <= 0:
-                                            return
-                                        percent = int(transferred / total * 100)
-                                        if percent > last_percent[0]:
-                                            last_percent[0] = percent
-                                            self.log_update_last_line_signal.emit(f"下载 Jason-3 {name} ... {percent}%")
-
-                                    self.log_signal.emit(f"开始下载 Jason-3 {name} ({filesize/1024:.1f} KB)")
-                                    sftp.get(remote_path, local_path, callback=progress)
-                                    self.log_update_last_line_signal.emit(f"✅ 下载完成 Jason-3 {name}")
-                                    self.log_signal.emit("")
-                                except Exception as e:
-                                    self.log_signal.emit(f"❌ 下载 Jason-3 {name} 失败: {e}")
-
-                        sftp.close()
-                except Exception as e:
-                    try:
-                        sftp.close()
-                    except Exception:
-                        pass
-                    self.log_signal.emit(f"❌ 下载 Jason-3 数据时发生错误：{e}")
-
-        # 所有下载完成后再次检查本地是否已有文件
-        if _has_local_files():
-            self.log_signal.emit("✅ 已获取指定时间范围的 Jason-3 数据。")
-            return True
-
-        self.log_signal.emit("⚠️ 下载完成后仍未找到符合时间范围的 Jason-3 文件。")
-        return False
+    def _restore_download_jason3_button(self):
+        if hasattr(self, "btn_download_jason3"):
+            self.btn_download_jason3.setEnabled(True)
+            self.btn_download_jason3.setText(
+                tr("plotting_download_jason3", "下载 JASON 3 数据")
+            )

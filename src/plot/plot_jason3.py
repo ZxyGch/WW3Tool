@@ -30,13 +30,20 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap
 
-from setting.config import load_config, JASON_PATH
+from setting.config import load_config, JASON_PATH, ensure_project_data_dir
 from setting.language_manager import tr
 from .workers import _run_jason3_swh_worker, _match_ww3_jason3_worker
+from .workers_jason3 import JASON3_MAX_REASONABLE_SWH
 
 
 class Jason3PlotMixin:
     """Jason-3 卫星观测数据功能 Mixin"""
+
+    def _ensure_jason_folder_path(self):
+        path = ensure_project_data_dir("JASON_PATH", "jason3")
+        if hasattr(self, "jason_folder_edit") and self.jason_folder_edit:
+            self.jason_folder_edit.setText(path)
+        return path
     
     def _create_jason3_ui(self, plot_content_widget, plot_content_layout, button_style, input_style):
         """创建 Jason-3 卫星观测数据 UI"""
@@ -61,7 +68,7 @@ class Jason3PlotMixin:
         LONGITUDE_EAST = current_config.get("LONGITUDE_EAST", "")
         LATITUDE_SORTH = current_config.get("LATITUDE_SORTH", "")
         LATITUDE_NORTH = current_config.get("LATITUDE_NORTH", "")
-        JASON_PATH = current_config.get("JASON_PATH", "")
+        JASON_PATH = ensure_project_data_dir("JASON_PATH", "jason3")
 
         # 经纬度输入区域
         geo_frame = QWidget()
@@ -187,6 +194,8 @@ class Jason3PlotMixin:
         if not hasattr(self, 'jason_folder_edit'):
             self.jason_folder_edit = LineEdit()
             self.jason_folder_edit.setText(JASON_PATH)
+        elif not self.jason_folder_edit.text().strip() or not os.path.isdir(self.jason_folder_edit.text().strip()):
+            self.jason_folder_edit.setText(JASON_PATH)
         self.jason_folder_edit.setStyleSheet(input_style)
         folder_layout.addWidget(self.jason_folder_edit, 0, 1)
 
@@ -237,6 +246,12 @@ class Jason3PlotMixin:
         wave_button_row.addWidget(load_from_ww3_button, 1)
         step9_card_layout.addLayout(wave_button_row)
 
+        if not hasattr(self, 'btn_download_jason3'):
+            self.btn_download_jason3 = PrimaryPushButton(tr("plotting_download_jason3", "下载 JASON 3 数据"))
+            self.btn_download_jason3.setStyleSheet(button_style)
+            self.btn_download_jason3.clicked.connect(self.download_jason3_range)
+        step9_card_layout.addWidget(self.btn_download_jason3)
+
         # 查看卫星观测图按钮
         if not hasattr(self, 'btn_view_satellite'):
             self.btn_view_satellite = PrimaryPushButton(tr("plotting_view_satellite", "查看卫星观测图"))
@@ -260,7 +275,7 @@ class Jason3PlotMixin:
         """选择 Jason-3 数据文件夹"""
         start_path = self.jason_folder_edit.text().strip() if hasattr(self, 'jason_folder_edit') else JASON_PATH
         if not os.path.exists(start_path):
-            start_path = os.path.expanduser("~")
+            start_path = self._ensure_jason_folder_path()
 
         folder = QFileDialog.getExistingDirectory(
             self,
@@ -424,9 +439,8 @@ class Jason3PlotMixin:
             return
 
         jason_folder = self.jason_folder_edit.text().strip()
-        if not jason_folder or not os.path.exists(jason_folder):
-            self.log(tr("plotting_jason_folder_not_exists", "❌ 卫星数据文件夹不存在"))
-            return
+        if not jason_folder or not os.path.isdir(jason_folder):
+            jason_folder = self._ensure_jason_folder_path()
 
         lon_lat = [lon_west, lon_east, lat_south, lat_north]
         time_range = [start_str, end_str]
@@ -559,7 +573,10 @@ class Jason3PlotMixin:
 
         # 再次扫描本地文件，找到时间范围内的文件
         time_pattern = r"(\d{8}_\d{6})_(\d{8}_\d{6})"
-        nc_files = [f for f in os.listdir(jason_folder) if f.startswith("JA3_GPN_") and f.endswith(".nc")]
+        nc_files = [
+            f for f in os.listdir(jason_folder)
+            if f.endswith(".nc") and f.startswith(("JA3_GPN_", "JA3_IPN_", "JA3_OPN_"))
+        ]
 
         valid_files = []
         for f in nc_files:
@@ -674,7 +691,7 @@ class Jason3PlotMixin:
             swh_tmp = swh_tmp[mask]
 
             # 去除无效值
-            mask2 = (~np.isnan(swh_tmp)) & (swh_tmp != 0)
+            mask2 = (~np.isnan(swh_tmp)) & (swh_tmp > 0) & (swh_tmp <= JASON3_MAX_REASONABLE_SWH)
             lat_tmp = lat_tmp[mask2]
             lon_tmp = lon_tmp[mask2]
             swh_tmp = swh_tmp[mask2]
@@ -810,8 +827,7 @@ class Jason3PlotMixin:
 
         jason_folder = self.jason_folder_edit.text().strip()
         if not jason_folder or not os.path.isdir(jason_folder):
-            self.log(tr("plotting_jason_folder_not_exists", "❌ 卫星数据文件夹不存在"))
-            return
+            jason_folder = self._ensure_jason_folder_path()
 
         # 禁用按钮，防止重复点击
         self.btn_view_fit.setEnabled(False)
