@@ -193,7 +193,7 @@ def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=N
 
     w("&GRID_NML")
     w(f"  GRID%NAME            =  '{grid_name}'")
-    w(f"  GRID%NML             =  'namelists_{grid_name}.nml'")
+    w("  GRID%NML             =  'namelists.nml'")
     w(f"  GRID%TYPE            =  '{gtype_out}'")
     w(f"  GRID%COORD           =  {coord}")
     w(f"  GRID%CLOS            =  {cstrng}")

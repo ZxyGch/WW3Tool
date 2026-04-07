@@ -366,14 +366,6 @@ def _resolve_boundary_mat_file(ref_dir, boundary):
     return os.path.normpath(os.path.join(ref_dir, f"{stem}.mat"))
 
 
-def _write_namelists_marker(out_dir, fname):
-    """Mirror MATLAB's small namelist marker file."""
-    marker_path = os.path.join(out_dir, f"namelists_{fname}.nml")
-    with open(marker_path, "w", encoding="utf-8", newline="\n") as fid:
-        fid.write("END OF NAMELISTS\n")
-    return marker_path
-
-
 def _write_ascii_matrix(fname, data, fmt):
     """Write a 2D matrix with a configurable float/int format."""
     out_dir = os.path.dirname(fname)
@@ -693,7 +685,6 @@ def create_grid(**kwargs):
             1.0,
             is_global_override=params["IS_GLOBAL"],
         )
-        marker_path = _write_namelists_marker(params["out_dir"], params["fname"])
         print(f"  Written: {params['fname']}.bot", flush=True)
         print(f"  Written: {params['fname']}.mask", flush=True)
         print(f"  Written: {params['fname']}.mask_nobound", flush=True)
@@ -701,7 +692,6 @@ def create_grid(**kwargs):
         print(f"  Written: {params['fname']}.lat", flush=True)
         print(f"  Written: {params['fname']}.obst (all zeros)", flush=True)
         print("  Written: grid.meta", flush=True)
-        print(f"  Written: {os.path.basename(marker_path)}", flush=True)
         print("  Done.\n", flush=True)
 
         elapsed_time = time.time() - start_time
@@ -717,7 +707,6 @@ def create_grid(**kwargs):
         print(f"  - {params['fname']}.lon / .lat (curvilinear coordinates)", flush=True)
         print(f"  - {params['fname']}.obst (obstructions, all zeros)", flush=True)
         print("  - grid.meta (WW3 grid description, CURV)", flush=True)
-        print(f"  - namelists_{params['fname']}.nml", flush=True)
         print(f"Total time: {elapsed_time:.2f} seconds", flush=True)
         print("=" * 70, flush=True)
         return
@@ -931,8 +920,6 @@ def create_grid(**kwargs):
         is_global_override=params["IS_GLOBAL"],
     )
     print("  Written: grid.nml (WW3 grid description)", flush=True)
-    marker_path = _write_namelists_marker(params['out_dir'], params['fname'])
-    print(f"  Written: {os.path.basename(marker_path)}", flush=True)
     print('  Done.\n', flush=True)
     
     # Summary
@@ -951,7 +938,6 @@ def create_grid(**kwargs):
     else:
         print(f"  - {params['fname']}.obst (obstructions, all zeros)", flush=True)
     print("  - grid.nml (WW3 grid description, same as MATLAB gridgen)", flush=True)
-    print(f"  - namelists_{params['fname']}.nml", flush=True)
     print(f'Total time: {elapsed_time:.2f} seconds', flush=True)
     print('=' * 70, flush=True)
 
