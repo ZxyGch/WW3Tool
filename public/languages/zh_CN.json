@@ -457,7 +457,7 @@
   "output_vars_save_failed": "❌ 保存输出变量配置失败",
   "scheme_name_label": "方案名称：",
   "current_scheme": "当前方案：",
-  "default_scheme": "默认方案",
+  "default_scheme": "Default",
   "scheme_name_placeholder": "输入方案名称",
   "delete_scheme": "删除方案",
   "scheme_saved": "✅ 已保存新方案：{name}",

@@ -1484,7 +1484,7 @@ class SettingsMixin(SettingsServiceMixin):
             scheme_form_layout.addWidget(scheme_name_label, 0, 0)
             
             self.output_vars_scheme_name_edit = LineEdit()
-            self.output_vars_scheme_name_edit.setText(tr("default_scheme", "默认方案"))
+            self.output_vars_scheme_name_edit.setText(DEFAULT_OUTPUT_VARS_SCHEME_NAME)
             self.output_vars_scheme_name_edit.setStyleSheet(input_style)
             self.output_vars_scheme_name_edit.setPlaceholderText(tr("scheme_name_placeholder", "输入方案名称"))
             scheme_form_layout.addWidget(self.output_vars_scheme_name_edit, 0, 1)

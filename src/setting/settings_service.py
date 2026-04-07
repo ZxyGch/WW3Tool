@@ -2240,7 +2240,7 @@ class SettingsServiceMixin:
         if hasattr(self, 'output_vars_scheme_name_edit'):
             scheme_name = self.output_vars_scheme_name_edit.text().strip()
             if not scheme_name:
-                scheme_name = tr("default_scheme", "默认方案")
+                scheme_name = DEFAULT_OUTPUT_VARS_SCHEME_NAME
         
         # 检查是否是新方案
         is_new_scheme = True
@@ -2266,15 +2266,13 @@ class SettingsServiceMixin:
         Args:
             preserve_selection: 如果提供，刷新后保持选择该方案；否则默认选择"默认方案"
         """
-        from setting.language_manager import tr
-        
         # 从配置文件加载方案
         config = load_config()
         schemes = config.get("OUTPUT_VARS_SCHEMES", {})
         
         # 默认方案的变量列表
-        default_scheme_vars = ["HS", "DIR", "FP", "T02", "WND", "PHS", "PTP", "PDIR", "PWS", "PNR", "TWS"]
-        default_scheme_name = tr("default_scheme", "默认方案")
+        default_scheme_vars = list(DEFAULT_OUTPUT_VARS_SCHEME_VARS)
+        default_scheme_name = DEFAULT_OUTPUT_VARS_SCHEME_NAME
         
         # 如果没有方案或默认方案不存在，创建默认方案
         if not schemes or default_scheme_name not in schemes:
@@ -2612,8 +2610,7 @@ class SettingsServiceMixin:
                     current_selection = self.output_vars_scheme_combo.currentText()
                     # 如果当前选择的就是被删除的方案，则选择默认方案
                     if current_selection == scheme_name:
-                        from setting.language_manager import tr
-                        default_scheme_name = tr("default_scheme", "默认方案")
+                        default_scheme_name = DEFAULT_OUTPUT_VARS_SCHEME_NAME
                         self._load_output_vars_schemes(preserve_selection=default_scheme_name)
                     else:
                         # 否则保持当前选择
@@ -2628,8 +2625,7 @@ class SettingsServiceMixin:
                         current_selection = self.output_scheme_combo.currentText()
                         # 如果当前选择的就是被删除的方案，则选择默认方案
                         if current_selection == scheme_name:
-                            from setting.language_manager import tr
-                            default_scheme_name = tr("default_scheme", "默认方案")
+                            default_scheme_name = DEFAULT_OUTPUT_VARS_SCHEME_NAME
                             self._load_output_schemes_to_combo(preserve_selection=default_scheme_name)
                         else:
                             # 否则保持当前选择

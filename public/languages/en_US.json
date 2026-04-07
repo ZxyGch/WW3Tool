@@ -468,7 +468,7 @@
   "output_vars_save_failed": "❌ Failed to save output variables configuration",
   "scheme_name_label": "Scheme Name:",
   "current_scheme": "Current Scheme:",
-  "default_scheme": "Default Scheme",
+  "default_scheme": "Default",
   "scheme_name_placeholder": "Enter scheme name",
   "delete_scheme": "Delete Scheme",
   "scheme_saved": "✅ New scheme saved: {name}",

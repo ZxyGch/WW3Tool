@@ -16,6 +16,22 @@ os.makedirs(PUBLIC_DIR, exist_ok=True)
 # 配置文件路径，存储应用程序的所有配置项
 CONFIG_FILE = os.path.join(PUBLIC_DIR, "config.json")
 
+DEFAULT_OUTPUT_VARS_SCHEME_NAME = "Default"
+LEGACY_DEFAULT_OUTPUT_VARS_SCHEME_NAMES = ("默认方案", "Default Scheme")
+DEFAULT_OUTPUT_VARS_SCHEME_VARS = [
+    "HS",
+    "DIR",
+    "FP",
+    "T02",
+    "WND",
+    "PHS",
+    "PTP",
+    "PDIR",
+    "PWS",
+    "PNR",
+    "TWS",
+]
+
 
 def get_project_root():
     """返回项目根目录（WW3Tool）。"""
@@ -596,6 +612,47 @@ DEFAULT_CONFIG = {
 }
 
 
+def normalize_output_vars_schemes(config):
+    """Normalize spectral partition scheme names to the canonical English default."""
+    if not isinstance(config, dict):
+        return False
+
+    schemes = config.get("OUTPUT_VARS_SCHEMES", {})
+    if not isinstance(schemes, dict):
+        schemes = {}
+        config["OUTPUT_VARS_SCHEMES"] = schemes
+        changed = True
+    else:
+        changed = False
+
+    default_name = DEFAULT_OUTPUT_VARS_SCHEME_NAME
+    default_vars = list(DEFAULT_OUTPUT_VARS_SCHEME_VARS)
+    current_default_vars = schemes.get(default_name)
+
+    for legacy_name in LEGACY_DEFAULT_OUTPUT_VARS_SCHEME_NAMES:
+        legacy_vars = schemes.get(legacy_name)
+        if legacy_vars is None:
+            continue
+
+        if current_default_vars is None:
+            schemes[default_name] = legacy_vars
+            current_default_vars = legacy_vars
+            changed = True
+        elif current_default_vars == default_vars and legacy_vars:
+            schemes[default_name] = legacy_vars
+            current_default_vars = legacy_vars
+            changed = True
+
+        del schemes[legacy_name]
+        changed = True
+
+    if default_name not in schemes:
+        schemes[default_name] = default_vars
+        changed = True
+
+    return changed
+
+
 def load_config():
     """加载配置文件，如果不存在则使用默认值"""
     if os.path.exists(CONFIG_FILE):
@@ -605,14 +662,19 @@ def load_config():
             # 合并默认配置，确保所有键都存在
             merged_config = DEFAULT_CONFIG.copy()
             merged_config.update(config)
+            normalize_output_vars_schemes(merged_config)
             return merged_config
         except Exception as e:
             print(f"加载配置文件失败: {e}，使用默认配置")
-            return DEFAULT_CONFIG.copy()
+            fallback_config = DEFAULT_CONFIG.copy()
+            normalize_output_vars_schemes(fallback_config)
+            return fallback_config
     else:
         # 如果配置文件不存在，创建默认配置文件
-        save_config(DEFAULT_CONFIG.copy())
-        return DEFAULT_CONFIG.copy()
+        default_config = DEFAULT_CONFIG.copy()
+        normalize_output_vars_schemes(default_config)
+        save_config(default_config)
+        return default_config
 
 def save_config(config):
     """保存配置到文件"""

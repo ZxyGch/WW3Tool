@@ -12,7 +12,17 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QHBoxLayout, QWidget, QSizePolicy
 from qfluentwidgets import PrimaryPushButton, LineEdit, ComboBox, CheckBox
 from setting.language_manager import tr
-from setting.config import load_config, ST_OPTIONS, CPU_GROUP, DEFAULT_CPU, KERNEL_NUM, NODE_NUM, DEFAULT_CONFIG
+from setting.config import (
+    load_config,
+    ST_OPTIONS,
+    CPU_GROUP,
+    DEFAULT_CPU,
+    KERNEL_NUM,
+    NODE_NUM,
+    DEFAULT_CONFIG,
+    DEFAULT_OUTPUT_VARS_SCHEME_NAME,
+    DEFAULT_OUTPUT_VARS_SCHEME_VARS,
+)
 from ..utils import create_header_card
 
 
@@ -37,11 +47,11 @@ class StepFourServiceMixin:
         schemes = config.get("OUTPUT_VARS_SCHEMES", {})
         
         # 默认方案的变量列表
-        default_scheme_name = tr("default_scheme", "默认方案")
+        default_scheme_name = DEFAULT_OUTPUT_VARS_SCHEME_NAME
         
         # 如果没有方案或默认方案不存在，创建默认方案
         if not schemes or default_scheme_name not in schemes:
-            default_scheme_vars = ["HS", "DIR", "FP", "T02", "WND", "PHS", "PTP", "PDIR", "PWS", "PNR", "TWS"]
+            default_scheme_vars = list(DEFAULT_OUTPUT_VARS_SCHEME_VARS)
             schemes[default_scheme_name] = default_scheme_vars
             config["OUTPUT_VARS_SCHEMES"] = schemes
             
