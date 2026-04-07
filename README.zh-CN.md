@@ -1027,7 +1027,12 @@ HTTPServer: //tds. hycom. org/thredds/fileServer/datasets/force/ncep_cfsv2/netcd
 
 ### JASON 3 数据
 
-ftp://ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
+https://www.ncei.noaa.gov/products/jason-satellite-products
+
+
+### NDBC 浮标数据
+
+https://www.ndbc.noaa.gov
 
 ## 授权协议
 

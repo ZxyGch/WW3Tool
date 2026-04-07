@@ -1011,7 +1011,12 @@ Sea ice includes sea ice area fraction and sea ice thickness.
 
 ### JASON 3 data
 
-ftp://ftp-oceans.ncei.noaa.gov/nodc/data/jason3-gdr/gdr
+https://www.ncei.noaa.gov/products/jason-satellite-products
+
+### NDBC 
+
+https://www.ndbc.noaa.gov
+
 
 ## License
 
