@@ -191,3 +191,173 @@ class NetCDFInfoService:
             self.log(tr("read_file_info_failed", "❌ 读取文件信息失败：{error}").format(error=e))
             import traceback
             traceback.print_exc()
+
+    def get_lonlat_bounds(self, file_path: str) -> dict[str, float]:
+        """读取文件的经纬度范围。"""
+        try:
+            with Dataset(file_path, "r") as ds:
+                lon_var = None
+                lat_var = None
+                for lon_name in ["longitude", "lon", "Longitude", "LON"]:
+                    if lon_name in ds.variables:
+                        lon_var = ds.variables[lon_name]
+                        break
+                for lat_name in ["latitude", "lat", "Latitude", "LAT"]:
+                    if lat_name in ds.variables:
+                        lat_var = ds.variables[lat_name]
+                        break
+                if lon_var is None or lat_var is None:
+                    return {}
+                lon = lon_var[:]
+                lat = lat_var[:]
+                return {
+                    "lon_min": float(np.min(lon)),
+                    "lon_max": float(np.max(lon)),
+                    "lat_min": float(np.min(lat)),
+                    "lat_max": float(np.max(lat)),
+                }
+        except Exception:
+            return {}
+
+    def print_step1_field_overview(self, field_name: str, file_path: str):
+        """输出 Step 1 的场文件总览信息。"""
+        self.log("")
+        self.log(f"{'=' * 70}")
+        self.log(tr("view_field_banner", "【{name}】").format(name=field_name))
+        self.log(tr("view_filename", "文件名：{name}").format(name=os.path.basename(file_path)))
+        try:
+            file_size = os.path.getsize(file_path)
+            if file_size < 1024:
+                size_str = f"{file_size} B"
+            elif file_size < 1024 * 1024:
+                size_str = f"{file_size / 1024:.2f} KB"
+            elif file_size < 1024 * 1024 * 1024:
+                size_str = f"{file_size / (1024 * 1024):.2f} MB"
+            else:
+                size_str = f"{file_size / (1024 * 1024 * 1024):.2f} GB"
+            self.log(tr("view_filesize", "文件大小：{size}").format(size=size_str))
+        except Exception as exc:
+            self.log(tr("view_filesize_error", "文件大小：无法读取 ({error})").format(error=exc))
+
+        try:
+            with Dataset(file_path, "r") as ds:
+                lon_var = lat_var = None
+                lon = lat = None
+
+                for lon_name in ["longitude", "lon", "Longitude", "LON"]:
+                    if lon_name in ds.variables:
+                        lon_var = ds.variables[lon_name]
+                        lon = lon_var[:]
+                        self.log(
+                            tr("longitude_range", "🌍 经度范围：{min}° ~ {max}°").format(
+                                min=f"{float(np.min(lon)):.6f}",
+                                max=f"{float(np.max(lon)):.6f}",
+                            )
+                        )
+                        break
+
+                for lat_name in ["latitude", "lat", "Latitude", "LAT"]:
+                    if lat_name in ds.variables:
+                        lat_var = ds.variables[lat_name]
+                        lat = lat_var[:]
+                        self.log(
+                            tr("latitude_range", "🌍 纬度范围：{min}° ~ {max}°").format(
+                                min=f"{float(np.min(lat)):.6f}",
+                                max=f"{float(np.max(lat)):.6f}",
+                            )
+                        )
+                        break
+
+                if lon_var is not None and lon is not None and len(lon_var) > 1:
+                    lon_diff = np.diff(lon)
+                    if len(lon_diff) > 0:
+                        self.log(
+                            tr("view_lon_resolution", "经度精度：{val}°").format(
+                                val=f"{float(np.mean(np.abs(lon_diff))):.6f}"
+                            )
+                        )
+                if lat_var is not None and lat is not None and len(lat_var) > 1:
+                    lat_diff = np.diff(lat)
+                    if len(lat_diff) > 0:
+                        self.log(
+                            tr("view_lat_resolution", "纬度精度：{val}°").format(
+                                val=f"{float(np.mean(np.abs(lat_diff))):.6f}"
+                            )
+                        )
+
+                time_var = None
+                time_var_name = None
+                for time_name in ["time", "Time", "TIME", "valid_time", "MT", "mt", "t"]:
+                    if time_name in ds.variables:
+                        time_var = ds.variables[time_name]
+                        time_var_name = time_name
+                        break
+
+                if time_var is not None:
+                    try:
+                        time_units = getattr(time_var, "units", None)
+                        time_calendar = getattr(time_var, "calendar", "gregorian")
+                        if time_units:
+                            times = num2date(time_var[:], time_units, calendar=time_calendar)
+                            if hasattr(times, "compressed"):
+                                times = times.compressed()
+                            if isinstance(times, np.ndarray):
+                                times = times.ravel().tolist()
+                            elif not isinstance(times, (list, tuple)):
+                                times = [times]
+                            times = [item for item in times if hasattr(item, "strftime")]
+                            if len(times) > 0:
+                                time_start, time_end = times[0], times[-1]
+                                self.log(
+                                    tr("time_range", "⏰ 时间范围：{start} ~ {end}").format(
+                                        start=time_start.strftime("%Y-%m-%d %H:%M:%S"),
+                                        end=time_end.strftime("%Y-%m-%d %H:%M:%S"),
+                                    )
+                                )
+                                self.log(tr("time_steps", "⏰ 时间步数：{count}").format(count=len(times)))
+                                if len(times) > 1:
+                                    time_diffs = [
+                                        (times[index + 1] - times[index]).total_seconds()
+                                        for index in range(len(times) - 1)
+                                    ]
+                                    if time_diffs:
+                                        avg_time_diff = np.mean(time_diffs)
+                                        if avg_time_diff < 60:
+                                            time_res_str = f"{avg_time_diff:.0f} " + tr("view_unit_seconds", "秒")
+                                        elif avg_time_diff < 3600:
+                                            time_res_str = (
+                                                f"{avg_time_diff / 60:.1f} " + tr("view_unit_minutes", "分钟")
+                                            )
+                                        elif avg_time_diff < 86400:
+                                            time_res_str = (
+                                                f"{avg_time_diff / 3600:.2f} " + tr("view_unit_hours", "小时")
+                                            )
+                                        else:
+                                            time_res_str = (
+                                                f"{avg_time_diff / 86400:.2f} " + tr("view_unit_days", "天")
+                                            )
+                                        self.log(
+                                            tr("view_time_resolution", "时间精度：{resolution}").format(
+                                                resolution=time_res_str
+                                            )
+                                        )
+                                if time_var_name != "time":
+                                    self.log(
+                                        tr("time_var_used", "ℹ️ 使用时间变量：{name}").format(name=time_var_name)
+                                    )
+                        else:
+                            time_data = time_var[:]
+                            if len(time_data) > 0:
+                                self.log(
+                                    tr("view_time_range_no_unit", "时间范围：{min} ~ {max} (无单位)").format(
+                                        min=f"{float(np.min(time_data)):.2f}",
+                                        max=f"{float(np.max(time_data)):.2f}",
+                                    )
+                                )
+                                self.log(tr("time_steps", "⏰ 时间步数：{count}").format(count=len(time_data)))
+                    except Exception as exc:
+                        self.log(tr("view_time_parse_error", "时间范围：无法解析 ({error})").format(error=exc))
+                else:
+                    self.log(tr("view_time_var_missing", "时间范围：未找到时间变量"))
+        except Exception as exc:
+            self.log(tr("read_file_info_failed", "❌ 读取文件信息失败：{error}").format(error=exc))

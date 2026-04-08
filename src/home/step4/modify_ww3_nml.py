@@ -1858,6 +1858,22 @@ class ModifyWW3NML:
         except Exception:
             return None
 
+    def _output_scheme_contains_var(self, target_var):
+        """检查当前谱分区输出方案是否包含指定变量"""
+        if not target_var:
+            return False
+
+        var_list_str = self._get_output_scheme_var_list()
+        if not var_list_str:
+            return False
+
+        target = str(target_var).strip().upper()
+        if not target:
+            return False
+
+        selected_vars = [item.strip().upper() for item in var_list_str.split() if item.strip()]
+        return target in selected_vars
+
     def _apply_output_scheme_to_dir(self, target_dir):
         """将谱分区输出方案写入指定目录的 ww3_shel.nml 和 ww3_ounf.nml"""
         if not target_dir or not isinstance(target_dir, str):
@@ -1914,6 +1930,9 @@ class ModifyWW3NML:
                     modified_any = True
             except Exception:
                 pass
+
+        if modified_any and self._output_scheme_contains_var("EF"):
+            self._modify_namelists_e3d_in_dir(target_dir)
 
         return modified_any
 
@@ -3713,18 +3732,17 @@ class ModifyWW3NML:
 
     def _modify_namelists_e3d_if_needed(self):
         """如果需要，修改 namelists.nml 中的 E3D 参数（支持嵌套网格模式）"""
-        # 检查计算模式是否为"谱空间逐点计算"
-        if not self._is_spectral_point_mode():
+        spectral_point_mode = self._is_spectral_point_mode()
+        has_spectral_points = (
+            spectral_point_mode
+            and hasattr(self, 'spectral_points_table')
+            and self.spectral_points_table.rowCount() > 1
+        )
+        output_scheme_has_ef = self._output_scheme_contains_var("EF")
+
+        if not has_spectral_points and not output_scheme_has_ef:
             return
-        
-        # 检查点列表是否不为空（跳过表头，所以 rowCount() > 1）
-        if not hasattr(self, 'spectral_points_table'):
-            return
-        
-        point_count = self.spectral_points_table.rowCount()
-        if point_count <= 1:  # 只有表头，没有数据点
-            return
-        
+
         # 检查是否是嵌套网格模式
         grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
         nested_text = tr("step2_grid_type_nested", "嵌套网格")
@@ -3742,7 +3760,10 @@ class ModifyWW3NML:
         else:
             # 普通网格模式：修改工作目录下的文件
             self._modify_namelists_e3d_in_dir(self.selected_folder)
-        
+
+        if not has_spectral_points:
+            return
+
         # 导出点列表到 points.list 文件（普通网格模式）
         if not is_nested_grid:
             self._export_points_to_file()
@@ -3768,7 +3789,7 @@ class ModifyWW3NML:
         """在指定目录下修改 namelists.nml 中的 E3D 参数"""
         namelists_path = os.path.join(target_dir, "namelists.nml")
         if not os.path.exists(namelists_path):
-            return
+            return False
         
         try:
             with open(namelists_path, "r", encoding="utf-8") as f:
@@ -3776,21 +3797,44 @@ class ModifyWW3NML:
             
             new_lines = []
             modified = False
+            in_outs_block = False
             for line in lines:
-                # 匹配 &OUTS E3D = 0 / 或类似格式
-                if re.match(r'^\s*&OUTS\s+E3D\s*=\s*0\s*/', line, re.IGNORECASE):
-                    new_lines.append("&OUTS E3D = 1 /\n")
-                    modified = True
-                else:
+                stripped = line.lstrip()
+                is_comment = stripped.startswith('!')
+
+                if not is_comment and re.match(r'^\s*&OUTS\b', line, re.IGNORECASE):
+                    in_outs_block = True
                     new_lines.append(line)
+                    continue
+
+                if in_outs_block and not is_comment:
+                    updated_line, replace_count = re.subn(
+                        r'^(\s*E3D\s*=\s*)\d+(\s*,.*)?$',
+                        r'\g<1>1\2',
+                        line,
+                        count=1,
+                        flags=re.IGNORECASE,
+                    )
+                    if replace_count > 0:
+                        new_lines.append(updated_line)
+                        modified = (updated_line != line) or modified
+                        continue
+
+                    if re.match(r'^\s*/\s*$', line):
+                        in_outs_block = False
+
+                new_lines.append(line)
             
             if modified:
                 with open(namelists_path, "w", encoding="utf-8") as f:
                     f.writelines(new_lines)
-                self.log(tr("step4_namelists_e3d_updated", "✅ 已修改 namelists.nml：将 E3D 从 0 改为 1（谱空间逐点计算模式）"))
+                self.log(tr("step4_namelists_e3d_updated", "✅ 已修改 namelists.nml：将 &OUTS 中的 E3D 设为 1"))
+                return True
+            return False
         
         except Exception as e:
             self.log(tr("namelists_modify_error", "❌ 修改 namelists.nml 时出错：{error}").format(error=str(e)))
+            return False
 
     def _modify_ww3_shel_point_file(self, silent=False):
         """修改 ww3_shel.nml，在 TYPE%FIELD%LIST 下一行添加 TYPE%POINT%FILE（支持嵌套网格模式）

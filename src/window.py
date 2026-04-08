@@ -275,6 +275,7 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
 
         # 第一步：选择强迫场文件（UI 与按钮逻辑在 HomeStepOneCard）
         self.create_step_1_card(content_widget, content_layout)
+        self._setup_step1_runtime()
 
         # 第二步：生成网格
         self.create_step_2_card(content_widget, content_layout)
@@ -890,6 +891,11 @@ class MainWindow(FluentWindow, Style, Log, FileOpsMixin, HomeStepOneCard, HomeSt
             self._update_jason3_file_buttons()
         if hasattr(self, '_update_ndbc_file_buttons'):
             self._update_ndbc_file_buttons()
+
+    def _setup_step1_runtime(self):
+        """初始化 Step1 的 Facade / View / Controller 运行时。"""
+        if hasattr(self, '_ensure_step1_runtime'):
+            self._ensure_step1_runtime()
         
     def _show_info_bar(self, info_type, title, content):
         """显示 InfoBar 消息（通过信号调用，在主线程中执行）"""

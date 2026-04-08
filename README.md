@@ -749,7 +749,7 @@ Notably, we modify `ww3_prnc.nml`: `FILE%FILENAME = '../wind.nc'` to avoid doubl
 
 In the previous section, these three logs are for spectral point mode, and they are easy to understand.
 
-
+ Log: E3D is changed from 0 to 1, if the spectral partitioning output scheme includes EF, then this will also be executed.
 
 
 ### Local run

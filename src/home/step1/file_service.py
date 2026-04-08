@@ -9,6 +9,7 @@ from netCDF4 import Dataset
 from typing import Optional
 from setting.language_manager import tr
 from .file_path_manager import FilePathManager
+from .state import ForcingField, Step1Files
 from .variable_detector import VariableDetector
 
 
@@ -215,6 +216,62 @@ class FileService:
             self.log(tr("log_copy_fix_failed", "⚠️ 复制或修复文件时出错: {error}").format(error=e))
             return None
 
+    def scan_forcing_files(self, selected_folder: str) -> Step1Files:
+        """
+        纯扫描工作目录中的强迫场文件，不直接操作 UI。
+        """
+        files = Step1Files()
+        try:
+            if not selected_folder or not os.path.isdir(selected_folder):
+                return files
+
+            nc_files = glob.glob(os.path.join(selected_folder, "*.nc"))
+            field_patterns = {
+                ForcingField.WIND: ["wind.nc"],
+                ForcingField.CURRENT: ["current.nc"],
+                ForcingField.LEVEL: ["level.nc"],
+                ForcingField.ICE: ["ice.nc"],
+            }
+            found_files: dict[ForcingField, str] = {}
+
+            for field, patterns in field_patterns.items():
+                for pattern in patterns:
+                    file_path = os.path.join(selected_folder, pattern)
+                    if os.path.exists(file_path):
+                        found_files[field] = file_path
+                        break
+
+            for nc_file in nc_files:
+                filename = os.path.basename(nc_file)
+                fields = self.path_manager.parse_forcing_filename(filename)
+                if len(fields) > 1:
+                    for field_name in fields:
+                        try:
+                            field = ForcingField(field_name)
+                        except ValueError:
+                            continue
+                        if field not in found_files:
+                            found_files[field] = nc_file
+                        elif found_files[field] == os.path.join(selected_folder, f"{field.value}.nc"):
+                            pass
+
+            missing_fields = [field for field in field_patterns.keys() if field not in found_files]
+            if missing_fields:
+                for nc_file in nc_files:
+                    detected = VariableDetector.detect_all_forcing_fields_in_file(nc_file)
+                    for field in list(missing_fields):
+                        if detected.get(field.value) and field not in found_files:
+                            found_files[field] = nc_file
+                            missing_fields.remove(field)
+                    if not missing_fields:
+                        break
+
+            for field, path in found_files.items():
+                files.set(field, path)
+        except Exception:
+            pass
+        return files
+
     def detect_and_fill_forcing_fields(self, instance, selected_folder: str):
         """
         检测工作目录中符合规范的强迫场文件，并自动填充相应的按钮
@@ -224,125 +281,48 @@ class FileService:
             selected_folder: 工作目录路径
         """
         try:
-            # 重置按钮文本
-            if hasattr(instance, 'btn_choose_wind_file'):
-                default_text = tr("step1_choose_wind", "选择风场")
-                if hasattr(instance, '_set_home_forcing_button_text'):
-                    instance._set_home_forcing_button_text(instance.btn_choose_wind_file, default_text, filled=False)
-                else:
-                    instance.btn_choose_wind_file.setText(default_text)
+            found_files = self.scan_forcing_files(selected_folder)
+
             if hasattr(instance, 'selected_origin_file'):
-                instance.selected_origin_file = None
-
-            if hasattr(instance, 'btn_choose_current_file'):
-                default_text = tr("step1_choose_current", "选择流场")
-                if hasattr(instance, '_set_home_forcing_button_text'):
-                    instance._set_home_forcing_button_text(instance.btn_choose_current_file, default_text, filled=False)
-                else:
-                    instance.btn_choose_current_file.setText(default_text)
+                instance.selected_origin_file = found_files.wind
             if hasattr(instance, 'selected_current_file'):
-                instance.selected_current_file = None
-
-            if hasattr(instance, 'btn_choose_level_file'):
-                default_text = tr("step1_choose_level", "选择水位场")
-                if hasattr(instance, '_set_home_forcing_button_text'):
-                    instance._set_home_forcing_button_text(instance.btn_choose_level_file, default_text, filled=False)
-                else:
-                    instance.btn_choose_level_file.setText(default_text)
+                instance.selected_current_file = found_files.current
             if hasattr(instance, 'selected_level_file'):
-                instance.selected_level_file = None
-
-            if hasattr(instance, 'btn_choose_ice_file_home'):
-                default_text = tr("step1_choose_ice", "选择海冰场")
-                if hasattr(instance, '_set_home_forcing_button_text'):
-                    instance._set_home_forcing_button_text(instance.btn_choose_ice_file_home, default_text, filled=False)
-                else:
-                    instance.btn_choose_ice_file_home.setText(default_text)
+                instance.selected_level_file = found_files.level
             if hasattr(instance, 'selected_ice_file'):
-                instance.selected_ice_file = None
+                instance.selected_ice_file = found_files.ice
 
-            # 查找文件
-            nc_files = glob.glob(os.path.join(selected_folder, "*.nc"))
-            field_patterns = {
-                'wind': ['wind.nc'],
-                'current': ['current.nc'],
-                'level': ['level.nc'],
-                'ice': ['ice.nc']
+            def _display_name(path: Optional[str], default_text: str) -> str:
+                if not path:
+                    return default_text
+                file_name = os.path.basename(path)
+                return file_name[:27] + "..." if len(file_name) > 30 else file_name
+
+            if hasattr(instance, '_set_wind_file_button_text'):
+                instance._set_wind_file_button_text(
+                    _display_name(found_files.wind, tr("step1_choose_wind", "选择风场")),
+                    filled=bool(found_files.wind),
+                )
+            elif hasattr(instance, 'btn_choose_wind_file') and hasattr(instance, '_set_home_forcing_button_text'):
+                instance._set_home_forcing_button_text(
+                    instance.btn_choose_wind_file,
+                    _display_name(found_files.wind, tr("step1_choose_wind", "选择风场")),
+                    filled=bool(found_files.wind),
+                )
+
+            button_map = {
+                'current': ('btn_choose_current_file', tr("step1_choose_current", "选择流场"), found_files.current),
+                'level': ('btn_choose_level_file', tr("step1_choose_level", "选择水位场"), found_files.level),
+                'ice': ('btn_choose_ice_file_home', tr("step1_choose_ice", "选择海冰场"), found_files.ice),
             }
-            found_files = {}
-            
-            # 先查找单场文件
-            for field_name, patterns in field_patterns.items():
-                for pattern in patterns:
-                    file_path = os.path.join(selected_folder, pattern)
-                    if os.path.exists(file_path):
-                        found_files[field_name] = file_path
-                        break
-            
-            # 再查找多场文件
-            for nc_file in nc_files:
-                filename = os.path.basename(nc_file)
-                fields = self.path_manager.parse_forcing_filename(filename)
-                if len(fields) > 1:
-                    for field in fields:
-                        if field not in found_files:
-                            found_files[field] = nc_file
-                        elif found_files[field] == os.path.join(selected_folder, f"{field}.nc"):
-                            pass  # 单场文件优先
+            for _, (button_attr, default_text, path) in button_map.items():
+                if hasattr(instance, button_attr) and hasattr(instance, '_set_home_forcing_button_text'):
+                    instance._set_home_forcing_button_text(
+                        getattr(instance, button_attr),
+                        _display_name(path, default_text),
+                        filled=bool(path),
+                    )
 
-            # 文件名未包含场信息时，尝试按变量检测补齐缺失场
-            missing_fields = [f for f in field_patterns.keys() if f not in found_files]
-            if missing_fields:
-                for nc_file in nc_files:
-                    detected = VariableDetector.detect_all_forcing_fields_in_file(nc_file)
-                    for field in list(missing_fields):
-                        if detected.get(field) and field not in found_files:
-                            found_files[field] = nc_file
-                            missing_fields.remove(field)
-                    if not missing_fields:
-                        break
-            
-            # 更新UI和状态
-            for field_name, file_path in found_files.items():
-                file_name = os.path.basename(file_path)
-                display_name = file_name[:27] + "..." if len(file_name) > 30 else file_name
-                
-                if field_name == 'wind':
-                    if hasattr(instance, '_set_wind_file_button_text'):
-                        instance._set_wind_file_button_text(display_name, filled=True)
-                    elif hasattr(instance, 'btn_choose_wind_file'):
-                        if hasattr(instance, '_set_home_forcing_button_text'):
-                            instance._set_home_forcing_button_text(instance.btn_choose_wind_file, display_name, filled=True)
-                        else:
-                            instance.btn_choose_wind_file.setText(display_name)
-                    if not getattr(instance, 'selected_origin_file', None):
-                        instance.selected_origin_file = file_path
-                elif field_name == 'current':
-                    if hasattr(instance, 'selected_current_file'):
-                        instance.selected_current_file = file_path
-                    if hasattr(instance, 'btn_choose_current_file'):
-                        if hasattr(instance, '_set_home_forcing_button_text'):
-                            instance._set_home_forcing_button_text(instance.btn_choose_current_file, display_name, filled=True)
-                        else:
-                            instance.btn_choose_current_file.setText(display_name)
-                elif field_name == 'level':
-                    if hasattr(instance, 'selected_level_file'):
-                        instance.selected_level_file = file_path
-                    if hasattr(instance, 'btn_choose_level_file'):
-                        if hasattr(instance, '_set_home_forcing_button_text'):
-                            instance._set_home_forcing_button_text(instance.btn_choose_level_file, display_name, filled=True)
-                        else:
-                            instance.btn_choose_level_file.setText(display_name)
-                elif field_name == 'ice':
-                    if hasattr(instance, 'selected_ice_file'):
-                        instance.selected_ice_file = file_path
-                    if hasattr(instance, 'btn_choose_ice_file_home'):
-                        if hasattr(instance, '_set_home_forcing_button_text'):
-                            instance._set_home_forcing_button_text(instance.btn_choose_ice_file_home, display_name, filled=True)
-                        else:
-                            instance.btn_choose_ice_file_home.setText(display_name)
-            
-            # 更新显示
             if hasattr(instance, '_update_forcing_fields_display'):
                 instance._update_forcing_fields_display()
         except Exception:
