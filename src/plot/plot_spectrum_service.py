@@ -5,16 +5,72 @@
 import os
 import glob
 import re
-import platform
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.collections import LineCollection
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from netCDF4 import Dataset
 from PyQt6 import QtCore
-from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog
+from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QWidget, QSizePolicy, QHBoxLayout
 from qfluentwidgets import InfoBar
 from setting.language_manager import tr
+from home.step3.step3_service import _PointSelectMapDialog
+
+
+def _matplotlib_sans_priority_for_chinese_maps(app_self=None):
+    """供地图类 Figure 使用：优先可显示中文的 sans-serif，避免仅依赖 Qt 字体名与 matplotlib 不一致。"""
+    import platform
+    from matplotlib import font_manager
+
+    available = {f.name for f in font_manager.fontManager.ttflist}
+
+    system = platform.system()
+    if system == "Windows":
+        cjk_candidates = [
+            "Microsoft YaHei",
+            "Microsoft YaHei UI",
+            "SimHei",
+            "SimSun",
+            "KaiTi",
+            "FangSong",
+        ]
+    elif system == "Darwin":
+        cjk_candidates = [
+            "PingFang SC",
+            "PingFang TC",
+            "Hiragino Sans GB",
+            "STSong",
+            "STHeiti",
+            "Heiti SC",
+            "Songti SC",
+            "Arial Unicode MS",
+        ]
+    else:
+        cjk_candidates = [
+            "Noto Sans CJK SC",
+            "Noto Sans CJK JP",
+            "Source Han Sans SC",
+            "WenQuanYi Micro Hei",
+            "WenQuanYi Zen Hei",
+            "Noto Sans CJK HK",
+            "Droid Sans Fallback",
+        ]
+
+    picks = [name for name in cjk_candidates if name in available]
+
+    picker = getattr(app_self, "_pick_ui_font_for_matplotlib", None) if app_self is not None else None
+    if callable(picker):
+        ui_font = picker()
+        if ui_font and ui_font not in picks:
+            picks.append(ui_font)
+
+    if "DejaVu Sans" not in picks:
+        picks.append("DejaVu Sans")
+
+    return picks
 
 
 class SpectrumServiceMixin:
@@ -160,33 +216,17 @@ class SpectrumServiceMixin:
             pass
 
     def show_spectrum_stations_on_map(self):
-        """显示二维谱站点在地图上的位置（只显示，不允许选点）"""
-        chinese_font = None
+        """显示二维谱站点在地图上的位置（只显示；与第三步主页谱点地图风格一致，无选点交互按钮栏）"""
         try:
-            system = platform.system()
-            if system == 'Windows':
-                chinese_fonts = ['Microsoft YaHei', 'SimHei', 'SimSun', 'KaiTi']
-            elif system == 'Darwin':
-                chinese_fonts = ['PingFang SC', 'STHeiti', 'Arial Unicode MS', 'Heiti SC']
-            else:
-                chinese_fonts = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Droid Sans Fallback']
+            plt.rcParams["font.sans-serif"] = _matplotlib_sans_priority_for_chinese_maps(self)
+            plt.rcParams["axes.unicode_minus"] = False
+            import warnings
 
-            from matplotlib import font_manager
-            available_fonts = [f.name for f in font_manager.fontManager.ttflist]
-            for font in chinese_fonts:
-                if font in available_fonts:
-                    chinese_font = font
-                    break
-
-            if chinese_font:
-                plt.rcParams['font.sans-serif'] = [chinese_font]
-                plt.rcParams['axes.unicode_minus'] = False
-            else:
-                import warnings
-                warnings.filterwarnings('ignore', category=UserWarning, module='cartopy')
+            warnings.filterwarnings("ignore", category=UserWarning, module="cartopy")
         except Exception:
             import warnings
-            warnings.filterwarnings('ignore', category=UserWarning, module='cartopy')
+
+            warnings.filterwarnings("ignore", category=UserWarning, module="cartopy")
 
         if not hasattr(self, 'spectrum_stations_table'):
             InfoBar.warning(
@@ -208,6 +248,8 @@ class SpectrumServiceMixin:
                     lon = float(lon_item.text().strip())
                     lat = float(lat_item.text().strip())
                     name = name_item.text().strip() if name_item else f"{i}"
+                    if name.upper() == "STOPSTRING":
+                        continue
                     points.append({'lon': lon, 'lat': lat, 'name': name})
                 except ValueError:
                     continue
@@ -307,32 +349,151 @@ class SpectrumServiceMixin:
             )
             return
 
-        lon_min, lon_max, lat_min, lat_max = spectrum_bounds
-        lon_pad = max(1.0, (lon_max - lon_min) * 0.1)
-        lat_pad = max(1.0, (lat_max - lat_min) * 0.1)
-        lon_min -= lon_pad
-        lon_max += lon_pad
-        lat_min -= lat_pad
-        lat_max += lat_pad
+        sp_lon_min, sp_lon_max, sp_lat_min, sp_lat_max = spectrum_bounds
+        lons_pts = [p['lon'] for p in points]
+        lats_pts = [p['lat'] for p in points]
 
-        fig = plt.figure(figsize=(10, 6))
-        ax = plt.axes(projection=ccrs.PlateCarree())
-        ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
-        ax.add_feature(cfeature.LAND, facecolor='lightgray')
-        ax.add_feature(cfeature.COASTLINE)
-        ax.add_feature(cfeature.BORDERS, linestyle=':')
-        ax.gridlines(draw_labels=True, linestyle='--', alpha=0.5)
+        bounds_dict = self._read_grid_meta_bounds() if hasattr(self, "_read_grid_meta_bounds") else None
+        unst_show_ctx = None
+        if hasattr(self, "_needs_unstructured_triangulation_check") and self._needs_unstructured_triangulation_check():
+            unst_show_ctx = (
+                self._load_unstructured_ww3_pick_context()
+                if hasattr(self, "_load_unstructured_ww3_pick_context")
+                else None
+            )
 
-        lons = [p['lon'] for p in points]
-        lats = [p['lat'] for p in points]
-        ax.scatter(lons, lats, color='red', s=30, transform=ccrs.PlateCarree(), zorder=3)
+        if bounds_dict:
+            lon_min_m = min(min(lons_pts), bounds_dict["lon_min"], sp_lon_min)
+            lon_max_m = max(max(lons_pts), bounds_dict["lon_max"], sp_lon_max)
+            lat_min_m = min(min(lats_pts), bounds_dict["lat_min"], sp_lat_min)
+            lat_max_m = max(max(lats_pts), bounds_dict["lat_max"], sp_lat_max)
+        else:
+            lon_min_m = min(min(lons_pts), sp_lon_min)
+            lon_max_m = max(max(lons_pts), sp_lon_max)
+            lat_min_m = min(min(lats_pts), sp_lat_min)
+            lat_max_m = max(max(lats_pts), sp_lat_max)
 
-        for p in points:
-            ax.text(p['lon'], p['lat'], p['name'], transform=ccrs.PlateCarree(),
-                    fontsize=8, color='black', zorder=4, ha='left', va='bottom')
+        lon_range_m = lon_max_m - lon_min_m
+        lat_range_m = lat_max_m - lat_min_m
+        margin_lon = max(lon_range_m * 0.1, 2.0)
+        margin_lat = max(lat_range_m * 0.1, 2.0)
+        display_lon_min = lon_min_m - margin_lon
+        display_lon_max = lon_max_m + margin_lon
+        display_lat_min = lat_min_m - margin_lat
+        display_lat_max = lat_max_m + margin_lat
 
-        plt.title(tr("plotting_spectrum_stations_distribution", "二维谱站点分布"))
-        plt.show()
+        ref_lon_max_for_wrap = lon_max_m
+        # 判断投影方式（与第三步主页谱点预览一致）
+        if display_lon_min < 0 or display_lon_max < 0:
+            proj = ccrs.Mercator(central_longitude=180)
+        else:
+            proj = ccrs.Mercator(central_longitude=0)
+            if display_lon_max > 180:
+                mwrap = display_lon_max - ref_lon_max_for_wrap
+                display_lon_max = min(180.0 + mwrap, 185.0)
+            elif ref_lon_max_for_wrap >= 179:
+                mwrap = display_lon_max - ref_lon_max_for_wrap
+                display_lon_max = min(180.0, ref_lon_max_for_wrap + mwrap)
+
+        fig = Figure(figsize=(12, 10), dpi=100)
+        ax = fig.add_subplot(1, 1, 1, projection=proj)
+        ax.set_extent([display_lon_min, display_lon_max, display_lat_min, display_lat_max], crs=ccrs.PlateCarree())
+
+        ax.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")
+        ax.add_feature(cfeature.LAND, facecolor="#f0f0f0")
+        ax.coastlines(resolution="10m", linewidth=0.6)
+
+        if unst_show_ctx is not None:
+            from home.step2.grid_viz_worker import unst_wireframe_segments
+
+            segs, _ = unst_wireframe_segments(
+                unst_show_ctx["xy"],
+                unst_show_ctx["ect"],
+                unst_show_ctx["tri_mask"],
+                80000,
+            )
+            if segs.size:
+                lc = LineCollection(
+                    segs,
+                    colors="steelblue",
+                    linewidths=0.5,
+                    alpha=0.9,
+                    transform=ccrs.PlateCarree(),
+                    label=tr("step3_unstructured_mesh_outline", "非结构网格"),
+                )
+                ax.add_collection(lc)
+        elif bounds_dict:
+            bounds_lon = [
+                bounds_dict["lon_min"],
+                bounds_dict["lon_max"],
+                bounds_dict["lon_max"],
+                bounds_dict["lon_min"],
+                bounds_dict["lon_min"],
+            ]
+            bounds_lat = [
+                bounds_dict["lat_min"],
+                bounds_dict["lat_min"],
+                bounds_dict["lat_max"],
+                bounds_dict["lat_max"],
+                bounds_dict["lat_min"],
+            ]
+            ax.plot(
+                bounds_lon,
+                bounds_lat,
+                transform=ccrs.PlateCarree(),
+                color="blue",
+                linewidth=2,
+                linestyle="--",
+                label=tr("step3_map_range_label", "地图范围"),
+            )
+
+        for i, point in enumerate(points):
+            ax.plot(
+                point["lon"],
+                point["lat"],
+                "ro",
+                markersize=10,
+                transform=ccrs.PlateCarree(),
+                label=tr("step3_point_label", "点位") if i == 0 else "",
+            )
+            ax.text(
+                point["lon"],
+                point["lat"],
+                f"  {point['name']}",
+                transform=ccrs.PlateCarree(),
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7),
+            )
+
+        if points:
+            ax.legend(loc="upper right")
+
+        gl = ax.gridlines(
+            crs=ccrs.PlateCarree(),
+            draw_labels=True,
+            linewidth=0.5,
+            color="gray",
+            alpha=0.5,
+            linestyle="--",
+        )
+        gl.top_labels = False
+        gl.right_labels = False
+
+        title_base = tr("plotting_spectrum_stations_distribution", "二维谱站点分布")
+        ax.set_title(f'{title_base}（共{len(points)}个点位）', fontsize=14, fontweight="bold")
+
+        fig.subplots_adjust(left=0.01, right=0.995, top=0.955, bottom=0.05)
+
+        dialog = _PointSelectMapDialog(self, content_aspect_wh=1.2)
+        content_widget = QWidget()
+        main_layout = QHBoxLayout(content_widget)
+        main_layout.setContentsMargins(2, 2, 2, 2)
+        main_layout.setSpacing(0)
+        canvas = FigureCanvas(fig)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        main_layout.addWidget(canvas, 1)
+        dialog.set_main_widget(content_widget)
+        dialog.exec()
 
     def view_spectrum_images(self):
         """查看已生成的二维谱图（在右侧抽屉中显示）"""

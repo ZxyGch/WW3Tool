@@ -1516,6 +1516,9 @@ class StepThreeServiceMixin:
                 # 删除对应的文本标签
                 if 'text_label' in removed_point:
                     removed_point['text_label'].remove()
+                # 删除点与其标签间的连接线（虚线）
+                if removed_point.get('line') is not None:
+                    removed_point['line'].remove()
                 # 从markers列表中删除
                 if selected_markers:
                     selected_markers.pop()
@@ -1552,6 +1555,8 @@ class StepThreeServiceMixin:
                                         point['marker'].remove()
                                     if 'text_label' in point:
                                         point['text_label'].remove()
+                                    if point.get('line') is not None:
+                                        point['line'].remove()
                                     # 从列表中删除
                                     existing_points.pop(i)
                                     if i < len(existing_markers):

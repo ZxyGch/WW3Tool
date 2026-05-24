@@ -20,6 +20,6 @@ WW3-Grid-Generator/cache
 jason3
 *.nc
 grid.nml
-public/config.json
+config.json
 ndbc
 
