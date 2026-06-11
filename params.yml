@@ -1,0 +1,266 @@
+presets:
+  output_scheme:
+    standard:
+    - HS
+    - DIR
+    - FP
+    - T02
+    - WND
+    - PHS
+    - PTP
+    - PDIR
+    - PWS
+    - PNR
+    - TWS
+    with_spectrum:
+    - HS
+    - DIR
+    - FP
+    - T02
+    - WND
+    - PHS
+    - PTP
+    - PDIR
+    - PWS
+    - PNR
+    - TWS
+    - EF
+    all_fields:
+    - DPT
+    - CUR
+    - WND
+    - AST
+    - WLV
+    - ICE
+    - IBG
+    - D50
+    - IC1
+    - IC5
+    - HS
+    - LM
+    - T02
+    - T0M1
+    - T01
+    - FP
+    - DIR
+    - SPR
+    - DP
+    - HIG
+    - EF
+    - TH1M
+    - STH1M
+    - TH2M
+    - STH2M
+    - WN
+    - PHS
+    - PTP
+    - PLP
+    - PDIR
+    - PSPR
+    - PWS
+    - PDP
+    - PQP
+    - PPE
+    - PGW
+    - PSW
+    - PTM10
+    - PT01
+    - PT02
+    - PEP
+    - TWS
+    - PNR
+    - UST
+    - CHA
+    - CGE
+    - FAW
+    - TAW
+    - TWA
+    - WCC
+    - WCF
+    - WCH
+    - WCM
+    - FWS
+    - SXY
+    - TWO
+    - BHD
+    - FOC
+    - TUS
+    - USS
+    - P2S
+    - USF
+    - P2L
+    - TWI
+    - FIC
+    - USP
+    - TOC
+    - ABR
+    - UBR
+    - BED
+    - FBB
+    - TBB
+    - MSS
+    - MSC
+    - MSD
+    - MCD
+    - QP
+    - QKK
+    - SKW
+    - EMB
+    - DTD
+    - FC
+    - CFX
+    - CFD
+    - CFK
+  st:
+    ST2: /public/home//software/wavewatch3/model/exe
+    ST4: /public/home//software2/ww4/model/exe
+    ST6: /public/home//software2/ww6/model/exe
+    ST6A: /public/home//software2/ww6a/model/exe
+    ST6B: /public/home//software2/ww6b/model/exe
+  structured_bathymetry:
+  - GEBCO
+  - ETOP1
+  - ETOP2
+  smc_bathymetry:
+  - ETOPO1
+  - ETOPO2
+  - GEBCO
+  coastline_precision:
+  - full
+  - high
+  - inter
+  - low
+  - coarse
+  file_split:
+  - none
+  - hour
+  - day
+  - month
+  - year
+workdir:
+  path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
+forcing:
+  wind: /Users/zxy/ocean/Paper/WW3Tool/public/forcing/era5_wind.nc
+  current: /Users/zxy/ocean/Paper/WW3Tool/public/forcing/cmems_current_level.nc
+  level: /Users/zxy/ocean/Paper/WW3Tool/public/forcing/cmems_current_level.nc
+  ice: null
+  process_mode: copy
+  auto_associate: true
+grid:
+  mesh_type: structured
+  grid_type: normal
+  gridgen_version: Python
+  reference_data_path: null
+  nested_contraction_coefficient: 1.3
+  outer:
+    dx: 0.05
+    dy: 0.05
+    lon:
+    - 110.0
+    - 130.0
+    lat:
+    - 10.0
+    - 30.0
+  structured:
+    bathymetry: GEBCO
+    coastline_precision: full
+    min_dist: 20
+    cut_off: 0
+    lim_bathy: 0.4
+    lim_val: 0.5
+    split_lim: 0
+    lake_tol: 50
+  smc:
+    bathymetry: ETOPO2
+    bathy_convention: elevation
+    n_levels: 2
+    wlevel: 0
+    depmin: 0
+    dshalw: -150
+    generate_boundary_cells: true
+    msea: 1
+    options:
+      input:
+        auto_flip_lat: true
+        auto_flip_lon: true
+        coord_spacing_rtol: 0.001
+        coord_spacing_atol: 1.0e-08
+        nan_fill_value: 1000.0
+      grid:
+        name: grid
+        global: false
+        arctic: false
+        glb_arc_lat: 84.4
+        origin:
+          lon0: 0.0
+          lat0: -90.0
+      output:
+        file_prefix: ''
+  unstructured:
+    hmax: 100
+    hshr: 20
+    nwav: 400
+    dhdx: 0.05
+    deep_ocean_threshold_m: 4000
+    margin_deg: 1
+    edge_segments: 64
+    options:
+      spacing:
+        hmin: 20
+      data:
+        mask_file: ''
+      command_line_args:
+        black_sea: 3
+      regional:
+        stereo_lon: 120.0
+        stereo_lat: 20.0
+calc:
+  mode: region
+  points: []
+  track_points: []
+ww3:
+  start_date: '20250101'
+  end_date: '20250103'
+  compute_precision: 1800
+  output_precision: 3600
+  file_split: year
+  output_scheme: standard
+  st: ST2
+ww3_grid:
+  SPECTRUM%XFR: 1.1
+  SPECTRUM%FREQ1: 0.04118
+  SPECTRUM%NK: 32
+  SPECTRUM%NTH: 24
+  TIMESTEPS%DTMAX: 900
+  TIMESTEPS%DTXY: 320
+  TIMESTEPS%DTKTH: 300
+  TIMESTEPS%DTMIN: 15
+  GRID%ZLIM: -0.1
+  GRID%DMIN: 2.5
+slurm:
+  cpu: CPU6240R
+  nodes: 1
+  cores: 48
+  server_script_path: null
+plot:
+  result_folder:
+  jason3:
+    enabled: false
+    data_folder:
+    lon_lat:
+    - 110.0
+    - 130.0
+    - 10.0
+    - 30.0
+    time_range:
+    - '20250101'
+    - '20250103'
+    max_dist_deg: 0.125
+    time_window_hours: 0.5
+server:
+  host: ''
+  port: 22
+  user: ''
+  password: ''
+  key_file: null
+  remote_dir: ''

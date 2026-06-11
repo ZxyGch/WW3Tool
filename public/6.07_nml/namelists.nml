@@ -1,0 +1,627 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III 6.07 - namelists.nml (model parameters)              !
+! -------------------------------------------------------------------- !
+! Adapted from WW3 v6.07.1 source code (ww3_grid.ftn NAMELIST defs)  !
+! -------------------------------------------------------------------- !
+
+! -------------------------------------------------------------------- !
+! MISC namelist - Miscellaneous parameters                            !
+! -------------------------------------------------------------------- !
+! FLAGTR : Transparency flag for obstruction subgrid                  !
+!          0 = No obstruction subgrid                                 !
+!          1 = Transparencies at cell boundaries                      !
+!          2 = Transparencies at cell centers                         !
+!          3 = Transparencies at cell boundaries with continuous ice  !
+!          4 = Transparencies at cell centers with continuous ice     !
+! RWNDC  : Wind speed cutoff (m/s), below which wind input is zero    !
+! NOLEAP : If TRUE, use 365-day (no-leap) calendar                   !
+! -------------------------------------------------------------------- !
+&MISC
+  CICE0 = 0.5,
+  CICEN = 0.5,
+  LICE = 0.0,
+  XSEED = 1.0,
+  FLAGTR = 0,
+  XP = 0.15,
+  XR = 0.10,
+  XFILT = 0.05,
+  PMOVE = 0.5,
+  IHM = 100,
+  HSPM = 0.05,
+  WSM = 1.7,
+  WSC = 0.333,
+  FLC = .TRUE.,
+  FMICHE = 1.6,
+  RWNDC = 1.0,
+  FACBERG = 1.0,
+  NOSW = 5,
+  GSHIFT = 0.0,
+  WCOR1 = 99.0,
+  WCOR2 = 0.0,
+  STDX = -1.0,
+  STDY = -1.0,
+  STDT = -1.0,
+  ICEHMIN = 0.2,
+  ICEHINIT = 0.5,
+  ICEDISP = .FALSE.,
+  ICESLN = 1.0,
+  ICEWIND = 1.0,
+  ICESNL = 1.0,
+  ICESDS = 1.0,
+  ICEHFAC = 1.0,
+  ICEHDISP = 0.6,
+  ICEDDISP = 80,
+  ICEFDISP = 2,
+  NOLEAP = .FALSE.,
+  TRCKCMPR = .TRUE.,
+  PTM = 1,
+  PTFC = 0.1,
+  BTBET = 1.2
+/
+
+
+!
+! -------------------------------------------------------------------- !
+! FLX3 namelist - Flux/Bottom friction parameters                     !
+! -------------------------------------------------------------------- !
+! CDMAX  : Maximum drag coefficient for bottom friction              !
+! CTYPE  : Type flag for bottom friction parameterization             !
+!          0 = Default scheme (most stable)                           !
+!          1 = Empirical formula varying with wind speed               !
+!          2 = High wind speed correction scheme                      !
+!          3 = Advanced experimental scheme                           !
+! -------------------------------------------------------------------- !
+&FLX3
+  CDMAX = 2.5E-3,
+  CTYPE = 0
+/
+
+
+
+
+! Output of 3D arrays------------------------------------------------- !
+! Parameters (integers)   : Namelist OUTS
+! -------------------------------------------------------------------- !
+&OUTS
+  P2SF = 0,
+  I1P2SF = 1,
+  I2P2SF = 15,
+  US3D = 0,
+  I1US3D = 1,
+  I2US3D = 32,
+  USSP = 0,
+  IUSSP = 1,
+  STK_WN(1) = 0.0628318531,
+  E3D = 0,
+  I1E3D = 1,
+  I2E3D = 32,
+  TH1MF = 0,
+  I1TH1M = 1,
+  I2TH1M = 32,
+  STH1MF = 0,
+  I1STH1M = 1,
+  I2STH1M = 32,
+  TH2MF = 0,
+  I1TH2M = 1,
+  I2TH2M = 32,
+  STH2MF = 0,
+  I1STH2M = 1,
+  I2STH2M = 32
+/
+
+
+
+
+!
+! -------------------------------------------------------------------- !
+! Explicit Default Namelists                                           !
+! -------------------------------------------------------------------- !
+!   Reichl et al. 2014  : Namelist FLD1
+! -------------------------------------------------------------------- !
+&FLD1
+  TAILTYPE = 0,
+  TAILLEV = 0.006,
+  TAILT1 = 1.25,
+  TAILT2 = 3.00
+/
+! -------------------------------------------------------------------- !
+!   Donelan et al. 2012 : Namelist FLD2
+! -------------------------------------------------------------------- !
+&FLD2
+  TAILTYPE = 0,
+  TAILLEV = 0.006,
+  TAILT1 = 1.25,
+  TAILT2 = 3.00
+/
+! -------------------------------------------------------------------- !
+!   Hwang 2011          : Namelist FLX4
+! -------------------------------------------------------------------- !
+&FLX4
+  CDFAC = 1.0
+/
+! -------------------------------------------------------------------- !
+!   Generalization of Liu et al. : Namelist SIC2
+! -------------------------------------------------------------------- !
+&SIC2
+  IC2DISPER = .FALSE.,
+  IC2TURB = 1.0,
+  IC2ROUGH = 0.01,
+  IC2REYNOLDS = 1.5E5,
+  IC2SMOOTH = 2.0E5,
+  IC2VISC = 1.0,
+  IC2TURBS = 0.0,
+  IC2DMAX = 0.0
+/
+! -------------------------------------------------------------------- !
+!   Wang and Shen       : Namelist SIC3
+! -------------------------------------------------------------------- !
+&SIC3
+  IC3MAXTHK = 100.0,
+  IC2TURB = 2.0,
+  IC2ROUGH = 0.02,
+  IC2REYNOLDS = 1.5E5,
+  IC2SMOOTH = 7.0E4,
+  IC2VISC = 2.0,
+  IC2TURBS = 0.0,
+  IC3MAXCNC = 100.0,
+  IC3CHENG = .TRUE.,
+  USECGICE = .FALSE.,
+  IC3HILIM = 100.0,
+  IC3KILIM = 100.0,
+  IC3VISC = -2.0,
+  IC3ELAS = -4.0,
+  IC3DENS = -3.0,
+  IC3HICE = -1.0
+/
+! -------------------------------------------------------------------- !
+!   Empirical/parametric representations : Namelist SIC4
+!   NOTE: 6.07 only has IC4METHOD, IC4KI, IC4FC                      !
+! -------------------------------------------------------------------- !
+&SIC4
+  IC4METHOD = 1,
+  IC4KI = 0.0,
+  IC4FC = 0.0
+/
+! -------------------------------------------------------------------- !
+!   Effective medium models : Namelist SIC5
+! -------------------------------------------------------------------- !
+&SIC5
+  IC5MINIG = 1.0,
+  IC5MINWT = 0.0,
+  IC5MAXKRATIO = 1.0E9,
+  IC5MAXKI = 100.0,
+  IC5MINHW = 0.0,
+  IC5MAXITER = 100,
+  IC5RKICK = 0.0,
+  IC5KFILTER = 0.0025
+/
+! -------------------------------------------------------------------- !
+!   IG1 parameters       : Namelist SIG1
+! -------------------------------------------------------------------- !
+&SIG1
+  IGMETHOD = 2,
+  IGADDOUTP = 0,
+  IGSOURCE = 2,
+  IGBCOVERWRITE = .TRUE.,
+  IGMAXFREQ = 0.03,
+  IGSTERMS = 0,
+  IGSWELLMAX = .TRUE.,
+  IGSOURCEATBP = 0,
+  IGKDMIN = 1.1,
+  IGFIXEDDEPTH = 0.0,
+  IGEMPIRICAL = 0.00125
+/
+! -------------------------------------------------------------------- !
+!   Cavaleri and M-R    : Namelist SLN1
+! -------------------------------------------------------------------- !
+&SLN1
+  CLIN = 80.0,
+  RFPM = 1.0,
+  RFHF = 0.5
+/
+! -------------------------------------------------------------------- !
+!   WAM-3               : Namelist SIN1
+! -------------------------------------------------------------------- !
+&SIN1
+  CINP = 0.25
+/
+! -------------------------------------------------------------------- !
+!   Tolman and Chalikov : Namelist SIN2
+! -------------------------------------------------------------------- !
+&SIN2
+  ZWND = 10.0,
+  SWELLF = 0.100,
+  STABSH = 1.38,
+  STABOF = -0.01,
+  CNEG = -0.1,
+  CPOS = 0.1,
+  FNEG = 150.0
+/
+! -------------------------------------------------------------------- !
+!   WAM4 and variants   : Namelist SIN3
+! -------------------------------------------------------------------- !
+&SIN3
+  ZWND = 10.0,
+  ALPHA0 = 0.0095,
+  Z0MAX = 0.0,
+  BETAMAX = 1.2,
+  SINTHP = 2.0,
+  ZALP = 0.0110,
+  SWELLF = 0.0
+/
+! -------------------------------------------------------------------- !
+!   Janssen / Ardhuin   : Namelist SIN4  (6.07 version)              !
+!   NOTE: 6.07 does NOT have CAPCHA, UCAP, SIGMAUCAP, CHA0, CHAMIN, !
+!         SINTABLE, SINTAIL1, SINTAIL2, TAUWBUG, VISCSTRESS          !
+! -------------------------------------------------------------------- !
+&SIN4
+  ZWND = 10.0,
+  ALPHA0 = 0.0095,
+  Z0MAX = 0.0,
+  BETAMAX = 1.43,
+  SINTHP = 2.0,
+  ZALP = 0.006,
+  TAUWSHELTER = 0.3,
+  SWELLFPAR = 1,
+  SWELLF = 0.66,
+  SWELLF2 = -0.018,
+  SWELLF3 = 0.022,
+  SWELLF4 = 1.5E5,
+  SWELLF5 = 1.2,
+  SWELLF6 = 0.0,
+  SWELLF7 = 360000.0,
+  Z0RAT = 0.04,
+  SINBR = 0.0
+/
+! -------------------------------------------------------------------- !
+!   BYDRZ input         : Namelist SIN6
+! -------------------------------------------------------------------- !
+&SIN6
+  SINA0 = 0.09,
+  SINWS = 32.0,
+  SINFC = 6.0
+/
+! -------------------------------------------------------------------- !
+!   Discrete I.A.       : Namelist SNL1
+! -------------------------------------------------------------------- !
+&SNL1
+  LAMBDA = 0.25,
+  NLPROP = 3.00E7,
+  KDCONV = 0.75,
+  KDMIN = 0.50,
+  SNLCS1 = 5.5,
+  SNLCS2 = 0.833,
+  SNLCS3 = -1.25,
+  IQTYPE = 1,
+  TAILNL = -5.0,
+  GQMNF1 = 14,
+  GQMNT1 = 8,
+  GQMNQ_OM2 = 8,
+  GQMTHRSAT = 0.0,
+  GQMTHRCOU = 0.015,
+  GQAMP1 = 1.0,
+  GQAMP2 = 0.002,
+  GQAMP3 = 1.0,
+  GQAMP4 = 1.0
+/
+! -------------------------------------------------------------------- !
+!   Exact interactions  : Namelist SNL2
+! -------------------------------------------------------------------- !
+&SNL2
+  IQTYPE = 2,
+  TAILNL = -5.0,
+  NDEPTH = 0
+/
+! -------------------------------------------------------------------- !
+!                         Namelist ANL2
+! -------------------------------------------------------------------- !
+&ANL2
+  DEPTHS = 1000.0
+/
+! -------------------------------------------------------------------- !
+!   Gen. Multiple DIA   : Namelist SNL3
+! -------------------------------------------------------------------- !
+&SNL3
+  NQDEF = 0,
+  MSC = 0.0,
+  NSC = -3.5,
+  KDFD = 0.20,
+  KDFS = 5.00
+/
+! -------------------------------------------------------------------- !
+!                         Namelist ANL3
+! -------------------------------------------------------------------- !
+&ANL3
+  QPARMS = 0.25, 0.00, -1.0, 1.0E7, 0.00
+/
+! -------------------------------------------------------------------- !
+!   Two Scale Approx.   : Namelist SNL4
+! -------------------------------------------------------------------- !
+&SNL4
+  INDTSA = 1,
+  ALTLP = 2
+/
+! NOTE: SNL5 does NOT exist in WW3 6.07
+! -------------------------------------------------------------------- !
+! Nonlinear filter based on DIA  : Namelist SNLS
+! -------------------------------------------------------------------- !
+&SNLS
+  A34 = 0.05,
+  FHFC = 1.0E10,
+  DNM = 0.25,
+  FC1 = 1.25,
+  FC2 = 1.50,
+  FC3 = 6.00
+/
+! -------------------------------------------------------------------- !
+!   WAM-3               : Namelist SDS1
+! -------------------------------------------------------------------- !
+&SDS1
+  CDIS = -2.36E-5,
+  APM = 3.02E-3
+/
+! -------------------------------------------------------------------- !
+!   Tolman and Chalikov : Namelist SDS2
+! -------------------------------------------------------------------- !
+&SDS2
+  SDSA0 = 4.8,
+  SDSA1 = 1.7E-4,
+  SDSA2 = 2.0,
+  SDSB0 = 0.3E-3,
+  SDSB1 = 0.47,
+  PHIMIN = 0.003
+/
+! -------------------------------------------------------------------- !
+!   WAM4 and variants   : Namelist SDS3
+! -------------------------------------------------------------------- !
+&SDS3
+  SDSC1 = -2.1,
+  WNMEANP = 0.5,
+  FXPM3 = 4.0,
+  FXFM3 = 2.5,
+  SDSDELTA1 = 0.4,
+  SDSDELTA2 = 0.6
+/
+! -------------------------------------------------------------------- !
+!   Ardhuin             : Namelist SDS4  (6.07 version)              !
+!   NOTE: 6.07 uses SDSC1 (not SDSBCHOICE like 7.14)                 !
+!         6.07 has SDSBR2, SDSHFGEN, SDSLFGEN, FXINCUT, FXDSCUT     !
+!         6.07 does NOT have SDSFACMTF, SDSNMTF, SDSCUMP, CUMSIGP,  !
+!           WHITECAPDUR, SDSMWD, SDSMWPOW, SDKOF, SDSBT, SDSNUW     !
+! -------------------------------------------------------------------- !
+&SDS4
+  SDSC1 = 0.0,
+  WNMEANP = 0.5,
+  WNMEANPTAIL = -0.5,
+  FXPM3 = 4.0,
+  FXFM3 = 2.5,
+  FXFMAGE = 0.0,
+  FXINCUT = 0.0,
+  FXDSCUT = 0.0,
+  SDSC2 = -2.2E-5,
+  SDSCUM = -0.40344,
+  SDSSTRAIN = 0.0,
+  SDSSTRAINA = 0.0,
+  SDSSTRAIN2 = 0.0,
+  SDSC4 = 1.0,
+  SDSC5 = 0.0,
+  SDSC6 = 0.3,
+  SDSBR = 0.90E-3,
+  SDSBR2 = 0.8,
+  SDSP = 2.0,
+  SDSISO = 2,
+  SDSBCK = 0.0,
+  SDSABK = 1.5,
+  SDSPBK = 4.0,
+  SDSBINT = 0.3,
+  SDSHCK = 1.5,
+  SDSDTH = 80.0,
+  SDSCOS = 2.0,
+  SDSBRF1 = 0.5,
+  SDSBRFDF = 0,
+  SDSBM0 = 1.0,
+  SDSBM1 = 0.0,
+  SDSBM2 = 0.0,
+  SDSBM3 = 0.0,
+  SDSBM4 = 0.0,
+  SDSHFGEN = 0.0,
+  SDSLFGEN = 0.0,
+  WHITECAPWIDTH = 0.3
+/
+! -------------------------------------------------------------------- !
+!   BYDRZ               : Namelist SDS6
+! -------------------------------------------------------------------- !
+&SDS6
+  SDSET = .TRUE.,
+  SDSA1 = 4.75E-06,
+  SDSA2 = 7.00E-05,
+  SDSP1 = 4,
+  SDSP2 = 4
+/
+! -------------------------------------------------------------------- !
+!                       : Namelist SWL6
+! -------------------------------------------------------------------- !
+&SWL6
+  SWLB1 = 0.41E-02,
+  CSTB1 = .FALSE.
+/
+! -------------------------------------------------------------------- !
+!   JONSWAP             : Namelist SBT1
+! -------------------------------------------------------------------- !
+&SBT1
+  GAMMA = -0.067
+/
+! -------------------------------------------------------------------- !
+!   SBT4 parameters     : Namelist SBT4
+! -------------------------------------------------------------------- !
+&SBT4
+  SEDMAPD50 = .FALSE.,
+  SED_D50_UNIFORM = 2.0E-4,
+  RIPFAC1 = 0.4,
+  RIPFAC2 = -2.5,
+  RIPFAC3 = 1.2,
+  RIPFAC4 = 0.05,
+  SIGDEPTH = 0.05,
+  BOTROUGHMIN = 0.01,
+  BOTROUGHFAC = 1.00
+/
+! -------------------------------------------------------------------- !
+!   Battjes and Janssen : Namelist SDB1
+! -------------------------------------------------------------------- !
+&SDB1
+  BJALFA = 1.0,
+  BJGAM = 0.73,
+  BJFLAG = .TRUE.
+/
+! -------------------------------------------------------------------- !
+!   UOST parameters     : Namelist UOST
+! -------------------------------------------------------------------- !
+&UOST
+  UOSTFILELOCAL = 'obstructions_local.I Love ZhangXiaoPeng.in',
+  UOSTFILESHADOW = 'obstructions_shadow.I Love ZhangXiaoPeng.in',
+  UOSTFACTORLOCAL = 1,
+  UOSTFACTORSHADOW = 1
+/
+! -------------------------------------------------------------------- !
+!   First order         : Namelist PRO1
+! -------------------------------------------------------------------- !
+&PRO1
+  CFLTM = 0.7
+/
+! -------------------------------------------------------------------- !
+!   UQ/UNO with diffusion : Namelist PRO2
+! -------------------------------------------------------------------- !
+&PRO2
+  CFLTM = 0.7,
+  DTIME = 0.0,
+  LATMIN = 70.0
+/
+! -------------------------------------------------------------------- !
+! SMC grid propagation    : Namelist PSMC
+! -------------------------------------------------------------------- !
+&PSMC
+  CFLSM = 0.7,
+  DTIMS = 360.0,
+  RFMAXD = 36.0,
+  Arctic = .FALSE.,
+  AVERG = .TRUE.,
+  UNO3 = .FALSE.,
+  LvSMC = 1,
+  ISHFT = 0,
+  JEQT = 0,
+  NBISMC = 0,
+  SEAWND = .FALSE.
+/
+! -------------------------------------------------------------------- !
+!   UQ/UNO with averaging : Namelist PRO3
+! -------------------------------------------------------------------- !
+&PRO3
+  CFLTM = 0.7,
+  WDTHCG = 1.5,
+  WDTHTH = 1.5
+/
+! -------------------------------------------------------------------- !
+! Unstructured grids : Namelist UNST  (6.07 version)                 !
+! NOTE: 6.07 does NOT have UGBCCFL, JGS_LIMITER_FUNC, JGS_TRUNK_DIGITS
+! -------------------------------------------------------------------- !
+&UNST
+  UGOBCAUTO = .TRUE.,
+  UGOBCDEPTH = -10.0,
+  UGOBCFILE = 'unset',
+  EXPFSN = .TRUE.,
+  EXPFSPSI = .FALSE.,
+  EXPFSFCT = .FALSE.,
+  IMPFSN = .FALSE.,
+  IMPTOTAL = .FALSE.,
+  EXPTOTAL = .FALSE.,
+  IMPREFRACTION = .FALSE.,
+  IMPFREQSHIFT = .FALSE.,
+  IMPSOURCE = .FALSE.,
+  JGS_TERMINATE_MAXITER = .TRUE.,
+  JGS_TERMINATE_DIFFERENCE = .TRUE.,
+  JGS_TERMINATE_NORM = .FALSE.,
+  JGS_LIMITER = .FALSE.,
+  JGS_USE_JACOBI = .TRUE.,
+  JGS_BLOCK_GAUSS_SEIDEL = .TRUE.,
+  JGS_MAXITER = 100,
+  JGS_PMIN = 1,
+  JGS_DIFF_THR = 1.0E-10,
+  JGS_NORM_THR = 1.0E-20,
+  JGS_NLEVEL = 0,
+  JGS_SOURCE_NONLINEAR = .FALSE.,
+  SETUP_APPLY_WLV = .TRUE.,
+  SOLVERTHR_SETUP = 1.0E-6,
+  CRIT_DEP_SETUP = 0.1
+/
+! -------------------------------------------------------------------- !
+!   SIS1 parameters      : Namelist SIS1
+! -------------------------------------------------------------------- !
+&SIS1
+  ISC1 = 1.0,
+  ISC2 = 0.0
+/
+! -------------------------------------------------------------------- !
+!   SIS2 parameters      : Namelist SIS2
+! -------------------------------------------------------------------- !
+&SIS2
+  ISC1 = 1.0,
+  IS2C2 = 0.0,
+  IS2C3 = 0.0,
+  IS2BACKSCAT = 1.0,
+  IS2ISOSCAT = .TRUE.,
+  IS2BREAK = .FALSE.,
+  IS2DISP = .FALSE.,
+  IS2FRAGILITY = 0.9,
+  IS2CONC = 0.0,
+  IS2DMIN = 20.0,
+  IS2DAMP = 0.0,
+  IS2DUPDATE = .TRUE.,
+  IS2CREEPB = 0.0,
+  IS2CREEPC = 0.4,
+  IS2CREEPD = 0.5,
+  IS2CREEPN = 3.0,
+  IS2BREAKE = 1.0,
+  IS2BREAKF = 3.6,
+  IS2WIM1 = 1.0,
+  IS2FLEXSTR = 6.00E5,
+  IS2ANDISB = .TRUE.,
+  IS2ANDISE = 0.55,
+  IS2ANDISD = 2.0E-9,
+  IS2ANDISN = 1.0
+/
+! -------------------------------------------------------------------- !
+!   ref. parameters       : Namelist REF1
+! -------------------------------------------------------------------- !
+&REF1
+  REFCOAST = 0.0,
+  REFFREQ = 0.0,
+  REFMAP = 0.0,
+  REFMAPD = 0.0,
+  REFSUBGRID = 0.0,
+  REFICEBERG = 0.0,
+  REFCOSP_STRAIGHT = 4.0,
+  REFSLOPE = 0.22,
+  REFRMAX = 1.0,
+  REFFREQPOW = 2.0,
+  REFUNSTSOURCE = 0.0
+/
+! -------------------------------------------------------------------- !
+!   Pole  parameters   : Namelist ROTD
+! -------------------------------------------------------------------- !
+&ROTD
+  PLAT = 90.0,
+  PLON = -180.0,
+  UNROT = .FALSE.
+/
+! -------------------------------------------------------------------- !
+!   Pole parameters    : Namelist ROTB
+! -------------------------------------------------------------------- !
+&ROTB
+  BPLAT = 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0,
+  BPLON = -180.0, -180.0, -180.0, -180.0, -180.0, -180.0, -180.0, -180.0, -180.0
+/
+!
+! -------------------------------------------------------------------- !
+! END OF NAMELISTS                                                     !
+! -------------------------------------------------------------------- !
+END OF NAMELISTS

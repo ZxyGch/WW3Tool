@@ -729,7 +729,7 @@
   SDSDTH = 80.0,
   SDSCOS = 2.0,
   SDSBRF1 = 0.5,
-  SDSBRFDF = 0.0,
+  SDSBRFDF = 0,
   SDSNUW = 0.0,
   SDSBM0 = 1.0,
   SDSBM1 = 0.0,

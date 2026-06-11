@@ -674,7 +674,7 @@ def create_grid(**kwargs):
 
         meta_prefix = os.path.join(params["out_dir"], params["fname"])
         meta_prefix = os.path.abspath(meta_prefix).replace("\\", "/")
-        write_ww3meta(
+        _meta_msg, _meta_rc = write_ww3meta(
             meta_prefix,
             fname_nml_abs,
             "CURV",
@@ -685,6 +685,8 @@ def create_grid(**kwargs):
             1.0,
             is_global_override=params["IS_GLOBAL"],
         )
+        if _meta_rc != 0:
+            raise RuntimeError(f"Failed to write grid.meta: {_meta_msg}")
         print(f"  Written: {params['fname']}.bot", flush=True)
         print(f"  Written: {params['fname']}.mask", flush=True)
         print(f"  Written: {params['fname']}.mask_nobound", flush=True)
@@ -908,7 +910,7 @@ def create_grid(**kwargs):
     # WW3 grid description file (same as MATLAB gridgen: grid.nml in output dir)
     meta_prefix = os.path.join(params['out_dir'], params['fname'])
     meta_prefix = os.path.abspath(meta_prefix).replace("\\", "/")
-    write_ww3meta(
+    _meta_msg, _meta_rc = write_ww3meta(
         meta_prefix,
         fname_nml_abs,
         "RECT",
@@ -919,7 +921,9 @@ def create_grid(**kwargs):
         1.0,
         is_global_override=params["IS_GLOBAL"],
     )
-    print("  Written: grid.nml (WW3 grid description)", flush=True)
+    if _meta_rc != 0:
+        raise RuntimeError(f"Failed to write grid.meta: {_meta_msg}")
+    print("  Written: grid.meta (WW3 grid description)", flush=True)
     print('  Done.\n', flush=True)
     
     # Summary

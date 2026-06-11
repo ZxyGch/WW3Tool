@@ -90,50 +90,60 @@ def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=N
     lon = np.asarray(lon)
     lat = np.asarray(lat)
 
+    # Defaults match the un-nested Python callers; the namelist (when present and
+    # readable) refines them. A stale/unreadable namelist or bathymetry file must
+    # NOT abort grid.meta writing — geographic grids default to SPHE.
+    grid_name = file_prefix
+    coord = "'SPHE'"
+    isglobal = int(is_global_override) if is_global_override is not None else 0
+
     if fname_nml is not None:
         try:
             init_nml = read_namelist(fname_nml, "GRID_INIT")
             outgrid_nml = read_namelist(fname_nml, "OUTGRID")
             bathy_nml = read_namelist(fname_nml, "BATHY_FILE")
+            grid_name = str(init_nml.get("fname", file_prefix))
+            isglobal = int(outgrid_nml.get("is_global", isglobal))
+            ref_dir = os.path.normpath(
+                os.path.abspath(os.path.expanduser(str(init_nml["ref_dir"]).strip().strip("'\"")))
+            )
+            ref_grid = str(bathy_nml["ref_grid"])
+            xvar = str(bathy_nml["xvar"])
+            fname_bathy = os.path.normpath(os.path.join(ref_dir, f"{ref_grid}.nc"))
+            try:
+                with netCDF4.Dataset(fname_bathy, "r") as f:
+                    var_lon = f.variables[xvar]
+                    try:
+                        lon_units = var_lon.units
+                    except AttributeError:
+                        warnings.warn(
+                            "No units attribute for spatial dimensions. Setting units to degree"
+                        )
+                        lon_units = "degree"
+                coord = "'SPHE'" if "degree" in str(lon_units).lower() else "'CART'"
+            except Exception as e:
+                print(
+                    f"!!WARN!!: Cannot read bathymetry file for COORD detection ({e}); "
+                    f"defaulting GRID%COORD to {coord}",
+                    flush=True,
+                )
         except Exception as e:
-            print(f"!!ERROR!!: Cannot read namelist: {e}")
-            return str(e), -1
-        ref_dir = os.path.normpath(
-            os.path.abspath(os.path.expanduser(str(init_nml["ref_dir"]).strip().strip("'\"")))
-        )
-        ref_grid = str(bathy_nml["ref_grid"])
-        xvar = str(bathy_nml["xvar"])
-        grid_name = str(init_nml.get("fname", file_prefix))
-        fname_bathy = os.path.normpath(os.path.join(ref_dir, f"{ref_grid}.nc"))
-        try:
-            with netCDF4.Dataset(fname_bathy, "r") as f:
-                var_lon = f.variables[xvar]
-                try:
-                    lon_units = var_lon.units
-                except AttributeError:
-                    warnings.warn(
-                        "No units attribute for spatial dimensions. Setting units to degree"
-                    )
-                    lon_units = "degree"
-            coord = "'SPHE'" if "degree" in str(lon_units).lower() else "'CART'"
-        except Exception as e:
-            print(f"!!ERROR!!: Cannot read bathymetry file: {e}")
-            return f"Cannot read bathymetry file: {e}", -1
-        isglobal = int(outgrid_nml.get("is_global", 0))
-        if is_global_override is not None:
-            isglobal = int(is_global_override)
-        if isglobal == 1:
-            cstrng = "'SMPL'"
-        elif isglobal == 0:
-            cstrng = "'NONE'"
-        else:
-            print("!!ERROR!!: Unrecognized Grid Closure")
-            return "Unrecognized Grid Closure", -1
+            print(
+                f"!!WARN!!: Cannot read grid namelist '{fname_nml}' ({e}); "
+                "using default grid description parameters",
+                flush=True,
+            )
+
+    # Closure from is_global (namelist) or override; override always wins.
+    if is_global_override is not None:
+        isglobal = int(is_global_override)
+    if isglobal == 1:
+        cstrng = "'SMPL'"
+    elif isglobal == 0:
+        cstrng = "'NONE'"
     else:
-        grid_name = file_prefix
-        coord = "'SPHE'"
-        isglobal = int(is_global_override) if is_global_override is not None else 0
-        cstrng = "'SMPL'" if isglobal == 1 else "'NONE'"
+        print("!!ERROR!!: Unrecognized Grid Closure")
+        return "Unrecognized Grid Closure", -1
 
     if len(args) < 2:
         return "Missing required arguments N1, N2", -1

@@ -34,10 +34,41 @@ WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可
 ## 快速开始
 
 ```sh
-python run.py
+python3 runDesktop.py
 ```
 
 如果还有什么安装失败或缺失的包，请手动安装
+
+`runDesktop.py` 从 `src2/desktop` 启动独立实现的预处理主页。主页已按原应用的 Fluent 风格、导航、步骤卡片和右侧日志分栏进行对齐；设置与绘图等功能页将在迁移过程中继续补入。桌面动作调用 `src2/workflows`，不依赖旧主窗口业务实现。
+
+### 指令化预处理流程
+
+新架构代码从 `src2` 开始维护；旧 `src` 暂时保留为参考和兼容 fallback。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `runCLI.py`：
+
+```sh
+python3 runCLI.py
+python3 runCLI.py validate params.yml
+python3 runCLI.py prepare-forcing params.yml
+python3 runCLI.py run params.yml
+```
+
+单独执行 `python3 runCLI.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。随后程序会自动读取项目根目录下的 `params.yml` 并执行完整预处理流程。首次运行且参数文件不存在时，会先创建示例模板并等待你填写，不会用空模板直接执行；已有文件不会被覆盖。也可以使用 `python3 runCLI.py print-example` 单独输出模板内容。
+
+`prepare-forcing` 只执行第一步强迫场准备，包括复制/移动、变量识别、风场标准化和组合强迫场自动关联。
+
+指令入口直接调用 `src2/workflows`。桌面入口的预处理主页同样调用 workflows，当前覆盖强迫场准备、参数校验和预处理文件生成；其余界面动作会按步骤迁移到相同逻辑。
+
+不带参数执行和显式使用 `run` 都会读取 YAML 参数文件，完成强迫场准备、网格生成、计算模式产物和 WW3 配置文件生成，但不会自动执行 WAVEWATCH III、上传服务器或绘图。如果工作目录中已经有网格文件，可以使用 `--skip-grid` 跳过网格生成：
+
+```sh
+python3 runCLI.py run params.yml --skip-grid
+```
+
+`params.yml` 中的 `grid` 参数按网格类型分组：`structured` 包含水深、海岸线精度及 pygridgen 阈值；`smc` 包含水深类型、细化层数、物理和边界参数；`unstructured` 包含三角网格尺度、梯度、深水阈值及区域边界细分参数。`grid_type: nested` 时可显式填写 `inner`，也可以省略 `inner` 并由 `nested_contraction_coefficient` 自动生成内网格区域。
+
+`params.yml` 顶部的 `presets` 预存可用选项，供脚本校验并供后续桌面界面复用，包括输出字段方案、ST 路径、水深、海岸线精度和文件分割。`presets.st` 以名称映射服务器可执行目录路径，例如 `ST2: /public/home/.../model/exe`，随后由 `ww3.st: ST2` 选择使用哪条路径。`presets.output_scheme` 中完整定义字段数组，例如 `standard: [HS, DIR, FP, T02, WND]`，实际运行时通过 `ww3.output_scheme: standard` 选择方案。
+
+`ww3_grid` 直接使用 `ww3_grid.nml` 键名，例如 `SPECTRUM%XFR`、`TIMESTEPS%DTMAX`、`GRID%ZLIM`，用于配置频谱离散、数值积分步长和近岸深度参数。嵌套网格还可以通过 `ww3.inner_compute_precision` 与 `ww3.inner_output_precision` 单独配置内网格输出；`slurm.server_script_path` 可选用自定义 `server.sh` 模板。
 
 
 

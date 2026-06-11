@@ -38,10 +38,41 @@ If you find this tool useful, please give it a ⭐️ 🥳
 ## Quick Start
 
 ```sh
-python run.py
+python3 runDesktop.py
 ```
 
 If anything fails to install or some packages are missing, please install them manually.
+
+`runDesktop.py` starts an independently implemented preprocessing home page through `src2/desktop`. Its Fluent styling, navigation, step cards, and right-hand log panel are aligned with the established application; settings and plotting views will be brought across during migration. Desktop actions call `src2/workflows` rather than the old main-window business implementation.
+
+### Scripted Preprocessing
+
+The new architecture starts in `src2`; the old `src` tree is kept as reference and temporary compatibility fallback. For scripted workflows or server-side preprocessing, use `runCLI.py`:
+
+```sh
+python3 runCLI.py
+python3 runCLI.py validate params.yml
+python3 runCLI.py prepare-forcing params.yml
+python3 runCLI.py run params.yml
+```
+
+Running `python3 runCLI.py` without arguments checks runtime packages, installs missing ones from `src/requirements.txt`, then automatically reads the root-level `params.yml` and runs the full preprocessing workflow. On the first run, if `params.yml` does not exist, a template is created for editing and is not executed immediately. Existing parameter files are never overwritten. `python3 runCLI.py print-example` remains available for printing a template separately.
+
+`prepare-forcing` runs only Step 1 forcing preparation: copy/move, variable detection, wind normalization, and combined-forcing auto-association.
+
+The command entrypoint directly calls `src2/workflows`. The desktop preprocessing home page uses the same workflows for forcing preparation, parameter validation, and preprocessing-file generation; remaining desktop actions will move to that logic incrementally.
+
+Running without arguments or explicitly using `run` reads the YAML parameter file and prepares forcing files, grid files, calculation-mode artifacts, and WW3 namelists/scripts. It does not execute WAVEWATCH III, upload to a server, or generate plots. If the work directory already contains grid files, use `--skip-grid`:
+
+```sh
+python3 runCLI.py run params.yml --skip-grid
+```
+
+The `grid` section of `params.yml` is grouped by mesh type: `structured` contains bathymetry, coastline precision, and pygridgen thresholds; `smc` contains bathymetry, refinement, physics, and boundary settings; and `unstructured` contains triangular-mesh sizing and regional settings. For `grid_type: nested`, provide `inner` explicitly or omit it to derive the inner region using `nested_contraction_coefficient`.
+
+The `presets` section at the top of `params.yml` stores available choices for script validation and later desktop-interface reuse, including output-field presets, ST executable paths, bathymetry, coastline precision, and file splitting. `presets.st` maps a name to a server executable directory, such as `ST2: /public/home/.../model/exe`, and `ww3.st: ST2` selects that path. Define complete field arrays in `presets.output_scheme`, such as `standard: [HS, DIR, FP, T02, WND]`, then select one for a run with `ww3.output_scheme: standard`.
+
+The `ww3_grid` section uses `ww3_grid.nml` keys directly, such as `SPECTRUM%XFR`, `TIMESTEPS%DTMAX`, and `GRID%ZLIM`, for spectrum discretization, numerical timesteps, and nearshore depth controls. Nested grids can separately set `ww3.inner_compute_precision` and `ww3.inner_output_precision`; `slurm.server_script_path` selects a custom `server.sh` template when needed.
 
 
 

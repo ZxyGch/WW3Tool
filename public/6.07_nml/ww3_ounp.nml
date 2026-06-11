@@ -1,0 +1,317 @@
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - ww3_ounp.nml - Point output post-processing          !
+! -------------------------------------------------------------------- !
+! Converted from ww3_ounp.inp
+
+
+! -------------------------------------------------------------------- !
+! Define the output fields to postprocess via POINT_NML namelist
+!
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     POINT%TIMESTART            = '19000101 000000'  ! Stop date for the output field
+!     POINT%TIMESTRIDE           = '0'                ! Time stride for the output field
+!     POINT%TIMECOUNT            = '1000000000'       ! Number of time steps
+!     POINT%TIMESPLIT            = 6                  ! [0(nodate),4(yearly),6(monthly),8(daily),10(hourly)]
+!     POINT%LIST                 = 'all'              ! List of points index ['all'|'1 2 3']
+!     POINT%SAMEFILE             = T                  ! All the points in the same file
+!     POINT%BUFFER               = 150                ! Number of points to process per pass
+!     POINT%TYPE                 = 1                  ! [0=inventory | 1=spectra | 2=mean param | 3=source terms]
+! -------------------------------------------------------------------- !
+&POINT_NML
+  POINT%TIMESTART        =  '20221203 000000'
+  POINT%TIMESTRIDE       =  '3600'
+  POINT%TIMECOUNT        =  1000000
+  POINT%TIMESPLIT        =  4
+  POINT%LIST             =  'all'
+  POINT%SAMEFILE         =  T
+  POINT%BUFFER           =  100
+  POINT%TYPE             =  1
+/
+
+
+! -------------------------------------------------------------------- !
+! Define the content of the output file via FILE_NML namelist
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     FILE%PREFIX        = 'ww3.'            ! Prefix for output file name
+!     FILE%NETCDF        = 3                 ! Netcdf version [3|4]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 FILE_NML namelist 定义输出文件内容
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     FILE%PREFIX        = 'ww3.'            ! 输出文件名前缀
+!     FILE%NETCDF        = 3                 ! Netcdf 版本 [3|4]
+! -------------------------------------------------------------------- !
+&FILE_NML
+  FILE%PREFIX        = 'ww3.'
+  FILE%NETCDF        = 4
+/
+
+
+! -------------------------------------------------------------------- !
+! Define the type 0, inventory of file
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!            No additional input, the above time range is ignored.
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 0：文件清单
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!            无需额外输入，上述时间范围将被忽略。
+! -------------------------------------------------------------------- !
+
+
+
+! -------------------------------------------------------------------- !
+! Define the type 1, spectra via SPECTRA_NML namelist
+!
+! Table of 1-D spectra content :
+!   - time, station id, station name, longitude, latitude
+!   - frequency : unit Hz, center band frequency - linear log scale (XFR factor)
+!   - ffp, f, th1m, sth1m, alpha : 1D spectral parameters
+!   - dpt, ust, wnd, wnddir : mean parameters
+!
+! Transfert file content :
+!   - time, station id, station name, longitude, latitude
+!   - frequency : unit Hz, center band frequency - linear log scale (XFR factor)
+!   - frequency1 : unit Hz, lower band frequency
+!   - frequency2 : unit Hz, upper band frequency
+!   - direction : unit degree, convention to, origin East, trigonometric order
+!   - efth(time,station,frequency,direction) : 2D spectral density
+!   - dpt, wnd, wnddir, cur, curdir : mean parameters
+!
+! Spectral partitioning content :
+!   - time, station id, station name, longitude, latitude
+!   - npart : number of partitions
+!   - hs, tp, lm, th1m, sth1m, ws, tm10, t01, t02 : partitioned parameters
+!   - dpt, wnd, wnddir, cur, curdir : mean parameters
+!
+!
+! * SCALE_FAC and OUTPUT_FAC are only applied to print plots (OUTPUT=1)
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     SPECTRA%OUTPUT        = 3            ! 1: Print plots
+!                                          ! 2: Table of 1-D spectra
+!                                          ! 3: Transfer file
+!                                          ! 4: Spectral partitioning
+!     SPECTRA%SCALE_FAC     = 1            ! Scale factor (-1=disabled)
+!     SPECTRA%OUTPUT_FAC    = 0            ! Output factor (0=normalized)
+! -------------------------------------------------------------------- !
+&SPECTRA_NML
+  SPECTRA%OUTPUT        = 3
+  SPECTRA%SCALE_FAC     = 1
+  SPECTRA%OUTPUT_FAC    = 0
+/
+
+
+! -------------------------------------------------------------------- !
+! Define the type 2, mean parameter via PARAM_NML namelist
+!
+! Forcing parameters content :
+! - dpt, wnd, wnddir, cur, curdir
+!
+! Mean wave parameters content :
+! - hs, lm, tr, th1p, sth1p, fp, th1m, sth1m
+!
+! Nondimensional parameters (U*) content :
+! - ust, efst, fpst, cd, alpha
+!
+! Nondimensional parameters (U10) content :
+! - wnd, efst, fpst, cd, alpha
+!
+! Validation table content :
+! - wnd, wnddir, hs, hsst, cpu, cmu, ast
+!
+! WMO stantdard output content :
+! - wnd, wnddir, hs, tp
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     PARAM%OUTPUT      = 4                ! 1: Forcing parameters
+!                                          ! 2: Mean wave parameters
+!                                          ! 3: Nondimensional pars. (U*)
+!                                          ! 4: Nondimensional pars. (U10)
+!                                          ! 5: Validation table
+!                                          ! 6: WMO standard output
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 2：平均参数（通过 PARAM_NML）
+!
+! 强迫参数内容：
+! - dpt、wnd、wnddir、cur、curdir
+!
+! 平均波参数内容：
+! - hs、lm、tr、th1p、sth1p、fp、th1m、sth1m
+!
+! 无量纲参数（U*）内容：
+! - ust、efst、fpst、cd、alpha
+!
+! 无量纲参数（U10）内容：
+! - wnd、efst、fpst、cd、alpha
+!
+! 验证表内容：
+! - wnd、wnddir、hs、hsst、cpu、cmu、ast
+!
+! WMO 标准输出内容：
+! - wnd、wnddir、hs、tp
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     PARAM%OUTPUT      = 4                ! 1: 强迫参数
+!                                          ! 2: 平均波参数
+!                                          ! 3: 无量纲参数（U*）
+!                                          ! 4: 无量纲参数（U10）
+!                                          ! 5: 验证表
+!                                          ! 6: WMO 标准输出
+! -------------------------------------------------------------------- !
+&PARAM_NML
+/
+
+
+! -------------------------------------------------------------------- !
+! Define the type 3, source terms via SOURCE_NML namelist
+!
+! Table of 1-D S(f) content :
+!   - time, station id, station name, longitude, latitude
+!   - frequency : unit Hz, center band frequency
+!   - ef(frequency)   : 1D spectral density
+!   - Sin(frequency)  : input source term
+!   - Snl(frequency)  : non linear interactions source term
+!   - Sds(frequency)  : dissipation source term
+!   - Sbt(frequency)  : bottom source term
+!   - Sice(frequency) : ice source term
+!   - Stot(frequency) : total source term
+!   - dpt, ust, wnd : mean parameters
+!
+! Table of 1-D inverse time scales (1/T = S/F) content :
+!   - time, station id, station name, longitude, latitude
+!   - frequency : unit Hz, center band frequency
+!   - ef(frequency)   : 1D spectral density
+!   - tini(frequency)  : input inverse time scales source term
+!   - tnli(frequency)  : non linear interactions inverse time scales source term
+!   - tdsi(frequency)  : dissipation inverse time scales source term
+!   - tbti(frequency)  : bottom inverse time scales source term
+!   - ticei(frequency) : ice inverse time scales source term
+!   - ttoti(frequency) : total inverse time scales source term
+!   - dpt, ust, wnd : mean parameters
+!
+! Transfert file content :
+!   - time, station id, station name, longitude, latitude
+!   - frequency : unit Hz, center band frequency - linear log scale (XFR factor)
+!   - frequency1 : unit Hz, lower band frequency
+!   - frequency2 : unit Hz, upper band frequency
+!   - direction : unit degree, convention to, origin East, trigonometric order
+!   - efth(frequency,direction) : 2D spectral density
+!   - Sin(frequency,direction)  : input source term
+!   - Snl(frequency,direction)  : non linear interactions source term
+!   - Sds(frequency,direction)  : dissipation source term
+!   - Sbt(frequency,direction)  : bottom source term
+!   - Sice(frequency,direction) : ice source term
+!   - Stot(frequency,direction) : total source term
+!   - dpt, wnd, wnddir, cur, curdir, ust : mean parameters
+!
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!     SOURCE%OUTPUT         = 4            ! 1: Print plots
+!                                          ! 2: Table of 1-D S(f)
+!                                          ! 3: Table of 1-D inverse time scales (1/T = S/F)
+!                                          ! 4: Transfer file
+!     SOURCE%SCALE_FAC     = 0             ! Scale factor (-1=disabled)
+!     SOURCE%OUTPUT_FAC    = 0             ! Output factor (0=normalized)
+!     SOURCE%TABLE_FAC     = 0             ! Table factor
+!                                                          0 : Dimensional.
+!                                                          1 : Nondimensional in terms of U10
+!                                                          2 : Nondimensional in terms of U*
+!                                                          3-5: like 0-2 with f normalized with fp.
+!     SOURCE%SPECTRUM      = T             ! [T|F]
+!     SOURCE%INPUT         = T             ! [T|F]
+!     SOURCE%INTERACTIONS  = T             ! [T|F]
+!     SOURCE%DISSIPATION   = T             ! [T|F]
+!     SOURCE%BOTTOM        = T             ! [T|F]
+!     SOURCE%ICE           = T             ! [T|F]
+!     SOURCE%TOTAL         = T             ! [T|F]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 3：源项（通过 SOURCE_NML）
+!
+! 1-D S(f) 表内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率
+!   - ef(频率)   : 1D 谱密度
+!   - Sin(频率)  : 输入源项
+!   - Snl(频率)  : 非线性交互源项
+!   - Sds(频率)  : 耗散源项
+!   - Sbt(频率)  : 底摩擦源项
+!   - Sice(频率) : 冰源项
+!   - Stot(频率) : 总源项
+!   - dpt、ust、wnd：平均参数
+!
+! 1-D 逆时间尺度表（1/T = S/F）内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率
+!   - ef(频率)    : 1D 谱密度
+!   - tini(频率)  : 输入逆时间尺度源项
+!   - tnli(频率)  : 非线性交互逆时间尺度源项
+!   - tdsi(频率)  : 耗散逆时间尺度源项
+!   - tbti(频率)  : 底摩擦逆时间尺度源项
+!   - ticei(频率) : 冰逆时间尺度源项
+!   - ttoti(频率) : 总逆时间尺度源项
+!   - dpt、ust、wnd：平均参数
+!
+! 转换文件内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率 - 线性对数尺度（XFR 因子）
+!   - 频率1：单位 Hz，频带下界频率
+!   - 频率2：单位 Hz，频带上界频率
+!   - 方向：单位度，向向约定，原点在东方，三角序
+!   - efth(频率,方向) : 2D 谱密度
+!   - Sin(频率,方向)  : 输入源项
+!   - Snl(频率,方向)  : 非线性交互源项
+!   - Sds(频率,方向)  : 耗散源项
+!   - Sbt(频率,方向)  : 底摩擦源项
+!   - Sice(频率,方向) : 冰源项
+!   - Stot(频率,方向) : 总源项
+!   - dpt、wnd、wnddir、cur、curdir、ust：平均参数
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     SOURCE%OUTPUT         = 4            ! 1: 打印图
+!                                          ! 2: 1-D S(f) 表
+!                                          ! 3: 1-D 逆时间尺度表 (1/T = S/F)
+!                                          ! 4: 转换文件
+!     SOURCE%SCALE_FAC     = 0             ! 缩放因子（-1=禁用）
+!     SOURCE%OUTPUT_FAC    = 0             ! 输出因子（0=归一化）
+!     SOURCE%TABLE_FAC     = 0             ! 表因子
+!                                                          0 : 量纲
+!                                                          1 : 以 U10 归一化
+!                                                          2 : 以 U* 归一化
+!                                                          3-5: 类似 0-2，f 用 fp 归一化
+!     SOURCE%SPECTRUM      = T             ! [T|F]
+!     SOURCE%INPUT         = T             ! [T|F]
+!     SOURCE%INTERACTIONS  = T             ! [T|F]
+!     SOURCE%DISSIPATION   = T             ! [T|F]
+!     SOURCE%BOTTOM        = T             ! [T|F]
+!     SOURCE%ICE           = T             ! [T|F]
+!     SOURCE%TOTAL         = T             ! [T|F]
+! -------------------------------------------------------------------- !
+&SOURCE_NML
+/
+
+
+! -------------------------------------------------------------------- !
+! WAVEWATCH III - end of namelist                                      !
+! -------------------------------------------------------------------- !
