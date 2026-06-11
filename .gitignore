@@ -22,4 +22,5 @@ jason3
 grid.nml
 config.json
 ndbc
-
+.claude
+.codegraph
