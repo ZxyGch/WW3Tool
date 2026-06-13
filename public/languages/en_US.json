@@ -2083,5 +2083,21 @@
   "icli_server_user": "User: {}",
   "icli_remote_dir": "Remote dir: {}",
   "icli_config_plot": "Plotting",
-  "icli_enabled_tasks": "Enabled tasks: {}"
+  "icli_plot_wave_maps": "Wave maps: {}",
+  "icli_plot_time_step": "Time step: {}h",
+  "icli_plot_video": "Generate video: ✓",
+  "icli_plot_figsize": "Figure size: {}",
+  "icli_plot_spectrum": "Spectrum: {}",
+  "icli_plot_energy_threshold": "Energy threshold: {}",
+  "icli_plot_plot_mode": "Plot mode: {}",
+  "icli_plot_jason3": "Jason-3: {}",
+  "icli_plot_data_folder": "Data folder: {}",
+  "icli_plot_time_range": "Time range: {}",
+  "icli_plot_max_dist": "Max distance: {}°",
+  "icli_plot_time_window": "Time window: {}h",
+  "icli_plot_ndbc": "NDBC: {}",
+  "icli_plot_download": "Auto download: ✓",
+  "icli_plot_wind_field": "Wind field: ✓",
+  "icli_plot_flag_type": "Wind flag: {}",
+  "icli_plot_flag_density": "Flag density: {}"
 }

@@ -373,19 +373,61 @@ class InteractiveCLI(cmd.Cmd):
             print(f"    {tr('icli_remote_dir', '远程目录：{}').format(cfg.server.default_remote_dir or not_cfg)}")
 
         # 绘图
-        enabled_plots = []
-        if cfg.plot.wave_maps and cfg.plot.wave_maps.enabled:
-            enabled_plots.append("wave-maps")
-        if cfg.plot.spectrum and cfg.plot.spectrum.enabled:
-            enabled_plots.append("spectrum")
-        if cfg.plot.jason3 and cfg.plot.jason3.enabled:
-            enabled_plots.append("jason3")
-        if cfg.plot.ndbc and cfg.plot.ndbc.enabled:
-            enabled_plots.append("ndbc")
-        if cfg.plot.wind_field and cfg.plot.wind_field.time_step_hours is not None:
-            enabled_plots.append("wind-field")
         print(f"\n  {_bold(tr('icli_config_plot', '绘图'))}")
-        print(f"    {tr('icli_enabled_tasks', '启用任务：{}').format(', '.join(enabled_plots) if enabled_plots else not_cfg)}")
+        wm = cfg.plot.wave_maps
+        print(f"    {tr('icli_plot_wave_maps', '波高图：{}').format('✓' if wm.enabled else '✗')}")
+        if wm.enabled:
+            if wm.time_step_hours is not None:
+                print(f"    {tr('icli_plot_time_step', '时间步长：{}h').format(wm.time_step_hours)}")
+            if wm.generate_video:
+                print(f"    {tr('icli_plot_video', '生成视频：✓')}")
+            if wm.dpi is not None:
+                print(f"    DPI：{wm.dpi}")
+            if wm.figsize:
+                print(f"    {tr('icli_plot_figsize', '图片尺寸：{}').format(wm.figsize)}")
+        sp = cfg.plot.spectrum
+        print(f"    {tr('icli_plot_spectrum', '二维谱：{}').format('✓' if sp.enabled else '✗')}")
+        if sp.enabled:
+            if sp.time_step_hours is not None:
+                print(f"    {tr('icli_plot_time_step', '时间步长：{}h').format(sp.time_step_hours)}")
+            if sp.energy_threshold is not None:
+                print(f"    {tr('icli_plot_energy_threshold', '能量阈值：{}').format(sp.energy_threshold)}")
+            if sp.plot_mode:
+                print(f"    {tr('icli_plot_plot_mode', '绘制方式：{}').format(sp.plot_mode)}")
+        j3 = cfg.plot.jason3
+        print(f"    {tr('icli_plot_jason3', 'Jason-3：{}').format('✓' if j3.enabled else '✗')}")
+        if j3.enabled:
+            if j3.data_folder:
+                print(f"    {tr('icli_plot_data_folder', '数据目录：{}').format(j3.data_folder)}")
+            if j3.time_range:
+                print(f"    {tr('icli_plot_time_range', '时间范围：{}').format(' ~ '.join(j3.time_range))}")
+            if j3.max_dist_deg is not None:
+                print(f"    {tr('icli_plot_max_dist', '最大距离：{}°').format(j3.max_dist_deg)}")
+            if j3.time_window_hours is not None:
+                print(f"    {tr('icli_plot_time_window', '时间窗口：{}h').format(j3.time_window_hours)}")
+        nb = cfg.plot.ndbc
+        print(f"    {tr('icli_plot_ndbc', 'NDBC：{}').format('✓' if nb.enabled else '✗')}")
+        if nb.enabled:
+            if nb.data_folder:
+                print(f"    {tr('icli_plot_data_folder', '数据目录：{}').format(nb.data_folder)}")
+            if nb.time_range:
+                print(f"    {tr('icli_plot_time_range', '时间范围：{}').format(' ~ '.join(nb.time_range))}")
+            if nb.download:
+                print(f"    {tr('icli_plot_download', '自动下载：✓')}")
+        wf = cfg.plot.wind_field
+        if wf.time_step_hours is not None:
+            print(f"    {tr('icli_plot_wind_field', '风场：✓')}")
+            print(f"    {tr('icli_plot_time_step', '时间步长：{}h').format(wf.time_step_hours)}")
+            if wf.flag_type:
+                print(f"    {tr('icli_plot_flag_type', '风向标志：{}').format(wf.flag_type)}")
+            if wf.flag_density is not None:
+                print(f"    {tr('icli_plot_flag_density', '标志密度：{}').format(wf.flag_density)}")
+        elif wf.flag_type or wf.flag_density is not None:
+            print(f"    {tr('icli_plot_wind_field', '风场：✓')}")
+            if wf.flag_type:
+                print(f"    {tr('icli_plot_flag_type', '风向标志：{}').format(wf.flag_type)}")
+            if wf.flag_density is not None:
+                print(f"    {tr('icli_plot_flag_density', '标志密度：{}').format(wf.flag_density)}")
         print()
 
     def do_print(self, arg: str) -> None:

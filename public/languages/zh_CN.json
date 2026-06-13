@@ -2083,5 +2083,21 @@
   "icli_server_user": "用户：{}",
   "icli_remote_dir": "远程目录：{}",
   "icli_config_plot": "绘图",
-  "icli_enabled_tasks": "启用任务：{}"
+  "icli_plot_wave_maps": "波高图：{}",
+  "icli_plot_time_step": "时间步长：{}h",
+  "icli_plot_video": "生成视频：✓",
+  "icli_plot_figsize": "图片尺寸：{}",
+  "icli_plot_spectrum": "二维谱：{}",
+  "icli_plot_energy_threshold": "能量阈值：{}",
+  "icli_plot_plot_mode": "绘制方式：{}",
+  "icli_plot_jason3": "Jason-3：{}",
+  "icli_plot_data_folder": "数据目录：{}",
+  "icli_plot_time_range": "时间范围：{}",
+  "icli_plot_max_dist": "最大距离：{}°",
+  "icli_plot_time_window": "时间窗口：{}h",
+  "icli_plot_ndbc": "NDBC：{}",
+  "icli_plot_download": "自动下载：✓",
+  "icli_plot_wind_field": "风场：✓",
+  "icli_plot_flag_type": "风向标志：{}",
+  "icli_plot_flag_density": "标志密度：{}"
 }
