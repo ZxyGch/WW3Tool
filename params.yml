@@ -243,7 +243,19 @@ slurm:
   nodes: 1
   cores: 48
 plot:
-  result_folder: null
+  wave_maps:
+    enabled: true
+    time_step_hours: 6
+    generate_video: false
+    show_land_coastline: true
+    dpi: null
+    figsize: null
+    output_folder: null
+  spectrum:
+    enabled: false
+    time_step_hours: 6
+    energy_threshold: 0.01
+    plot_mode: null
   jason3:
     enabled: false
     data_folder: null
@@ -257,6 +269,17 @@ plot:
     - '20250103'
     max_dist_deg: 0.125
     time_window_hours: 0.5
+  ndbc:
+    enabled: false
+    data_folder: null
+    download: false
+    time_range:
+    - '20250101'
+    - '20250103'
+  wind_field:
+    time_step_hours: null
+    flag_type: null
+    flag_density: null
 server:
   host: ''
   port: 22
