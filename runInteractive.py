@@ -37,13 +37,12 @@
   run-pre-workflow [--skip-grid] [--no-cache]  完整预处理流程
 
 后处理 / 绘图：
-  plot                       执行所有启用的绘图任务
   plot-wave-maps [--contour] 生成波高填色图或等值线图
   plot-spectrum [--mode first|all|selected] [--station N]  生成方向谱图
-  match-jason3               WW3 结果与 Jason-3 卫星数据匹配
-  jason3-swh                 绘制 Jason-3 卫星 SWH / 轨迹图
+  plot-jason3                WW3 结果与 Jason-3 卫星数据匹配
+  plot-jason3-swh            绘制 Jason-3 卫星 SWH / 轨迹图
   download-jason3            下载 Jason-3 L2 数据
-  match-ndbc [--download]    WW3 结果与 NDBC 浮标匹配或下载数据
+  plot-ndbc [--download]     WW3 结果与 NDBC 浮标匹配或下载数据
 
 远程运维：
   connect-test               测试 SSH 连接

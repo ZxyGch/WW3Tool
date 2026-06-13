@@ -1,7 +1,7 @@
 """Jason-3 卫星有效波高（SWH）匹配与绘图用例。
 
 将 WW3 模式输出与 Jason-3 沿轨观测进行时空匹配，或单独绘制 Jason-3 SWH 分布图，
-供 CLI ``match-jason3`` / ``jason3-swh`` 命令与桌面后处理面板调用。
+供 CLI ``plot-jason3`` / ``plot-jason3-swh`` 命令与桌面后处理面板调用。
 
 流水线步骤：后处理（Step 4 结果验证）— 卫星观测对比。
 

@@ -10,7 +10,7 @@
 命令分组：
 - 工作目录：``create-workdir``
 - 预处理：``validate``、``prepare-forcing``、``generate-grid``、``run``
-- 后处理/绘图：``plot*``、``match-jason3``、``jason3-swh``、``download-jason3``、``match-ndbc``
+- 后处理/绘图：``plot-wave-maps``、``plot-spectrum``、``plot-jason3``、``plot-jason3-swh``、``download-jason3``、``plot-ndbc``
 - 远程运维：``connect-test``、``upload``、``submit`` 等 SLURM/SSH 操作
 - 辅助：``print-example`` 输出示例 YAML
 
@@ -143,12 +143,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ── post-processing / plotting ─────────────────────────────────────────
-    p_plot = sub.add_parser(
-        "plot",
-        help=tr("cli_help_plot", "Run all enabled plot tasks from params.yml plot: section"),
-    )
-    p_plot.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-
     p_wm = sub.add_parser("plot-wave-maps", help=tr("cli_help_plot_wave_maps", "Generate wave height filled-color maps"))
     p_wm.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_wm.add_argument(
@@ -173,11 +167,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("cli_help_station", "Station index when --mode=selected"),
     )
 
-    p_j3 = sub.add_parser("match-jason3", help=tr("cli_help_match_jason3", "Match WW3 output to Jason-3 satellite data"))
+    p_j3 = sub.add_parser("plot-jason3", help=tr("cli_help_match_jason3", "Match WW3 output to Jason-3 satellite data"))
     p_j3.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_j3swh = sub.add_parser(
-        "jason3-swh",
+        "plot-jason3-swh",
         help=tr("cli_help_jason3_swh", "Plot Jason-3 satellite SWH / track map for the configured region"),
     )
     p_j3swh.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -188,7 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_j3dl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
-    p_ndbc = sub.add_parser("match-ndbc", help=tr("cli_help_match_ndbc", "Match WW3 output to NDBC buoy observations"))
+    p_ndbc = sub.add_parser("plot-ndbc", help=tr("cli_help_match_ndbc", "Match WW3 output to NDBC buoy observations"))
     p_ndbc.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_ndbc.add_argument(
         "--download",
@@ -261,8 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 # 仅需 plot 段校验、跳过预处理必填项的命令集合
 _PLOT_COMMANDS = {
-    "plot", "plot-wave-maps", "plot-spectrum",
-    "match-jason3", "jason3-swh", "download-jason3", "match-ndbc",
+    "plot-wave-maps", "plot-spectrum",
+    "plot-jason3", "plot-jason3-swh", "download-jason3", "plot-ndbc",
 }
 # 远程 SSH/SLURM 操作命令集合
 _REMOTE_COMMANDS = {
@@ -376,25 +370,22 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
-        if args.command == "plot":
-            return _run_all_plots(config)
-
         if args.command == "plot-wave-maps":
             return _run_wave_maps(config, contour=args.contour)
 
         if args.command == "plot-spectrum":
             return _run_spectrum(config, mode=args.mode, station_index=args.station)
 
-        if args.command == "match-jason3":
+        if args.command == "plot-jason3":
             return _run_match_jason3(config)
 
-        if args.command == "jason3-swh":
+        if args.command == "plot-jason3-swh":
             return _run_jason3_swh(config)
 
         if args.command == "download-jason3":
             return _run_download_jason3(config)
 
-        if args.command == "match-ndbc":
+        if args.command == "plot-ndbc":
             return _run_match_ndbc(config, download=args.download)
 
         if args.command == "connect-test":

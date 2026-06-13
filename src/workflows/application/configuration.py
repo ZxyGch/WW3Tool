@@ -1026,7 +1026,7 @@ slurm:
   nodes: "1"
   cores: "48"
 
-# 后处理绘图配置（CLI 命令 plot / plot-wave-maps / plot-spectrum / match-jason3 / match-ndbc 使用）
+# 后处理绘图配置（CLI 命令 plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc 使用）
 plot:
   wave_maps:
     enabled: true

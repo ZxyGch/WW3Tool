@@ -108,10 +108,10 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 ("plot-wave-maps [--contour]", tr("icli_help_plot_wave_maps", "生成波高填色图或等值线图")),
                 ("plot-spectrum [--mode ...] [--station N]", tr("icli_help_plot_spectrum", "生成方向谱图")),
-                ("match-jason3", tr("icli_help_match_jason3", "WW3 结果与 Jason-3 卫星数据匹配")),
-                ("jason3-swh", tr("icli_help_jason3_swh", "绘制 Jason-3 卫星 SWH / 轨迹图")),
+                ("plot-jason3", tr("icli_help_match_jason3", "WW3 结果与 Jason-3 卫星数据匹配")),
+                ("plot-jason3-swh", tr("icli_help_jason3_swh", "绘制 Jason-3 卫星 SWH / 轨迹图")),
                 ("download-jason3", tr("icli_help_download_jason3", "下载 Jason-3 L2 数据")),
-                ("match-ndbc [--download]", tr("icli_help_match_ndbc", "WW3 结果与 NDBC 浮标匹配")),
+                ("plot-ndbc [--download]", tr("icli_help_match_ndbc", "WW3 结果与 NDBC 浮标匹配")),
             ],
         ),
         (
@@ -602,8 +602,8 @@ class InteractiveCLI(cmd.Cmd):
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
-    def do_match_jason3(self, arg: str) -> None:
-        """match-jason3  — WW3 结果与 Jason-3 卫星数据匹配"""
+    def do_plot_jason3(self, arg: str) -> None:
+        """plot-jason3  — WW3 结果与 Jason-3 卫星数据匹配"""
         if not self._require_config():
             return
         try:
@@ -617,8 +617,8 @@ class InteractiveCLI(cmd.Cmd):
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
-    def do_jason3_swh(self, arg: str) -> None:
-        """jason3-swh  — 绘制 Jason-3 卫星 SWH / 轨迹图"""
+    def do_plot_jason3_swh(self, arg: str) -> None:
+        """plot-jason3-swh  — 绘制 Jason-3 卫星 SWH / 轨迹图"""
         if not self._require_config():
             return
         try:
@@ -647,8 +647,8 @@ class InteractiveCLI(cmd.Cmd):
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
-    def do_match_ndbc(self, arg: str) -> None:
-        """match-ndbc [--download]  — WW3 结果与 NDBC 浮标匹配或下载数据"""
+    def do_plot_ndbc(self, arg: str) -> None:
+        """plot-ndbc [--download]  — WW3 结果与 NDBC 浮标匹配或下载数据"""
         if not self._require_config():
             return
         download = "--download" in arg

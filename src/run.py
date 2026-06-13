@@ -69,12 +69,12 @@
     python3 src/run.py plot-spectrum --mode all
     python3 src/run.py plot-spectrum --mode selected --station 0
 
-子命令 match-jason3 — WW3 结果与 Jason-3 卫星数据匹配
-    python3 src/run.py match-jason3
+子命令 plot-jason3 — WW3 结果与 Jason-3 卫星数据匹配
+    python3 src/run.py plot-jason3
 
-子命令 match-ndbc — WW3 结果与 NDBC 浮标匹配
-    python3 src/run.py match-ndbc
-    python3 src/run.py match-ndbc --download
+子命令 plot-ndbc — WW3 结果与 NDBC 浮标匹配
+    python3 src/run.py plot-ndbc
+    python3 src/run.py plot-ndbc --download
 
 ----------------------------------------------------------------------
 四、远程运维（配置见 params.yml 里的 server: 段，走 SSH/SLURM）
