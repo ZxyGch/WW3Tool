@@ -312,12 +312,14 @@ class InteractiveCLI(cmd.Cmd):
             print(f"    {tr('icli_grid_range', '范围：经度 {} ~ {}，纬度 {} ~ {}').format(outer.lon[0], outer.lon[1], outer.lat[0], outer.lat[1])}")
         if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
             s = cfg.grid.structured
-            dx_dy = f"dx={outer.dx}, dy={outer.dy}" if outer and outer.dx and outer.dy else ""
-            prefix = f"{dx_dy}，" if dx_dy else ""
-            print(f"    {tr('icli_structured_info', '{}水深：{}，海岸线：{}').format(prefix, s.bathymetry or not_set, s.coastline_precision or not_set)}")
+            if outer and outer.dx and outer.dy:
+                print(f"    dx={outer.dx}, dy={outer.dy}")
+            print(f"    {tr('icli_bathymetry', '水深：{}').format(s.bathymetry or not_set)}")
+            print(f"    {tr('icli_coastline', '海岸线：{}').format(s.coastline_precision or not_set)}")
         elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
             s = cfg.grid.smc
-            print(f"    {tr('icli_smc_bathymetry', '水深：{}').format(s.bathymetry or not_set)}，{tr('icli_smc_levels', '层数：{}').format(s.n_levels or not_set)}")
+            print(f"    {tr('icli_bathymetry', '水深：{}').format(s.bathymetry or not_set)}")
+            print(f"    {tr('icli_smc_levels', '层数：{}').format(s.n_levels or not_set)}")
         elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
             u = cfg.grid.unstructured
             print(f"    {tr('icli_unst_hmax', 'hmax：{}').format(u.hmax or not_set)}")
@@ -328,7 +330,8 @@ class InteractiveCLI(cmd.Cmd):
         print(f"    {tr('icli_current', '流场：{}').format(cfg.forcing.current or not_set)}")
         print(f"    {tr('icli_level', '水位：{}').format(cfg.forcing.level or not_set)}")
         print(f"    {tr('icli_ice', '海冰：{}').format(cfg.forcing.ice or not_set)}")
-        print(f"    {tr('icli_process_mode', '处理模式：{}').format(cfg.forcing.process_mode)}，{tr('icli_auto_associate', '自动关联：{}').format('✓' if cfg.forcing.auto_associate else '✗')}")
+        print(f"    {tr('icli_process_mode', '处理模式：{}').format(cfg.forcing.process_mode)}")
+        print(f"    {tr('icli_auto_associate', '自动关联：{}').format('✓' if cfg.forcing.auto_associate else '✗')}")
 
         # 计算模式
         print(f"\n  {_bold(tr('icli_config_calc', '计算模式'))}")
@@ -341,8 +344,10 @@ class InteractiveCLI(cmd.Cmd):
         # WW3 配置
         print(f"\n  {_bold(tr('icli_config_ww3', 'WW3 配置'))}")
         print(f"    {tr('icli_ww3_period', '时段：{} ~ {}').format(cfg.ww3.start_date, cfg.ww3.end_date)}")
-        print(f"    {tr('icli_compute_precision', '计算精度：{}s').format(cfg.ww3.compute_precision or not_set)}，{tr('icli_output_precision', '输出精度：{}s').format(cfg.ww3.output_precision or not_set)}")
-        print(f"    {tr('icli_output_scheme', '输出方案：{}').format(cfg.ww3.output_scheme or not_set)}，{tr('icli_ww3_st', 'ST：{}').format(cfg.ww3.st or not_cfg)}")
+        print(f"    {tr('icli_compute_precision', '计算精度：{}s').format(cfg.ww3.compute_precision or not_set)}")
+        print(f"    {tr('icli_output_precision', '输出精度：{}s').format(cfg.ww3.output_precision or not_set)}")
+        print(f"    {tr('icli_output_scheme', '输出方案：{}').format(cfg.ww3.output_scheme or not_set)}")
+        print(f"    {tr('icli_ww3_st', 'ST：{}').format(cfg.ww3.st or not_cfg)}")
 
         # WW3 Grid 参数
         wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
@@ -354,7 +359,9 @@ class InteractiveCLI(cmd.Cmd):
 
         # Slurm
         print(f"\n  {_bold(tr('icli_config_slurm', 'Slurm'))}")
-        print(f"    {tr('icli_slurm_cpu', 'CPU：{}').format(cfg.slurm.cpu or not_cfg)}，{tr('icli_slurm_cores', '核数：{}').format(cfg.slurm.cores)}，{tr('icli_slurm_nodes', '节点：{}').format(cfg.slurm.nodes)}")
+        print(f"    {tr('icli_slurm_cpu', 'CPU：{}').format(cfg.slurm.cpu or not_cfg)}")
+        print(f"    {tr('icli_slurm_cores', '核数：{}').format(cfg.slurm.cores)}")
+        print(f"    {tr('icli_slurm_nodes', '节点：{}').format(cfg.slurm.nodes)}")
         if cfg.slurm.cpu_group:
             print(f"    {tr('icli_slurm_cpu_group', 'CPU 组：{}').format(cfg.slurm.cpu_group)}")
 
@@ -362,7 +369,8 @@ class InteractiveCLI(cmd.Cmd):
         print(f"\n  {_bold(tr('icli_config_server', '服务器'))}")
         print(f"    {tr('icli_server', '主机：{}').format(cfg.server.host or not_cfg)}")
         if cfg.server.host:
-            print(f"    {tr('icli_server_user', '用户：{}').format(cfg.server.user or not_cfg)}，{tr('icli_remote_dir', '远程目录：{}').format(cfg.server.default_remote_dir or not_cfg)}")
+            print(f"    {tr('icli_server_user', '用户：{}').format(cfg.server.user or not_cfg)}")
+            print(f"    {tr('icli_remote_dir', '远程目录：{}').format(cfg.server.default_remote_dir or not_cfg)}")
 
         # 绘图
         enabled_plots = []
