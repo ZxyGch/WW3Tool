@@ -373,7 +373,7 @@ class InteractiveCLI(cmd.Cmd):
             enabled_plots.append("jason3")
         if cfg.plot.ndbc and cfg.plot.ndbc.enabled:
             enabled_plots.append("ndbc")
-        if cfg.plot.wind_field and cfg.plot.wind_field.enabled:
+        if cfg.plot.wind_field and cfg.plot.wind_field.time_step_hours is not None:
             enabled_plots.append("wind-field")
         print(f"\n  {_bold(tr('icli_config_plot', '绘图'))}")
         print(f"    启用任务：{', '.join(enabled_plots) if enabled_plots else not_cfg}")
