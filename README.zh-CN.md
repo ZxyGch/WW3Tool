@@ -24,13 +24,14 @@ WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可
 
 这个软件可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码）
 
-软件支持中英文切换，CLI 和交互式终端均可通过 `--lang en_US` 切换到英文，默认为中文。
+软件支持中英文切换，交互式终端可通过 `--lang en_US` 切换到英文，默认为中文。
 
 实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
 
 我本科不是海洋科学的，现在是研究生一年级，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 [atomgoto@gmail.com](mailto:atomgoto@gmail.com) 或在 issue 中提出意见
 
 如果你觉得这个工具不错，请给我一颗 ⭐️ 🥳
+
 
 
 ## 快速开始
@@ -41,7 +42,7 @@ python3 runDesktop.py
 
 如果还有什么安装失败或缺失的包，请手动安装
 
-`runDesktop.py` 从 `src/desktop` 启动独立实现的预处理主页。主页已按原应用的 Fluent 风格、导航、步骤卡片和右侧日志分栏进行对齐；设置与绘图等功能页将在迁移过程中继续补入。桌面动作调用 `src/workflows`，不依赖旧主窗口业务实现。
+
 
 ### 交互式命令行
 
@@ -53,25 +54,7 @@ python3 runInteractive.py /path/to/workdir/params.yml
 python3 runInteractive.py --lang en_US
 ```
 
-启动后会进入 `ww3>` 提示符，支持 Tab 补全、上下键历史浏览和彩色输出。所有命令按功能分为五组：
 
-配置管理：`create-workdir`、`load`、`config`、`print`
-
-预处理：`validate`、`prepare-forcing`、`generate-grid`、`prepare-ww3`、`run-pre-workflow`
-
-后处理/绘图：`plot`、`plot-wave-maps`、`plot-spectrum`、`match-jason3`、`jason3-swh`、`download-jason3`、`match-ndbc`
-
-远程运维：`connect-test`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`、`ssh`、`list-files`
-
-辅助：`print-example`、`help`、`exit`
-
-典型的工作流程分两条路径：
-
-本地运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run-pre-workflow` → `plot`
-
-服务器运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run-pre-workflow` → `upload` → `submit` → `check-status` → `download-results`
-
-`create-workdir` 会从根 `params.yml` 模板复制一份到新的工作目录，并自动把 `workdir.path` 改成对应路径。`prepare-ww3` 是交互式终端独有的命令，它只生成 WW3 namelist 文件，不会重跑强迫场和网格。`upload` 会自动连接 SSH，破坏性操作（`upload`、`clear-remote`）需要加 `--confirm`。输入 `help` 可以查看所有命令的说明，输入 `help <命令>` 查看单个命令的帮助。
 
 ### 指令化预处理流程
 
@@ -89,14 +72,14 @@ python3 src/run.py upload /path/to/workdir/params.yml --confirm
 python3 src/run.py submit /path/to/workdir/params.yml
 python3 src/run.py check-status /path/to/workdir/params.yml
 python3 src/run.py download-results /path/to/workdir/params.yml
-python3 src/run.py plot /path/to/workdir/params.yml
-python3 src/run.py match-jason3 /path/to/workdir/params.yml
-python3 src/run.py match-ndbc /path/to/workdir/params.yml --download
+python3 src/run.py plot-wave-maps /path/to/workdir/params.yml
+python3 src/run.py plot-jason3 /path/to/workdir/params.yml
+python3 src/run.py plot-ndbc /path/to/workdir/params.yml --download
 ```
 
 单独执行 `python3 src/run.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。CLI 不允许直接使用项目根目录的 `params.yml`（那是模板），必须先用 `create-workdir` 创建工作目录，然后对工作目录的 `params.yml` 执行操作。也可以使用 `python3 src/run.py print-example` 单独输出模板内容。
 
-命令按功能分为五组：工作目录管理（`create-workdir`）、预处理（`validate`、`prepare-forcing`、`generate-grid`、`run`）、后处理/绘图（`plot`、`plot-wave-maps`、`plot-spectrum`、`match-jason3`、`jason3-swh`、`download-jason3`、`match-ndbc`）、远程运维（`connect-test`、`list-files`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`）、辅助（`print-example`）。
+命令按功能分为四组：预处理（`create-workdir`、`validate`、`prepare-forcing`、`generate-grid`、`prepare-ww3`、`run-pre-workflow`）、后处理/绘图（`plot-wave-maps`、`plot-spectrum`、`plot-jason3`、`plot-jason3-swh`、`download-jason3`、`plot-ndbc`）、远程运维（`connect-test`、`ssh`、`list-files`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`）、辅助（`print-example`、`config`、`print`）。
 
 `prepare-forcing` 只执行第一步强迫场准备，包括复制/移动、变量识别、风场标准化和组合强迫场自动关联。`generate-grid` 单独执行网格生成，支持 `--no-cache` 跳过缓存。`prepare-ww3` 只生成 WW3 namelist 文件（ww3_grid.nml、ww3_shel.nml、ww3_prnc.nml 等），不会重跑强迫场和网格，适合在已经准备好强迫场和网格之后单独调整 WW3 配置。
 
@@ -1029,7 +1012,7 @@ sinfo
 
 上面介绍的绘图和服务器操作都可以通过 CLI 完成，不需要打开桌面界面。
 
-绘图相关命令：`plot` 执行所有已启用的绘图任务，`plot-wave-maps` 绘制波高图（加 `--contour` 使用等高线图），`plot-spectrum` 绘制二维谱图（`--mode normalized/actual`，`--station 3` 指定站点），`match-jason3` 匹配 JASON3 卫星数据，`jason3-swh` 绘制卫星 SWH 轨迹图，`download-jason3` 从 NOAA 下载 JASON3 L2 数据，`match-ndbc` 匹配 NDBC 浮标数据（加 `--download` 自动下载）。
+绘图相关命令：`plot-wave-maps` 绘制波高图（加 `--contour` 使用等高线图），`plot-spectrum` 绘制二维谱图（`--mode normalized/actual`，`--station 3` 指定站点），`plot-jason3` 匹配并绘制 JASON3 卫星数据，`plot-jason3-swh` 绘制卫星 SWH 轨迹图，`download-jason3` 从 NOAA 下载 JASON3 L2 数据，`plot-ndbc` 匹配 NDBC 浮标数据（加 `--download` 自动下载）。
 
 远程操作命令：`connect-test` 测试 SSH 连接，`upload` 上传工作目录（需 `--confirm`），`submit` 提交 Slurm 计算任务（可用 `--script` 指定自定义脚本），`check-status` 检查任务状态，`queue-status` 查看 Slurm 队列，`download-results` 下载结果文件（嵌套模式加 `--nested` 只下载 fine），`download-log` 下载运行日志，`clear-remote` 清空远程工作目录（需 `--confirm`），`cancel-job` 取消 Slurm 任务。
 
