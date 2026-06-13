@@ -411,9 +411,9 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
         figsize = None
     wave_maps = WaveMapsConfig(
         enabled=_bool_value(wm_raw.get("enabled", True), "plot.wave_maps.enabled"),
-        time_step_hours=_float_value(wm_raw["time_step_hours"], "plot.wave_maps.time_step_hours") if "time_step_hours" in wm_raw else None,
+        time_step_hours=_float_value(wm_raw["time_step_hours"], "plot.wave_maps.time_step_hours") if wm_raw.get("time_step_hours") is not None else None,
         figsize=figsize,
-        dpi=_int_value(wm_raw["dpi"], "plot.wave_maps.dpi") if "dpi" in wm_raw else None,
+        dpi=_int_value(wm_raw["dpi"], "plot.wave_maps.dpi") if wm_raw.get("dpi") is not None else None,
         generate_video=_bool_value(wm_raw.get("generate_video", False), "plot.wave_maps.generate_video"),
         show_land_coastline=_bool_value(wm_raw.get("show_land_coastline", True), "plot.wave_maps.show_land_coastline"),
         output_folder=_resolve_path(wm_raw.get("output_folder"), base_dir),
@@ -422,9 +422,9 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
     sp_raw = _as_dict(r.get("spectrum"), "plot.spectrum")
     spectrum = SpectrumConfig(
         enabled=_bool_value(sp_raw.get("enabled", False), "plot.spectrum.enabled"),
-        time_step_hours=_float_value(sp_raw["time_step_hours"], "plot.spectrum.time_step_hours") if "time_step_hours" in sp_raw else None,
-        energy_threshold=_float_value(sp_raw["energy_threshold"], "plot.spectrum.energy_threshold") if "energy_threshold" in sp_raw else None,
-        plot_mode=str(sp_raw["plot_mode"]) if "plot_mode" in sp_raw else None,
+        time_step_hours=_float_value(sp_raw["time_step_hours"], "plot.spectrum.time_step_hours") if sp_raw.get("time_step_hours") is not None else None,
+        energy_threshold=_float_value(sp_raw["energy_threshold"], "plot.spectrum.energy_threshold") if sp_raw.get("energy_threshold") is not None else None,
+        plot_mode=str(sp_raw["plot_mode"]) if sp_raw.get("plot_mode") is not None else None,
     )
 
     j3_raw = _as_dict(r.get("jason3"), "plot.jason3")
@@ -439,8 +439,8 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
         data_folder=_resolve_path(j3_raw.get("data_folder"), base_dir),
         lon_lat=[float(v) for v in j3_lon_lat] if j3_lon_lat else [],
         time_range=[str(t) for t in j3_time_range] if j3_time_range else [],
-        max_dist_deg=_float_value(j3_raw["max_dist_deg"], "plot.jason3.max_dist_deg") if "max_dist_deg" in j3_raw else None,
-        time_window_hours=_float_value(j3_raw["time_window_hours"], "plot.jason3.time_window_hours") if "time_window_hours" in j3_raw else None,
+        max_dist_deg=_float_value(j3_raw["max_dist_deg"], "plot.jason3.max_dist_deg") if j3_raw.get("max_dist_deg") is not None else None,
+        time_window_hours=_float_value(j3_raw["time_window_hours"], "plot.jason3.time_window_hours") if j3_raw.get("time_window_hours") is not None else None,
     )
 
     ndbc_raw = _as_dict(r.get("ndbc"), "plot.ndbc")
@@ -456,9 +456,9 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
 
     wind_field_raw = _as_dict(r.get("wind_field"), "plot.wind_field")
     wind_field = WindFieldConfig(
-        time_step_hours=_float_value(wind_field_raw["time_step_hours"], "plot.wind_field.time_step_hours") if "time_step_hours" in wind_field_raw else None,
-        flag_type=str(wind_field_raw["flag_type"]) if "flag_type" in wind_field_raw else None,
-        flag_density=_int_value(wind_field_raw["flag_density"], "plot.wind_field.flag_density") if "flag_density" in wind_field_raw else None,
+        time_step_hours=_float_value(wind_field_raw["time_step_hours"], "plot.wind_field.time_step_hours") if wind_field_raw.get("time_step_hours") is not None else None,
+        flag_type=str(wind_field_raw["flag_type"]) if wind_field_raw.get("flag_type") is not None else None,
+        flag_density=_int_value(wind_field_raw["flag_density"], "plot.wind_field.flag_density") if wind_field_raw.get("flag_density") is not None else None,
     )
 
     return PlotConfig(
