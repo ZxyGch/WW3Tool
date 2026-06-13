@@ -104,6 +104,46 @@ def _bold(text: str) -> str:
 _HISTORY_FILE = Path.home() / ".ww3tool_history"
 _HISTORY_MAX_LINES = 500
 
+# ── 大型 ASCII Art Logo ────────────────────────────────────────────────────
+# [EN] ── Large ASCII Art Logo ──────────────────────────────────────────────
+_SHELL_BANNER = r"""
+                ____    ____  ________  __      _______   ___
+                \   \  /   / /  _____/ /  |    /       | /   |
+                 \   \/   / /  /  __  /   |   /   ____/ /    |
+                  \    __/ /  /_/  / / /| |  /   /     /  ___|
+                   \  /   /  _____/ /  | | /   /___  /  /
+                    \/   /________/ /   |/ /_______ \/  /
+                                 /               /    \
+                               /_______________/ \____\
+                                                  \______\
+"""
+_SHELL_BANNER_WAVE = r"""
+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+              ~~  ~    ~     ~       ~     ~    ~  ~~
+           ~~    ~   🌊    ~     ~      🌊   ~    ~~
+        ~~   ~       ~        ~     ~       ~   ~~
+     ~~  ~    ~  ~     ~  ~     ~     ~  ~    ~  ~
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+_SHELL_BANNER_FULL = r"""
+        ____    ____  ________  __      _______   ___
+        \   \  /   / /  _____/ /  |    /       | /   |
+         \   \/   / /  /  __  /   |   /   ____/ /    |
+          \    __/ /  /_/  / / /| |  /   /     /  ___|
+           \  /   /  _____/ /  | | /   /___  /  /
+            \/   /________/ /   |/ /_______ \/  /
+                          /               /    \
+                        /_______________/ \____\
+                                           \______\
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      ~~    ~     ~      ~   🌊   ~      ~     ~     ~~
+   ~~    ~    ~      ~         ~         ~      ~    ~~
+ ~~  ~     ~     ~     ~   ~     ~   ~     ~     ~  ~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+
 
 def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
     """构建帮助分组（运行时调用 tr()，确保语言切换后即时生效）。
@@ -114,20 +154,21 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
         (
             tr("icli_grp_config", "配置管理"),
             [
-                ("load <params.yml>", tr("icli_help_load", "加载参数配置文件")),
+                ("workdir <path>", tr("icli_help_workdir", "切换或创建工作目录并自动加载")),
+                ("validate", tr("icli_help_validate", "校验当前配置文件")),
                 ("config", tr("icli_help_config", "显示当前配置摘要")),
-                ("print", tr("icli_help_print", "输出当前 params.yml 内容")),
+                ("print-params", tr("icli_help_print_params", "输出当前 params.yml 内容")),
             ],
         ),
         (
             tr("icli_grp_preproc", "预处理"),
             [
-                ("create-workdir <name>", tr("icli_help_create_workdir", "从模板创建新工作目录")),
-                ("validate [--stage forcing|grid|full]", tr("icli_help_validate", "校验当前配置文件")),
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
-                ("generate-grid [--no-cache]", tr("icli_help_generate_grid", "生成网格（Step 2）")),
+                ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
-                ("run-pre-workflow [--skip-grid] [--no-cache]", tr("icli_help_run", "完整预处理流程")),
+                ("recommend-cfl", tr("icli_help_recommend_cfl", "按 CFL 公式推荐时间步长")),
+                ("run-workflow", tr("icli_help_run_workflow", "完整预处理流程")),
+                ("local-run", tr("icli_help_local_run", "执行当前工作目录的 local.sh")),
             ],
         ),
         (
@@ -148,7 +189,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("ssh", tr("icli_help_ssh", "打开交互式 SSH 终端")),
                 ("list-files", tr("icli_help_list_files", "列出远程工作目录文件")),
                 ("upload --confirm", tr("icli_help_upload", "上传本地工作目录到远程")),
-                ("submit [--script server.sh]", tr("icli_help_submit", "在远程执行提交脚本")),
+                ("submit", tr("icli_help_submit", "在远程执行提交脚本")),
                 ("check-status", tr("icli_help_check_status", "检查远程任务状态")),
                 ("queue-status", tr("icli_help_queue_status", "查看 SLURM 队列")),
                 ("download-results [--nested]", tr("icli_help_download_results", "下载远程 WW3 结果")),
@@ -189,10 +230,37 @@ class InteractiveCLI(cmd.Cmd):
 
         [EN] Dynamically generate the welcome message so language switches take effect immediately.
         """
+        cyan = _Colors.CYAN
+        blue = _Colors.BLUE
+        reset = _Colors.RESET
+        bold = _Colors.BOLD
+
+        banner = _SHELL_BANNER_FULL
+        lines = banner.split("\n")
+
+        colored_lines: list[str] = []
+        wave_started = False
+        for line in lines:
+            if "~" in line:
+                wave_started = True
+            if wave_started:
+                colored_lines.append(f"{blue}{line}{reset}")
+            elif line.strip():
+                colored_lines.append(f"{cyan}{line}{reset}")
+            else:
+                colored_lines.append(line)
+
+        colored_banner = "\n".join(colored_lines)
+
+        subtitle = tr("icli_intro", "WAVEWATCH III Preprocessing Tool")
+        hint = tr("icli_intro_hint", "Type 'help' or '?' for available commands, 'exit' to quit.")
+
         return (
-            _bold(tr("icli_intro", "\n🌊 WW3Tool 交互式命令行界面"))
+            "\n"
+            + f"{bold}{colored_banner}{reset}"
+            + f"\n  {bold}{cyan}{subtitle}{reset}"
             + "\n"
-            + tr("icli_intro_hint", "输入 'help' 或 '?' 查看可用命令，输入 'exit' 退出。")
+            + f"  {hint}"
             + "\n"
         )
 
@@ -285,8 +353,8 @@ class InteractiveCLI(cmd.Cmd):
         # [EN] Typical workflow hint (fork: local vs remote)
         g = _color
         print(f"  {_bold(_color(tr('icli_workflow', '典型流程'), _Colors.YELLOW))}")
-        print(f"    {g('create-workdir', _Colors.GREEN)} → {g('prepare-forcing', _Colors.GREEN)} → {g('generate-grid', _Colors.GREEN)} → {g('run-pre-workflow', _Colors.GREEN)} → {g('plot-wave-maps', _Colors.GREEN)}")
-        print(f"                                                                                         └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
+        print(f"    {g('workdir', _Colors.GREEN)} → {g('run-workflow', _Colors.GREEN)} → {g('local-run', _Colors.GREEN)}")
+        print(f"                              └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
         print()
 
     def parseline(self, line: str) -> tuple[str | None, str | None, str]:
@@ -337,7 +405,7 @@ class InteractiveCLI(cmd.Cmd):
         [EN] Check if a configuration has been loaded; prompt the user if not.
         """
         if self._config is None:
-            print(_warn(tr("icli_no_config", "⚠ 未加载配置文件，请先使用 'load <params.yml>' 加载参数")))
+            print(_warn(tr("icli_no_config", "⚠ 未加载配置文件，请先使用 'workdir <path>' 设置工作目录")))
             return False
         return True
 
@@ -350,16 +418,6 @@ class InteractiveCLI(cmd.Cmd):
 
     # ── 配置管理命令 ─────────────────────────────────────────────────────
     # [EN] ── Configuration management commands ───────────────────────────
-
-    def do_load(self, arg: str) -> None:
-        """load <params.yml>  — 加载参数配置文件
-
-        [EN] load <params.yml>  — Load a parameter configuration file
-        """
-        if not arg.strip():
-            print(_warn(tr("icli_usage_load", "用法：load <params.yml 路径>")))
-            return
-        self._load_config(arg.strip())
 
     def do_config(self, arg: str) -> None:
         """config  — 显示当前配置摘要
@@ -502,10 +560,10 @@ class InteractiveCLI(cmd.Cmd):
                 print(f"    {tr('icli_plot_flag_density', '标志密度：{}').format(wf.flag_density)}")
         print()
 
-    def do_print(self, arg: str) -> None:
-        """print  — 输出当前 params.yml 内容
+    def do_print_params(self, arg: str) -> None:
+        """print-params  — 输出当前 params.yml 内容
 
-        [EN] print  — Output current params.yml content
+        [EN] print-params  — Output current params.yml content
         """
         if not self._require_config():
             return
@@ -515,75 +573,75 @@ class InteractiveCLI(cmd.Cmd):
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
-    def do_create_workdir(self, arg: str) -> None:
-        """create-workdir <name>  — 从模板创建新工作目录
+    def do_workdir(self, arg: str) -> None:
+        """workdir <path>  — 切换或创建工作目录并自动加载
 
-        [EN] create-workdir <name>  — Create a new working directory from template
+        [EN] workdir <path>  — Switch to or create a working directory and auto-load
         """
         name = arg.strip().strip("'\"")
         if not name:
-            print(_warn(tr("icli_usage_create_workdir", "用法：create-workdir <目录名称>")))
+            print(_warn(tr("icli_usage_workdir", "用法：workdir <目录路径>")))
             return
 
-        # 查找根 params.yml 模板
-        # [EN] Look for the root params.yml template
-        root = Path(__file__).resolve().parents[3]
-        root_params = root / "params.yml"
-        if not root_params.is_file():
-            print(_error(tr("icli_no_template", "✗ 仓库根目录没有 params.yml 模板文件")))
-            return
+        workdir = Path(name).expanduser().resolve()
+        params_yml = workdir / "params.yml"
 
-        workdir = Path.cwd() / name
         if workdir.exists():
-            print(_error(tr("icli_dir_exists", "✗ 目录已存在：{}").format(workdir)))
-            return
+            if params_yml.is_file():
+                # 目录已存在且包含 params.yml，直接加载
+                # [EN] Directory exists with params.yml, auto-load it
+                print(_info(tr("icli_workdir_exists", "ℹ 目录已存在，自动加载：{}").format(workdir)))
+                self._load_config(str(params_yml))
+            else:
+                print(_error(tr("icli_workdir_no_params", "✗ 目录已存在但缺少 params.yml：{}").format(workdir)))
+        else:
+            # 目录不存在，创建并从根模板复制 params.yml
+            # [EN] Directory does not exist, create and copy root params.yml template
+            root = Path(__file__).resolve().parents[3]
+            root_params = root / "params.yml"
+            if not root_params.is_file():
+                print(_error(tr("icli_no_template", "✗ 仓库根目录没有 params.yml 模板文件")))
+                return
 
-        workdir.mkdir(parents=True)
-        target = workdir / "params.yml"
-        shutil.copy2(str(root_params), str(target))
+            workdir.mkdir(parents=True)
+            shutil.copy2(str(root_params), str(params_yml))
 
-        # 自动将 workdir.path 改为新目录路径
-        # [EN] Automatically update workdir.path to the new directory path
-        import re
-        content = target.read_text(encoding="utf-8")
-        content = re.sub(
-            r"(^workdir:\s*\n  path:\s*).*",
-            rf"\g<1>{workdir}",
-            content,
-            count=1,
-            flags=re.MULTILINE,
-        )
-        target.write_text(content, encoding="utf-8")
+            # 自动将 workdir.path 改为新目录路径
+            # [EN] Automatically update workdir.path to the new directory path
+            import re
+            content = params_yml.read_text(encoding="utf-8")
+            content = re.sub(
+                r"(^workdir:\s*\n  path:\s*).*",
+                rf"\g<1>{workdir}",
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+            params_yml.write_text(content, encoding="utf-8")
+            print(_success(tr("icli_created_workdir", "✓ 已创建工作目录：{}").format(workdir)))
+            self._load_config(str(params_yml))
 
-        print(_success(tr("icli_created_workdir", "✓ 已创建工作目录：{}").format(workdir)))
-        print(tr("icli_edit_or_load", "  请编辑 {} 或 load 其他 params.yml").format(target))
-
-    def complete_create_workdir(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
+    def complete_workdir(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return []
 
     # ── 预处理命令 ─────────────────────────────────────────────────────────
     # [EN] ── Preprocessing commands ───────────────────────────────────────
 
     def do_validate(self, arg: str) -> None:
-        """validate [--stage forcing|grid|full]  — 校验当前配置文件
+        """validate  — 校验当前配置文件
 
-        [EN] validate [--stage forcing|grid|full]  — Validate current configuration file
+        [EN] validate  — Validate current configuration file
         """
         if not self._require_config():
             return
-        stage = "full"
-        parts = arg.split()
-        for i, part in enumerate(parts):
-            if part == "--stage" and i + 1 < len(parts):
-                stage = parts[i + 1]
         try:
-            load_pipeline_config(str(self._params_path), validation_stage=stage)
-            print(_success(tr("icli_validated", "✓ 配置文件校验通过（{}）").format(stage)))
+            load_pipeline_config(str(self._params_path), validation_stage="full")
+            print(_success(tr("icli_validated", "✓ 配置文件校验通过（full）")))
         except ConfigError as exc:
             print(_error(tr("icli_validate_failed", "✗ 校验失败：{}").format(exc)))
 
     def complete_validate(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        return self._complete_options(text, ["--stage", "--stage forcing", "--stage grid", "--stage full"])
+        return []
 
     def do_prepare_forcing(self, arg: str) -> None:
         """prepare-forcing  — 准备强迫场（Step 1）
@@ -601,38 +659,35 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_generate_grid(self, arg: str) -> None:
-        """generate-grid [--no-cache]  — 生成网格（Step 2）
+        """generate-grid  — 生成网格（Step 2）
 
-        [EN] generate-grid [--no-cache]  — Generate grid (Step 2)
+        [EN] generate-grid  — Generate grid (Step 2)
         """
         if not self._require_config():
             return
-        use_cache = "--no-cache" not in arg
         try:
             from ..application.grid_preparation import run_generate_grid
             print(_info(tr("icli_start_grid", "▶ 开始生成网格...")))
-            run_generate_grid(self._config, log=self._log_callback, use_cache=use_cache)
+            run_generate_grid(self._config, log=self._log_callback, use_cache=True)
             print(_success(tr("icli_done_grid", "✓ 网格生成完成")))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
-    def do_run_pre_workflow(self, arg: str) -> None:
-        """run-pre-workflow [--skip-grid] [--no-cache]  — 完整预处理流程
+    def do_run_workflow(self, arg: str) -> None:
+        """run-workflow  — 完整预处理流程
 
-        [EN] run-pre-workflow [--skip-grid] [--no-cache]  — Full preprocessing pipeline
+        [EN] run-workflow  — Full preprocessing pipeline
         """
         if not self._require_config():
             return
-        skip_grid = "--skip-grid" in arg
-        use_cache = "--no-cache" not in arg
         try:
             from ..application.preprocessing_workflow import run_pipeline
             print(_info(tr("icli_start_pipeline", "▶ 开始完整预处理...")))
             run_pipeline(
                 self._config,
                 log=self._log_callback,
-                skip_grid=skip_grid,
-                use_grid_cache=use_cache,
+                skip_grid=False,
+                use_grid_cache=True,
             )
             print(_success(tr("icli_done_pipeline", "✓ 预处理完成")))
         except Exception as exc:
@@ -657,6 +712,72 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_prepare_ww3", "▶ 正在生成 WW3 namelist...")))
             prepare_ww3_files(self._config, files, logger)
             print(_success(tr("icli_done_prepare_ww3", "✓ WW3 namelist 生成完成")))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+
+    def do_recommend_cfl(self, arg: str) -> None:
+        """recommend-cfl  — 按 CFL 公式推荐时间步长，自动写入配置
+
+        [EN] recommend-cfl  — Recommend timesteps using the CFL formula, auto-write to config
+        """
+        if not self._require_config():
+            return
+        try:
+            from ..domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps
+
+            cfg = self._config
+            grid = cfg.grid
+            dx, dy, lat_s, lat_n = _extract_grid_spacing(grid)
+            if dx is None:
+                print(_warn(tr("icli_cfl_need_grid", "⚠ 请先在网格配置中填写有效的 DX、DY 与纬度范围")))
+                return
+
+            freq1 = _extract_freq1(cfg)
+            if freq1 is None:
+                print(_warn(tr("icli_cfl_need_freq1", "⚠ 请填写有效的起始频率 FREQ1（Hz）")))
+                return
+
+            lat_mid = (lat_s + lat_n) / 2.0
+            rec = recommend_timesteps(dx_deg=dx, dy_deg=dy, freq1=freq1, lat_deg=lat_mid)
+            new_params = as_ww3_grid_parameters(rec)
+
+            # 更新内存配置
+            # [EN] Update in-memory config
+            cfg.ww3_grid.parameters.update(new_params)
+
+            # 回写到 params.yml
+            # [EN] Write back to params.yml
+            _persist_ww3_grid_timesteps(self._params_path, new_params)
+
+            print(_bold(tr("icli_cfl_result", "📐 CFL 推荐时间步长")))
+            print(f"  DXY ≈ {rec.dxy_m:.0f} m，Tcfl ≈ {rec.tcfl:.0f} s")
+            print(f"  DTXY  = {rec.dtxy} s")
+            print(f"  DTMAX = {rec.dtmax} s")
+            print(f"  DTKTH = {rec.dtkth} s")
+            print(f"  DTMIN = {rec.dtmin} s")
+            print(f"  CFL ratio = {rec.cfl_ratio:.2f}")
+            print(_success(tr("icli_cfl_persisted", "✓ 已写入 {}" ).format(self._params_path)))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+
+    def do_local_run(self, arg: str) -> None:
+        """local-run  — 执行当前工作目录的 local.sh
+
+        [EN] local-run  — Execute local.sh in the current working directory
+        """
+        if not self._require_config():
+            return
+        try:
+            from ..application.local_run import run_local
+            from ..infrastructure.local.run_service import LocalRunService
+
+            service = LocalRunService()
+            print(_info(tr("icli_start_local_run", "▶ 执行 local.sh...")))
+            result = run_local(self._config, service, log=self._log_callback)
+            if result.success:
+                print(_success(tr("icli_done_local_run", "✓ 本地 WW3 运行完成")))
+            else:
+                print(_error(tr("icli_failed_local_run", "✗ 本地 WW3 运行失败")))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
@@ -936,17 +1057,13 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_submit(self, arg: str) -> None:
-        """submit [--script server.sh]  — 在远程执行提交脚本
+        """submit  — 在远程执行提交脚本
 
-        [EN] submit [--script server.sh]  — Execute a submit script on the remote server
+        [EN] submit  — Execute the submit script on the remote server
         """
         if not self._require_config():
             return
         script = "server.sh"
-        parts = arg.split()
-        for i, part in enumerate(parts):
-            if part == "--script" and i + 1 < len(parts):
-                script = parts[i + 1]
         try:
             from ..application.remote_ops import run_submit
             print(_info(tr("icli_start_submit", "▶ 执行远程脚本：{}...").format(script)))
@@ -1107,25 +1224,16 @@ class InteractiveCLI(cmd.Cmd):
     # ── 自动补全支持 ───────────────────────────────────────────────────────
     # [EN] ── Auto-completion support ───────────────────────────────────────
 
-    def complete_load(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        """Tab 补全文件路径
-
-        [EN] Tab-complete file paths
-        """
-        if not text:
-            return [str(p) for p in Path(".").glob("*.yml")]
-        return [str(p) for p in Path(text).parent.glob(f"{Path(text).name}*.yml")]
-
     # 为所有命令添加通用补全（参数选项）
     # [EN] Add generic completion for all commands (argument options)
     def _complete_options(self, text: str, options: list[str]) -> list[str]:
         return [opt for opt in options if opt.startswith(text)]
 
     def complete_generate_grid(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        return self._complete_options(text, ["--no-cache"])
+        return []
 
     def complete_run(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        return self._complete_options(text, ["--skip-grid", "--no-cache"])
+        return []
 
     def complete_plot_wave_maps(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return self._complete_options(text, ["--contour"])
@@ -1140,7 +1248,7 @@ class InteractiveCLI(cmd.Cmd):
         return self._complete_options(text, ["--confirm"])
 
     def complete_submit(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        return self._complete_options(text, ["--script"])
+        return []
 
     def complete_download_results(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return self._complete_options(text, ["--nested"])
@@ -1149,18 +1257,145 @@ class InteractiveCLI(cmd.Cmd):
         return self._complete_options(text, ["--confirm"])
 
 
-def _find_default_params() -> Optional[str]:
-    """查找项目根目录下的 params.yml，返回其路径或 None。
+def _extract_grid_spacing(grid) -> tuple:
+    """从网格配置中提取 dx、dy、lat_south、lat_north，无法提取时返回 (None, None, None, None)。
 
-    [EN] Look for params.yml under the project root directory; return its path or None.
+    [EN] Extract dx, dy, lat_south, lat_north from grid config; returns (None, None, None, None) on failure.
+    """
+    try:
+        if grid.mesh_type == "structured" and grid.structured and grid.outer:
+            outer = grid.outer
+            dx = float(outer.dx) if outer.dx else None
+            dy = float(outer.dy) if outer.dy else None
+            lat_s = float(outer.lat[0]) if outer.lat else None
+            lat_n = float(outer.lat[1]) if outer.lat else None
+            if dx and dy and lat_s is not None and lat_n is not None:
+                return dx, dy, lat_s, lat_n
+        elif grid.mesh_type == "smc" and grid.smc:
+            s = grid.smc
+            dx = float(s.dx) if getattr(s, "dx", None) else None
+            dy = float(s.dy) if getattr(s, "dy", None) else None
+            lat_s = float(s.lat_south) if getattr(s, "lat_south", None) else None
+            lat_n = float(s.lat_north) if getattr(s, "lat_north", None) else None
+            if dx and dy and lat_s is not None and lat_n is not None:
+                return dx, dy, lat_s, lat_n
+        elif grid.mesh_type == "unstructured" and grid.unstructured and grid.outer:
+            outer = grid.outer
+            dx = float(outer.dx) if outer.dx else None
+            dy = float(outer.dy) if outer.dy else None
+            lat_s = float(outer.lat[0]) if outer.lat else None
+            lat_n = float(outer.lat[1]) if outer.lat else None
+            if dx and dy and lat_s is not None and lat_n is not None:
+                return dx, dy, lat_s, lat_n
+    except (TypeError, ValueError, AttributeError, IndexError):
+        pass
+    return None, None, None, None
+
+
+def _extract_freq1(cfg) -> Optional[float]:
+    """从配置的 ww3_grid.parameters 中提取 SPECTRUM%FREQ1，无法提取时返回 None。
+
+    [EN] Extract SPECTRUM%FREQ1 from config's ww3_grid.parameters; returns None on failure.
+    """
+    try:
+        wg = cfg.ww3_grid.parameters if cfg.ww3_grid else {}
+        freq1_str = wg.get("SPECTRUM%FREQ1", "")
+        if freq1_str:
+            v = float(freq1_str)
+            if v > 0:
+                return v
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def _persist_ww3_grid_timesteps(params_path: str, new_params: dict) -> None:
+    """将 CFL 推荐的时间步长参数写回 params.yml 的 ww3_grid 段。
+
+    采用逐行替换方式，保留原有格式和注释。
+    [EN] Write CFL-recommended timestep params back to params.yml ww3_grid section.
+         Uses line-by-line replacement to preserve formatting and comments.
+    """
+    import re
+    with open(params_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    updated_keys: set = set()
+    in_ww3_grid = False
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        # 检测是否进入 ww3_grid 段
+        if stripped.startswith("ww3_grid:"):
+            in_ww3_grid = True
+            continue
+        # 如果遇到下一个顶级 key，离开 ww3_grid 段
+        if in_ww3_grid and not stripped.startswith("#") and not line[0].isspace() and ":" in stripped:
+            in_ww3_grid = False
+        if in_ww3_grid:
+            for key, value in new_params.items():
+                pattern = rf"^(\s*){re.escape(key)}\s*:.*$"
+                m = re.match(pattern, line)
+                if m:
+                    indent = m.group(1)
+                    lines[i] = f"{indent}{key}: {value}\n"
+                    updated_keys.add(key)
+                    break
+
+    # 对于未在文件中找到的 key，追加到 ww3_grid 段末尾
+    missing = set(new_params.keys()) - updated_keys
+    if missing:
+        insert_idx = None
+        in_wg = False
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith("ww3_grid:"):
+                in_wg = True
+                continue
+            if in_wg and not stripped.startswith("#") and not line[0].isspace() and ":" in stripped:
+                insert_idx = i
+                break
+        if insert_idx is None:
+            insert_idx = len(lines)
+        for key in missing:
+            lines.insert(insert_idx, f"  {key}: {new_params[key]}\n")
+            insert_idx += 1
+
+    with open(params_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def _find_default_params() -> Optional[str]:
+    """查找默认 params.yml：优先使用根模板中 workdir.path 指向的工作目录配置。
+
+    若根 params.yml 的 workdir.path 指向的目录下也存在 params.yml，
+    则加载工作目录版本（通常包含更完整的用户配置）；否则回退到根模板。
+
+    [EN] Find default params.yml: prefer the workdir config pointed to by the root template.
+         If root params.yml has a workdir.path whose directory also contains params.yml,
+         load that one (usually has more complete user config); otherwise fall back to root.
     """
     # interactive_cli.py 位于 src/workflows/interfaces/
     # [EN] interactive_cli.py is located at src/workflows/interfaces/
     root = Path(__file__).resolve().parents[3]
     default = root / "params.yml"
-    if default.is_file():
-        return str(default)
-    return None
+    if not default.is_file():
+        return None
+
+    # 检查根模板中 workdir.path 是否指向含 params.yml 的工作目录
+    # [EN] Check if root template's workdir.path points to a dir with its own params.yml
+    try:
+        import yaml
+        with default.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        workdir_path = (data.get("workdir") or {}).get("path")
+        if workdir_path:
+            workdir_params = Path(str(workdir_path)).expanduser().resolve() / "params.yml"
+            if workdir_params.is_file() and workdir_params != default:
+                return str(workdir_params)
+    except Exception:
+        pass
+
+    return str(default)
 
 
 def main(params_path: Optional[str] = None) -> int:
