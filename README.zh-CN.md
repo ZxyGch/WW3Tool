@@ -41,7 +41,7 @@ python3 runDesktop.py
 
 如果还有什么安装失败或缺失的包，请手动安装
 
-`runDesktop.py` 从 `src2/desktop` 启动独立实现的预处理主页。主页已按原应用的 Fluent 风格、导航、步骤卡片和右侧日志分栏进行对齐；设置与绘图等功能页将在迁移过程中继续补入。桌面动作调用 `src2/workflows`，不依赖旧主窗口业务实现。
+`runDesktop.py` 从 `src/desktop` 启动独立实现的预处理主页。主页已按原应用的 Fluent 风格、导航、步骤卡片和右侧日志分栏进行对齐；设置与绘图等功能页将在迁移过程中继续补入。桌面动作调用 `src/workflows`，不依赖旧主窗口业务实现。
 
 ### 交互式命令行
 
@@ -75,7 +75,7 @@ python3 runInteractive.py --lang en_US
 
 ### 指令化预处理流程
 
-新架构代码从 `src2` 开始维护；旧 `src` 暂时保留为参考和兼容 fallback。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `runCLI.py`：
+新架构代码从 `src` 开始维护。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `runCLI.py`：
 
 ```sh
 python3 runCLI.py
@@ -100,7 +100,7 @@ python3 runCLI.py match-ndbc /path/to/workdir/params.yml --download
 
 `prepare-forcing` 只执行第一步强迫场准备，包括复制/移动、变量识别、风场标准化和组合强迫场自动关联。`generate-grid` 单独执行网格生成，支持 `--no-cache` 跳过缓存。`prepare-ww3` 只生成 WW3 namelist 文件（ww3_grid.nml、ww3_shel.nml、ww3_prnc.nml 等），不会重跑强迫场和网格，适合在已经准备好强迫场和网格之后单独调整 WW3 配置。
 
-指令入口直接调用 `src2/workflows`。桌面入口的预处理主页同样调用 workflows，当前覆盖强迫场准备、参数校验和预处理文件生成；其余界面动作会按步骤迁移到相同逻辑。
+指令入口直接调用 `src/workflows`。桌面入口的预处理主页同样调用 workflows，当前覆盖强迫场准备、参数校验和预处理文件生成；其余界面动作会按步骤迁移到相同逻辑。
 
 显式使用 `run` 会读取工作目录的 YAML 参数文件，完成强迫场准备、网格生成、计算模式产物和 WW3 配置文件生成，但不会自动执行 WAVEWATCH III、上传服务器或绘图。如果工作目录中已经有网格文件，可以使用 `--skip-grid` 跳过网格生成：
 

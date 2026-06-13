@@ -43,11 +43,11 @@ python3 runDesktop.py
 
 If anything fails to install or some packages are missing, please install them manually.
 
-`runDesktop.py` starts an independently implemented preprocessing home page through `src2/desktop`. Its Fluent styling, navigation, step cards, and right-hand log panel are aligned with the established application; settings and plotting views will be brought across during migration. Desktop actions call `src2/workflows` rather than the old main-window business implementation.
+`runDesktop.py` starts an independently implemented preprocessing home page through `src/desktop`. Its Fluent styling, navigation, step cards, and right-hand log panel are aligned with the established application; settings and plotting views will be brought across during migration. Desktop actions call `src/workflows` rather than the old main-window business implementation.
 
 ### Scripted Preprocessing
 
-The new architecture starts in `src2`; the old `src` tree is kept as reference and temporary compatibility fallback. For scripted workflows or server-side preprocessing, use `runCLI.py`:
+The new architecture starts in `src`. For scripted workflows or server-side preprocessing, use `runCLI.py`:
 
 ```sh
 python3 runCLI.py
@@ -60,7 +60,7 @@ Running `python3 runCLI.py` without arguments checks runtime packages, installs 
 
 `prepare-forcing` runs only Step 1 forcing preparation: copy/move, variable detection, wind normalization, and combined-forcing auto-association.
 
-The command entrypoint directly calls `src2/workflows`. The desktop preprocessing home page uses the same workflows for forcing preparation, parameter validation, and preprocessing-file generation; remaining desktop actions will move to that logic incrementally.
+The command entrypoint directly calls `src/workflows`. The desktop preprocessing home page uses the same workflows for forcing preparation, parameter validation, and preprocessing-file generation; remaining desktop actions will move to that logic incrementally.
 
 Running without arguments or explicitly using `run` reads the YAML parameter file and prepares forcing files, grid files, calculation-mode artifacts, and WW3 namelists/scripts. It does not execute WAVEWATCH III, upload to a server, or generate plots. If the work directory already contains grid files, use `--skip-grid`:
 

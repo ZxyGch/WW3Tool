@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the desktop application implemented in src2."""
+"""Launch the desktop application implemented in src."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from pathlib import Path
 ENTRY_SCRIPT = Path(__file__).resolve()
 
 
-def _bootstrap_src2_imports() -> None:
+def _bootstrap_src_imports() -> None:
     root = ENTRY_SCRIPT.parent
-    for path in (root / "src2",):
+    for path in (root / "src",):
         path_str = str(path)
         if path_str not in sys.path:
             sys.path.insert(0, path_str)
 
 
 def main(argv: list[str] | None = None) -> int:
-    _bootstrap_src2_imports()
+    _bootstrap_src_imports()
     from venv_and_deps import ensure_runtime
 
     arguments = sys.argv[1:] if argv is None else argv

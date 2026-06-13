@@ -140,9 +140,9 @@ presets:
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
 forcing:
-  wind: /Users/zxy/ocean/Paper/WW3Tool/public/forcing/era5_wind.nc
-  current: /Users/zxy/ocean/Paper/WW3Tool/public/forcing/cmems_current_level.nc
-  level: /Users/zxy/ocean/Paper/WW3Tool/public/forcing/cmems_current_level.nc
+  wind: null
+  current: null
+  level: null
   ice: null
   process_mode: copy
   auto_associate: true
@@ -223,7 +223,7 @@ ww3:
   end_date: '20250103'
   compute_precision: 1800
   output_precision: 3600
-  file_split: year
+  file_split: None
   output_scheme: standard
   st: ST2
 ww3_grid:
@@ -235,18 +235,18 @@ ww3_grid:
   TIMESTEPS%DTXY: 320
   TIMESTEPS%DTKTH: 300
   TIMESTEPS%DTMIN: 15
-  GRID%ZLIM: -0.1
-  GRID%DMIN: 2.5
 slurm:
   cpu: CPU6240R
+  cpu_group:
+  - CPU6240R
+  - CPU6336Y
   nodes: 1
   cores: 48
-  server_script_path: null
 plot:
-  result_folder:
+  result_folder: null
   jason3:
     enabled: false
-    data_folder:
+    data_folder: null
     lon_lat:
     - 110.0
     - 130.0
@@ -263,4 +263,28 @@ server:
   user: ''
   password: ''
   key_file: null
+  default_remote_dir: ''
   remote_dir: ''
+paths:
+  matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
+  ww3bin_path: /Users/zxy/ocean/WW3/build/ST2/bin
+  jason_path: /Users/zxy/ocean/Paper/WW3Tool/jason3
+  ndbc_path: /Users/zxy/ocean/Paper/WW3Tool/ndbc
+  jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
+
+# ══════════════════════════════════════════════════════════════
+# Desktop 专用配置（以下由设置页面管理，CLI 忽略）
+# ══════════════════════════════════════════════════════════════
+desktop:
+  language: en_US
+  theme: AUTO
+  run_mode: both
+  default_workdir: /Users/zxy/ocean/Paper/WW3Tool/workSpace
+  recent_workdirs:
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-12_20-18-24
+  forcing_field_dir: ''
+  forcing_process_mode: Copy
+  forcing_auto_associate: true
+  show_land_coastline: true
+  step4_show_spectrum: true
+  step4_show_timesteps: true

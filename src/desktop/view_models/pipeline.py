@@ -1,0 +1,758 @@
+"""Desktop adapter for validate / run pipeline workflow entrypoints."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import re
+from typing import Any, Callable, List, Optional
+
+from workflows.application.configuration import (
+    ConfigError,
+    load_pipeline_config,
+    parse_pipeline_config,
+    validate_pipeline_config,
+)
+from workflows.domain.config_models import GridRegion, PipelineConfig
+from workflows.domain.forcing_fields import Step1Files
+from workflows.support.translations import tr
+
+
+LogCallback = Callable[[str], None]
+StateCallback = Callable[["PipelineStepState"], None]
+
+
+@dataclass
+class PipelineStepState:
+    is_running: bool = False
+    action: str = ""
+    workdir: str = ""
+    messages: List[str] = field(default_factory=list)
+    error: Optional[str] = None
+    result: Any = None
+
+
+class PipelineViewModel:
+    """Bridge from desktop actions to the same workflows used by runCLI.py."""
+
+    def __init__(
+        self,
+        *,
+        on_log: Optional[LogCallback] = None,
+        on_state_change: Optional[StateCallback] = None,
+    ) -> None:
+        self._on_log = on_log
+        self._on_state_change = on_state_change
+        self.state = PipelineStepState()
+
+    def load_config(self, params_path: str | Path, *, validation_stage: str = "full") -> PipelineConfig:
+        """加载工作目录 params.yml，空值自动回退到根 params.yml 默认值。
+
+        若工作目录 params.yml 无法解析（YAML 语法错误或结构异常），整体回退到根 params.yml。
+        """
+        from workflows.application.configuration import _import_yaml, parse_pipeline_config
+
+        path = Path(params_path).expanduser().resolve()
+        yaml = _import_yaml()
+
+        workdir_raw: dict = {}
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f) or {}
+            if isinstance(loaded, dict):
+                workdir_raw = loaded
+        except Exception:
+            pass
+
+        # 用根 params.yml 默认值填充工作目录中的空值
+        root_path = _repo_params_path()
+        if root_path.is_file():
+            with root_path.open("r", encoding="utf-8") as f:
+                root_raw = yaml.safe_load(f) or {}
+            root_raw.pop("desktop", None)
+            workdir_raw = _deep_merge_defaults(root_raw, workdir_raw)
+
+        return parse_pipeline_config(
+            workdir_raw, base_dir=path.parent, source_path=path, validation_stage=validation_stage
+        )
+
+    def validate(self, config: PipelineConfig, *, stage: str = "full") -> None:
+        validate_pipeline_config(config, stage=stage)
+
+    def validate_file(self, params_path: str | Path, *, stage: str = "full") -> PipelineStepState:
+        self._set_state(PipelineStepState(is_running=True, action="validate"))
+        try:
+            config = self.load_config(params_path, validation_stage=stage)
+            self.validate(config, stage=stage)
+            self._handle_log(tr("params_validation_ok", "参数校验通过：{path}").format(path=params_path))
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="validate",
+                    workdir=str(config.workdir.path),
+                    messages=list(self.state.messages),
+                )
+            )
+        except ConfigError as exc:
+            self._fail("validate", str(exc))
+        except Exception as exc:
+            self._fail("validate", str(exc))
+        return self.state
+
+    def run(self, config: PipelineConfig, *, skip_grid: bool = False) -> PipelineStepState:
+        self._set_state(
+            PipelineStepState(
+                is_running=True,
+                action="run",
+                workdir=str(config.workdir.path),
+                messages=list(self.state.messages),
+            )
+        )
+        try:
+            from workflows.application.preprocessing_workflow import run_pipeline
+
+            result = run_pipeline(config, log=self._handle_log, skip_grid=skip_grid)
+            self._handle_log(tr("status_preprocess_done", "预处理流程完成"))
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="run",
+                    workdir=result.workdir,
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("run", str(exc))
+        return self.state
+
+    def apply_ww3_params(self, config: PipelineConfig) -> PipelineStepState:
+        """Write WW3 namelists from config — does NOT re-run forcing or grid generation."""
+        self._set_state(
+            PipelineStepState(
+                is_running=True,
+                action="ww3",
+                workdir=str(config.workdir.path),
+                messages=list(self.state.messages),
+            )
+        )
+        try:
+            from workflows.infrastructure.forcing.use_cases import ScanWorkdirForcingUseCase
+            from workflows.infrastructure.forcing.file_service import FileService
+            from workflows.infrastructure.adapters.ww3_namelist_adapter import prepare_ww3_files
+            from workflows.support.logging import CoreLogger
+
+            logger = CoreLogger(callback=self._handle_log)
+            file_service = FileService(logger=logger)
+            files = ScanWorkdirForcingUseCase(file_service).execute(str(config.workdir.path))
+            prepare_ww3_files(config, files, logger)
+            self._handle_log(tr("ww3_params_applied", "✅ WW3 参数已应用"))
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="ww3",
+                    workdir=str(config.workdir.path),
+                    messages=list(self.state.messages),
+                )
+            )
+        except Exception as exc:
+            self._fail("ww3", str(exc))
+        return self.state
+
+    def generate_grid(self, config: PipelineConfig) -> PipelineStepState:
+        self._set_state(
+            PipelineStepState(
+                is_running=True,
+                action="grid",
+                workdir=str(config.workdir.path),
+                messages=list(self.state.messages),
+            )
+        )
+        try:
+            from workflows.application.grid_preparation import run_generate_grid
+
+            result = run_generate_grid(config, log=self._handle_log)
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="grid",
+                    workdir=result.workdir,
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("grid", str(exc))
+        return self.state
+
+    def load_wind_bounds(self, wind_path: str | Path) -> PipelineStepState:
+        self._set_state(PipelineStepState(is_running=True, action="bounds"))
+        try:
+            from workflows.application.grid_tools import read_wind_bounds
+
+            result = read_wind_bounds(wind_path, log=self._handle_log)
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="bounds",
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("bounds", str(exc))
+        return self.state
+
+    def load_wind_time_range(self, wind_path: str | Path) -> PipelineStepState:
+        self._set_state(PipelineStepState(is_running=True, action="time_range"))
+        try:
+            from workflows.application.grid_tools import read_wind_time_range
+
+            result = read_wind_time_range(wind_path, log=self._handle_log)
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="time_range",
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("time_range", str(exc))
+        return self.state
+
+    def render_region_map(self, config: PipelineConfig, output_path: str | Path) -> PipelineStepState:
+        self._set_state(PipelineStepState(is_running=True, action="map", workdir=str(config.workdir.path)))
+        try:
+            from workflows.application.grid_tools import render_region_map
+
+            result = render_region_map(config, output_path, log=self._handle_log)
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="map",
+                    workdir=result.images[0],
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("map", str(exc))
+        return self.state
+
+    def visualize_grid(self, config: PipelineConfig) -> PipelineStepState:
+        self._set_state(PipelineStepState(is_running=True, action="visualize", workdir=str(config.workdir.path)))
+        try:
+            from workflows.application.grid_tools import visualize_grid
+
+            result = visualize_grid(config, log=self._handle_log)
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="visualize",
+                    workdir=str(config.workdir.path),
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("visualize", str(exc))
+        return self.state
+
+    @staticmethod
+    def scaled_nested_region(region: GridRegion, factor: float, *, expand: bool) -> GridRegion:
+        from workflows.application.grid_tools import scale_nested_region
+
+        return scale_nested_region(region, factor, expand=expand)
+
+    def config_from_form(
+        self,
+        params_path: str | Path,
+        *,
+        workdir: str | Path,
+        wind: str | Path,
+        current: str | Path | None = None,
+        level: str | Path | None = None,
+        ice: str | Path | None = None,
+        process_mode: str = "copy",
+        auto_associate: bool = True,
+        grid_overrides: dict | None = None,
+        calc_mode: str | None = None,
+        calc_points: list[dict] | None = None,
+        calc_track_points: list[dict] | None = None,
+        ww3_overrides: dict | None = None,
+        ww3_grid_overrides: dict | None = None,
+        slurm_overrides: dict | None = None,
+        server_overrides: dict | None = None,
+        validation_stage: str = "full",
+    ) -> PipelineConfig:
+        source_path = Path(params_path).expanduser().resolve()
+        raw = self._form_raw(
+            source_path,
+            workdir=workdir,
+            wind=wind,
+            current=current,
+            level=level,
+            ice=ice,
+            process_mode=process_mode,
+            auto_associate=auto_associate,
+            grid_overrides=grid_overrides,
+            calc_mode=calc_mode,
+            calc_points=calc_points,
+            calc_track_points=calc_track_points,
+            ww3_overrides=ww3_overrides,
+            ww3_grid_overrides=ww3_grid_overrides,
+            slurm_overrides=slurm_overrides,
+            server_overrides=server_overrides,
+        )
+        return parse_pipeline_config(
+            raw,
+            base_dir=source_path.parent,
+            source_path=source_path,
+            validation_stage=validation_stage,
+        )
+
+    def save_form_to_params(
+        self,
+        params_path: str | Path,
+        *,
+        target_path: str | Path | None = None,
+        validation_stage: str = "grid",
+        **overrides,
+    ) -> Path:
+        """将表单覆盖项合并进 params.yml 并写回磁盘，返回写入路径。
+
+        覆盖项与 :meth:`config_from_form` 同名（workdir/wind/.../calc_points 等）；
+        写回前先解析校验一遍，避免落盘非法配置。
+        """
+        source_path = Path(params_path).expanduser().resolve()
+        raw = self._form_raw(source_path, **overrides)
+        parse_pipeline_config(
+            raw, base_dir=source_path.parent, source_path=source_path, validation_stage=validation_stage
+        )
+        _normalize_params_scalar_types(raw)
+        _strip_unstructured_dem_file(raw)
+        destination = Path(target_path).expanduser().resolve() if target_path else source_path
+        from workflows.application.configuration import _import_yaml
+
+        yaml = _import_yaml()
+        with destination.open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(raw, handle, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        return destination
+
+    def save_server_remote_dir(
+        self,
+        params_path: str | Path,
+        remote_dir: str,
+        *,
+        target_path: str | Path | None = None,
+    ) -> Path:
+        """只更新 params.yml 的 ``server.remote_dir``，用于第六步路径输入框。"""
+        source_path = Path(params_path).expanduser().resolve()
+        raw = _load_raw_yaml(source_path)
+        server = {**_as_dict(raw.get("server")), "remote_dir": str(remote_dir).strip()}
+        raw["server"] = server
+        parse_pipeline_config(
+            raw, base_dir=source_path.parent, source_path=source_path, validation_stage="plot"
+        )
+        _normalize_params_scalar_types(raw)
+        _strip_unstructured_dem_file(raw)
+        destination = Path(target_path).expanduser().resolve() if target_path else source_path
+        from workflows.application.configuration import _import_yaml
+
+        yaml = _import_yaml()
+        with destination.open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(raw, handle, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        return destination
+
+    def sync_from_root(self, workdir_params_path: str | Path) -> Path:
+        """将根 params.yml 模板同步到工作目录（覆盖），保留 case 专属字段。
+
+        保留的字段：``workdir.path``、``forcing`` 的文件路径（wind/current/level/ice）。
+        其余参数全部从根 params.yml 覆盖，确保设置页最新默认值生效。
+        """
+        from workflows.application.configuration import _import_yaml
+
+        dest = Path(workdir_params_path).expanduser().resolve()
+        root_path = _repo_params_path()
+
+        yaml = _import_yaml()
+        # 1) 读当前工作目录，保存 case 专属字段
+        case_fields: dict = {}
+        if dest.is_file():
+            try:
+                old = _load_raw_yaml(dest)
+                case_fields["workdir"] = old.get("workdir", {})
+                case_fields["forcing"] = {
+                    k: old.get("forcing", {}).get(k)
+                    for k in ("wind", "current", "level", "ice", "process_mode", "auto_associate")
+                }
+                # 保留 ww3 日期和 calc 点位（用户在表单中设置的 case 专属值）
+                case_fields["ww3_dates"] = {
+                    k: old.get("ww3", {}).get(k)
+                    for k in ("start_date", "end_date")
+                    if old.get("ww3", {}).get(k)
+                }
+                case_fields["calc"] = old.get("calc", {})
+                # 保留 per-case 的 server.remote_dir（第六步输入框写入的自定义值）
+                old_server = old.get("server", {}) or {}
+                if old_server.get("remote_dir"):
+                    case_fields["server_remote_dir"] = old_server["remote_dir"]
+            except Exception:
+                pass
+
+        # 2) 读根 params.yml
+        raw = _load_raw_yaml(root_path) if root_path.is_file() else {}
+        raw.pop("desktop", None)
+
+        # 3) 恢复 case 专属字段
+        if "workdir" in case_fields:
+            raw["workdir"] = case_fields["workdir"]
+        if "forcing" in case_fields:
+            forcing = dict(raw.get("forcing") or {})
+            forcing.update(case_fields["forcing"])
+            raw["forcing"] = forcing
+        if case_fields.get("ww3_dates"):
+            ww3 = dict(raw.get("ww3") or {})
+            ww3.update(case_fields["ww3_dates"])
+            raw["ww3"] = ww3
+        if "calc" in case_fields:
+            raw["calc"] = case_fields["calc"]
+        if "server_remote_dir" in case_fields:
+            server = dict(raw.get("server") or {})
+            server["remote_dir"] = case_fields["server_remote_dir"]
+            raw["server"] = server
+
+        _normalize_params_scalar_types(raw)
+        _strip_unstructured_dem_file(raw)
+        with dest.open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(raw, handle, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        return dest
+
+    def _form_raw(
+        self,
+        source_path: Path,
+        *,
+        workdir: str | Path,
+        wind: str | Path,
+        current: str | Path | None = None,
+        level: str | Path | None = None,
+        ice: str | Path | None = None,
+        process_mode: str = "copy",
+        auto_associate: bool = True,
+        grid_overrides: dict | None = None,
+        calc_mode: str | None = None,
+        calc_points: list[dict] | None = None,
+        calc_track_points: list[dict] | None = None,
+        ww3_overrides: dict | None = None,
+        ww3_grid_overrides: dict | None = None,
+        slurm_overrides: dict | None = None,
+        server_overrides: dict | None = None,
+    ) -> dict:
+        """载入原始 yaml，叠加表单覆盖，返回合并后的 raw。
+
+        优先级：表单 > params.yml。
+        """
+        raw = _load_raw_yaml(source_path)
+        raw["workdir"] = {"path": str(workdir)}
+        raw["forcing"] = {
+            **(_as_dict(raw.get("forcing"))),
+            "wind": str(wind),
+            "current": str(current) if current else None,
+            "level": str(level) if level else None,
+            "ice": str(ice) if ice else None,
+            "process_mode": process_mode,
+            "auto_associate": auto_associate,
+        }
+        if grid_overrides:
+            grid_raw = {**_as_dict(raw.get("grid"))}
+            for key, value in grid_overrides.items():
+                if key in {"outer", "inner"} and isinstance(value, dict):
+                    grid_raw[key] = {**_as_dict(grid_raw.get(key)), **value}
+                elif key == "inner" and value is None:
+                    grid_raw.pop("inner", None)
+                else:
+                    grid_raw[key] = value
+            raw["grid"] = grid_raw
+        if calc_mode or calc_points is not None or calc_track_points is not None:
+            calc_raw = {**_as_dict(raw.get("calc"))}
+            if calc_mode:
+                calc_raw["mode"] = calc_mode
+            if calc_points is not None:
+                calc_raw["points"] = calc_points
+            if calc_track_points is not None:
+                calc_raw["track_points"] = calc_track_points
+            raw["calc"] = calc_raw
+        if ww3_overrides:
+            raw["ww3"] = {**_as_dict(raw.get("ww3")), **ww3_overrides}
+        if ww3_grid_overrides:
+            # 第四步可见的频谱/时间步分组覆盖 ww3_grid（在 config.json 覆盖之后 → 表单优先）。
+            raw["ww3_grid"] = {**_as_dict(raw.get("ww3_grid")), **ww3_grid_overrides}
+        if slurm_overrides:
+            raw["slurm"] = {**_as_dict(raw.get("slurm")), **slurm_overrides}
+        if server_overrides:
+            raw["server"] = {**_as_dict(raw.get("server")), **server_overrides}
+        return raw
+
+    def init_workdir_params(self, source: Path | None, target: Path, workdir: str) -> Path:
+        """为新工作目录生成 params.yml：完整复制根模板，仅修改 workdir.path 并清空强迫场路径和日期。"""
+        import shutil
+
+        template = source if source and Path(source).is_file() else _repo_params_path()
+        if not Path(template).is_file():
+            from workflows.application.configuration import EXAMPLE_YAML
+            target = Path(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(EXAMPLE_YAML, encoding="utf-8")
+            return target
+
+        target = Path(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(template), str(target))
+
+        from workflows.application.configuration import _import_yaml
+
+        yaml = _import_yaml()
+        with target.open("r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+
+        raw["workdir"] = {"path": str(workdir)}
+        raw.pop("desktop", None)
+
+        forcing = raw.get("forcing") or {}
+        forcing["wind"] = None
+        forcing["current"] = None
+        forcing["level"] = None
+        forcing["ice"] = None
+        raw["forcing"] = forcing
+
+        ww3 = raw.get("ww3") or {}
+        ww3["start_date"] = None
+        ww3["end_date"] = None
+        raw["ww3"] = ww3
+
+        # 清空 per-case 的 server.remote_dir，让第六步回退到 default_remote_dir + 工作目录名
+        server = raw.get("server") or {}
+        server["remote_dir"] = ""
+        raw["server"] = server
+
+        with target.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        return target
+
+    def _fail(self, action: str, message: str) -> None:
+        self._handle_log(message)
+        self._set_state(
+            PipelineStepState(
+                is_running=False,
+                action=action,
+                workdir=self.state.workdir,
+                messages=list(self.state.messages),
+                error=message,
+            )
+        )
+
+    def _handle_log(self, message: str) -> None:
+        text = str(message)
+        self.state.messages.append(text)
+        if self._on_log is not None:
+            self._on_log(text)
+
+    def _set_state(self, state: PipelineStepState) -> None:
+        self.state = state
+        if self._on_state_change is not None:
+            self._on_state_change(state)
+
+
+def _as_dict(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+_INT_PARAM_PATHS = {
+    "grid.smc.n_levels",
+    "grid.smc.msea",
+    "grid.unstructured.nwav",
+    "grid.unstructured.edge_segments",
+    "ww3.compute_precision",
+    "ww3.output_precision",
+    "ww3.inner_compute_precision",
+    "ww3.inner_output_precision",
+    "ww3_grid.SPECTRUM%NK",
+    "ww3_grid.SPECTRUM%NTH",
+    "ww3_grid.TIMESTEPS%DTMAX",
+    "ww3_grid.TIMESTEPS%DTXY",
+    "ww3_grid.TIMESTEPS%DTKTH",
+    "ww3_grid.TIMESTEPS%DTMIN",
+    "slurm.nodes",
+    "slurm.cores",
+    "server.port",
+    "plot.wave_maps.dpi",
+}
+
+_NUMERIC_PARAM_PATHS = {
+    "grid.nested_contraction_coefficient",
+    "grid.structured.min_dist",
+    "grid.structured.cut_off",
+    "grid.structured.lim_bathy",
+    "grid.structured.lim_val",
+    "grid.structured.split_lim",
+    "grid.structured.lake_tol",
+    "grid.smc.wlevel",
+    "grid.smc.depmin",
+    "grid.smc.dshalw",
+    "grid.unstructured.hmax",
+    "grid.unstructured.hshr",
+    "grid.unstructured.dhdx",
+    "grid.unstructured.deep_ocean_threshold_m",
+    "grid.unstructured.margin_deg",
+    "ww3_grid.SPECTRUM%XFR",
+    "ww3_grid.SPECTRUM%FREQ1",
+    "plot.wave_maps.time_step_hours",
+    "plot.spectrum.time_step_hours",
+    "plot.spectrum.energy_threshold",
+    "plot.jason3.max_dist_deg",
+    "plot.jason3.time_window_hours",
+}
+
+_REGION_KEYS = ("outer", "inner")
+
+
+def _normalize_params_scalar_types(raw: dict) -> None:
+    for key in _REGION_KEYS:
+        _coerce_region(_as_dict(_as_dict(raw.get("grid")).get(key)))
+    for path in _INT_PARAM_PATHS:
+        _coerce_dotted(raw, path, integer=True)
+    for path in _NUMERIC_PARAM_PATHS:
+        _coerce_dotted(raw, path)
+    _coerce_nested_numeric(_as_dict(_as_dict(_as_dict(raw.get("grid")).get("smc")).get("options")))
+    _coerce_nested_numeric(_as_dict(_as_dict(_as_dict(raw.get("grid")).get("unstructured")).get("options")))
+    _coerce_points(_as_dict(raw.get("calc")).get("points"))
+    _coerce_points(_as_dict(raw.get("calc")).get("track_points"))
+    wave_maps = _as_dict(_as_dict(raw.get("plot")).get("wave_maps"))
+    figsize = wave_maps.get("figsize")
+    if isinstance(figsize, list):
+        wave_maps["figsize"] = [_coerce_number(item) for item in figsize]
+
+
+def _coerce_region(region: dict) -> None:
+    if not region:
+        return
+    for key in ("dx", "dy"):
+        if key in region:
+            region[key] = _coerce_number(region[key])
+    for key in ("lon", "lat"):
+        value = region.get(key)
+        if isinstance(value, list):
+            region[key] = [_coerce_number(item) for item in value]
+
+
+def _coerce_dotted(raw: dict, dotted: str, *, integer: bool = False) -> None:
+    cur = raw
+    parts = dotted.split(".")
+    for part in parts[:-1]:
+        cur = cur.get(part) if isinstance(cur, dict) else None
+        if not isinstance(cur, dict):
+            return
+    key = parts[-1]
+    if key in cur and cur[key] is not None:
+        cur[key] = _coerce_int(cur[key]) if integer else _coerce_number(cur[key])
+
+
+def _coerce_nested_numeric(value: object) -> object:
+    if isinstance(value, dict):
+        for key, item in list(value.items()):
+            value[key] = _coerce_nested_numeric(item)
+        return value
+    if isinstance(value, list):
+        return [_coerce_nested_numeric(item) for item in value]
+    return _coerce_number(value)
+
+
+def _coerce_points(points: object) -> None:
+    if not isinstance(points, list):
+        return
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        for key in ("lon", "lat"):
+            if key in point:
+                point[key] = _coerce_number(point[key])
+
+
+def _coerce_int(value: object) -> object:
+    if isinstance(value, bool) or isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if re.fullmatch(r"[+-]?\d+", text):
+            return int(text)
+        if re.fullmatch(r"[+-]?\d+\.0+", text):
+            return int(float(text))
+    return value
+
+
+def _coerce_number(value: object) -> object:
+    if isinstance(value, bool) or isinstance(value, (int, float)):
+        return value
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if re.fullmatch(r"[+-]?\d+", text):
+        return int(text)
+    if re.fullmatch(r"[+-]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?", text) or re.fullmatch(
+        r"[+-]?\d+[eE][+-]?\d+",
+        text,
+    ):
+        return float(text)
+    return value
+
+
+def _strip_unstructured_dem_file(raw: dict) -> None:
+    """Keep DEM selection in gridgen defaults instead of exposing it in params.yml."""
+    grid = _as_dict(raw.get("grid"))
+    unstructured = _as_dict(grid.get("unstructured"))
+    options = _as_dict(unstructured.get("options"))
+    data = _as_dict(options.get("data"))
+    data.pop("dem_file", None)
+    if not data and "data" in options:
+        options.pop("data", None)
+
+
+
+def _repo_params_path() -> Path:
+    """仓库根 params.yml 路径（作为新工作目录 params 的回退模板）。"""
+    return Path(__file__).resolve().parents[3] / "params.yml"
+
+
+def _deep_merge_defaults(defaults: dict, overrides: dict) -> dict:
+    """深度合并：以 defaults 为底，overrides 中非 None 的值覆盖对应位置。
+
+    - overrides 中值为 ``None`` → 保留 defaults 的值
+    - overrides 中值为 dict → 递归合并
+    - overrides 中值为其它非 None → 直接覆盖
+    - defaults 中没有的键 → 保留 overrides 的值
+    """
+    if not isinstance(defaults, dict) or not isinstance(overrides, dict):
+        return overrides if overrides is not None else defaults
+    merged = dict(defaults)
+    for key, value in overrides.items():
+        if value is None:
+            continue
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_defaults(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_raw_yaml(path: Path) -> dict:
+    from workflows.application.configuration import _import_yaml
+
+    yaml = _import_yaml()
+    with path.open("r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+    if not isinstance(raw, dict):
+        raise ConfigError("参数文件顶层必须是对象")
+    return raw

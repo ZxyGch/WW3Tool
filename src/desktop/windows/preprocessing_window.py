@@ -1,0 +1,2119 @@
+"""Main desktop shell backed by src workflows instead of legacy src window code."""
+
+from __future__ import annotations
+
+import os
+import re
+import tempfile
+from datetime import datetime
+from pathlib import Path
+
+from PyQt6.QtCore import QTimer, QUrl, Qt
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QLabel,
+    QSizePolicy,
+    QSplitter,
+    QStackedWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QTextBlockFormat, QTextCursor
+from qfluentwidgets import (
+    ComboBox,
+    FluentIcon,
+    FluentWindow,
+    InfoBar,
+    LineEdit,
+    MessageBox,
+    NavigationItemPosition,
+    PrimaryPushButton,
+    Theme,
+    setTheme,
+    setThemeColor,
+)
+
+from workflows.application.configuration import ConfigError, EXAMPLE_YAML
+from workflows.domain.config_models import PipelineConfig
+from workflows.domain.forcing_fields import ForcingField, Step1Files
+from workflows.infrastructure.runtime_config import (
+    add_recent_workdir,
+    get_forcing_field_default_dir,
+    load_config as _load_runtime_config,
+    normalize_run_mode,
+)
+from workflows.support.translations import tr
+
+from ..background_runner import BackgroundRunner
+from ..components.forcing_progress_dialog import ForcingProgressDialog
+from ..components.image_gallery_drawer import ImageGalleryHost
+from ..components import styles
+from ..components.section_title import apply_section_title_style, create_section_title
+from .settings_window import SettingsInterface
+from .plot_window import PlotInterface
+from .tools_window import ToolsInterface, delete_all_under, delete_run_artifacts_under
+from ..components.region_map_dialog import RegionMapDialog
+from ..qt_callback_dispatcher import QtCallbackDispatcher
+from ..steps import CalculationStepPanel, ForcingStepPanel, GridStepPanel, WW3StepPanel
+from ..view_models.forcing_step import ForcingStepState, ForcingStepViewModel
+from ..view_models.pipeline import PipelineStepState, PipelineViewModel
+from ..view_models.plot import PlotViewModel
+from ..view_models.remote import RemoteViewModel
+from ..view_models.local_run import LocalRunViewModel
+from ..steps.local_run_panel import LocalRunPanel
+from ..steps.server_connect_panel import ServerConnectPanel
+from ..steps.server_ops_panel import ServerOpsPanel
+
+from ..components.scroll_area import NoHScrollArea
+
+# 日志区统一行距：额外像素值，让中英文行高一致。
+_LOG_LINE_SPACING_EXTRA_PX = 3
+try:
+    _LH_LINE_DISTANCE = QTextBlockFormat.LineHeightTypes.LineDistanceHeight.value
+except AttributeError:
+    _LH_LINE_DISTANCE = 4  # Qt: LineDistanceHeight
+
+
+class PreprocessingWindow(FluentWindow, ImageGalleryHost):
+    """Workflow-backed preprocessing UI with CLI/GUI separation."""
+
+    def __init__(self) -> None:
+        setTheme(Theme.AUTO)
+        setThemeColor(QColor(0, 120, 212))
+        super().__init__()
+        self._base_title = tr("app_title", "海浪模式 WAVEWATCH III 可视化运行软件")
+        self.setWindowTitle(self._base_title)
+        _lang = _load_runtime_config().get("LANGUAGE", "zh_CN")
+        _width = 1300 if str(_lang).startswith("en") else 1200
+        self.resize(_width, 760)
+        self._match_legacy_titlebar_buttons()
+        self._params_path: Path | None = None
+        self._loaded_config: PipelineConfig | None = None
+        self._busy = False
+        self._forcing_progress: ForcingProgressDialog | None = None
+        self._map_preview_path: Path | None = None
+        self._runner = BackgroundRunner(self)
+        self._forcing_updates = QtCallbackDispatcher(
+            on_log=self._append_log,
+            on_state_change=self._render_forcing_state,
+            parent=self,
+        )
+        self._pipeline_updates = QtCallbackDispatcher(
+            on_log=self._append_log,
+            on_state_change=self._render_pipeline_state,
+            parent=self,
+        )
+        self._forcing_vm = ForcingStepViewModel(
+            on_log=self._forcing_updates.post_log,
+            on_state_change=self._forcing_updates.post_state,
+        )
+        self._pipeline_vm = PipelineViewModel(
+            on_log=self._pipeline_updates.post_log,
+            on_state_change=self._pipeline_updates.post_state,
+        )
+        self._plot_vm = PlotViewModel(on_log=self._pipeline_updates.post_log)
+        self._remote_vm = RemoteViewModel(on_log=self._pipeline_updates.post_log)
+        self._local_vm = LocalRunViewModel(on_log=self._pipeline_updates.post_log)
+        self._paths: dict[str, LineEdit] = {}
+        self._paths["workdir"] = LineEdit(self)
+        self._paths["workdir"].hide()
+        self._path_buttons: dict[str, PrimaryPushButton] = {}
+        self._display_fields: dict[str, LineEdit] = {}
+        self._params_label = LineEdit(self)
+        self._params_label.hide()
+        self._build_surface()
+        self._last_dark_theme = self._is_dark_theme()
+        self._setup_theme_monitor()
+        if str(_load_runtime_config().get("LANGUAGE", "zh_CN")).startswith("en"):
+            self._append_log("Developed by Gong Chuheng, Shanghai Ocean University, Sep 2025. Assisted by Han Ziqi, supervised by Prof. Wei Yongliang")
+        else:
+            self._append_log("本软件由上海海洋大学宫楚恒于 2025 年 9 月开发，师兄韩梓琪帮助，导师魏永亮")
+
+    def _match_legacy_titlebar_buttons(self) -> None:
+        if hasattr(self, "setSystemTitleBarButtonVisible"):
+            self.setSystemTitleBarButtonVisible(False)
+        for button_name in ("minBtn", "maxBtn", "closeBtn"):
+            button = getattr(getattr(self, "titleBar", None), button_name, None)
+            if button is not None:
+                button.show()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self.sync_image_gallery_geometry()
+
+    def _is_dark_theme(self) -> bool:
+        color = self.palette().color(self.palette().ColorRole.Window)
+        return color.lightness() < 128
+
+    def _setup_theme_monitor(self) -> None:
+        app = QApplication.instance()
+        if app is not None and hasattr(app, "paletteChanged"):
+            app.paletteChanged.connect(self._on_palette_changed)
+
+    def _on_palette_changed(self, _palette) -> None:
+        dark = self._is_dark_theme()
+        if dark == self._last_dark_theme:
+            return
+        self._last_dark_theme = dark
+        setTheme(Theme.DARK if dark else Theme.LIGHT)
+        self._refresh_manual_styles()
+
+    def _refresh_manual_styles(self) -> None:
+        for button in self.findChildren(PrimaryPushButton):
+            button.setStyleSheet(self._button_style())
+        for field in self.findChildren(LineEdit):
+            field.setStyleSheet(self._input_style())
+        for combo in self.findChildren(ComboBox):
+            combo.setStyleSheet(self._combo_style())
+        for label in self.findChildren(QLabel):
+            if label.objectName() == "headerLabel":
+                continue
+            if label.property("sectionTitle"):
+                apply_section_title_style(label)
+            elif label.styleSheet().strip() and "font-size" not in label.styleSheet():
+                label.setStyleSheet(styles.label_style())
+        if hasattr(self, "_log"):
+            self._log.setStyleSheet(self._log_style())
+
+    def _button_style(self) -> str:
+        if self._is_dark_theme():
+            return """
+                PrimaryPushButton {
+                    background-color: #2D2D2D; border: 1px solid #404040;
+                    border-radius: 4px; min-height: 20px; padding: 8px 16px; color: #FFFFFF;
+                }
+                PrimaryPushButton:hover { background-color: #3D3D3D; }
+                PrimaryPushButton:pressed { background-color: #353535; }
+                PrimaryPushButton:disabled { background-color: #1D1D1D; color: #666666; }
+                PrimaryPushButton[filled="true"] { color: #2E6BD9; }
+            """
+        return """
+            PrimaryPushButton {
+                background-color: #F5F5F5; border: 1px solid #E0E0E0;
+                border-radius: 4px; min-height: 20px; padding: 8px 16px;
+            }
+            PrimaryPushButton:hover { background-color: #EEEEEE; }
+            PrimaryPushButton:pressed { background-color: #E8E8E8; }
+            PrimaryPushButton:disabled { background-color: #E0E0E0; color: #999999; }
+            PrimaryPushButton[filled="true"] { color: #2E6BD9; }
+        """
+
+    def _input_style(self) -> str:
+        if self._is_dark_theme():
+            return """
+                LineEdit {
+                    background-color: #2D2D2D; border: 1px solid #404040;
+                    border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
+                }
+                LineEdit:focus { border: 1px solid #404040; }
+            """
+        return """
+            LineEdit {
+                background-color: #FFFFFF; border: 1px solid #D0D0D0;
+                border-radius: 4px; padding: 4px 8px; color: #000000;
+            }
+            LineEdit:focus { border: 1px solid #D0D0D0; }
+        """
+
+    def _combo_style(self) -> str:
+        if self._is_dark_theme():
+            return """
+                ComboBox {
+                    background-color: #2D2D2D; border: 1px solid #404040;
+                    border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
+                    text-align: left;
+                }
+                ComboBox:disabled { color: #FFFFFF; }
+            """
+        return """
+            ComboBox {
+                background-color: #FFFFFF; border: 1px solid #D0D0D0;
+                border-radius: 4px; padding: 4px 8px; color: #000000;
+                text-align: left;
+            }
+            ComboBox:disabled { color: #000000; }
+        """
+
+    def _log_style(self) -> str:
+        if self._is_dark_theme():
+            return (
+                "QTextEdit { background-color: #2d2d2d; border: 0.5px solid #404040;"
+                " border-radius: 4px; padding-left: 2px; }"
+                " QTextEdit:focus { border: 0.5px solid #404040; padding-left: 2px; }"
+                " QTextEdit:hover { border: 0.5px solid #404040; padding-left: 2px; }"
+            )
+        return (
+            "QTextEdit { background-color: transparent; border: 0.5px solid #D0D0D0;"
+            " border-radius: 4px; padding-left: 2px; }"
+            " QTextEdit:focus { border: 0.5px solid #D0D0D0; padding-left: 2px; }"
+            " QTextEdit:hover { border: 0.5px solid #D0D0D0; padding-left: 2px; }"
+        )
+
+    def _primary_button(self, text: str, handler) -> PrimaryPushButton:
+        button = PrimaryPushButton(text)
+        button.setStyleSheet(self._button_style())
+        button.clicked.connect(handler)
+        return button
+
+    # Keep the presentation helpers named like the original desktop surface.
+    def _get_button_style(self) -> str:
+        return self._button_style()
+
+    def _get_input_style(self) -> str:
+        return self._input_style()
+
+    def _section_title(self, text: str) -> QWidget:
+        return create_section_title(text)
+
+    def _build_surface(self) -> None:
+        if hasattr(self, "navigationInterface"):
+            self.navigationInterface.setReturnButtonVisible(False)
+
+        main_interface = QWidget()
+        main_interface.setObjectName("main_interface")
+        main_interface.setStyleSheet("QWidget#main_interface { background: transparent; border: none; }")
+        main_layout = QVBoxLayout(main_interface)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setStyleSheet(
+            """
+            QSplitter::handle:horizontal {
+                background-color: #64AADE;
+                border-width: 2px;
+                border-radius: 0.8px;
+                margin: 330px 2px;
+            }
+            QSplitter::handle:horizontal:hover {
+                background-color: #909090;
+            }
+            """
+        )
+        splitter.addWidget(self._build_left_panel())
+        splitter.addWidget(self._build_log_panel())
+        splitter.setStretchFactor(0, 33)
+        splitter.setStretchFactor(1, 67)
+        main_layout.addWidget(splitter)
+        self.main_splitter = splitter
+        self._main_interface = main_interface
+        self.bind_image_gallery(main_interface)
+
+        home_item = self.addSubInterface(
+            main_interface,
+            FluentIcon.HOME,
+            tr("home", "主页"),
+            NavigationItemPosition.TOP,
+            isTransparent=True,
+        )
+        # 「设置」是左侧堆叠里的一页（右侧日志栏常驻共享），导航仅切换堆叠页。
+        home_item.clicked.connect(lambda *_: self._show_home())
+        self.navigationInterface.addItem(
+            routeKey="plot",
+            icon=self._navigation_icon("PALETTE", "PHOTO", "PIE_SINGLE"),
+            text=tr("plot", "绘图"),
+            onClick=self._show_plot_page,
+            selectable=True,
+            position=NavigationItemPosition.TOP,
+        )
+        self.navigationInterface.addItem(
+            routeKey="tools",
+            icon=self._navigation_icon("DEVELOPER_TOOLS", "BROOM", "COMMAND_PROMPT", "APPLICATION"),
+            text=tr("tools", "工具"),
+            onClick=lambda: self.left_stacked.setCurrentIndex(3),
+            selectable=True,
+            position=NavigationItemPosition.TOP,
+        )
+        self.navigationInterface.addItem(
+            routeKey="settings",
+            icon=self._navigation_icon("SETTING", "SETTING_FILLED"),
+            text=tr("settings", "设置"),
+            onClick=lambda: self.left_stacked.setCurrentIndex(1),
+            selectable=True,
+            position=NavigationItemPosition.BOTTOM,
+        )
+        self._add_navigation_commands()
+        QTimer.singleShot(0, lambda: splitter.setSizes([400, 800, 0]))
+
+    def _navigation_icon(self, *names: str):
+        for name in names:
+            icon = getattr(FluentIcon, name, None)
+            if icon is not None:
+                return icon
+        return FluentIcon.DOCUMENT
+
+    def _add_navigation_commands(self) -> None:
+        self.navigationInterface.addItem(
+            routeKey="open-workdir",
+            icon=self._navigation_icon("LINK", "FOLDER_OPEN", "FOLDER"),
+            text=tr("open_workdir", "打开工作目录"),
+            onClick=self._open_work_directory,
+            selectable=False,
+            position=NavigationItemPosition.TOP,
+        )
+        self.navigationInterface.addItem(
+            routeKey="choose-workdir",
+            icon=self._navigation_icon("FOLDER_ADD", "FOLDER"),
+            text=tr("choose_workdir", "选择工作目录"),
+            onClick=self._choose_work_directory,
+            selectable=False,
+            position=NavigationItemPosition.TOP,
+        )
+        self.navigationInterface.addItem(
+            routeKey="clear-log",
+            icon=self._navigation_icon("DELETE", "REMOVE"),
+            text=tr("clear_log", "清空日志"),
+            onClick=self._log.clear,
+            selectable=False,
+            position=NavigationItemPosition.BOTTOM,
+        )
+
+    def _build_left_panel(self) -> QWidget:
+        left_content = QWidget()
+        left_content.setStyleSheet("QWidget { background-color: transparent; }")
+        left_layout = QVBoxLayout(left_content)
+        left_layout.setContentsMargins(0, 0, 5, 10)
+        left_layout.setSpacing(0)
+
+        self.left_stacked = QStackedWidget()
+        self.left_stacked.setStyleSheet("QStackedWidget { background-color: transparent; }")
+
+        scroll = NoHScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            """
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+                margin: 0px;
+                padding: 0px;
+            }
+            QScrollArea > QWidget > QWidget {
+                margin: 0px;
+                padding: 0px;
+            }
+            """
+        )
+
+        content_widget = QWidget()
+        content_widget.setStyleSheet("QWidget { background-color: transparent; margin: 0px; padding: 0px; }")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self._build_step_panels(content_widget, content_layout)
+
+        scroll.setWidget(content_widget)
+        self.left_stacked.addWidget(scroll)  # index 0：预处理步骤
+        self._settings_interface = SettingsInterface(
+            on_language_changed=self._restart_for_language_change,
+            on_run_mode_changed=self._on_run_mode_changed_from_settings,
+        )
+        self.left_stacked.addWidget(self._settings_interface)  # index 1：设置页（共享右侧日志）
+        self._plot_interface = PlotInterface(
+            run_jason3=self._plot_jason3,
+            run_download_jason3=self._plot_download_jason3,
+            run_jason3_swh=self._plot_jason3_swh,
+            run_download_ndbc=self._plot_download_ndbc,
+            run_match_ndbc=self._plot_match_ndbc,
+            run_ndbc_station_map=self._plot_ndbc_station_map,
+            run_spectrum_all=self._plot_spectrum_all,
+            run_spectrum_selected=self._plot_spectrum_selected,
+            run_spectrum_map=self._plot_spectrum_map,
+            run_wave_maps=self._plot_wave_maps,
+            run_wind_swell=self._plot_wind_swell,
+            run_contour=self._plot_contour,
+            run_wave_video=self._plot_wave_video,
+            run_wind_field=self._plot_wind_field,
+            view_photo_subdir=self._plot_view_photo_subdir,
+            open_photo_folder=self._plot_open_photo_folder,
+        )
+        self.left_stacked.addWidget(self._plot_interface)  # index 2：绘图页（共享右侧日志）
+        self._tools_interface = ToolsInterface(
+            clean_all=self._tools_clean_all,
+            clean_run=self._tools_clean_run,
+        )
+        self.left_stacked.addWidget(self._tools_interface)  # index 3：工具页（共享右侧日志）
+        self.left_stacked.setCurrentIndex(0)
+        left_layout.addWidget(self.left_stacked)
+        QTimer.singleShot(200, self._update_run_mode_visibility)
+        return left_content
+
+    def _on_run_mode_changed_from_settings(self, run_mode: str) -> None:
+        self._update_run_mode_visibility(run_mode)
+        mode_names = {
+            "local": tr("run_mode_local", "本地运行"),
+            "server": tr("run_mode_server", "服务器运行"),
+            "both": tr("run_mode_both", "本地+服务器运行"),
+        }
+        self._append_log(
+            tr("run_mode_switched", "✅ 已切换运行方式为: {mode}").format(
+                mode=mode_names.get(run_mode, tr("unknown", "未知"))
+            )
+        )
+
+    def _update_run_mode_visibility(self, run_mode: str | None = None) -> None:
+        """根据 RUN_MODE 显隐本地运行 / 服务器步骤与 Step 4 Slurm 配置（对齐 src）。"""
+        if run_mode is None:
+            run_mode = normalize_run_mode(_load_runtime_config().get("RUN_MODE", "both"))
+
+        show_local = run_mode in {"local", "both"}
+        show_server = run_mode in {"server", "both"}
+        show_slurm = run_mode in {"server", "both"}
+
+        if hasattr(self, "_local_run_panel"):
+            self._local_run_panel.widget.setVisible(show_local)
+        if hasattr(self, "_server_connect_panel"):
+            self._server_connect_panel.widget.setVisible(show_server)
+        if hasattr(self, "_server_ops_panel"):
+            self._server_ops_panel.widget.setVisible(show_server)
+        if hasattr(self, "_ww3_panel"):
+            self._ww3_panel.set_slurm_visible(show_slurm)
+
+    def _build_step_panels(self, parent: QWidget, layout: QVBoxLayout) -> None:
+        self._forcing_panel = ForcingStepPanel(
+            parent,
+            create_button=self._primary_button,
+            browse_path=self._browse_path,
+            show_file_info=self._show_forcing_files_info,
+        )
+        self._paths.update(self._forcing_panel.paths)
+        self._path_buttons.update(self._forcing_panel.path_buttons)
+        self._mode = self._forcing_panel.mode
+        self._auto_associate = self._forcing_panel.auto_associate
+        self._forcing_status = self._forcing_panel.status
+        layout.addWidget(self._forcing_panel.widget)
+
+        self._grid_panel = GridStepPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            combo_style=self._combo_style,
+            section_title=self._section_title,
+            nested_factor=self._nested_factor,
+            load_bounds=self._load_wind_bounds,
+            setup_outer_grid=self._setup_outer_grid,
+            setup_inner_grid=self._setup_inner_grid,
+            view_map=self._view_region_map,
+            generate_grid=self._generate_grid,
+            visualize_grid=self._visualize_grid,
+        )
+        self._display_fields.update(self._grid_panel.fields)
+        self._outer_grid_title = self._grid_panel.outer_grid_title
+        self._inner_grid_widget = self._grid_panel.inner_grid_widget
+        self._grid_type_combo = self._grid_panel.grid_type_combo
+        self._mesh_type_combo = self._grid_panel.mesh_type_combo
+        self._grid_type_label = self._grid_panel.grid_type_label
+        self._skip_grid = self._grid_panel.skip_grid
+        self._load_bounds_button = self._grid_panel.load_bounds_button
+        self._setup_outer_button = self._grid_panel.setup_outer_button
+        self._setup_inner_button = self._grid_panel.setup_inner_button
+        self._map_button = self._grid_panel.map_button
+        self._grid_button = self._grid_panel.grid_button
+        self._visualize_button = self._grid_panel.visualize_button
+        self._step2_action_buttons = self._grid_panel.action_buttons
+        layout.addWidget(self._grid_panel.widget)
+
+        self._calculation_panel = CalculationStepPanel(
+            parent,
+            create_button=self._primary_button,
+            combo_style=self._combo_style,
+            input_style=self._input_style,
+            button_style=self._button_style,
+            bounds_provider=self._calc_grid_bounds,
+            notify=self._append_log,
+        )
+        self._calc_mode_combo = self._calculation_panel.mode_combo
+        layout.addWidget(self._calculation_panel.widget)
+
+        self._ww3_panel = WW3StepPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            combo_style=self._combo_style,
+            section_title=self._section_title,
+            load_time_range=self._load_wind_time_range,
+            auto_configure_timesteps=self._auto_configure_timesteps,
+            run_pipeline=self._apply_ww3_params_only,
+        )
+        self._display_fields.update(self._ww3_panel.fields)
+        self._st_combo = self._ww3_panel.st_combo
+        self._cpu_combo = self._ww3_panel.cpu_combo
+        self._output_scheme_combo = self._ww3_panel.output_scheme_combo
+        self._pipeline_status = self._ww3_panel.status
+        self._action_buttons = [
+            *self._step2_action_buttons,
+            self._ww3_panel.load_time_button,
+            self._ww3_panel.run_button,
+        ]
+        layout.addWidget(self._ww3_panel.widget)
+
+        self._local_run_panel = LocalRunPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            local_run=self._local_run,
+            stop=self._local_stop,
+        )
+        layout.addWidget(self._local_run_panel.widget)
+
+        self._server_connect_panel = ServerConnectPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            connect=self._server_connect,
+            cancel=self._server_cancel,
+        )
+        layout.addWidget(self._server_connect_panel.widget)
+
+        self._server_ops_panel = ServerOpsPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            list_files=self._server_list_files,
+            queue=self._server_queue,
+            upload=self._server_upload,
+            submit=self._server_submit,
+            check=self._server_check,
+            clear=self._server_clear,
+            download_results=self._server_download_results,
+            download_log=self._server_download_log,
+        )
+        layout.addWidget(self._server_ops_panel.widget)
+
+    def _build_log_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(5, 1, 10, 11)
+        self._log = QTextEdit()
+        mono_font = QFont(self.font())
+        fallback_monos = [
+            "Menlo",
+            "Monaco",
+            "Consolas",
+            "SF Mono",
+            "Courier New",
+            "Liberation Mono",
+            "DejaVu Sans Mono",
+            "Noto Sans Mono",
+        ]
+        available = set(QFontDatabase.families())
+        chosen = next((family for family in fallback_monos if family in available), None)
+        if not chosen:
+            chosen = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+        mono_font.setFamily(chosen)
+        self._log.setFont(mono_font)
+        self._log.setReadOnly(True)
+        self._log.setAcceptRichText(False)
+        self._log.setUndoRedoEnabled(False)
+        try:
+            self._log.document().setMaximumBlockCount(5000)
+        except Exception:
+            pass
+        self._log.setStyleSheet(self._log_style())
+        self._log.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self._log, 1)
+        return panel
+
+    def _set_path_value(self, key: str, value: str, empty_text: str | None = None) -> None:
+        self._paths[key].setText(value)
+        button = self._path_buttons.get(key)
+        if button is None:
+            return
+        if value:
+            path = Path(value)
+            button.setText(path.name or str(path))
+            button.setToolTip(str(path))
+            button.setProperty("filled", True)
+        elif empty_text:
+            button.setText(empty_text)
+            button.setToolTip("")
+            button.setProperty("filled", False)
+        button.setStyleSheet(self._button_style())
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _apply_workdir_ui(self, folder: str) -> None:
+        """仅更新工作目录相关 UI（字段/最近列表/标题），不触发 params 采纳。"""
+        folder = os.path.abspath(os.path.normpath(folder))
+        self._set_path_value("workdir", folder, tr("choose_workdir", "选择工作目录"))
+        self.selected_folder = folder
+        add_recent_workdir(folder)
+        self._append_log(tr("workdir_current", "当前工作目录：{folder}").format(folder=folder))
+        self.setWindowTitle(f"{self._base_title}  |  {tr('workdir_path', '工作目录:')} {folder}")
+        # 刷新第六步服务器路径（追加工作目录名）
+        self._refresh_server_path()
+        if hasattr(self, "_plot_interface"):
+            self._plot_interface.auto_detect_from_workdir(folder)
+
+    def _show_plot_page(self) -> None:
+        """切换到绘图页，并自动检测工作目录中的 wind.nc / ww3*.nc（对齐 src）。"""
+        if hasattr(self, "left_stacked") and self.left_stacked.count() >= 3:
+            self.left_stacked.setCurrentIndex(2)
+        workdir = getattr(self, "selected_folder", None)
+        if not workdir and "workdir" in self._paths:
+            workdir = self._paths["workdir"].text().strip() or None
+        if hasattr(self, "_plot_interface"):
+            self._plot_interface.auto_detect_from_workdir(workdir)
+
+    def _restart_for_language_change(self, _code: str) -> None:
+        """Rebuild the already-created widgets so translated text becomes visible."""
+        params_path = self._params_path
+        workdir = self._paths.get("workdir").text().strip() if "workdir" in self._paths else ""
+        geometry = self.saveGeometry()
+        new_window = PreprocessingWindow()
+        new_window.restoreGeometry(geometry)
+        if params_path and params_path.is_file():
+            new_window.load_params_file(params_path)
+        elif workdir:
+            new_window.set_work_directory(workdir)
+        new_window.show()
+        app = QApplication.instance()
+        if app is not None:
+            setattr(app, "_ww3tool_window", new_window)
+        self.close()
+
+    def set_work_directory(self, folder: str | None) -> None:
+        """工作目录入口：确保目录内有 params.yml（缺失则按模板+config.json 生成），并切为当前。
+
+        之后所有载入/保存都针对 ``<workdir>/params.yml``。
+        """
+        if not folder:
+            return
+        folder = os.path.abspath(os.path.normpath(folder))
+        target = Path(folder) / "params.yml"
+        if not target.is_file():
+            source = self._params_path if self._params_path and self._params_path.is_file() else None
+            try:
+                self._pipeline_vm.init_workdir_params(source, target, folder)
+                self._append_log(tr("params_created_in_workdir", "已在工作目录创建 params.yml：{path}").format(path=target))
+            except Exception as exc:
+                self._show_error(tr("params_init_workdir_failed", "初始化工作目录 params.yml 失败：{error}").format(error=exc))
+                self._apply_workdir_ui(folder)
+                return
+        self._load_params(target, update_workdir_ui=False)
+        self._apply_workdir_ui(folder)
+
+    def _open_work_directory(self) -> None:
+        folder = self._paths["workdir"].text().strip()
+        if folder and Path(folder).is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+            return
+        self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
+
+    def _choose_work_directory(self) -> None:
+        from .work_folder_dialog import WorkFolderDialog
+
+        current = getattr(self, "selected_folder", None)
+        if not current and "workdir" in self._paths:
+            current = self._paths["workdir"].text().strip() or None
+        dialog = WorkFolderDialog(parent=self, current_folder=current)
+        if dialog.exec() == dialog.DialogCode.Accepted and dialog.selected_folder:
+            self.set_work_directory(dialog.selected_folder)
+
+    def _browse_params(self) -> None:
+        start = str(self._params_path or Path.cwd())
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("load_params_file", "载入参数文件"),
+            start,
+            tr("file_filter_yaml_all", "YAML 参数文件 (*.yml *.yaml);;所有文件 (*)"),
+        )
+        if selected:
+            self._params_label.setText(selected)
+            self._load_params(Path(selected))
+
+    def _load_params_from_field(self) -> None:
+        text = self._params_label.text().strip()
+        if not text:
+            self._show_error(tr("select_params_first", "请先选择 params.yml"))
+            return
+        self._load_params(Path(text))
+
+    def _load_params(self, path: Path, *, update_workdir_ui: bool = True) -> None:
+        try:
+            config = self._pipeline_vm.load_config(path, validation_stage="plot")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        self._params_path = path.resolve()
+        self._loaded_config = config
+        self._params_label.setText(str(self._params_path))
+
+        # 从根 params.yml 加载默认值，供工作目录字段为空时回退使用
+        defaults = self._load_root_defaults()
+
+        if update_workdir_ui:
+            self._apply_workdir_ui(str(config.workdir.path))
+        # 强迫场路径：不从 yml 读取，直接扫描工作目录中是否存在标准命名的文件
+        from workflows.infrastructure.forcing.file_service import FileService
+        scanned = FileService().scan_forcing_files(str(config.workdir.path))
+        labels = {
+            "wind": tr("step1_choose_wind", "选择风场"),
+            "current": tr("step1_choose_current", "选择流场"),
+            "level": tr("step1_choose_level", "选择水位场"),
+            "ice": tr("step1_choose_ice", "选择海冰场"),
+        }
+        for key in ("wind", "current", "level", "ice"):
+            value = getattr(scanned, key, None)
+            self._set_path_value(key, str(value) if value else "", labels[key])
+        # process_mode / auto_associate：load_config 已用根默认值合并，直接使用
+        pm = config.forcing.process_mode or defaults.get("forcing", {}).get("process_mode") or "copy"
+        self._mode.setCurrentIndex(0 if pm == "copy" else 1)
+        aa = config.forcing.auto_associate if config.forcing.auto_associate is not None else defaults.get("forcing", {}).get("auto_associate")
+        self._auto_associate.setChecked(bool(aa) if aa is not None else True)
+        self._render_summary(config)
+        self._append_log(tr("params_loaded", "已载入参数文件：{path}").format(path=self._params_path))
+
+    def _load_root_defaults(self) -> dict:
+        """加载根目录 params.yml 原始字典，用作新建工作目录的默认值回退。"""
+        try:
+            from workflows.infrastructure.runtime_config import _read_root_params
+            return _read_root_params()
+        except Exception:
+            return {}
+
+    def load_params_file(self, path: str | Path) -> None:
+        """Public entry for startup or external callers."""
+        self._load_params(Path(path))
+
+    def _create_example_params(self) -> None:
+        target, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("save_example_params", "保存示例 params.yml"),
+            str(Path.cwd() / "params.yml"),
+            tr("file_filter_yaml", "YAML 参数文件 (*.yml *.yaml)"),
+        )
+        if not target:
+            return
+        path = Path(target)
+        path.write_text(EXAMPLE_YAML, encoding="utf-8")
+        self._params_label.setText(str(path))
+        self._load_params(path)
+
+    def _server_path_with_workdir(self, base_path: str) -> str:
+        """在服务器基础路径后追加当前工作目录名（末段相同时不重复追加）。"""
+        if not base_path:
+            return base_path
+        workdir = getattr(self, "selected_folder", None)
+        if not workdir and "workdir" in self._paths:
+            workdir = self._paths["workdir"].text().strip()
+        if workdir:
+            name = os.path.basename(os.path.normpath(workdir))
+            if name:
+                base_name = os.path.basename(base_path.rstrip("/"))
+                if base_name == name:
+                    return base_path.rstrip("/")
+                return base_path.rstrip("/") + "/" + name
+        return base_path
+
+    def _refresh_server_path(self) -> None:
+        """刷新第六步服务器路径输入框。
+
+        remote_dir 非空时直接使用；为空时回退到 default_remote_dir + 工作目录名。
+        """
+        if not hasattr(self, "_server_ops_panel"):
+            return
+        cfg = self._loaded_config
+        if cfg and cfg.server.remote_dir:
+            self._server_ops_panel.set_server_path(cfg.server.remote_dir)
+        else:
+            base = cfg.server.default_remote_dir if cfg else ""
+            self._server_ops_panel.set_server_path(self._server_path_with_workdir(base))
+
+    def _effective_server_path(self, config: PipelineConfig) -> str:
+        """显示用服务器路径：remote_dir 非空时直接使用，否则 default_remote_dir + 工作目录名。"""
+        if config.server.remote_dir:
+            return config.server.remote_dir
+        return self._server_path_with_workdir(config.server.default_remote_dir)
+
+    def _show_home(self) -> None:
+        """切回主页步骤页，并按当前 config.json 刷新第六步服务器路径与第四步可选分组显隐。"""
+        self.left_stacked.setCurrentIndex(0)
+        self._refresh_server_path()
+        if hasattr(self, "_ww3_panel"):
+            try:
+                cfg = _load_runtime_config()
+            except Exception:
+                cfg = {}
+            self._ww3_panel.set_step4_sections_visible(
+                bool(cfg.get("STEP4_SHOW_SPECTRUM", False)),
+                bool(cfg.get("STEP4_SHOW_TIMESTEPS", False)),
+            )
+
+    def _render_summary(self, config: PipelineConfig) -> None:
+        # 用当前 UI 表单中的强迫场路径覆盖 config（确保 Step 4 显示最新选择）
+        for key in ("wind", "current", "level", "ice"):
+            text = self._paths[key].text().strip()
+            setattr(config.forcing, key, Path(text) if text else None)
+        self._grid_panel.render(config.grid)
+        self._calculation_panel.render(config.calc)
+        self._ww3_panel.render(config)
+        if hasattr(self, "_server_ops_panel"):
+            self._server_ops_panel.set_server_path(self._effective_server_path(config))
+
+    def _browse_path(self, key: str, directory: bool) -> None:
+        current = self._paths[key].text().strip()
+        if current:
+            start = current
+        elif key in {"wind", "current", "level", "ice"}:
+            start = get_forcing_field_default_dir()
+        else:
+            start = str(Path.home())
+        if directory:
+            selected = QFileDialog.getExistingDirectory(self, tr("select_path", "选择路径"), start)
+        else:
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                tr("choose_forcing_file", "选择强迫场文件"),
+                start,
+                tr("file_filter_netcdf_all", "NetCDF 文件 (*.nc *.nc4 *.cdf);;所有文件 (*)"),
+            )
+        if selected:
+            self._set_path_value(key, selected)
+            if key in {"wind", "current", "level", "ice"}:
+                has_workdir = bool(self._paths["workdir"].text().strip())
+                has_wind = bool(self._paths["wind"].text().strip())
+                if has_workdir and has_wind:
+                    self._prepare_forcing(fields=(ForcingField(key),))
+
+    def _show_forcing_files_info(self) -> None:
+        if self._busy:
+            return
+        files = Step1Files(
+            wind=self._paths["wind"].text().strip() or None,
+            current=self._paths["current"].text().strip() or None,
+            level=self._paths["level"].text().strip() or None,
+            ice=self._paths["ice"].text().strip() or None,
+        )
+        self._set_busy(True)
+
+        def task():
+            return self._forcing_vm.report_file_overviews(files)
+
+        self._runner.run(task, self._on_forcing_info_done)
+
+    def _on_forcing_info_done(self, result: object) -> None:
+        self._set_busy(False)
+        if isinstance(result, dict) and result.get("error"):
+            self._show_error(str(result["error"]))
+
+    def _require_params_path(self) -> Path | None:
+        if self._params_path is not None:
+            return self._params_path
+        text = self._params_label.text().strip()
+        if text:
+            return Path(text)
+        self._show_error(tr("load_params_first", "请先载入 params.yml"))
+        return None
+
+    def _current_workdir_params_path(self, *, create: bool = False) -> Path | None:
+        workdir = self._paths["workdir"].text().strip()
+        if not workdir:
+            self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
+            return None
+        target = Path(workdir).expanduser().resolve() / "params.yml"
+        if target.is_file():
+            return target
+        if not create:
+            self._show_error(tr("params_missing_in_current_workdir", "当前工作目录缺少 params.yml：{path}").format(path=target))
+            return None
+        source = self._params_path if self._params_path and self._params_path.is_file() else None
+        try:
+            self._pipeline_vm.init_workdir_params(source, target, str(Path(workdir).expanduser().resolve()))
+        except Exception as exc:
+            self._show_error(tr("params_init_current_workdir_failed", "初始化当前工作目录 params.yml 失败：{error}").format(error=exc))
+            return None
+        self._append_log(tr("params_created_in_current_workdir", "已在当前工作目录创建 params.yml：{path}").format(path=target))
+        return target
+
+    def _build_forcing_config(self):
+        try:
+            return self._forcing_vm.config_from_selection(
+                workdir=self._paths["workdir"].text().strip(),
+                wind=self._paths["wind"].text().strip(),
+                current=self._paths["current"].text().strip(),
+                level=self._paths["level"].text().strip(),
+                ice=self._paths["ice"].text().strip(),
+                process_mode="copy" if self._mode.currentIndex() == 0 else "move",
+                auto_associate=self._auto_associate.isChecked(),
+            )
+        except ConfigError as exc:
+            self._show_error(str(exc))
+            return None
+
+    def _form_overrides(self) -> dict:
+        """收集各面板当前表单值（供构建运行配置与写回 params.yml 共用）。"""
+        return dict(
+            workdir=self._paths["workdir"].text().strip(),
+            wind=self._paths["wind"].text().strip(),
+            current=self._paths["current"].text().strip(),
+            level=self._paths["level"].text().strip(),
+            ice=self._paths["ice"].text().strip(),
+            process_mode="copy" if self._mode.currentIndex() == 0 else "move",
+            auto_associate=self._auto_associate.isChecked(),
+            grid_overrides=self._grid_panel.overrides(),
+            calc_mode=self._calculation_panel.mode,
+            calc_points=self._calculation_panel.points(),
+            calc_track_points=self._calculation_panel.track_points(),
+            ww3_overrides=self._ww3_panel.ww3_overrides(),
+            ww3_grid_overrides=self._ww3_panel.ww3_grid_overrides(),
+            slurm_overrides=self._ww3_panel.slurm_overrides(),
+            server_overrides=self._server_overrides(),
+        )
+
+    def _server_overrides(self) -> dict:
+        if hasattr(self, "_server_ops_panel"):
+            remote_dir = self._server_ops_panel.remote_dir()
+            if remote_dir:
+                return {"remote_dir": remote_dir}
+        return {}
+
+    def _persist_server_remote_dir(self) -> bool:
+        params_path = self._current_workdir_params_path(create=True)
+        if params_path is None:
+            return False
+        remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""
+        if not remote_dir:
+            self._show_error(tr("server_path_required", "请先填写服务器路径"))
+            return False
+        try:
+            destination = self._pipeline_vm.save_server_remote_dir(params_path, remote_dir)
+        except Exception as exc:
+            self._show_error(tr("server_path_save_failed", "保存服务器路径失败：{error}").format(error=exc))
+            return False
+        return True
+
+    def _build_pipeline_config(self, *, validation_stage: str = "full", params_path: Path | None = None):
+        params_path = params_path or self._require_params_path()
+        if params_path is None:
+            return None
+        try:
+            return self._pipeline_vm.config_from_form(
+                params_path, validation_stage=validation_stage, **self._form_overrides()
+            )
+        except ConfigError as exc:
+            self._show_error(str(exc))
+            return None
+
+    def _persist_current_form_to_workdir_params(
+        self,
+        *,
+        validation_stage: str = "grid",
+        log: bool = False,
+    ) -> Path | None:
+        """主页流程统一入口：先从根 params.yml 同步默认值，再把当前表单写入工作目录 params.yml。"""
+        params_path = self._current_workdir_params_path(create=True)
+        if params_path is None:
+            return None
+        try:
+            self._pipeline_vm.sync_from_root(params_path)
+            destination = self._pipeline_vm.save_form_to_params(
+                params_path,
+                validation_stage=validation_stage,
+                **self._form_overrides(),
+            )
+        except ConfigError as exc:
+            self._show_error(str(exc))
+            return None
+        except Exception as exc:
+            self._show_error(tr("params_save_failed", "保存 params.yml 失败：{error}").format(error=exc))
+            return None
+        self._params_path = destination
+        self._params_label.setText(str(destination))
+        if log:
+            self._append_log(tr("params_saved", "已保存参数文件：{path}").format(path=destination))
+        return destination
+
+    def _config_from_current_workdir_params(
+        self,
+        *,
+        validation_stage: str = "full",
+        log: bool = True,
+    ):
+        params_path = self._persist_current_form_to_workdir_params(
+            validation_stage="grid",
+            log=log,
+        )
+        if params_path is None:
+            return None
+        try:
+            return self._pipeline_vm.load_config(params_path, validation_stage=validation_stage)
+        except ConfigError as exc:
+            self._show_error(str(exc))
+            return None
+        except Exception as exc:
+            self._show_error(tr("params_or_execution_error", "参数或执行错误") + f"：{exc}")
+            return None
+
+    def _calc_grid_bounds(self) -> dict | None:
+        """读取当前工作目录网格的经纬度包围盒，供第三步点位校验。"""
+        from ..steps.point_io import grid_bounds
+
+        workdir = self._paths["workdir"].text().strip()
+        if not workdir:
+            return None
+        mesh_type = ["structured", "smc", "unstructured"][self._mesh_type_combo.currentIndex()]
+        grid_type = "nested" if self._grid_panel.is_nested else "normal"
+        try:
+            return grid_bounds(workdir, mesh_type, grid_type)
+        except Exception:
+            return None
+
+    def _persist_params(self) -> bool:
+        """将当前表单（含第三步点位）写回 params.yml；点位不全则报错并返回 False。
+
+        在第四步「确认参数」时顺带调用，使表单编辑落盘。
+        """
+        mode = self._calculation_panel.mode
+        if mode == "spectral_point" and not self._calculation_panel.points():
+            self._show_error(tr("step3_spectral_points_required", "谱空间逐点计算需至少一个谱点"))
+            return False
+        if mode == "track" and not self._calculation_panel.track_points():
+            self._show_error(tr("step3_track_points_required", "航迹模式需至少一个航迹点"))
+            return False
+        return self._persist_current_form_to_workdir_params() is not None
+
+    def _prepare_forcing(self, *, fields: tuple[ForcingField, ...] | None = None) -> None:
+        config = self._build_forcing_config()
+        if config is None or self._busy:
+            return
+        self._set_busy(True)
+        self._show_forcing_progress()
+
+        def task():
+            return self._forcing_vm.prepare(config, fields=fields)
+
+        self._runner.run(task, self._on_forcing_done)
+
+    def _validate_params(self) -> None:
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None or self._busy:
+            return
+        self._log.clear()
+        self._set_busy(True)
+
+        def task():
+            return self._pipeline_vm.validate_file(params_path)
+
+        self._runner.run(task, self._on_pipeline_done)
+
+    def _load_wind_bounds(self) -> None:
+        if self._busy:
+            return
+        wind_path = self._resolve_wind_nc()
+        if wind_path is None or not wind_path.is_file():
+            self._show_error(tr("wind_nc_not_found_select_first", "未找到 wind.nc，请先选择并处理风场文件"))
+            return
+        self._load_bounds_button.setEnabled(False)
+        self._load_bounds_button.setText(tr("status_reading", "读取中..."))
+
+        def task():
+            return self._pipeline_vm.load_wind_bounds(wind_path)
+
+        self._runner.run(task, self._on_bounds_done)
+
+    def _resolve_wind_nc(self) -> Path | None:
+        workdir_text = self._paths["workdir"].text().strip()
+        if workdir_text:
+            workdir = Path(workdir_text).expanduser().resolve()
+            wind_nc = workdir / "wind.nc"
+            if wind_nc.is_file():
+                return wind_nc
+            matches = sorted(workdir.glob("*wind*.nc"))
+            if matches:
+                return matches[0]
+        selected = self._paths["wind"].text().strip()
+        return Path(selected).expanduser().resolve() if selected else None
+
+    def _on_bounds_done(self, result: object) -> None:
+        self._load_bounds_button.setText(tr("step2_load_from_nc", "从 wind.nc 读取范围"))
+        self._load_bounds_button.setEnabled(True)
+        if not isinstance(result, PipelineStepState):
+            return
+        if result.error:
+            self._show_error(result.error)
+            return
+        bounds = result.result
+        if bounds is None:
+            return
+        for prefix in ("grid", "grid_inner") if self._grid_panel.is_nested else ("grid",):
+            self._grid_panel.set_bounds(
+                prefix,
+                (bounds.lon_min, bounds.lon_max),
+                (bounds.lat_min, bounds.lat_max),
+            )
+
+    def _load_wind_time_range(self) -> None:
+        if self._busy:
+            return
+        wind_path = self._resolve_wind_nc()
+        if wind_path is None or not wind_path.is_file():
+            self._show_error(tr("wind_nc_not_found_select_first", "未找到 wind.nc，请先选择并处理风场文件"))
+            return
+        self._ww3_panel.load_time_button.setEnabled(False)
+        self._ww3_panel.load_time_button.setText(tr("status_reading", "读取中..."))
+
+        def task():
+            return self._pipeline_vm.load_wind_time_range(wind_path)
+
+        self._runner.run(task, self._on_time_range_done)
+
+    def _on_time_range_done(self, result: object) -> None:
+        self._ww3_panel.load_time_button.setText(tr("step4_load_time_from_wind_nc", "从 wind.nc 读取时间范围"))
+        self._ww3_panel.load_time_button.setEnabled(True)
+        if not isinstance(result, PipelineStepState):
+            return
+        if result.error:
+            self._show_error(result.error)
+            return
+        time_range = result.result
+        if time_range is None:
+            return
+        self._ww3_panel.set_value("ww3_start", time_range.start_date)
+        self._ww3_panel.set_value("ww3_end", time_range.end_date)
+
+    def _auto_configure_timesteps(self) -> None:
+        from workflows.domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps
+
+        try:
+            dx = float(self._grid_panel.fields["grid_dx"].text().strip())
+            dy = float(self._grid_panel.fields["grid_dy"].text().strip())
+            lat_s = float(self._grid_panel.fields["grid_lat_south"].text().strip())
+            lat_n = float(self._grid_panel.fields["grid_lat_north"].text().strip())
+        except ValueError:
+            self._show_error(
+                tr(
+                    "step4_auto_timesteps_need_grid",
+                    "请先在第二步填写有效的 DX、DY 与纬度范围",
+                )
+            )
+            return
+
+        freq1_text = self._ww3_panel.spectrum_freq1_text()
+        if not freq1_text and self._loaded_config is not None:
+            freq1_text = self._loaded_config.ww3_grid.parameters.get("SPECTRUM%FREQ1", "")
+        try:
+            freq1 = float(freq1_text)
+        except ValueError:
+            self._show_error(
+                tr(
+                    "step4_auto_timesteps_need_freq1",
+                    "请填写有效的起始频率 FREQ1（Hz）",
+                )
+            )
+            return
+
+        lat_mid = (lat_s + lat_n) / 2.0
+        try:
+            rec = recommend_timesteps(dx_deg=dx, dy_deg=dy, freq1=freq1, lat_deg=lat_mid)
+        except ValueError as exc:
+            self._show_error(str(exc))
+            return
+
+        self._ww3_panel.set_timestep_values(as_ww3_grid_parameters(rec))
+        summary = tr(
+            "step4_auto_timesteps_done",
+            "已按 CFL 推荐时间步长：DXY≈{dxy:.0f} m，Tcfl≈{tcfl:.0f} s → DTXY={dtxy}，DTMAX={dtmax}，DTKTH={dtkth}，DTMIN={dtmin}",
+        ).format(
+            dxy=rec.dxy_m,
+            tcfl=rec.tcfl,
+            dtxy=rec.dtxy,
+            dtmax=rec.dtmax,
+            dtkth=rec.dtkth,
+            dtmin=rec.dtmin,
+        )
+        self._append_log(summary)
+
+    def _nested_factor(self) -> float:
+        factor = self._loaded_config.grid.nested_contraction_coefficient if self._loaded_config else 1.3
+        if factor <= 0:
+            raise ValueError(tr("nested_factor_must_positive", "嵌套收缩系数必须大于 0"))
+        return factor
+
+    def _setup_inner_grid(self) -> None:
+        if not self._grid_panel.is_nested:
+            self._show_error(tr("step2_not_nested_mode", "当前不是嵌套网格模式"))
+            return
+        try:
+            factor = self._nested_factor()
+            inner = self._pipeline_vm.scaled_nested_region(
+                self._grid_panel.input_region("grid"), factor, expand=False
+            )
+        except ValueError as exc:
+            self._show_error(str(exc))
+            return
+        self._grid_panel.set_region_bounds("grid_inner", inner)
+        self._append_log(tr("step2_inner_grid_set_short", "已根据嵌套收缩系数 N={n} 设置内网格范围").format(n=f"{factor:g}"))
+
+    def _setup_outer_grid(self) -> None:
+        if not self._grid_panel.is_nested:
+            self._show_error(tr("step2_not_nested_mode", "当前不是嵌套网格模式"))
+            return
+        try:
+            factor = self._nested_factor()
+            outer = self._pipeline_vm.scaled_nested_region(
+                self._grid_panel.input_region("grid_inner"), factor, expand=True
+            )
+        except ValueError as exc:
+            self._show_error(str(exc))
+            return
+        self._grid_panel.set_region_bounds("grid", outer)
+        self._append_log(tr("step2_outer_grid_set_short", "已根据嵌套收缩系数 N={n} 设置外网格范围").format(n=f"{factor:g}"))
+
+    def _view_region_map(self) -> None:
+        config = self._config_from_current_workdir_params(validation_stage="grid")
+        if config is None or self._busy:
+            return
+
+        # Calculate map aspect ratio from grid extent so the dialog sizes correctly
+        import numpy as np
+        outer = config.grid.outer
+        inner = config.grid.inner if config.grid.grid_type == "nested" else None
+        all_lon = list(outer.lon) + (list(inner.lon) if inner else [])
+        all_lat = list(outer.lat) + (list(inner.lat) if inner else [])
+        lat_center = (min(all_lat) + max(all_lat)) / 2.0
+        lon_span = max(max(all_lon) - min(all_lon), 1e-6)
+        lat_span = max(max(all_lat) - min(all_lat), 1e-6)
+        cos_ref = max(abs(np.cos(np.radians(lat_center))), 0.08)
+        map_aspect_wh = float(np.clip((lon_span * cos_ref) / lat_span, 0.2, 14.0))
+
+        handle, output = tempfile.mkstemp(suffix="_region_map.png", prefix="ww3tool_")
+        os.close(handle)
+        self._map_preview_path = Path(output)
+
+        # Show the dialog immediately (with loading state), then render in background
+        self._map_dialog = RegionMapDialog(self, map_aspect_wh=map_aspect_wh)
+        self._set_busy(True)
+
+        def task():
+            return self._pipeline_vm.render_region_map(config, output)
+
+        def on_done(result: object) -> None:
+            self._map_button.setText(tr("step2_view_map", "查看地图"))
+            self._set_busy(False)
+            dlg = getattr(self, "_map_dialog", None)
+            if dlg is None:
+                return
+            if isinstance(result, PipelineStepState) and result.error:
+                dlg.show_error(result.error)
+            elif isinstance(result, PipelineStepState) and result.result is not None and result.result.images:
+                dlg.show_image(result.result.images[0])
+            else:
+                dlg.show_error(tr("step2_map_image_not_generated", "未生成地图图片"))
+
+        def on_cancel() -> None:
+            # BackgroundRunner doesn't support cancellation, but we mark the dialog gone
+            self._map_dialog = None
+
+        self._map_dialog.set_cancel_callback(on_cancel)
+        self._runner.run(task, on_done)
+        try:
+            self._map_dialog.exec()
+        finally:
+            self._map_dialog = None
+            if self._map_preview_path is not None:
+                try:
+                    self._map_preview_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                self._map_preview_path = None
+
+    def _generate_grid(self) -> None:
+        config = self._config_from_current_workdir_params(
+            validation_stage="grid",
+        )
+        if config is None or self._busy:
+            return
+        # Only disable the grid button — other buttons remain usable
+        self._grid_button.setEnabled(False)
+        self._grid_button.setText(tr("step2_create_grid_ing", "生成网格中..."))
+
+        def task():
+            return self._pipeline_vm.generate_grid(config)
+
+        self._runner.run(task, self._on_grid_done)
+
+    def _visualize_grid(self) -> None:
+        config = self._config_from_current_workdir_params(validation_stage="grid")
+        if config is None or self._busy:
+            return
+        self._visualize_button.setEnabled(False)
+        self._visualize_button.setText(tr("status_generating", "生成中..."))
+
+        def task():
+            return self._pipeline_vm.visualize_grid(config)
+
+        self._runner.run(task, self._on_visualize_done)
+
+    def _on_visualize_done(self, result: object) -> None:
+        self._visualize_button.setText(tr("step2_visualize_grid", "网格可视化"))
+        self._visualize_button.setEnabled(True)
+        if not isinstance(result, PipelineStepState):
+            return
+        if result.error:
+            self._show_error(result.error)
+        elif result.result is not None:
+            self._show_grid_images(result.result.title, result.result.images)
+
+    _VIDEO_SUFFIXES = frozenset({".mp4", ".avi", ".mov", ".mkv", ".webm"})
+
+    @classmethod
+    def _split_image_and_video_paths(cls, files: list[str]) -> tuple[list[str], list[str]]:
+        images: list[str] = []
+        videos: list[str] = []
+        for path in files:
+            if Path(path).suffix.lower() in cls._VIDEO_SUFFIXES:
+                videos.append(path)
+            else:
+                images.append(path)
+        return images, videos
+
+    def _open_video_file(self, videos: list[str]) -> None:
+        """用系统默认程序打开最新的视频文件。"""
+        existing = [path for path in videos if os.path.isfile(path)]
+        if not existing:
+            self._append_log(tr("plotting_no_video_found", "未找到视频文件"))
+            return
+        target = max(existing, key=os.path.getmtime)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(target))
+
+    def _present_plot_media(self, title: str, files: list[str]) -> None:
+        """图片进侧边栏；视频用系统播放器直接打开（不进侧边栏）。"""
+        images, videos = self._split_image_and_video_paths(files)
+        if videos:
+            self._open_video_file(videos)
+            return
+        if images:
+            self._show_grid_images(title, images)
+        else:
+            self._append_log(tr("plotting_done_no_images", "绘图完成，但未找到图片。"))
+
+    def _show_grid_images(self, title: str, images: list[str]) -> None:
+        """在窗口右侧图片抽屉展示结果，不改变主 splitter 宽度。"""
+        self.show_image_gallery(title, images)
+
+    def _hide_grid_images(self) -> None:
+        self.hide_image_gallery()
+
+    # ── 绘图（科研后处理）─────────────────────────────────────────────────────
+
+    def _run_plot(self, runner_fn) -> None:
+        """构建 plot 阶段配置并在后台执行一个绘图用例。"""
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None:
+            return
+        try:
+            config = self._pipeline_vm.load_config(params_path, validation_stage="plot")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        if self._busy:
+            return
+        self._set_busy(True)
+        self._runner.run(lambda: runner_fn(config), self._on_plot_done)
+
+    def _on_plot_done(self, result: object) -> None:
+        self._set_busy(False)
+        if result is None:
+            return
+        images = list(getattr(result, "image_files", []) or [])
+        if not getattr(result, "success", True):
+            messages = getattr(result, "messages", []) or []
+            self._show_error(messages[-1] if messages else tr("plotting_failed", "绘图失败"))
+            return
+        if images:
+            first = str(images[0]).replace("\\", "/")
+            if "/photo/jason3_satellite/" in first:
+                title = tr("plotting_jason3_swh_results", "Jason-3 卫星观测图")
+            else:
+                title = tr("plotting_results", "绘图结果")
+            self._present_plot_media(title, images)
+        else:
+            self._append_log(tr("plotting_done_no_images", "绘图完成，但未找到图片。"))
+
+    def _plot_wave_maps(self) -> None:
+        params = self._plot_interface.wave_maps_params()
+        self._run_plot(
+            lambda c: self._plot_vm.wave_maps(
+                c,
+                time_step_hours=params["time_step_hours"],
+                wave_file=params["wave_file"],
+            )
+        )
+
+    def _plot_contour(self) -> None:
+        params = self._plot_interface.wave_maps_params()
+        self._run_plot(
+            lambda c: self._plot_vm.contour_maps(
+                c,
+                time_step_hours=params["time_step_hours"],
+                wave_file=params["wave_file"],
+            )
+        )
+
+    def _plot_spectrum_all(self) -> None:
+        self._run_plot(lambda c: self._plot_vm.spectrum(c, mode="all"))
+
+    def _plot_spectrum_selected(self) -> None:
+        station = self._plot_interface.spectrum_station()
+        self._run_plot(lambda c: self._plot_vm.spectrum(c, mode="selected", station_index=station))
+
+    def _plot_jason3(self) -> None:
+        jason_folder = self._plot_interface.jason3_folder() or None
+        self._run_plot(lambda c: self._plot_vm.match_jason3(c, data_folder=jason_folder or ""))
+
+    def _plot_download_ndbc(self) -> None:
+        lon_lat = self._plot_interface.ndbc_lon_lat()
+        time_range = self._plot_interface.ndbc_time_range()
+        self._run_plot(lambda c: self._plot_vm.download_ndbc(c, lon_lat=lon_lat, time_range=time_range))
+
+    def _plot_match_ndbc(self) -> None:
+        lon_lat = self._plot_interface.ndbc_lon_lat()
+        time_range = self._plot_interface.ndbc_time_range()
+        self._run_plot(lambda c: self._plot_vm.match_ndbc(c, lon_lat=lon_lat, time_range=time_range))
+
+    def _plot_view_photo_subdir(self, subdir: str) -> None:
+        """查看工作目录 ``photo/<subdir>`` 下的结果（视频用系统播放器打开）。"""
+        from workflows.infrastructure.plot.photo_output import (
+            SUBDIR_WAVE_HEIGHT_VIDEO,
+            collect_photo_files,
+            photo_subdir,
+        )
+
+        workdir = self._paths["workdir"].text().strip()
+        if not workdir:
+            self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
+            return
+        folder = photo_subdir(workdir, subdir)
+        if not os.path.isdir(folder):
+            self._append_log(
+                tr("plotting_photo_subdir_not_found", "未找到图片目录，请先生成：{path}").format(path=folder)
+            )
+            return
+
+        videos = collect_photo_files(workdir, subdir, "*.mp4")
+        if subdir == SUBDIR_WAVE_HEIGHT_VIDEO:
+            if not videos:
+                self._append_log(
+                    tr("plotting_photo_video_subdir_empty", "目录中没有视频，请先生成：{path}").format(
+                        path=folder
+                    )
+                )
+                return
+            self._open_video_file(videos)
+            return
+
+        images = collect_photo_files(workdir, subdir, "*.png")
+        if not images:
+            self._append_log(
+                tr("plotting_photo_subdir_empty", "目录中没有图片，请先生成：{path}").format(path=folder)
+            )
+            return
+        self._show_grid_images(tr("plotting_results", "绘图结果"), images)
+
+    def _plot_open_photo_folder(self) -> None:
+        from workflows.infrastructure.plot.photo_output import photo_subdir
+
+        workdir = self._paths["workdir"].text().strip()
+        if not workdir:
+            self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
+            return
+        photo_root = os.path.join(workdir, "photo")
+        if os.path.isdir(photo_root):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(photo_root))
+            return
+        self._show_error(tr("plotting_photo_root_not_found", "未找到 photo 文件夹，请先生成图片"))
+
+    def _plot_download_jason3(self) -> None:
+        time_range = self._plot_interface.jason3_time_range()
+        local_folder = self._plot_interface.jason3_folder() or None
+        self._run_plot(lambda c: self._plot_vm.download_jason3(c, time_range=time_range, local_folder=local_folder))
+
+    def _plot_jason3_swh(self) -> None:
+        lon_lat = self._plot_interface.jason3_lon_lat()
+        time_range = self._plot_interface.jason3_time_range()
+        if not lon_lat:
+            self._show_error(tr("plotting_fill_lonlat_range", "请正确填写经纬度范围"))
+            return
+        if not time_range:
+            self._show_error(tr("plotting_fill_time_range", "请填写开始和结束时间（格式：YYYYMMDD）"))
+            return
+        jason_folder = self._plot_interface.jason3_folder() or None
+        self._run_plot(
+            lambda c: self._plot_vm.jason3_swh(
+                c,
+                lon_lat=lon_lat,
+                time_range=time_range,
+                data_folder=jason_folder or "",
+            )
+        )
+
+    def _plot_ndbc_station_map(self) -> None:
+        """在对话框中展示 NDBC 浮标站点地图（对齐 src run_ndbc_observation）。"""
+        lon_lat = self._plot_interface.ndbc_lon_lat()
+        if not lon_lat:
+            self._show_error(tr("plotting_fill_lonlat_range", "❌ 请正确填写经纬度范围"))
+            return
+
+        time_range = self._plot_interface.ndbc_time_range()
+        if not time_range:
+            self._show_error(tr("plotting_fill_time_range", "❌ 请填写开始和结束时间（格式：YYYYMMDD）"))
+            return
+
+        start_str, end_str = time_range
+        if not re.fullmatch(r"\d{8}", start_str) or not re.fullmatch(r"\d{8}", end_str):
+            self._show_error(tr("plotting_ndbc_invalid_time_format", "❌ 时间格式错误，请使用 YYYYMMDD。"))
+            return
+        try:
+            datetime.strptime(start_str, "%Y%m%d")
+            datetime.strptime(end_str, "%Y%m%d")
+        except ValueError:
+            self._show_error(tr("plotting_ndbc_invalid_time_format", "❌ 时间格式错误，请使用 YYYYMMDD。"))
+            return
+
+        from workflows.application.match_ndbc import load_ndbc_station_points
+
+        ndbc_folder = self._plot_interface.ndbc_folder().strip()
+        if not ndbc_folder or not os.path.isdir(ndbc_folder):
+            # 回退到 PipelineConfig 的 paths.ndbc_path
+            if self._loaded_config and self._loaded_config.paths.ndbc_path and os.path.isdir(self._loaded_config.paths.ndbc_path):
+                ndbc_folder = self._loaded_config.paths.ndbc_path
+            else:
+                ndbc_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "ndbc")
+                os.makedirs(ndbc_folder, exist_ok=True)
+
+        self._append_log(tr("plotting_ndbc_fetch_stations", "🔄 正在获取 NDBC 站点列表..."))
+
+        def task() -> dict:
+            stations = load_ndbc_station_points(lon_lat, time_range, ndbc_folder)
+            return {"stations": stations, "lon_lat": lon_lat}
+
+        self._runner.run(task, self._on_ndbc_station_map_ready)
+
+    def _on_ndbc_station_map_ready(self, result: object) -> None:
+        if isinstance(result, dict) and result.get("success") is False:
+            self._append_log(
+                tr("plotting_ndbc_download_process_failed", "❌ NDBC 下载失败：{error}").format(
+                    error=result.get("error", tr("unknown_error", "未知错误"))
+                )
+            )
+            return
+        if not isinstance(result, dict):
+            return
+
+        stations = result.get("stations") or []
+        lon_lat = result.get("lon_lat") or []
+        if not stations:
+            InfoBar.warning(
+                title=tr("plotting_display_failed", "显示失败"),
+                content=tr("plotting_no_station_data", "没有可显示的站点数据"),
+                duration=3000,
+                parent=self,
+            )
+            self._append_log(
+                tr("plotting_ndbc_no_station_in_range", "⚠️ 当前经纬度范围内没有找到 NDBC 活跃站点。")
+            )
+            return
+
+        try:
+            from ..components.ndbc_station_map_dialog import NDBCStationMapDialog
+
+            dialog = NDBCStationMapDialog(parent=self, stations=stations, lon_lat=lon_lat)
+            dialog.exec()
+        except ImportError as exc:
+            self._append_log(
+                tr("plotting_cartopy_not_available", "缺少 cartopy 库，无法显示站点地图：{error}").format(
+                    error=exc
+                )
+            )
+            return
+
+        self._append_log(
+            tr("plotting_ndbc_station_selected", "✅ 范围内找到 {count} 个 NDBC 站点").format(count=len(stations))
+        )
+
+    def _plot_spectrum_map(self) -> None:
+        """在对话框中展示谱站点地图。"""
+        spec_file = self._plot_interface.spectrum_file_path()
+        if not spec_file or not os.path.exists(spec_file):
+            self._show_error(tr("plotting_spectrum_file_not_selected", "请先选择二维谱文件"))
+            return
+        try:
+            from ..components.spectrum_station_map_dialog import SpectrumStationMapDialog
+            dialog = SpectrumStationMapDialog(parent=self, spec_file=spec_file)
+            dialog.exec()
+        except ImportError:
+            self._append_log(tr("plotting_cartopy_not_available", "缺少 cartopy 库，无法显示站点地图"))
+
+    def _plot_wind_swell(self) -> None:
+        params = self._plot_interface.wave_maps_params()
+        self._run_plot(
+            lambda c: self._plot_vm.wind_swell_maps(
+                c,
+                time_step_hours=params["time_step_hours"],
+                wave_file=params["wave_file"],
+            )
+        )
+
+    def _plot_wave_video(self) -> None:
+        params = self._plot_interface.wave_maps_params()
+        self._run_plot(
+            lambda c: self._plot_vm.wave_video(
+                c,
+                time_step_hours=params["time_step_hours"],
+                wave_file=params["wave_file"],
+            )
+        )
+
+    def _plot_wind_field(self) -> None:
+        params = self._plot_interface.wind_field_params()
+        self._run_plot(
+            lambda c: self._plot_vm.wind_field(
+                c,
+                wind_file=params["wind_file"],
+                time_step_hours=params["time_step_hours"],
+                flag_type=params["flag_type"],
+                density_step=params["density_step"],
+            )
+        )
+
+    # ── 本地运行 ──────────────────────────────────────────────────────────────
+
+    def _run_job(self, runner_fn, on_done=None) -> bool:
+        """构建 plot 阶段配置并在后台执行一个本地/远程操作。"""
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None:
+            return False
+        try:
+            config = self._pipeline_vm.load_config(params_path, validation_stage="plot")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return False
+        if self._busy:
+            return False
+        self._set_busy(True)
+        self._runner.run(lambda: runner_fn(config), on_done or self._on_job_done)
+        return True
+
+    def _on_job_done(self, result: object) -> None:
+        self._set_busy(False)
+        self._sync_step5_if_needed()
+        if result is None:
+            return
+        if not getattr(result, "success", True):
+            error = getattr(result, "error", None)
+            if not error:
+                messages = getattr(result, "messages", []) or []
+                error = messages[-1] if messages else tr("operation_failed", "操作失败")
+            self._show_error(str(error))
+
+    def _sync_step5_if_needed(self) -> None:
+        """若远程 VM 已自动连接但第五步 UI 未更新，同步状态。"""
+        if not self._remote_vm.is_connected:
+            return
+        if getattr(self, "_step5_ui_synced", False):
+            return
+        self._step5_ui_synced = True
+        self._server_connect_panel.set_connected(True)
+        # 启动轮询
+        self._server_poll_config = self._build_poll_config()
+        self._start_server_polling()
+
+    def _local_run(self) -> None:
+        bin_dir = self._local_run_panel.bin_dir() or None
+        self._local_run_panel.local_run_button.setEnabled(False)
+        self._local_run_panel.local_run_button.setText(tr("status_running", "运行中..."))
+        started = self._run_job(
+            lambda c: self._local_vm.local_run(c, bin_dir=bin_dir),
+            on_done=self._on_local_run_done,
+        )
+        if not started:
+            self._local_run_panel.local_run_button.setText(tr("step5_local_run", "本地运行"))
+            self._local_run_panel.local_run_button.setEnabled(True)
+
+    def _on_local_run_done(self, result: object) -> None:
+        self._local_run_panel.local_run_button.setText(tr("step5_local_run", "本地运行"))
+        self._local_run_panel.local_run_button.setEnabled(True)
+        self._on_job_done(result)
+
+    def _local_stop(self) -> None:
+        if self._local_vm.stop():
+            self._append_log(tr("step5_stop_signal_sent", "⏹️ 已发送停止信号"))
+        else:
+            self._append_log(tr("step5_no_running_local_task", "当前没有正在运行的本地任务"))
+
+    # ── 服务器：连接/队列/取消 ────────────────────────────────────────────────
+
+    def _server_connect(self) -> None:
+        self._server_connect_panel.connect_button.setEnabled(False)
+        if not self._run_job(self._remote_vm.connect_test, on_done=self._on_connect_done):
+            self._server_connect_panel.connect_button.setEnabled(True)
+
+    def _on_connect_done(self, result: object) -> None:
+        self._set_busy(False)
+        self._server_connect_panel.connect_button.setEnabled(True)
+        connected = bool(getattr(result, "success", False))
+        self._server_connect_panel.set_connected(connected)
+        if not connected:
+            self._step5_ui_synced = False
+            error = getattr(result, "error", None)
+            if not error:
+                messages = getattr(result, "messages", []) or []
+                error = messages[-1] if messages else tr("connect_failed", "连接失败")
+            self._show_error(str(error))
+            self._stop_server_polling()
+        else:
+            self._step5_ui_synced = True
+            # 缓存当前配置用于轮询，避免每次重新构建
+            self._server_poll_config = self._build_poll_config()
+            self._start_server_polling()
+
+    def _server_queue(self) -> None:
+        self._run_job(self._remote_vm.queue_status)
+
+    def _server_cancel(self) -> None:
+        job_id = self._server_connect_panel.job_id()
+        if not job_id:
+            self._show_error(tr("step5_cancel_empty_jobid", "请填写要取消的任务 ID"))
+            return
+        self._run_job(lambda c: self._remote_vm.cancel_job(c, job_id))
+
+    # ── 服务器状态自动轮询（CPU 排行 + 任务队列）────────────────────────────
+
+    def _build_poll_config(self):
+        """尝试构建轮询用的 PipelineConfig，失败时返回 None。"""
+        try:
+            params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+            if params_path is None:
+                return None
+            return self._pipeline_vm.load_config(params_path, validation_stage="plot")
+        except Exception:
+            return None
+
+    def _start_server_polling(self) -> None:
+        """连接成功后启动定时器，每 15 秒拉取 CPU 排行和任务队列。"""
+        self._stop_server_polling()
+        self._server_polling_active = True
+        # 立即拉取一次
+        self._poll_server_status()
+        self._server_poll_timer = QTimer(self)
+        self._server_poll_timer.timeout.connect(self._poll_server_status)
+        self._server_poll_timer.start(15_000)
+
+    def _stop_server_polling(self) -> None:
+        self._server_polling_active = False
+        timer = getattr(self, "_server_poll_timer", None)
+        if timer is not None:
+            timer.stop()
+            self._server_poll_timer = None
+
+    def _poll_server_status(self) -> None:
+        """轻量级拉取：复用持久化 SSH 连接，不设置 busy 标志，不输出日志。"""
+        cfg = getattr(self, "_server_poll_config", None)
+        if cfg is None or not getattr(self, "_server_polling_active", False):
+            return
+        # 复用 ViewModel 的持久化 client，跳过 log 回调
+        from workflows.application.remote_ops import run_server_status
+        persistent = self._remote_vm._client
+        self._runner.run(
+            lambda: run_server_status(cfg, client=persistent),
+            self._on_server_status_done,
+        )
+
+    def _on_server_status_done(self, result: object) -> None:
+        if result is None:
+            return
+        data = getattr(result, "data", None)
+        if isinstance(data, dict):
+            cpu_data = data.get("cpu", []) or []
+            queue_lines = data.get("queue", []) or []
+            self._server_connect_panel.update_cpu_table(cpu_data)
+            self._server_connect_panel.update_queue_table(queue_lines)
+        # 连接失败时停止轮询
+        if not getattr(result, "success", True):
+            self._step5_ui_synced = False
+            self._stop_server_polling()
+            self._server_connect_panel.set_connected(False)
+
+    # ── 服务器：操作 ──────────────────────────────────────────────────────────
+
+    def _server_list_files(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(self._remote_vm.list_files)
+
+    def _server_upload(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(lambda c: self._remote_vm.upload(c, confirmed=True))
+
+    def _server_submit(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(self._remote_vm.submit)
+
+    def _server_check(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(self._remote_vm.check_status)
+
+    def _server_clear(self) -> None:
+        remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""
+        if not remote_dir:
+            self._show_error(tr("server_path_required", "请先填写服务器路径"))
+            return
+        box = MessageBox(
+            tr("confirm_clear_remote_folder", "确认清空远程文件夹"),
+            tr(
+                "confirm_clear_remote_folder_content",
+                "将删除远程目录内的所有文件与子文件夹（目录本身保留）。此操作不可恢复。\n\n{path}",
+            ).format(path=remote_dir),
+            self,
+        )
+        if not box.exec():
+            return
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(lambda c: self._remote_vm.clear_remote(c, confirmed=True))
+
+    def _server_download_results(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(lambda c: self._remote_vm.download_results(c, nested=c.grid.grid_type == "nested"))
+
+    def _server_download_log(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(self._remote_vm.download_log)
+
+    # ── 工具：清理工作目录 ────────────────────────────────────────────────────
+
+    def _tools_workdir(self) -> str | None:
+        workdir = self._paths["workdir"].text().strip()
+        if not workdir:
+            self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
+            return None
+        if not Path(workdir).is_dir():
+            self._show_error(tr("tools_clean_not_exists", "工作目录不存在：{path}").format(path=workdir))
+            return None
+        return os.path.abspath(os.path.normpath(workdir))
+
+    def _tools_clean(self, *, title: str, content: str, deleter, kind: str) -> None:
+        workdir = self._tools_workdir()
+        if workdir is None:
+            return
+        box = MessageBox(title, content.format(path=workdir), self)
+        if not box.exec():
+            return
+        try:
+            removed, errors = deleter(workdir)
+        except Exception as exc:
+            self._show_error(tr("tools_clean_failed", "清理失败：{error}").format(error=exc))
+            return
+        for line in errors[:20]:
+            self._append_log(f"   {line}")
+        if len(errors) > 20:
+            self._append_log("   …")
+        self._append_log(tr("tools_clean_done_kind", "🗑️ 已清理{kind}（删除 {n} 个文件）：{path}").format(kind=kind, n=removed, path=workdir))
+        InfoBar.success(
+            title=tr("tools_clean_workdir_card_title", "清理工作目录"),
+            content=tr("tools_clean_done_all_short", "已删除 {n} 个文件").format(n=removed),
+            duration=2500,
+            parent=self,
+        )
+
+    def _tools_clean_all(self) -> None:
+        self._tools_clean(
+            title=tr("tools_clean_confirm_all_title", "确认清空工作目录"),
+            content=tr("tools_clean_confirm_all_content", "将删除该目录下的所有文件与子文件夹（目录本身保留）。此操作不可恢复。\n\n{path}"),
+            deleter=delete_all_under,
+            kind=tr("tools_clean_kind_all", "工作目录内文件"),
+        )
+
+    def _tools_clean_run(self) -> None:
+        self._tools_clean(
+            title=tr("tools_clean_confirm_run_title", "确认清空运行文件"),
+            content=tr("tools_clean_confirm_run_content", "将删除该目录下的运行产物（.ww3 除 grid.ww3、.log、.bin）。此操作不可恢复。\n\n{path}"),
+            deleter=delete_run_artifacts_under,
+            kind=tr("tools_clean_kind_run", "运行文件"),
+        )
+
+    def _apply_ww3_params_only(self) -> None:
+        """Apply WW3 namelist parameters without re-running forcing or grid generation."""
+        # Use "plot" stage to skip forcing-path existence checks — files are
+        # already in the workdir from a previous run; we only need WW3 params.
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None:
+            return
+        try:
+            config = self._pipeline_vm.load_config(params_path, validation_stage="plot")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        if self._busy:
+            return
+        self._set_busy(True)
+
+        def task():
+            return self._pipeline_vm.apply_ww3_params(config)
+
+        self._runner.run(task, self._on_pipeline_done)
+
+    def _run_pipeline(self) -> None:
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None:
+            return
+        try:
+            config = self._pipeline_vm.load_config(params_path, validation_stage="full")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        if self._busy:
+            return
+        skip_grid = self._skip_grid.isChecked()
+        self._log.clear()
+        self._set_busy(True)
+
+        def task():
+            return self._pipeline_vm.run(config, skip_grid=skip_grid)
+
+        self._runner.run(task, self._on_pipeline_done)
+
+    def _on_forcing_done(self, result: object) -> None:
+        self._hide_forcing_progress()
+        self._set_busy(False)
+        if isinstance(result, ForcingStepState) and result.error:
+            self._show_error(result.error)
+        elif isinstance(result, dict) and result.get("error"):
+            self._show_error(str(result["error"]))
+        # 强迫场处理完毕后刷新 Step 4 面板的启用状态显示
+        if self._loaded_config is not None:
+            self._render_summary(self._loaded_config)
+
+    def _on_pipeline_done(self, result: object) -> None:
+        self._set_busy(False)
+        if isinstance(result, dict) and result.get("error"):
+            self._show_error(str(result["error"]))
+
+    def _on_grid_done(self, result: object) -> None:
+        self._grid_button.setText(tr("step2_create_grid", "生成网格"))
+        self._grid_button.setEnabled(True)
+        if isinstance(result, PipelineStepState) and result.error:
+            self._show_error(result.error)
+        elif isinstance(result, dict) and result.get("error"):
+            self._show_error(str(result["error"]))
+
+    def _set_busy(self, busy: bool) -> None:
+        # Match legacy src behavior: background tasks do not globally disable
+        # homepage buttons. Operations that must prevent duplicate clicks manage
+        # their own button state locally.
+        self._busy = False
+        if busy:
+            self._forcing_status.setText(tr("status_processing", "正在处理"))
+            self._pipeline_status.setText(tr("status_processing", "正在处理"))
+        else:
+            self._render_forcing_state(self._forcing_vm.state)
+            self._render_pipeline_state(self._pipeline_vm.state)
+
+    def _show_forcing_progress(self) -> None:
+        if self._forcing_progress is None:
+            self._forcing_progress = ForcingProgressDialog(self, tr("please_wait", "请稍候..."))
+        self._forcing_progress.show()
+        self._forcing_progress.raise_()
+        self._forcing_progress.activateWindow()
+
+    def _hide_forcing_progress(self) -> None:
+        if self._forcing_progress is not None:
+            self._forcing_progress.close()
+            self._forcing_progress.deleteLater()
+            self._forcing_progress = None
+
+    def _create_log_block_format(self) -> QTextBlockFormat:
+        """返回统一的日志段落格式，让中英文行距一致。"""
+        extra = float(_LOG_LINE_SPACING_EXTRA_PX)
+        bottom_margin = min(4.0, extra * 0.35 + 0.75)
+        fmt = QTextBlockFormat()
+        if extra > 0:
+            fmt.setLineHeight(extra, _LH_LINE_DISTANCE)
+        fmt.setBottomMargin(bottom_margin)
+        return fmt
+
+    def _append_log(self, message: str) -> None:
+        """以段落方式追加纯文本，确保每行应用统一行距。"""
+        text = str(message)
+        cursor = self._log.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        fmt = self._create_log_block_format()
+
+        doc = self._log.document()
+        is_empty = doc.blockCount() == 1 and doc.firstBlock().text() == ""
+        parts = text.split("\n") if text else [""]
+
+        for idx, part in enumerate(parts):
+            if is_empty and idx == 0:
+                cursor.setBlockFormat(fmt)
+            else:
+                cursor.insertBlock(fmt)
+            if part:
+                cursor.insertText(part)
+
+        self._log.setTextCursor(cursor)
+
+    def _render_forcing_state(self, state: ForcingStepState) -> None:
+        if self._busy and state.is_running:
+            self._forcing_status.setText(tr("status_processing", "正在处理"))
+        elif state.error:
+            self._forcing_status.setText(tr("status_failed", "处理失败"))
+        elif state.files.wind:
+            self._forcing_status.setText(tr("forcing_prepared", "强迫场已准备"))
+            labels = {
+                "wind": tr("step1_choose_wind", "选择风场"),
+                "current": tr("step1_choose_current", "选择流场"),
+                "level": tr("step1_choose_level", "选择水位场"),
+                "ice": tr("step1_choose_ice", "选择海冰场"),
+            }
+            for key, empty_text in labels.items():
+                value = getattr(state.files, key, None)
+                if value:
+                    self._set_path_value(key, str(value), empty_text)
+        else:
+            self._forcing_status.setText(tr("status_waiting", "等待执行"))
+
+    def _render_pipeline_state(self, state: PipelineStepState) -> None:
+        if self._busy and state.is_running:
+            self._pipeline_status.setText(tr("status_processing", "正在处理"))
+        elif state.error:
+            self._pipeline_status.setText(tr("status_failed", "处理失败"))
+        elif state.action == "validate" and not state.error:
+            self._pipeline_status.setText(tr("status_params_valid", "参数有效"))
+        elif state.action == "run" and not state.error:
+            self._pipeline_status.setText(tr("status_preprocess_done", "预处理完成"))
+        elif state.action == "grid" and not state.error:
+            self._pipeline_status.setText(tr("status_grid_done", "网格生成完成"))
+        elif state.action == "bounds" and not state.error:
+            self._pipeline_status.setText(tr("status_bounds_loaded", "范围已读取"))
+        elif state.action == "map" and not state.error:
+            self._pipeline_status.setText(tr("status_map_done", "地图已生成"))
+        elif state.action == "visualize" and not state.error:
+            self._pipeline_status.setText(tr("status_visualize_done", "网格可视化完成"))
+        else:
+            self._pipeline_status.setText(tr("status_waiting", "等待执行"))
+
+    def _show_error(self, message: str) -> None:
+        InfoBar.error(
+            title=tr("params_or_execution_error", "参数或执行错误"),
+            content=message,
+            duration=5000,
+            parent=self,
+        )
+
+
+def create_preprocessing_window() -> PreprocessingWindow:
+    return PreprocessingWindow()
