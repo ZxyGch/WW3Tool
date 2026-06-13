@@ -27,13 +27,14 @@
 配置管理：
   load <params.yml>          加载参数配置文件
   config                     显示当前配置摘要
+  print                      输出当前 params.yml 内容
   create-workdir <name>      从模板创建新工作目录
 
 预处理：
   validate [--stage forcing|grid|full]  校验当前配置文件
   prepare-forcing            准备强迫场（Step 1）
   generate-grid [--no-cache] 生成网格（Step 2）
-  run [--skip-grid] [--no-cache]  完整预处理流程
+  run-pre-workflow [--skip-grid] [--no-cache]  完整预处理流程
 
 后处理 / 绘图：
   plot                       执行所有启用的绘图任务

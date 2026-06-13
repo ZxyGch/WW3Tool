@@ -55,9 +55,9 @@ python3 runInteractive.py --lang en_US
 
 启动后会进入 `ww3>` 提示符，支持 Tab 补全、上下键历史浏览和彩色输出。所有命令按功能分为五组：
 
-配置管理：`create-workdir`、`load`、`config`
+配置管理：`create-workdir`、`load`、`config`、`print`
 
-预处理：`validate`、`prepare-forcing`、`generate-grid`、`prepare-ww3`、`run`
+预处理：`validate`、`prepare-forcing`、`generate-grid`、`prepare-ww3`、`run-pre-workflow`
 
 后处理/绘图：`plot`、`plot-wave-maps`、`plot-spectrum`、`match-jason3`、`jason3-swh`、`download-jason3`、`match-ndbc`
 
@@ -67,9 +67,9 @@ python3 runInteractive.py --lang en_US
 
 典型的工作流程分两条路径：
 
-本地运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run` → `plot`
+本地运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run-pre-workflow` → `plot`
 
-服务器运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run` → `upload` → `submit` → `check-status` → `download-results`
+服务器运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run-pre-workflow` → `upload` → `submit` → `check-status` → `download-results`
 
 `create-workdir` 会从根 `params.yml` 模板复制一份到新的工作目录，并自动把 `workdir.path` 改成对应路径。`prepare-ww3` 是交互式终端独有的命令，它只生成 WW3 namelist 文件，不会重跑强迫场和网格。`upload` 会自动连接 SSH，破坏性操作（`upload`、`clear-remote`）需要加 `--confirm`。输入 `help` 可以查看所有命令的说明，输入 `help <命令>` 查看单个命令的帮助。
 

@@ -89,6 +89,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 ("load <params.yml>", tr("icli_help_load", "加载参数配置文件")),
                 ("config", tr("icli_help_config", "显示当前配置摘要")),
+                ("print", tr("icli_help_print", "输出当前 params.yml 内容")),
                 ("create-workdir <name>", tr("icli_help_create_workdir", "从模板创建新工作目录")),
             ],
         ),
@@ -98,7 +99,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("validate [--stage forcing|grid|full]", tr("icli_help_validate", "校验当前配置文件")),
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
                 ("generate-grid [--no-cache]", tr("icli_help_generate_grid", "生成网格（Step 2）")),
-                ("run [--skip-grid] [--no-cache]", tr("icli_help_run", "完整预处理流程")),
+                ("run-pre-workflow [--skip-grid] [--no-cache]", tr("icli_help_run", "完整预处理流程")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
             ],
         ),
@@ -235,8 +236,8 @@ class InteractiveCLI(cmd.Cmd):
         # 典型流程提示（上下分叉：本地 vs 远程）
         g = _color
         print(f"  {_bold(_color(tr('icli_workflow', '典型流程'), _Colors.YELLOW))}")
-        print(f"    {g('create-workdir', _Colors.GREEN)} → {g('prepare-forcing', _Colors.GREEN)} → {g('generate-grid', _Colors.GREEN)} → {g('run', _Colors.GREEN)} → {g('plot', _Colors.GREEN)}")
-        print(f"                                                      └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
+        print(f"    {g('create-workdir', _Colors.GREEN)} → {g('prepare-forcing', _Colors.GREEN)} → {g('generate-grid', _Colors.GREEN)} → {g('run-pre-workflow', _Colors.GREEN)} → {g('plot', _Colors.GREEN)}")
+        print(f"                                                                              └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
         print()
 
     def parseline(self, line: str) -> tuple[str | None, str | None, str]:
@@ -296,19 +297,96 @@ class InteractiveCLI(cmd.Cmd):
         if not self._require_config():
             return
         cfg = self._config
+        not_set = tr("icli_not_set", "(未设置)")
+        not_cfg = tr("icli_not_configured", "(未配置)")
+
         print(_bold("\n" + tr("icli_config_summary", "📋 当前配置摘要")))
         print(f"  {tr('icli_config_file', '配置文件：{}').format(self._params_path)}")
         print(f"  {tr('icli_workdir', '工作目录：{}').format(cfg.workdir.path)}")
-        print(f"  {tr('icli_grid_type', '网格类型：{} / {}').format(cfg.grid.mesh_type, cfg.grid.grid_type)}")
-        not_set = tr("icli_not_set", "(未设置)")
-        print(f"  {tr('icli_forcing', '强迫场：')}")
-        print(f"    {tr('icli_wind', '    风场：{}').format(cfg.forcing.wind or not_set)}")
-        print(f"    {tr('icli_current', '    流场：{}').format(cfg.forcing.current or not_set)}")
-        print(f"    {tr('icli_level', '    水位：{}').format(cfg.forcing.level or not_set)}")
-        print(f"  {tr('icli_ww3_period', 'WW3 时段：{} ~ {}').format(cfg.ww3.start_date, cfg.ww3.end_date)}")
-        not_cfg = tr("icli_not_configured", "(未配置)")
-        print(f"  {tr('icli_server', '服务器：{}').format(cfg.server.host or not_cfg)}")
+
+        # 网格
+        print(f"\n  {_bold(tr('icli_config_grid', '网格'))}")
+        print(f"    {tr('icli_grid_type', '类型：{} / {}').format(cfg.grid.mesh_type, cfg.grid.grid_type)}")
+        outer = cfg.grid.outer
+        if outer:
+            print(f"    {tr('icli_grid_range', '范围：经度 {} ~ {}，纬度 {} ~ {}').format(outer.lon_min, outer.lon_max, outer.lat_min, outer.lat_max)}")
+        if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
+            s = cfg.grid.structured
+            print(f"    dx/dy：{s.dx} / {s.dy}，水深：{s.bathymetry or not_set}，海岸线：{s.coastline_precision or not_set}")
+        elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
+            s = cfg.grid.smc
+            print(f"    水深：{s.bathymetry or not_set}，细化层数：{s.refinement_levels}")
+        elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
+            u = cfg.grid.unstructured
+            print(f"    网格尺度：{u.mesh_size or not_set}")
+
+        # 强迫场
+        print(f"\n  {_bold(tr('icli_forcing', '强迫场'))}")
+        print(f"    {tr('icli_wind', '风场：{}').format(cfg.forcing.wind or not_set)}")
+        print(f"    {tr('icli_current', '流场：{}').format(cfg.forcing.current or not_set)}")
+        print(f"    {tr('icli_level', '水位：{}').format(cfg.forcing.level or not_set)}")
+        print(f"    {tr('icli_ice', '海冰：{}').format(cfg.forcing.ice or not_set)}")
+        print(f"    处理模式：{cfg.forcing.process_mode}，自动关联：{'✓' if cfg.forcing.auto_associate else '✗'}")
+
+        # 计算模式
+        print(f"\n  {_bold(tr('icli_config_calc', '计算模式'))}")
+        print(f"    模式：{cfg.calc.mode or not_set}")
+        if cfg.calc.mode == "point":
+            print(f"    谱点数：{len(cfg.calc.points)}")
+        elif cfg.calc.mode == "track":
+            print(f"    航迹点数：{len(cfg.calc.track_points)}")
+
+        # WW3 配置
+        print(f"\n  {_bold(tr('icli_config_ww3', 'WW3 配置'))}")
+        print(f"    {tr('icli_ww3_period', '时段：{} ~ {}').format(cfg.ww3.start_date, cfg.ww3.end_date)}")
+        print(f"    计算精度：{cfg.ww3.compute_precision or not_set}s，输出精度：{cfg.ww3.output_precision or not_set}s")
+        print(f"    输出方案：{cfg.ww3.output_scheme or not_set}，ST：{cfg.ww3.st or not_cfg}")
+
+        # WW3 Grid 参数
+        wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
+        if wg:
+            spectrum = f"XFR={wg.get('SPECTRUM%XFR', '?')}, FREQ1={wg.get('SPECTRUM%FREQ1', '?')}, NK={wg.get('SPECTRUM%NK', '?')}, NTH={wg.get('SPECTRUM%NTH', '?')}"
+            timesteps = f"DTMAX={wg.get('TIMESTEPS%DTMAX', '?')}, DTXY={wg.get('TIMESTEPS%DTXY', '?')}, DTKTH={wg.get('TIMESTEPS%DTKTH', '?')}, DTMIN={wg.get('TIMESTEPS%DTMIN', '?')}"
+            print(f"    频谱：{spectrum}")
+            print(f"    时间步：{timesteps}")
+
+        # Slurm
+        print(f"\n  {_bold(tr('icli_config_slurm', 'Slurm'))}")
+        print(f"    CPU：{cfg.slurm.cpu or not_cfg}，核数：{cfg.slurm.cores}，节点：{cfg.slurm.nodes}")
+        if cfg.slurm.cpu_group:
+            print(f"    CPU 组：{cfg.slurm.cpu_group}")
+
+        # 服务器
+        print(f"\n  {_bold(tr('icli_config_server', '服务器'))}")
+        print(f"    {tr('icli_server', '主机：{}').format(cfg.server.host or not_cfg)}")
+        if cfg.server.host:
+            print(f"    用户：{cfg.server.user or not_cfg}，远程目录：{cfg.server.default_remote_dir or not_cfg}")
+
+        # 绘图
+        enabled_plots = []
+        if cfg.plot.wave_maps and cfg.plot.wave_maps.enabled:
+            enabled_plots.append("wave-maps")
+        if cfg.plot.spectrum and cfg.plot.spectrum.enabled:
+            enabled_plots.append("spectrum")
+        if cfg.plot.jason3 and cfg.plot.jason3.enabled:
+            enabled_plots.append("jason3")
+        if cfg.plot.ndbc and cfg.plot.ndbc.enabled:
+            enabled_plots.append("ndbc")
+        if cfg.plot.wind_field and cfg.plot.wind_field.enabled:
+            enabled_plots.append("wind-field")
+        print(f"\n  {_bold(tr('icli_config_plot', '绘图'))}")
+        print(f"    启用任务：{', '.join(enabled_plots) if enabled_plots else not_cfg}")
         print()
+
+    def do_print(self, arg: str) -> None:
+        """print  — 输出当前 params.yml 内容"""
+        if not self._require_config():
+            return
+        try:
+            content = self._params_path.read_text(encoding="utf-8")
+            print(content)
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_create_workdir(self, arg: str) -> None:
         """create-workdir <name>  — 从模板创建新工作目录"""
@@ -396,8 +474,8 @@ class InteractiveCLI(cmd.Cmd):
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
-    def do_run(self, arg: str) -> None:
-        """run [--skip-grid] [--no-cache]  — 完整预处理流程"""
+    def do_run_pre_workflow(self, arg: str) -> None:
+        """run-pre-workflow [--skip-grid] [--no-cache]  — 完整预处理流程"""
         if not self._require_config():
             return
         skip_grid = "--skip-grid" in arg
