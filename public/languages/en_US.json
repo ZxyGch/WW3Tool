@@ -2028,7 +2028,7 @@
   "cli_help_workdir": "Working directory containing params.yml (default: current directory)",
   "cli_help_workdir_name": "Name of the new working directory to create",
   "cli_no_root_params": "Error: No params.yml template file found in repository root.",
-  "cli_workdir_created": "Working directory created: {path}\nPlease edit params.yml and run:\n  python3 runCLI.py run {name}",
+  "cli_workdir_created": "Working directory created: {path}\nPlease edit params.yml and run:\n  python3 src/run.py run {name}",
   "cli_workdir_exists": "Error: Directory already exists: {path}",
   "cpu_cmd_error": "⚠️ CPU command error: {error}",
   "cpu_fetch_failed": "❌ Failed to fetch CPU ranking: {error}",
@@ -2049,7 +2049,7 @@
   "squeue_fetch_failed": "❌ Failed to fetch job queue: {error}",
   "ww3_grid_nml_not_found": "ww3_grid.nml not found, skipping spectral and time step parameter writing",
   "cli_workdir_no_params": "No params.yml found in working directory {workdir}. Please use the create-workdir command first.",
-  "cli_root_params_rejected": "Cannot use the repository root params.yml directly (it is a template file).\nPlease copy it to a working directory first:\n  python3 runCLI.py create-workdir --name my_workdir",
+  "cli_root_params_rejected": "Cannot use the repository root params.yml directly (it is a template file).\nPlease copy it to a working directory first:\n  python3 src/run.py create-workdir --name my_workdir",
   "icli_help_prepare_ww3": "Generate WW3 namelists only (skip forcing and grid)",
   "icli_start_prepare_ww3": "▶ Generating WW3 namelists...",
   "icli_done_prepare_ww3": "✓ WW3 namelists generated"

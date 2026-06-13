@@ -1,6 +1,6 @@
 """无界面预处理与后处理的命令行适配器。
 
-本模块属于 ``interfaces/`` 入口层，解析 ``runCLI.py`` 传入的子命令与参数，
+本模块属于 ``interfaces/`` 入口层，解析 ``src/run.py`` 传入的子命令与参数，
 从指定工作目录中加载 ``params.yml`` 后委派给 ``application/`` 对应用例执行。
 
 **工作目录约定**：根目录 ``params.yml`` 仅作为模板，CLI 不允许直接使用。
@@ -15,7 +15,7 @@
 - 辅助：``print-example`` 输出示例 YAML
 
 主要消费者：
-- 仓库根目录 ``runCLI.py``（``main()`` 的实际入口）
+- 仓库根目录 ``src/run.py``（``main()`` 的实际入口）
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def resolve_params_path(workdir_arg: str | None) -> str:
                 "cli_root_params_rejected",
                 "不允许直接使用仓库根目录的 params.yml（它是模板文件）。\n"
                 "请先使用 create-workdir 命令复制到工作目录：\n"
-                "  python3 runCLI.py create-workdir --name my_workdir",
+                "  python3 src/run.py create-workdir --name my_workdir",
             )
         )
 
@@ -86,12 +86,12 @@ def resolve_params_path(workdir_arg: str | None) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """构造 ``runCLI.py`` 使用的 argparse 解析器及全部子命令。
+    """构造 ``src/run.py`` 使用的 argparse 解析器及全部子命令。
 
     Returns:
         已注册所有子命令与参数的 ``ArgumentParser`` 实例。
     """
-    parser = argparse.ArgumentParser(prog="python3 runCLI.py")
+    parser = argparse.ArgumentParser(prog="python3 src/run.py")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # ── workdir management ─────────────────────────────────────────────────
@@ -301,7 +301,7 @@ def _handle_create_workdir(name: str) -> int:
     target = workdir / "params.yml"
     shutil.copy2(str(root_params), str(target))
     print(
-        tr("cli_workdir_created", "已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 runCLI.py run {name}")
+        tr("cli_workdir_created", "已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 src/run.py run {name}")
         .format(path=workdir, name=name)
     )
     return 0

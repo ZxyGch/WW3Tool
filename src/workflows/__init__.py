@@ -1,13 +1,13 @@
 """WW3Tool 无界面预处理工作流包。
 
-本包是 CLI（``runCLI.py``）与 Desktop（``src/desktop/``）共用的核心业务层，
+本包是 CLI（``src/run.py``）与 Desktop（``src/desktop/``）共用的核心业务层，
 编排 forcing、grid、WW3 namelist、绘图与远程运维等用例。
 
 为避免 ``print-example`` 等轻量命令在安装 NetCDF/Grid/Qt 全量依赖前失败，
 公共符号通过 ``__getattr__`` 延迟导入，不在包加载时拉起重依赖栈。
 
 主要消费者：
-- ``runCLI.py``：命令行入口
+- ``src/run.py``：命令行入口
 - 测试与外部脚本：``from workflows import load_pipeline_config, run_pipeline``
 
 导出符号（均为懒加载）：

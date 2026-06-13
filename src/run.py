@@ -5,7 +5,7 @@
 --------
 除特殊说明外，每条命令都是::
 
-    python3 runCLI.py <子命令> [选项] [<工作目录>]
+    python3 src/run.py <子命令> [选项] [<工作目录>]
 
 其中 ``<子命令>`` 是下面列出的动词（如 validate、run），
 ``<工作目录>`` 是一个包含 ``params.yml`` 的目录。
@@ -16,7 +16,7 @@
 
 不带任何参数直接运行::
 
-    python3 runCLI.py
+    python3 src/run.py
 
 若当前目录有 ``params.yml`` → 自动执行 ``run``
 若当前目录无 ``params.yml`` → 提示先创建工作目录
@@ -26,107 +26,107 @@
 ----------------------------------------------------------------------
 
 子命令 create-workdir — 从根 params.yml 模板创建新工作目录
-    python3 runCLI.py create-workdir --name my_case
+    python3 src/run.py create-workdir --name my_case
 
 ----------------------------------------------------------------------
 二、预处理
 ----------------------------------------------------------------------
 
 子命令 validate — 校验 params.yml 是否合法
-    python3 runCLI.py validate
-    python3 runCLI.py validate /path/to/workdir
-    python3 runCLI.py validate --stage forcing
-    python3 runCLI.py validate --stage grid
-    python3 runCLI.py validate --stage full
+    python3 src/run.py validate
+    python3 src/run.py validate /path/to/workdir
+    python3 src/run.py validate --stage forcing
+    python3 src/run.py validate --stage grid
+    python3 src/run.py validate --stage full
 
 子命令 prepare-forcing — 只做 Step 1：准备强迫场（wind.nc 等）
-    python3 runCLI.py prepare-forcing
+    python3 src/run.py prepare-forcing
 
 子命令 generate-grid — 只做 Step 2：生成网格
-    python3 runCLI.py generate-grid
-    python3 runCLI.py generate-grid --no-cache
+    python3 src/run.py generate-grid
+    python3 src/run.py generate-grid --no-cache
 
 子命令 run — 完整预处理（强迫场 → 网格 → WW3 namelist）
-    python3 runCLI.py run
-    python3 runCLI.py run /path/to/workdir
-    python3 runCLI.py run --skip-grid
-    python3 runCLI.py run --no-cache
+    python3 src/run.py run
+    python3 src/run.py run /path/to/workdir
+    python3 src/run.py run --skip-grid
+    python3 src/run.py run --no-cache
 
 ----------------------------------------------------------------------
 三、后处理 / 绘图（配置见 params.yml 里的 plot: 段）
 ----------------------------------------------------------------------
 
 子命令 plot — 执行 plot 段里所有 enabled=true 的任务
-    python3 runCLI.py plot
+    python3 src/run.py plot
 
 子命令 plot-wave-maps — 生成波高填色图
-    python3 runCLI.py plot-wave-maps
-    python3 runCLI.py plot-wave-maps --contour
+    python3 src/run.py plot-wave-maps
+    python3 src/run.py plot-wave-maps --contour
 
 子命令 plot-spectrum — 生成二维方向谱图
-    python3 runCLI.py plot-spectrum
-    python3 runCLI.py plot-spectrum --mode first
-    python3 runCLI.py plot-spectrum --mode all
-    python3 runCLI.py plot-spectrum --mode selected --station 0
+    python3 src/run.py plot-spectrum
+    python3 src/run.py plot-spectrum --mode first
+    python3 src/run.py plot-spectrum --mode all
+    python3 src/run.py plot-spectrum --mode selected --station 0
 
 子命令 match-jason3 — WW3 结果与 Jason-3 卫星数据匹配
-    python3 runCLI.py match-jason3
+    python3 src/run.py match-jason3
 
 子命令 match-ndbc — WW3 结果与 NDBC 浮标匹配
-    python3 runCLI.py match-ndbc
-    python3 runCLI.py match-ndbc --download
+    python3 src/run.py match-ndbc
+    python3 src/run.py match-ndbc --download
 
 ----------------------------------------------------------------------
 四、远程运维（配置见 params.yml 里的 server: 段，走 SSH/SLURM）
 ----------------------------------------------------------------------
 
 子命令 connect-test — 测试能否连上远程服务器
-    python3 runCLI.py connect-test
+    python3 src/run.py connect-test
 
 子命令 list-files — 查看远程工作目录文件列表
-    python3 runCLI.py list-files
+    python3 src/run.py list-files
 
 子命令 upload — 把本地工作目录上传到远程（必须加 --confirm）
-    python3 runCLI.py upload --confirm
+    python3 src/run.py upload --confirm
 
 子命令 submit — 在远程执行提交脚本（默认 server.sh）
-    python3 runCLI.py submit
-    python3 runCLI.py submit --script server.sh
+    python3 src/run.py submit
+    python3 src/run.py submit --script server.sh
 
 子命令 check-status — 检查远程任务是否跑完
-    python3 runCLI.py check-status
+    python3 src/run.py check-status
 
 子命令 queue-status — 查看 SLURM 队列
-    python3 runCLI.py queue-status
+    python3 src/run.py queue-status
 
 子命令 download-results — 从远程下载 ww3*.nc 结果
-    python3 runCLI.py download-results
-    python3 runCLI.py download-results --nested
+    python3 src/run.py download-results
+    python3 src/run.py download-results --nested
 
 子命令 download-log — 从远程下载 success.log / fail.log
-    python3 runCLI.py download-log
+    python3 src/run.py download-log
 
 子命令 clear-remote — 清空远程工作目录（必须加 --confirm，不可恢复）
-    python3 runCLI.py clear-remote --confirm
+    python3 src/run.py clear-remote --confirm
 
 子命令 cancel-job — 取消一个 SLURM 任务
-    python3 runCLI.py cancel-job 12345
+    python3 src/run.py cancel-job 12345
 
 ----------------------------------------------------------------------
 五、辅助
 ----------------------------------------------------------------------
 
 子命令 print-example — 打印示例 params.yml（不需要工作目录）
-    python3 runCLI.py print-example
-    python3 runCLI.py print-example > params.yml
+    python3 src/run.py print-example
+    python3 src/run.py print-example > params.yml
 
 ----------------------------------------------------------------------
 全局选项
 ----------------------------------------------------------------------
 
 --lang <语言代码> — 切换输出语言（支持 zh_CN / en_US）
-    python3 runCLI.py --lang en_US run
-    python3 runCLI.py --lang zh_CN validate
+    python3 src/run.py --lang en_US run
+    python3 src/run.py --lang zh_CN validate
     可放在子命令之前或之后的任意位置。
 
 ----------------------------------------------------------------------
@@ -145,8 +145,8 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
-ENTRY_SCRIPT = ROOT / "runCLI.py"
+ROOT = Path(__file__).resolve().parent.parent
+ENTRY_SCRIPT = ROOT / "src" / "run.py"
 REQUIREMENTS_FILE = ROOT / "src" / "requirements.txt"
 
 
@@ -214,9 +214,9 @@ def _initialize() -> int:
         "cli_no_workdir_params",
         "当前目录没有 params.yml。\n"
         "请先创建工作目录：\n"
-        "  python3 runCLI.py create-workdir --name my_case\n"
+        "  python3 src/run.py create-workdir --name my_case\n"
         "然后进入工作目录编辑 params.yml 并运行：\n"
-        "  cd my_case && python3 runCLI.py run",
+        "  cd my_case && python3 src/run.py run",
     ))
     return 0
 

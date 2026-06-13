@@ -33,7 +33,7 @@ class PipelineStepState:
 
 
 class PipelineViewModel:
-    """Bridge from desktop actions to the same workflows used by runCLI.py."""
+    """Bridge from desktop actions to the same workflows used by src/run.py."""
 
     def __init__(
         self,

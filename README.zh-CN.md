@@ -75,26 +75,26 @@ python3 runInteractive.py --lang en_US
 
 ### 指令化预处理流程
 
-新架构代码从 `src` 开始维护。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `runCLI.py`：
+新架构代码从 `src` 开始维护。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `src/run.py`：
 
 ```sh
-python3 runCLI.py
-python3 runCLI.py create-workdir myRun
-python3 runCLI.py validate /path/to/workdir/params.yml
-python3 runCLI.py prepare-forcing /path/to/workdir/params.yml
-python3 runCLI.py generate-grid /path/to/workdir/params.yml
-python3 runCLI.py prepare-ww3 /path/to/workdir/params.yml
-python3 runCLI.py run /path/to/workdir/params.yml
-python3 runCLI.py upload /path/to/workdir/params.yml --confirm
-python3 runCLI.py submit /path/to/workdir/params.yml
-python3 runCLI.py check-status /path/to/workdir/params.yml
-python3 runCLI.py download-results /path/to/workdir/params.yml
-python3 runCLI.py plot /path/to/workdir/params.yml
-python3 runCLI.py match-jason3 /path/to/workdir/params.yml
-python3 runCLI.py match-ndbc /path/to/workdir/params.yml --download
+python3 src/run.py
+python3 src/run.py create-workdir myRun
+python3 src/run.py validate /path/to/workdir/params.yml
+python3 src/run.py prepare-forcing /path/to/workdir/params.yml
+python3 src/run.py generate-grid /path/to/workdir/params.yml
+python3 src/run.py prepare-ww3 /path/to/workdir/params.yml
+python3 src/run.py run /path/to/workdir/params.yml
+python3 src/run.py upload /path/to/workdir/params.yml --confirm
+python3 src/run.py submit /path/to/workdir/params.yml
+python3 src/run.py check-status /path/to/workdir/params.yml
+python3 src/run.py download-results /path/to/workdir/params.yml
+python3 src/run.py plot /path/to/workdir/params.yml
+python3 src/run.py match-jason3 /path/to/workdir/params.yml
+python3 src/run.py match-ndbc /path/to/workdir/params.yml --download
 ```
 
-单独执行 `python3 runCLI.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。CLI 不允许直接使用项目根目录的 `params.yml`（那是模板），必须先用 `create-workdir` 创建工作目录，然后对工作目录的 `params.yml` 执行操作。也可以使用 `python3 runCLI.py print-example` 单独输出模板内容。
+单独执行 `python3 src/run.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。CLI 不允许直接使用项目根目录的 `params.yml`（那是模板），必须先用 `create-workdir` 创建工作目录，然后对工作目录的 `params.yml` 执行操作。也可以使用 `python3 src/run.py print-example` 单独输出模板内容。
 
 命令按功能分为五组：工作目录管理（`create-workdir`）、预处理（`validate`、`prepare-forcing`、`generate-grid`、`run`）、后处理/绘图（`plot`、`plot-wave-maps`、`plot-spectrum`、`match-jason3`、`jason3-swh`、`download-jason3`、`match-ndbc`）、远程运维（`connect-test`、`list-files`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`）、辅助（`print-example`）。
 
@@ -105,7 +105,7 @@ python3 runCLI.py match-ndbc /path/to/workdir/params.yml --download
 显式使用 `run` 会读取工作目录的 YAML 参数文件，完成强迫场准备、网格生成、计算模式产物和 WW3 配置文件生成，但不会自动执行 WAVEWATCH III、上传服务器或绘图。如果工作目录中已经有网格文件，可以使用 `--skip-grid` 跳过网格生成：
 
 ```sh
-python3 runCLI.py run /path/to/workdir/params.yml --skip-grid
+python3 src/run.py run /path/to/workdir/params.yml --skip-grid
 ```
 
 `params.yml` 中的 `grid` 参数按网格类型分组：`structured` 包含水深、海岸线精度及 pygridgen 阈值；`smc` 包含水深类型、细化层数、物理和边界参数；`unstructured` 包含三角网格尺度、梯度、深水阈值及区域边界细分参数。`grid_type: nested` 时可显式填写 `inner`，也可以省略 `inner` 并由 `nested_contraction_coefficient` 自动生成内网格区域。

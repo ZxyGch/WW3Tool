@@ -2024,7 +2024,7 @@
   "icli_wf_branch": "本地 run 或 upload 到服务器",
   "ww3_grid_params_applied": "已将频谱参数与时间步长写入 ww3_grid.nml",
   "plotting_points_unit": "个点位",
-  "cli_workdir_created": "已创建工作目录：{path}\\n请编辑 params.yml 后执行：\\n  python3 runCLI.py run {name}",
+  "cli_workdir_created": "已创建工作目录：{path}\\n请编辑 params.yml 后执行：\\n  python3 src/run.py run {name}",
   "server_status_failed": "❌ 获取服务器状态失败：{error}",
   "plotting_cartopy_required": "需要安装 cartopy 库才能显示站点地图",
   "plotting_jason_download_time_range_missing": "time_range 必须提供 [起始日期, 结束日期]（格式 YYYYMMDD）",
@@ -2049,7 +2049,7 @@
   "cli_help_create_workdir": "Create a new working directory from the root params.yml template",
   "plotting_spectrum_map_title": "二维谱站点分布",
   "cli_workdir_no_params": "工作目录 {workdir} 中没有 params.yml。请先使用 create-workdir 命令创建工作目录。",
-  "cli_root_params_rejected": "不允许直接使用仓库根目录的 params.yml（它是模板文件）。\n请先使用 create-workdir 命令复制到工作目录：\n  python3 runCLI.py create-workdir --name my_workdir",
+  "cli_root_params_rejected": "不允许直接使用仓库根目录的 params.yml（它是模板文件）。\n请先使用 create-workdir 命令复制到工作目录：\n  python3 src/run.py create-workdir --name my_workdir",
   "icli_help_prepare_ww3": "仅生成 WW3 namelist（不重跑强迫场和网格）",
   "icli_start_prepare_ww3": "▶ 正在生成 WW3 namelist...",
   "icli_done_prepare_ww3": "✓ WW3 namelist 生成完成"

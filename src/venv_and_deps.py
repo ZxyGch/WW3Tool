@@ -1,4 +1,4 @@
-"""runCLI / runDesktop 共用：创建项目虚拟环境并安装 Python 依赖。"""
+"""run.py / runDesktop 共用：创建项目虚拟环境并安装 Python 依赖。"""
 
 from __future__ import annotations
 

@@ -47,16 +47,16 @@ If anything fails to install or some packages are missing, please install them m
 
 ### Scripted Preprocessing
 
-The new architecture starts in `src`. For scripted workflows or server-side preprocessing, use `runCLI.py`:
+The new architecture starts in `src`. For scripted workflows or server-side preprocessing, use `src/run.py`:
 
 ```sh
-python3 runCLI.py
-python3 runCLI.py validate params.yml
-python3 runCLI.py prepare-forcing params.yml
-python3 runCLI.py run params.yml
+python3 src/run.py
+python3 src/run.py validate params.yml
+python3 src/run.py prepare-forcing params.yml
+python3 src/run.py run params.yml
 ```
 
-Running `python3 runCLI.py` without arguments checks runtime packages, installs missing ones from `src/requirements.txt`, then automatically reads the root-level `params.yml` and runs the full preprocessing workflow. On the first run, if `params.yml` does not exist, a template is created for editing and is not executed immediately. Existing parameter files are never overwritten. `python3 runCLI.py print-example` remains available for printing a template separately.
+Running `python3 src/run.py` without arguments checks runtime packages, installs missing ones from `src/requirements.txt`, then automatically reads the root-level `params.yml` and runs the full preprocessing workflow. On the first run, if `params.yml` does not exist, a template is created for editing and is not executed immediately. Existing parameter files are never overwritten. `python3 src/run.py print-example` remains available for printing a template separately.
 
 `prepare-forcing` runs only Step 1 forcing preparation: copy/move, variable detection, wind normalization, and combined-forcing auto-association.
 
@@ -65,7 +65,7 @@ The command entrypoint directly calls `src/workflows`. The desktop preprocessing
 Running without arguments or explicitly using `run` reads the YAML parameter file and prepares forcing files, grid files, calculation-mode artifacts, and WW3 namelists/scripts. It does not execute WAVEWATCH III, upload to a server, or generate plots. If the work directory already contains grid files, use `--skip-grid`:
 
 ```sh
-python3 runCLI.py run params.yml --skip-grid
+python3 src/run.py run params.yml --skip-grid
 ```
 
 The `grid` section of `params.yml` is grouped by mesh type: `structured` contains bathymetry, coastline precision, and pygridgen thresholds; `smc` contains bathymetry, refinement, physics, and boundary settings; and `unstructured` contains triangular-mesh sizing and regional settings. For `grid_type: nested`, provide `inner` explicitly or omit it to derive the inner region using `nested_contraction_coefficient`.
