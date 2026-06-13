@@ -1,8 +1,15 @@
 """绘图 Worker 公共辅助函数（无 GUI 依赖）。
 
+[EN] Plotting Worker common helper functions (no GUI dependency).
+
 提供 WW3 NetCDF 输出文件的坐标解析、点序列/结构化网格判定、有效波高展平、
 三角网连通性读取、matplotlib 三角填色图清理，以及谱图站点名解码等通用工具。
 被 ``jason3_worker``、``wave_map_worker``、``spectrum_worker`` 等模块复用。
+
+[EN] Provides coordinate parsing, pointwise/structured grid detection, significant wave height
+flattening, triangle mesh connectivity reading, matplotlib tricontourf cleanup, and spectral
+station name decoding for WW3 NetCDF output files. Reused by ``jason3_worker``,
+``wave_map_worker``, ``spectrum_worker``, and other modules.
 """
 import numpy as np
 
@@ -10,7 +17,12 @@ import numpy as np
 def remove_tricontourf_artist(tcf):
     """移除上一帧 ``tricontourf`` / ``tricontour`` 的绘图结果。
 
+    [EN] Remove the previous frame's ``tricontourf`` / ``tricontour`` drawing result.
+
     matplotlib 3.8+ 中 ``TriContourSet`` 可能不再暴露 ``.collections``，应优先用 ``.remove()``。
+
+    [EN] In matplotlib 3.8+, ``TriContourSet`` may no longer expose ``.collections``;
+    prefer ``.remove()`` instead.
     """
     if tcf is None:
         return
@@ -34,7 +46,11 @@ def remove_tricontourf_artist(tcf):
 
 
 def ww3_resolve_lon_lat_names(ds):
-    """从 NetCDF 中解析经度/纬度变量名（WW3 非结构场可能仍为 longitude/latitude，也可能为 lon/lat）。"""
+    """从 NetCDF 中解析经度/纬度变量名（WW3 非结构场可能仍为 longitude/latitude，也可能为 lon/lat）。
+
+    [EN] Resolve longitude/latitude variable names from NetCDF (WW3 unstructured fields may use
+    longitude/latitude or lon/lat).
+    """
     keys = set(ds.variables.keys())
     lon_candidates = (
         "longitude",
@@ -58,7 +74,10 @@ def ww3_resolve_lon_lat_names(ds):
 
 
 def ww3_prepare_lon_lat_1d(lon, lat, nt_time):
-    """将坐标压成与场变量一致的 1D 节点序列。"""
+    """将坐标压成与场变量一致的 1D 节点序列。
+
+    [EN] Squeeze coordinates into a 1D node sequence consistent with the field variable.
+    """
     lon = np.asarray(lon, dtype=float)
     lat = np.asarray(lat, dtype=float)
     lon = np.squeeze(lon)
@@ -81,7 +100,10 @@ def ww3_prepare_lon_lat_1d(lon, lat, nt_time):
 
 
 def ww3_try_pointwise_timeseries(raw, nt, n_nodes):
-    """若 raw 为点序列场 (time×node 或 node×time)，返回形状 (nt, n_nodes) 的数组，否则 None。"""
+    """若 raw 为点序列场 (time×node 或 node×time)，返回形状 (nt, n_nodes) 的数组，否则 None。
+
+    [EN] If raw is a pointwise field (time x node or node x time), return an array of shape (nt, n_nodes); otherwise None.
+    """
     a = np.asarray(raw, dtype=float)
     a = np.squeeze(a)
     if a.ndim != 2 or nt <= 0 or n_nodes <= 0:
@@ -95,7 +117,10 @@ def ww3_try_pointwise_timeseries(raw, nt, n_nodes):
 
 
 def ww3_is_pointwise_grid(lon1d, lat1d, raw, nt):
-    """判断是否为单索引网格（非结构三角形节点、SMC seapoint 等）。"""
+    """判断是否为单索引网格（非结构三角形节点、SMC seapoint 等）。
+
+    [EN] Determine if this is a single-index grid (unstructured triangle nodes, SMC seapoints, etc.).
+    """
     lon1d = np.asarray(lon1d).ravel()
     lat1d = np.asarray(lat1d).ravel()
     if lon1d.ndim != 1 or lat1d.ndim != 1 or len(lon1d) != len(lat1d):
@@ -108,7 +133,10 @@ def ww3_is_pointwise_grid(lon1d, lat1d, raw, nt):
 
 
 def ww3_swh_to_float_array(arr):
-    """NetCDF / numpy masked → float ndarray，缺测填 nan。"""
+    """NetCDF / numpy masked → float ndarray，缺测填 nan。
+
+    [EN] Convert NetCDF / numpy masked array to float ndarray, filling missing values with NaN.
+    """
     if arr is None:
         return None
     a = np.asanyarray(arr)
@@ -118,7 +146,11 @@ def ww3_swh_to_float_array(arr):
 
 
 def ww3_hs_collocation_flat(nt, lon, lat, swh_raw):
-    """为 Jason 等卫星逐点匹配准备展平场：每时刻一行 ``hs[t, :]``，与 ``lon1/lat1`` 同序。"""
+    """为 Jason 等卫星逐点匹配准备展平场：每时刻一行 ``hs[t, :]``，与 ``lon1/lat1`` 同序。
+
+    [EN] Prepare a flattened field for satellite point-by-point matching (e.g. Jason):
+    one row per timestep ``hs[t, :]``, in the same order as ``lon1/lat1``.
+    """
     if nt <= 0:
         raise ValueError("nt must be positive")
     swh = ww3_swh_to_float_array(swh_raw)
@@ -186,7 +218,10 @@ def ww3_hs_collocation_flat(nt, lon, lat, swh_raw):
 
 
 def ww3_try_mesh_triangles(ds, n_nodes):
-    """尝试读取三角网连通性 (nelem, 3)，节点索引 0-based。"""
+    """尝试读取三角网连通性 (nelem, 3)，节点索引 0-based。
+
+    [EN] Attempt to read triangle mesh connectivity (nelem, 3), with 0-based node indices.
+    """
     if n_nodes <= 0:
         return None
     hinted = (
@@ -239,7 +274,12 @@ def ww3_try_mesh_triangles(ds, n_nodes):
 def _pick_station_lon_lat(lon, lat, station_index, n_station=None):
     """从多种维序的经纬度数组中稳健提取指定站点的 (lon, lat)。
 
+    [EN] Robustly extract the specified station's (lon, lat) from lat/lon arrays with various dimension orderings.
+
     兼容 0 维标量、1 维站点序列及高维数组（站点维可能在首维或末维）。
+
+    [EN] Compatible with 0-D scalars, 1-D station sequences, and higher-dimensional arrays
+    (station dimension may be first or last).
     """
     lon_arr = np.array(lon)
     lat_arr = np.array(lat)
@@ -268,7 +308,12 @@ def _pick_station_lon_lat(lon, lat, station_index, n_station=None):
 def _decode_station_names(station_name_var, n_station):
     """将 NetCDF ``station_name`` 变量解码为长度为 ``n_station`` 的字符串列表。
 
+    [EN] Decode the NetCDF ``station_name`` variable into a string list of length ``n_station``.
+
     支持字符数组、字节串及整型 ASCII 编码等多种 WW3 谱输出命名格式。
+
+    [EN] Supports character arrays, byte strings, and integer ASCII encoding among other
+    WW3 spectral output naming formats.
     """
     if station_name_var is None:
         return None

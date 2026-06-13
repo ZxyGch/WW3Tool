@@ -3,6 +3,14 @@
 迁移自 src ``home_local_run``：``bash local.sh``（WW3 bin 目录加入 ``PATH``，新会话便于整树
 停止），逐行回调日志；ww3_ounf/ounp/trnc 运行前检查 out_grd.ww3 / out_pnt.ww3。
 ``stop()`` 通过 ``killpg`` 结束当前进程组。
+
+[EN] Local WW3 execution service: runs ``local.sh`` and ww3_ounf/ounp/trnc in the working
+directory, with stop support.
+
+Migrated from src ``home_local_run``: ``bash local.sh`` (WW3 bin directory added to ``PATH``,
+new session for easy tree termination), line-by-line log callback; ww3_ounf/ounp/trnc check
+for out_grd.ww3 / out_pnt.ww3 before running. ``stop()`` terminates the current process
+group via ``killpg``.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from typing import Callable, Optional
 LogCallback = Callable[[str], None]
 
 # 各工具运行前需存在的输出文件（任一即可）。
+# [EN] Output files that must exist before each tool runs (any one is sufficient).
 _TOOL_PRECHECK = {
     "ww3_ounf": ["out_grd.ww3"],
     "ww3_ounp": ["out_pnt.ww3", "out_grd.ww3"],
@@ -25,7 +34,10 @@ _TOOL_PRECHECK = {
 
 
 class LocalRunService:
-    """运行本地 WW3 脚本/工具并支持停止（持有当前子进程）。"""
+    """运行本地 WW3 脚本/工具并支持停止（持有当前子进程）。
+
+    [EN] Run local WW3 scripts/tools with stop support (holds the current subprocess).
+    """
 
     def __init__(self) -> None:
         self._proc: Optional[subprocess.Popen] = None
@@ -62,7 +74,10 @@ class LocalRunService:
                 self._proc = None
 
     def run_script(self, workdir: str, bin_dir: str, log: LogCallback, *, fallback_script: str | None = None) -> int:
-        """运行 ``<workdir>/local.sh``（缺失时回退 ``fallback_script``）。返回退出码（-1=脚本缺失）。"""
+        """运行 ``<workdir>/local.sh``（缺失时回退 ``fallback_script``）。返回退出码（-1=脚本缺失）。
+
+        [EN] Run ``<workdir>/local.sh`` (falls back to ``fallback_script`` if missing). Returns exit code (-1 = script not found).
+        """
         script = Path(workdir) / "local.sh"
         if not script.is_file() and fallback_script and Path(fallback_script).is_file():
             script = Path(fallback_script)
@@ -77,7 +92,10 @@ class LocalRunService:
             return -1
 
     def run_tool(self, tool: str, workdir: str, bin_dir: str, log: LogCallback) -> int:
-        """运行 ww3_ounf/ounp/trnc（前置检查输出文件）。返回退出码（-1=跳过/未找到命令）。"""
+        """运行 ww3_ounf/ounp/trnc（前置检查输出文件）。返回退出码（-1=跳过/未找到命令）。
+
+        [EN] Run ww3_ounf/ounp/trnc (pre-checks output files). Returns exit code (-1 = skipped/command not found).
+        """
         checks = _TOOL_PRECHECK.get(tool, [])
         if checks and not any((Path(workdir) / name).exists() for name in checks):
             log(f"❌ 未找到输出文件 {' 或 '.join(checks)}，跳过 {tool}")
@@ -96,7 +114,10 @@ class LocalRunService:
             return self._proc is not None
 
     def stop(self) -> bool:
-        """终止当前进程组；无运行中进程返回 False。"""
+        """终止当前进程组；无运行中进程返回 False。
+
+        [EN] Terminate the current process group; returns False if no process is running.
+        """
         with self._lock:
             proc = self._proc
         if proc is None:

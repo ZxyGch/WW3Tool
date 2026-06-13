@@ -3,6 +3,14 @@
 各方法接受 ``PipelineConfig``，转调对应 ``run_*``，日志转发 ``on_log``，返回 ``RemoteResult``。
 
 连接成功后持有 ``SshClient`` 实例，后续操作复用同一连接，避免重复 SSH 握手。
+
+[EN] Server operations view model: bridges desktop to application.remote_ops.
+
+Each method accepts ``PipelineConfig``, delegates to the corresponding ``run_*``,
+forwards logs to ``on_log``, and returns ``RemoteResult``.
+
+After successful connection, holds the ``SshClient`` instance and reuses the same
+connection for subsequent operations, avoiding repeated SSH handshakes.
 """
 
 from __future__ import annotations
@@ -15,11 +23,13 @@ LogCallback = Callable[[str], None]
 
 
 class RemoteViewModel:
+    # [EN] Drive SSH/SLURM remote operations use cases.
     """驱动 SSH/SLURM 远程运维用例。"""
 
     def __init__(self, *, on_log: Optional[LogCallback] = None) -> None:
         self._on_log = on_log
-        self._client = None  # 持久化 SSH 客户端
+        self._client = None  # [EN] Persistent SSH client
+        # 持久化 SSH 客户端
 
     def _log(self, message: str) -> None:
         if self._on_log is not None:
@@ -30,6 +40,7 @@ class RemoteViewModel:
         return self._client is not None and self._client.is_alive()
 
     def close(self) -> None:
+        # [EN] Close persistent connection.
         """关闭持久化连接。"""
         if self._client is not None:
             try:
@@ -39,6 +50,7 @@ class RemoteViewModel:
             self._client = None
 
     def _ensure_client(self, config: PipelineConfig):
+        # [EN] Ensure an available connection: auto-reconnect when disconnected.
         """确保有可用连接：断开时自动重连。"""
         if self._client is not None and self._client.is_alive():
             return self._client
@@ -58,6 +70,7 @@ class RemoteViewModel:
             out, _, _ = client.exec_command("hostname && uname -r && uptime", log=logger.log)
             for line in out.splitlines():
                 logger.log(line)
+            # [EN] Connection successful, keep as persistent client
             # 连接成功，保留为持久化 client
             self._client = client
             from workflows.application.remote_ops import RemoteResult

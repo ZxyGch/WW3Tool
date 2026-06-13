@@ -3,14 +3,14 @@ bin/.idea
 bin/__pycache__
 .idea
 workSpace
-WW3-Grid-Generator/reference_data
+meshgen/reference_data
 ww3.2023_spec.nc
 __pycache__
 double_peaks_spectra
 .venv
 
 double_peaks_results.txt
-WW3-Grid-Generator/cache
+meshgen/cache
 *.obsidian
 *.bot
 *.obst
@@ -19,8 +19,9 @@ WW3-Grid-Generator/cache
 *.params
 jason3
 *.nc
-grid.nml
+
 config.json
 ndbc
 .claude
 .codegraph
+.qoder

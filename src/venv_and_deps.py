@@ -1,4 +1,4 @@
-"""run.py / runDesktop 共用：创建项目虚拟环境并安装 Python 依赖。"""
+"""Shared by run.py: create the project virtual environment and install Python dependencies."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def missing_requirements_for_python(python: Path) -> list[str]:
         check=False,
     )
     if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip() or f"无法检测依赖：{python}")
+        raise RuntimeError(proc.stderr.strip() or f"Failed to detect dependencies: {python}")
     return json.loads(proc.stdout.strip() or "[]")
 
 
@@ -69,10 +69,10 @@ def ensure_project_venv() -> Path:
     venv_python = venv_python_path()
     if venv_python.is_file():
         return venv_python
-    print(f"正在创建项目虚拟环境：{VENV_DIR}")
+    print(f"Creating project virtual environment: {VENV_DIR}")
     subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
     if not venv_python.is_file():
-        raise RuntimeError(f"虚拟环境创建失败：{venv_python}")
+        raise RuntimeError(f"Failed to create virtual environment: {venv_python}")
     return venv_python
 
 
@@ -98,13 +98,13 @@ def ensure_dependencies(*, quiet: bool = False) -> Path | None:
     missing = missing_requirements()
     if not missing:
         if not quiet:
-            print("依赖检查通过。")
+            print("Dependency check passed.")
         return None
 
     if not REQUIREMENTS_FILE.is_file():
-        raise RuntimeError(f"依赖文件不存在：{REQUIREMENTS_FILE}")
+        raise RuntimeError(f"Requirements file not found: {REQUIREMENTS_FILE}")
 
-    print("缺少依赖，正在自动安装：" + ", ".join(missing))
+    print("Missing dependencies, installing automatically: " + ", ".join(missing))
     install_python = _resolve_install_python()
     try:
         _pip_install(install_python)
@@ -119,8 +119,8 @@ def ensure_dependencies(*, quiet: bool = False) -> Path | None:
 
     remaining = missing_requirements()
     if remaining:
-        raise RuntimeError("依赖安装完成后仍无法导入：" + ", ".join(remaining))
-    print("依赖安装完成。")
+        raise RuntimeError("Still unimportable after installation: " + ", ".join(remaining))
+    print("Dependencies installed.")
     return None
 
 
@@ -130,16 +130,16 @@ def ensure_runtime(*, entry_script: Path, argv: list[str] | None = None) -> None
     venv_python = venv_python_path()
 
     if venv_python.is_file() and not running_in_project_venv():
-        print(f"使用项目虚拟环境：{VENV_DIR}")
+        print(f"Using project virtual environment: {VENV_DIR}")
         _reexec(venv_python, entry_script, argv)
 
     reexec_python = ensure_dependencies()
     if reexec_python is not None:
-        print(f"已切换到项目虚拟环境：{VENV_DIR}")
+        print(f"Switched to project virtual environment: {VENV_DIR}")
         _reexec(reexec_python, entry_script, argv)
 
     if missing_requirements():
-        raise RuntimeError("依赖安装完成后仍无法导入：" + ", ".join(missing_requirements()))
+        raise RuntimeError("Still unimportable after installation: " + ", ".join(missing_requirements()))
 
 
 REQUIRED_IMPORTS = {

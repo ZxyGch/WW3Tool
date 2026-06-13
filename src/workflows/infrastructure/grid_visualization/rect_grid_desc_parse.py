@@ -8,12 +8,26 @@
 -  legacy 五行 ASCII 描述块。
 
 解析结果用于可视化 worker 构建经纬度网格，以及 Step 4 将部分参数同步到 ``ww3_grid.nml``。
+
+[EN] Parse RECT/CURV geometry information from WW3 grid description files.
+
+Supports three common sources:
+
+- Flat ``grid.meta`` (``RECT%NX``-style key-value lines);
+- Fortran namelist (``&RECT_NML`` / ``&CURV_NML``);
+- Legacy five-line ASCII description block.
+
+The parsed results are used by the visualization worker to build lon/lat grids,
+and by Step 4 to synchronize certain parameters into ``ww3_grid.nml``.
 """
 from __future__ import annotations
 
 
 def parse_rect_flat_meta(lines: list[str]) -> dict | None:
-    """解析扁平 ``grid.meta``（无 ``&`` namelist 块的 ``RECT%`` 键值行）。"""
+    """解析扁平 ``grid.meta``（无 ``&`` namelist 块的 ``RECT%`` 键值行）。
+
+    [EN] Parse a flat ``grid.meta`` (``RECT%`` key-value lines without ``&`` namelist blocks).
+    """
     vals: dict[str, float | int] = {}
     for raw in lines:
         line = raw.split("!")[0].strip()
@@ -56,7 +70,10 @@ def parse_rect_flat_meta(lines: list[str]) -> dict | None:
 
 
 def _strip_assign_rhs(line: str) -> str:
-    """从 namelist 赋值行提取右侧第一个 token（去掉注释与引号）。"""
+    """从 namelist 赋值行提取右侧第一个 token（去掉注释与引号）。
+
+    [EN] Extract the first right-hand token from a namelist assignment line (stripping comments and quotes).
+    """
     if "=" not in line:
         return ""
     rhs = line.split("=", 1)[1].strip()
@@ -66,7 +83,10 @@ def _strip_assign_rhs(line: str) -> str:
 
 
 def parse_rect_from_namelist(lines: list[str]) -> dict | None:
-    """解析 ``&RECT_NML ... /`` 块，返回 nx/ny/sx/sy/x0/y0（度）。"""
+    """解析 ``&RECT_NML ... /`` 块，返回 nx/ny/sx/sy/x0/y0（度）。
+
+    [EN] Parse an ``&RECT_NML ... /`` block, returning nx/ny/sx/sy/x0/y0 (in degrees).
+    """
     in_rect = False
     vals: dict[str, float | int] = {}
     for raw in lines:
@@ -111,7 +131,10 @@ def parse_rect_from_namelist(lines: list[str]) -> dict | None:
 
 
 def parse_rect_legacy_ascii(lines: list[str]) -> dict | None:
-    """解析 legacy 五行 ASCII（首行 ``RECT`` / ``CURV`` 标识的块）。"""
+    """解析 legacy 五行 ASCII（首行 ``RECT`` / ``CURV`` 标识的块）。
+
+    [EN] Parse a legacy five-line ASCII block (identified by ``RECT`` / ``CURV`` on the first line).
+    """
     grid_line_idx = None
     gtype = None
     for i, line in enumerate(lines):
@@ -155,7 +178,10 @@ def parse_rect_legacy_ascii(lines: list[str]) -> dict | None:
 
 
 def parse_curv_flat_meta(lines: list[str]) -> dict | None:
-    """解析扁平 ``grid.meta`` 中的 CURV 曲线网格元数据。"""
+    """解析扁平 ``grid.meta`` 中的 CURV 曲线网格元数据。
+
+    [EN] Parse CURV curvilinear grid metadata from a flat ``grid.meta``.
+    """
     vals: dict[str, float | int | str] = {}
     for raw in lines:
         line = raw.split("!")[0].strip()
@@ -194,7 +220,10 @@ def parse_curv_flat_meta(lines: list[str]) -> dict | None:
 
 
 def parse_curv_from_namelist(lines: list[str]) -> dict | None:
-    """解析 ``&CURV_NML ... /`` 块，含曲线坐标文件名与缩放因子。"""
+    """解析 ``&CURV_NML ... /`` 块，含曲线坐标文件名与缩放因子。
+
+    [EN] Parse a ``&CURV_NML ... /`` block, containing curvilinear coordinate file names and scale factors.
+    """
     in_curv = False
     vals: dict[str, float | int | str] = {}
     for raw in lines:
@@ -237,6 +266,7 @@ def parse_curv_from_namelist(lines: list[str]) -> dict | None:
 
 
 # Step 4 写入 ww3_grid.nml 时从 grid.meta 同步的键；其余键忽略。
+# [EN] Keys synchronized from grid.meta when Step 4 writes ww3_grid.nml; other keys are ignored.
 WW3_GRID_META_SYNC_KEY_MAP = {
     "GRID%TYPE": ("grid_type", str),
     "GRID%COORD": ("grid_coord", str),
@@ -256,6 +286,10 @@ def parse_ww3_grid_meta_for_sync(path: str) -> dict | None:
     """读取 grid.meta，提取 Step 4 需同步到 ``ww3_grid.nml`` 的参数子集。
 
     支持扁平 ``KEY = value`` 行及 Fortran namelist 内相同键名。
+
+    [EN] Read grid.meta and extract the subset of parameters that Step 4 needs to synchronize into ``ww3_grid.nml``.
+
+    Supports both flat ``KEY = value`` lines and the same key names within Fortran namelists.
     """
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -294,7 +328,10 @@ def parse_ww3_grid_meta_for_sync(path: str) -> dict | None:
 
 
 def parse_rect_grid_description(path: str) -> dict | None:
-    """依次尝试 flat meta、namelist、legacy ASCII，解析 RECT 网格描述。"""
+    """依次尝试 flat meta、namelist、legacy ASCII，解析 RECT 网格描述。
+
+    [EN] Try flat meta, namelist, and legacy ASCII in order to parse a RECT grid description.
+    """
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
@@ -310,7 +347,10 @@ def parse_rect_grid_description(path: str) -> dict | None:
 
 
 def parse_structured_grid_description(path: str) -> dict | None:
-    """解析结构化网格描述，RECT 优先，失败则尝试 CURV。"""
+    """解析结构化网格描述，RECT 优先，失败则尝试 CURV。
+
+    [EN] Parse a structured grid description, trying RECT first and falling back to CURV on failure.
+    """
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
@@ -332,7 +372,10 @@ def parse_structured_grid_description(path: str) -> dict | None:
 
 
 def rect_lon_lat_mesh(path: str):
-    """由 RECT 描述构建二维经纬度网格 ``(lon, lat)``；失败返回 ``(None, None)``。"""
+    """由 RECT 描述构建二维经纬度网格 ``(lon, lat)``；失败返回 ``(None, None)``。
+
+    [EN] Build a 2D lon/lat mesh ``(lon, lat)`` from a RECT description; returns ``(None, None)`` on failure.
+    """
     import numpy as np
 
     d = parse_rect_grid_description(path)
@@ -346,7 +389,10 @@ def rect_lon_lat_mesh(path: str):
 
 
 def structured_lon_lat_mesh(path: str):
-    """由结构化网格描述（RECT 或 CURV）构建二维经纬度网格。"""
+    """由结构化网格描述（RECT 或 CURV）构建二维经纬度网格。
+
+    [EN] Build a 2D lon/lat mesh from a structured grid description (RECT or CURV).
+    """
     import os
     import numpy as np
 

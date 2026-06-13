@@ -17,6 +17,27 @@ dict）转换为强类型的 ``PipelineConfig``，并在各流水线阶段执行
 ---------
 - 输入：YAML 文件路径或 ``dict``，以及 ``base_dir`` 用于相对路径解析
 - 输出：校验通过的 ``PipelineConfig`` 实例
+
+[EN] Pipeline YAML parameter loading, parsing, default merging, and staged validation.
+
+This module is the application-layer entry point of the WW3Tool configuration system:
+it converts ``params.yml`` (or an in-memory dict) into a strongly-typed ``PipelineConfig``
+and performs corresponding validation at each pipeline stage.
+
+Pipeline step: Global configuration -- prerequisite for all steps.
+
+Main public API
+---------------
+- ``load_pipeline_config``: Load and validate from a YAML file path
+- ``parse_pipeline_config``: Build ``PipelineConfig`` from a parsed dict
+- ``validate_pipeline_config``: Validate by stage (forcing / grid / full / plot)
+- ``ConfigError``: Exception type raised when parameters are invalid
+- ``EXAMPLE_YAML``: Complete parameter template string for ``--print-example`` etc.
+
+Input/Output
+------------
+- Input: YAML file path or ``dict``, plus ``base_dir`` for relative path resolution
+- Output: Validated ``PipelineConfig`` instance
 """
 
 from __future__ import annotations
@@ -65,6 +86,9 @@ class ConfigError(ValueError):
     """YAML 参数文件格式或内容不合法时抛出的异常。
 
     继承自 ``ValueError``，消息为中文描述，指明具体字段与约束违反原因。
+
+    [EN] Exception raised when the YAML parameter file has invalid format or content.
+    Inherits from ``ValueError``; messages describe the specific field and constraint violation.
     """
 
 
@@ -85,6 +109,12 @@ def _deep_merge_defaults(defaults: dict, overrides: dict) -> dict:
     - overrides 中值为 dict → 递归合并
     - overrides 中值为其它非 None → 直接覆盖
     - defaults 中没有的键 → 保留 overrides 的值
+
+    [EN] Deep merge: use defaults as the base; non-None values in overrides replace corresponding positions.
+    - overrides value is ``None`` -> keep defaults value
+    - overrides value is dict -> recursive merge
+    - overrides value is other non-None -> direct replacement
+    - Key not in defaults -> keep overrides value
     """
     if not isinstance(defaults, dict) or not isinstance(overrides, dict):
         return overrides if overrides is not None else defaults
@@ -516,6 +546,21 @@ def load_pipeline_config(
 
     Raises:
         ConfigError: 文件不存在、YAML 格式错误或校验未通过时。
+
+    [EN] Load pipeline configuration from a YAML file path and complete validation.
+    If the workdir params.yml cannot be parsed (YAML syntax error or structural anomaly),
+    the entire config falls back to the root params.yml.
+
+    Args:
+        path: Path to ``params.yml`` or similar parameter file.
+        validation_stage: Validation strictness -- ``"forcing"``, ``"grid"``,
+            ``"full"`` or ``"plot"``; default ``"full"`` validates all items needed for full preprocessing.
+
+    Returns:
+        Parsed and validated ``PipelineConfig``.
+
+    Raises:
+        ConfigError: When the file does not exist, YAML format is invalid, or validation fails.
     """
     source_path = Path(path).expanduser().resolve()
     if not source_path.is_file():
@@ -540,7 +585,10 @@ def load_pipeline_config(
 
 
 def _paths_config(raw: Any, base_dir: Path) -> PathsConfig:
-    """解析 paths: 段。"""
+    """解析 paths: 段。
+
+    [EN] Parse the paths: section.
+    """
     r = _as_dict(raw, "paths")
     return PathsConfig(
         matlab_path=str(r.get("matlab_path") or ""),
@@ -574,7 +622,24 @@ def parse_pipeline_config(
 
     Raises:
         ConfigError: 字段类型、枚举值或路径约束不满足时。
+
+    [EN] Parse a raw YAML dict into ``PipelineConfig`` and merge runtime defaults.
+    Relative paths are resolved relative to ``base_dir``; nested fields map to
+    dataclass structures in ``domain.config_models``.
+
+    Args:
+        raw: Top-level dict from YAML ``safe_load``.
+        base_dir: Base directory for relative path resolution (usually the YAML file's directory).
+        source_path: Optional, records the configuration source file path.
+        validation_stage: Validation stage passed to ``validate_pipeline_config``.
+
+    Returns:
+        Complete ``PipelineConfig`` instance.
+
+    Raises:
+        ConfigError: When field types, enum values, or path constraints are not satisfied.
     """
+    # [EN] 1) Fill empty values in workdir with root params.yml defaults
     # 1) 用根 params.yml 默认值填充工作目录中的空值
     from ..infrastructure.runtime_config import PARAMS_FILE
     if os.path.isfile(PARAMS_FILE):
@@ -842,6 +907,20 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
 
     Raises:
         ConfigError: 任一约束不满足时；``stage`` 非法时同样抛出。
+
+    [EN] Validate a constructed ``PipelineConfig`` by pipeline stage.
+    Validation scope per stage:
+    - ``"plot"``: Skip hard validation (post-processing commands check required fields themselves)
+    - ``"grid"``: Only validate grid backend compatibility
+    - ``"forcing"``: Validate forcing source files exist and wind is required
+    - ``"full"``: Additionally validate WW3 dates, SLURM scripts, computation mode, etc.
+
+    Args:
+        config: Configuration object to validate.
+        stage: Validation stage name.
+
+    Raises:
+        ConfigError: When any constraint is not met; also raised when ``stage`` is invalid.
     """
     if stage not in {"forcing", "grid", "full", "plot"}:
         raise ConfigError("validation_stage 必须是 forcing、grid、full 或 plot")
@@ -883,10 +962,13 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
         raise ConfigError("calc.mode=track 时必须提供 calc.track_points")
 
 
+# [EN] Complete params.yml example template: for CLI ``--print-example`` and documentation reference.
+# [EN] Covers presets, workdir, forcing, grid, calc, ww3, slurm, plot, server sections.
 # 完整 params.yml 示例模板：供 CLI ``--print-example`` 与文档引用。
 # 涵盖 presets、workdir、forcing、grid、calc、ww3、slurm、plot、server 各段。
 EXAMPLE_YAML = """# Headless preprocessing example
 presets:
+  # [EN] Define output field schemes here; ww3.output_scheme selects one name only
   # 在这里完整定义输出字段方案，ww3.output_scheme 只选择一个名称
   output_scheme:
     standard: [HS, DIR, FP, T02, WND, PHS, PTP, PDIR, PWS, PNR, TWS]
@@ -899,6 +981,8 @@ presets:
       SXY, TWO, BHD, FOC, TUS, USS, P2S, USF, P2L, TWI, FIC, USP, TOC,
       ABR, UBR, BED, FBB, TBB, MSS, MSC, MSD, MCD, QP, QKK, SKW, EMB,
       DTD, FC, CFX, CFD, CFK]
+  # [EN] ST values are executable directories on the server (ending with /exe); ww3.st selects one of these names
+  # [EN] Configure according to your actual server environment, example:
   # ST 值是服务器上的可执行文件目录（以 /exe 结尾）；ww3.st 从这些名称中选择一个
   # 请根据实际服务器环境自行配置，示例：
   #   ST4: /path/to/your/ww3/model/exe
@@ -930,6 +1014,7 @@ grid:
     dy: 0.05
     lon: [110, 130]
     lat: [10, 30]
+  # [EN] When grid_type is nested, inner can be filled; omitted auto-generates from outer using nested_contraction_coefficient
   # grid_type 为 nested 时，可填写 inner；省略时依据 nested_contraction_coefficient 从 outer 自动生成
   # inner:
   #   dx: 0.05
@@ -992,6 +1077,8 @@ calc:
   mode: region
   points: []
   track_points: []
+  # [EN] Example for mode: spectral_point: points: [{lon: 120.0, lat: 20.0, name: P1}]
+  # [EN] Example for mode: track: track_points: [{datetime: "20250101 000000", lon: 120.0, lat: 20.0, name: T1}]
   # mode: spectral_point 时示例：points: [{lon: 120.0, lat: 20.0, name: P1}]
   # mode: track 时示例：track_points: [{datetime: "20250101 000000", lon: 120.0, lat: 20.0, name: T1}]
 
@@ -1000,19 +1087,27 @@ ww3:
   end_date: "20250103"
   compute_precision: "1800"
   output_precision: "3600"
+  # [EN] Nested grids can specify precision for inner grid separately; omitted inherits from outer grid
   # nested 网格可为内网格单独指定精度；省略则沿用外网格
   # inner_compute_precision: "900"
   # inner_output_precision: "1800"
   file_split: year
-  output_scheme: standard          # 选择 presets.output_scheme 中定义的一个方案
-  st: ST2                        # 选择 presets.st 中的一个路径名称
+  output_scheme: standard          # [EN] Select one scheme defined in presets.output_scheme
+                                   # 选择 presets.output_scheme 中定义的一个方案
+  st: ST2                        # [EN] Select one path name from presets.st
+                                 # 选择 presets.st 中的一个路径名称
 
+# [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml
 ww3_grid:
-  SPECTRUM%XFR: "1.1"            # 频率增量
-  SPECTRUM%FREQ1: "0.04118"      # 起始频率 Hz
-  SPECTRUM%NK: "32"              # 频率数量
-  SPECTRUM%NTH: "24"             # 方向数量
+  SPECTRUM%XFR: "1.1"            # [EN] Frequency increment
+                                 # 频率增量
+  SPECTRUM%FREQ1: "0.04118"      # [EN] Starting frequency Hz
+                                 # 起始频率 Hz
+  SPECTRUM%NK: "32"              # [EN] Number of frequencies
+                                 # 频率数量
+  SPECTRUM%NTH: "24"             # [EN] Number of directions
+                                 # 方向数量
   TIMESTEPS%DTMAX: "900"
   TIMESTEPS%DTXY: "320"
   TIMESTEPS%DTKTH: "300"
@@ -1020,12 +1115,14 @@ ww3_grid:
 
 slurm:
   cpu: CPU6240R
-  cpu_group:                # 可用 CPU 分区列表（供 UI 下拉选择）
+  cpu_group:                # [EN] Available CPU partition list (for UI dropdown)
+                            # 可用 CPU 分区列表（供 UI 下拉选择）
   - CPU6240R
   - CPU6336Y
   nodes: "1"
   cores: "48"
 
+# [EN] Post-processing plot configuration (used by CLI commands plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc)
 # 后处理绘图配置（CLI 命令 plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc 使用）
 plot:
   wave_maps:
@@ -1035,7 +1132,8 @@ plot:
     dpi: 300
     generate_video: false
     show_land_coastline: true
-    output_folder:          # 省略时在 workdir/photo 下输出
+    output_folder:          # [EN] When omitted, outputs under workdir/photo
+                            # 省略时在 workdir/photo 下输出
   spectrum:
     enabled: false
     time_step_hours: 24
@@ -1043,28 +1141,42 @@ plot:
     plot_mode: "normalized"          # normalized | actual
   jason3:
     enabled: false
-    data_folder:            # Jason-3 .nc 文件所在目录（省略时使用 paths.jason_path 或项目 jason3/）
-    lon_lat: []             # [西经, 东经, 南纬, 北纬]；省略时尝试 grid.outer
-    time_range: []          # [起始日期, 结束日期] YYYYMMDD；省略时尝试 ww3.start_date/end_date
+    data_folder:            # [EN] Directory containing Jason-3 .nc files (when omitted, uses paths.jason_path or project jason3/)
+                            # Jason-3 .nc 文件所在目录（省略时使用 paths.jason_path 或项目 jason3/）
+    lon_lat: []             # [EN] [west_lon, east_lon, south_lat, north_lat]; omitted tries grid.outer
+                            # [西经, 东经, 南纬, 北纬]；省略时尝试 grid.outer
+    time_range: []          # [EN] [start_date, end_date] YYYYMMDD; omitted tries ww3.start_date/end_date
+                            # [起始日期, 结束日期] YYYYMMDD；省略时尝试 ww3.start_date/end_date
     max_dist_deg: 0.125
     time_window_hours: 0.5
   ndbc:
     enabled: false
-    data_folder:            # NDBC 本地数据目录（download: false 时使用）
+    data_folder:            # [EN] NDBC local data directory (used when download: false)
+                            # NDBC 本地数据目录（download: false 时使用）
     download: false
-    time_range: []          # 下载时使用，如 ["20250101", "20250103"]
+    time_range: []          # [EN] Used when downloading, e.g. ["20250101", "20250103"]
+                            # 下载时使用，如 ["20250101", "20250103"]
 
+# [EN] Server connection configuration (used by CLI commands upload / submit / download-results / check-status etc.)
+# [EN] Upload and clearing remote directories are destructive operations; must explicitly pass --confirm
 # 服务器连接配置（CLI 命令 upload / submit / download-results / check-status 等使用）
 # 上传和清空远程目录是破坏性操作，必须显式传 --confirm 才能执行
 server:
-  host: ""                  # 服务器地址
+  host: ""                  # [EN] Server address
+                            # 服务器地址
   port: 22
-  user: ""                  # 用户名
-  password: ""              # 密码（建议改用 key_file）
-  key_file:                 # SSH 私钥文件路径（优先于 password）
-  default_remote_dir: ""    # 默认远程基础目录，如 /home/username/ww3_run（设置页写入）
-  remote_dir: ""            # 实际远程工作目录（第六步输入框写入，为空时使用 default_remote_dir + 工作目录名）
+  user: ""                  # [EN] Username
+                            # 用户名
+  password: ""              # [EN] Password (consider using key_file instead)
+                            # 密码（建议改用 key_file）
+  key_file:                 # [EN] SSH private key file path (takes priority over password)
+                            # SSH 私钥文件路径（优先于 password）
+  default_remote_dir: ""    # [EN] Default remote base directory, e.g. /home/username/ww3_run (set in settings page)
+                            # 默认远程基础目录，如 /home/username/ww3_run（设置页写入）
+  remote_dir: ""            # [EN] Actual remote workdir (set in step 6 input; when empty, uses default_remote_dir + workdir name)
+                            # 实际远程工作目录（第六步输入框写入，为空时使用 default_remote_dir + 工作目录名）
 
+# [EN] External tool and data directory paths (migrated from config.json, managed per workspace)
 # 外部工具与数据目录路径（从 config.json 迁移，按工作区管理）
 paths:
   matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab

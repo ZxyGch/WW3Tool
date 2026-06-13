@@ -1,4 +1,7 @@
-"""第六步：服务器操作 面板（主页步骤区）。"""
+"""第六步：服务器操作 面板（主页步骤区）。
+
+[EN] Step 6: Server operations panel (home step area).
+"""
 
 from __future__ import annotations
 
@@ -12,6 +15,7 @@ from workflows.support.translations import tr
 
 
 class ServerOpsPanel:
+    # [EN] Server operations: view files/queue, upload, submit, check, clear, download results/log.
     """服务器操作：查看文件/队列、上传、提交、检查、清空、下载结果/log。"""
 
     def __init__(

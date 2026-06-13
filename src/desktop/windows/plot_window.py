@@ -3,6 +3,15 @@
 卡片标题、控件、标签与按钮文案、排列顺序对齐 src 绘图页（``src/plot/*._create_*_ui``）。
 作为 FluentWindow 左侧堆叠的一页，右侧共享日志常驻，结果图复用窗口右侧图片面板。
 有 src 后端的按钮交由窗口回调执行；文件/文件夹选择在本类内处理；暂无后端的按钮提示。
+
+[EN] Plot sub-interface: JASON-3 fitting / NDBC fitting / wind field plot / 2D directional
+spectrum plot / wave height map plotting.
+
+Card titles, controls, labels, button text, and arrangement order align with src plot page
+(``src/plot/*._create_*_ui``). As a stacked page in FluentWindow's left panel, the right-side
+log is shared, and result images reuse the window's right-side image panel. Buttons with src
+backends are delegated to window callbacks; file/folder selection is handled within this class;
+buttons without backends show prompts.
 """
 
 from __future__ import annotations
@@ -46,6 +55,7 @@ from workflows.support.translations import tr
 
 
 class PlotInterface(QWidget):
+    # [EN] Scientific plotting page (styling aligned with src).
     """科研绘图页（样式对齐 src）。"""
 
     def __init__(
@@ -118,6 +128,7 @@ class PlotInterface(QWidget):
         self._build_wave_card(run_wave_maps, run_wind_swell, run_contour, run_wave_video, open_photo_folder)
         self._vbox.addStretch(1)
 
+    # [EN] ── Common utilities ────────────────────────────────────────────────────────────────
     # ── 通用件 ────────────────────────────────────────────────────────────────
 
     def _card(self, title: str) -> QVBoxLayout:
@@ -141,6 +152,7 @@ class PlotInterface(QWidget):
         generate_cb: Callable[[], None],
         view_subdir: str,
     ) -> QHBoxLayout:
+        # [EN] Generate / View button row, width ratio 3:1.
         """生成 / 查看按钮行，宽度比例 3:1。"""
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -166,6 +178,7 @@ class PlotInterface(QWidget):
         row_a: tuple[str, Callable[[], None], str],
         row_b: tuple[str, Callable[[], None], str],
     ) -> None:
+        # [EN] Two generate/view button rows sharing column width, ensuring "View" columns align vertically.
         """两行生成/查看按钮共用列宽，保证「查看」列垂直对齐。"""
         grid = QGridLayout()
         grid.setHorizontalSpacing(8)
@@ -185,11 +198,13 @@ class PlotInterface(QWidget):
         layout.addLayout(grid)
 
     def _set_button_file_chosen(self, button: PrimaryPushButton, filepath: str) -> None:
+        # [EN] Change button text to filename and set text color to blue on top of existing style.
         """将按钮文字改为文件名，并在原有样式基础上将文字颜色设为蓝色。"""
         filename = os.path.basename(filepath)
         if len(filename) > 28:
             filename = filename[:25] + "..."
         button.setText(filename)
+        # [EN] Append blue text on top of existing button_style, without replacing entire stylesheet
         # 在原有 button_style 基础上追加蓝色文字，不替换整个样式表
         base = styles.button_style()
         if is_dark():
@@ -199,12 +214,14 @@ class PlotInterface(QWidget):
         button.setStyleSheet(base + "\n" + color_rule)
 
     def _reset_file_button(self, button: PrimaryPushButton, default_text: str) -> None:
+        # [EN] Reset file selection button to default text and style.
         """将文件选择按钮恢复为默认文案与样式。"""
         button.setText(default_text)
         button.setStyleSheet(styles.button_style())
 
     @staticmethod
     def _resolve_wind_nc_path(workdir: str) -> str | None:
+        # [EN] Look for wind.nc in workdir, otherwise fall back to wind_*.nc.
         """在工作目录中查找 wind.nc，否则回退到 wind_*.nc。"""
         wind_nc = os.path.join(workdir, "wind.nc")
         if os.path.isfile(wind_nc):
@@ -214,6 +231,7 @@ class PlotInterface(QWidget):
 
     @staticmethod
     def _resolve_wave_nc_path(workdir: str) -> str | None:
+        # [EN] Look for ww3*.nc in workdir (excluding spectrum files).
         """在工作目录中查找 ww3*.nc（排除谱文件）。"""
         wave_files = sorted(glob.glob(os.path.join(workdir, "ww3*.nc")))
         wave_files = [f for f in wave_files if "spec" not in os.path.basename(f).lower()]
@@ -221,11 +239,13 @@ class PlotInterface(QWidget):
 
     @staticmethod
     def _resolve_spectrum_nc_path(workdir: str) -> str | None:
+        # [EN] Look for ww3*spec*nc 2D spectrum files in workdir.
         """在工作目录中查找 ww3*spec*nc 二维谱文件。"""
         spec_files = glob.glob(os.path.join(workdir, "ww3*spec*nc"))
         return spec_files[0] if spec_files else None
 
     def _resolve_detected_path(self, fields: dict[str, LineEdit], file_key: str, workdir: str, detector) -> str | None:
+        # [EN] Prefer user-selected file if it still exists, otherwise auto-detect from workdir.
         """优先保留用户已选且仍存在的文件，否则从工作目录自动检测。"""
         edit = fields.get(file_key)
         current = edit.text().strip() if edit is not None else ""
@@ -253,6 +273,7 @@ class PlotInterface(QWidget):
             self._reset_file_button(btn, default_text)
 
     def auto_detect_from_workdir(self, workdir: str | None) -> None:
+        # [EN] Silently detect wind.nc / ww3*.nc in workdir and fill plot page buttons (aligned with src show_plot_page).
         """静默检测工作目录中的 wind.nc / ww3*.nc 并填充绘图页按钮（对齐 src show_plot_page）。"""
         try:
             if not workdir or not os.path.isdir(workdir):
@@ -354,9 +375,18 @@ class PlotInterface(QWidget):
         if path:
             edit.setText(path)
 
+    # [EN] ── Read range from NC ────────────────────────────────────────────────────────
     # ── 从 NC 读取范围 ────────────────────────────────────────────────────────
 
     def _load_range_from_nc(self, fields: dict[str, LineEdit], file_pattern: str) -> None:
+        # [EN] Read lon/lat and time range from NetCDF file and fill corresponding input fields.
+        #
+        # [EN] Prioritizes user-selected file (wind_file / wave_file fields),
+        # [EN] falls back to searching in workdir by file_pattern if none selected.
+        #
+        # [EN] Args:
+        # [EN]     fields: input field dict within the card.
+        # [EN]     file_pattern: file match pattern, e.g. ``"wind.nc"`` or ``"ww3.*.nc"``.
         """从 NetCDF 文件中读取经纬度和时间范围并填入对应输入框。
 
         优先使用用户手动选择的文件（wind_file / wave_file 字段），
@@ -368,6 +398,7 @@ class PlotInterface(QWidget):
         """
         nc_path: str | None = None
 
+        # [EN] 1) Prioritize user-selected file
         # 1) 优先使用用户手动选择的文件
         is_ww3_pattern = "ww3" in file_pattern.lower() or "*" in file_pattern
         file_key = "wave_file" if is_ww3_pattern else "wind_file"
@@ -375,6 +406,7 @@ class PlotInterface(QWidget):
         if selected and os.path.isfile(selected):
             nc_path = selected
         else:
+            # [EN] 2) Fallback: search in workdir by pattern
             # 2) 回退：在工作目录中按 pattern 搜索
             folder_edit = fields.get("folder")
             work_dir = folder_edit.text().strip() if folder_edit else ""
@@ -395,6 +427,7 @@ class PlotInterface(QWidget):
         self._read_and_fill_range(fields, nc_path)
 
     def _pick_file_and_fill_range(self, fields: dict[str, LineEdit], file_key: str) -> None:
+        # [EN] After selecting a file, update path display and auto-read lon/lat/time range.
         """选择文件后，更新路径显示并自动读取经纬度/时间范围。"""
         edit = fields.get(file_key)
         if edit is None:
@@ -408,14 +441,17 @@ class PlotInterface(QWidget):
         if not path:
             return
         edit.setText(path)
+        # [EN] Update button text to filename and change to blue color
         # 更新按钮文字为文件名，并改为蓝色
         btn = fields.get(f"{file_key}_btn")
         if btn is not None:
             self._set_button_file_chosen(btn, path)
+        # [EN] Auto-read range and fill lon/lat/time
         # 自动读取范围并填充经纬度/时间
         self._read_and_fill_range(fields, path)
 
     def _read_and_fill_range(self, fields: dict[str, LineEdit], nc_path: str) -> None:
+        # [EN] Read lon/lat and time range from specified NC file, fill into fields.
         """从指定 NC 文件读取经纬度和时间范围，填充到 fields。"""
         try:
             from netCDF4 import Dataset, num2date
@@ -427,6 +463,7 @@ class PlotInterface(QWidget):
             except KeyError:
                 return
 
+            # [EN] Handle masked array
             # 处理 masked array
             if hasattr(lon, "data"):
                 import numpy as np
@@ -438,6 +475,7 @@ class PlotInterface(QWidget):
             fields["lat_south"].setText(f"{float(lat.min()):.2f}")
             fields["lat_north"].setText(f"{float(lat.max()):.2f}")
 
+            # [EN] Try reading time range
             # 尝试读取时间范围
             try:
                 if "time" in ds.variables:
@@ -449,7 +487,8 @@ class PlotInterface(QWidget):
                         fields["start"].setText(start_time.strftime("%Y%m%d"))
                         fields["end"].setText(end_time.strftime("%Y%m%d"))
             except Exception:
-                pass  # 时间读取失败不影响经纬度
+                pass  # [EN] Time reading failure does not affect lon/lat
+                # 时间读取失败不影响经纬度
 
             ds.close()
         except ImportError:
@@ -457,6 +496,7 @@ class PlotInterface(QWidget):
         except Exception:
             pass
 
+    # [EN] ── Jason-3 / NDBC shared card ───────────────────────────────────────────────
     # ── Jason-3 / NDBC 共用卡片 ───────────────────────────────────────────────
 
     def _build_match_card(
@@ -479,6 +519,7 @@ class PlotInterface(QWidget):
         layout = self._card(title)
         fields: dict[str, LineEdit] = {}
 
+        # [EN] 1) Lon/lat + time grid (aligned with src: placed first)
         # 1) 经纬度 + 时间网格（与 src 一致：放在最前）
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
@@ -498,6 +539,7 @@ class PlotInterface(QWidget):
             grid.addWidget(fields[key], r, c + 1)
         layout.addLayout(grid)
 
+        # [EN] 2) Data folder (input + choose button, no label, aligned with src)
         # 2) 数据文件夹（输入框 + 选择按钮，无标签，与 src 一致）
         folder_row = QHBoxLayout()
         folder_row.setSpacing(8)
@@ -507,6 +549,7 @@ class PlotInterface(QWidget):
         folder_row.addWidget(choose)
         layout.addLayout(folder_row)
 
+        # [EN] 3) [Choose wind file | Read range from wind.nc]
         # 3) [选择风场文件 | 从 wind.nc 读取范围]
         fields["wind_file"] = self._line()
         wind_btn = self._button(tr("step1_choose_wind", "选择风场文件"), lambda: self._pick_file_and_fill_range(fields, "wind_file"))
@@ -517,6 +560,7 @@ class PlotInterface(QWidget):
         wind_row.addWidget(self._button(tr("step2_load_from_nc", "从 wind.nc 读取范围"), lambda: self._load_range_from_nc(fields, "wind.nc")), 1)
         layout.addLayout(wind_row)
 
+        # [EN] 4) [Choose wave height file | Read range from simulation results]
         # 4) [选择波高文件 | 从模拟结果读取范围]
         fields["wave_file"] = self._line()
         wave_btn = self._button(tr("plotting_choose_wave_height", "选择波高文件"), lambda: self._pick_file_and_fill_range(fields, "wave_file"))
@@ -527,6 +571,7 @@ class PlotInterface(QWidget):
         wave_row.addWidget(self._button(tr("step2_load_from_ww3", "从模拟结果读取范围"), lambda: self._load_range_from_nc(fields, "ww3.*.nc")), 1)
         layout.addLayout(wave_row)
 
+        # [EN] 5) Download / Generate+View
         # 5) 下载 / 生成+查看
         layout.addWidget(self._button(download_label, on_download))
         if ndbc_mode:
@@ -537,6 +582,7 @@ class PlotInterface(QWidget):
             self._add_gen_view_row(layout, generate_fit_label, on_generate_fit, view_fit_subdir)
         return fields
 
+    # [EN] ── Wind field plotting ────────────────────────────────────────────────────────────────
     # ── 风场绘图 ────────────────────────────────────────────────────────────────
 
     def _build_wind_field_card(self, run_wind_field: Callable, view_subdir: str) -> None:
@@ -547,12 +593,14 @@ class PlotInterface(QWidget):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(5)
 
+        # [EN] Time step
         # 时间步长
         self._wind_timestep = self._line("24", placeholder=tr("plotting_default_24_hours", "默认 24 小时"))
         self._wind_timestep.setValidator(double_validator(0.0, 1.0e12))
         grid.addWidget(QLabel(tr("plotting_wind_timestep", "时间步长 (小时):")), 0, 0)
         grid.addWidget(self._wind_timestep, 0, 1)
 
+        # [EN] Wind direction flag type
         # 风向标志类型
         self._wind_flag_combo = ComboBox()
         self._wind_flag_options = [
@@ -562,6 +610,7 @@ class PlotInterface(QWidget):
         ]
         for canonical, label in self._wind_flag_options:
             self._wind_flag_combo.addItem(label, userData=canonical)
+        # [EN] Default arrow
         # 默认箭头
         for idx, (canonical, _label) in enumerate(self._wind_flag_options):
             if canonical == "arrow":
@@ -573,6 +622,7 @@ class PlotInterface(QWidget):
         grid.addWidget(QLabel(tr("plotting_wind_flag", "风向标志:")), 1, 0)
         grid.addWidget(self._wind_flag_combo, 1, 1)
 
+        # [EN] Flag density
         # 标志密度
         self._wind_density = self._line("10", placeholder=tr("plotting_wind_flag_density_placeholder", "自动"))
         grid.addWidget(QLabel(tr("plotting_wind_flag_density", "标志密度 (步长):")), 2, 0)
@@ -580,6 +630,7 @@ class PlotInterface(QWidget):
 
         layout.addLayout(grid)
 
+        # [EN] Choose wind field file
         # 选择风场文件
         self._wind_file_edit = self._line()
         self._wind_file_btn = self._button(tr("step1_choose_wind", "选择风场文件"), self._pick_wind_field_file)
@@ -593,6 +644,7 @@ class PlotInterface(QWidget):
         )
 
     def _pick_wind_field_file(self) -> None:
+        # [EN] After selecting wind field file, update button text to filename and change to blue.
         """选择风场文件后更新按钮文字为文件名并改为蓝色。"""
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -605,6 +657,7 @@ class PlotInterface(QWidget):
         self._wind_file_edit.setText(path)
         self._set_button_file_chosen(self._wind_file_btn, path)
 
+    # [EN] ── 2D spectrum ────────────────────────────────────────────────────────────────
     # ── 二维谱 ────────────────────────────────────────────────────────────────
 
     def _build_spectrum_card(self, run_spectrum_all, run_spectrum_selected, run_spectrum_map) -> None:
@@ -621,7 +674,8 @@ class PlotInterface(QWidget):
         for col in range(3):
             self._spectrum_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._spectrum_table.setMinimumHeight(120)
-        self._spectrum_table.setVisible(False)  # 选择谱文件后才显示（与 src 一致）
+        self._spectrum_table.setVisible(False)  # [EN] Only shown after spectrum file is selected (aligned with src)
+        # 选择谱文件后才显示（与 src 一致）
         layout.addWidget(self._spectrum_table)
 
         grid = QGridLayout()
@@ -665,6 +719,7 @@ class PlotInterface(QWidget):
         )
 
     def _on_spectrum_file_picked(self) -> None:
+        # [EN] Select 2D spectrum file and auto-load station info into table.
         """选择二维谱文件并自动加载站点信息到表格。"""
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -679,6 +734,7 @@ class PlotInterface(QWidget):
         self._load_spectrum_stations(path)
 
     def _load_spectrum_stations(self, spec_file_path: str) -> None:
+        # [EN] Read station info from 2D spectrum file and fill into table.
         """从二维谱文件读取站点信息填入表格。"""
         if not spec_file_path or not os.path.exists(spec_file_path):
             return
@@ -726,6 +782,7 @@ class PlotInterface(QWidget):
         except Exception:
             pass
 
+    # [EN] ── Wave height maps ────────────────────────────────────────────────────────────────
     # ── 波高图 ────────────────────────────────────────────────────────────────
 
     def _build_wave_card(self, run_wave_maps, run_wind_swell, run_contour, run_wave_video, open_photo_folder) -> None:
@@ -757,6 +814,7 @@ class PlotInterface(QWidget):
         layout.addWidget(self._button(tr("plotting_open_photo_folder", "打开图片文件夹"), open_photo_folder))
 
     def _pick_wave_file(self) -> None:
+        # [EN] After selecting wave height file, update button text to filename and change to blue.
         """选择波高文件后更新按钮文字为文件名并改为蓝色。"""
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -769,6 +827,7 @@ class PlotInterface(QWidget):
         self._wave_file.setText(path)
         self._set_button_file_chosen(self._wave_file_btn, path)
 
+    # [EN] ── Value accessors ──────────────────────────────────────────────────────────────────
     # ── 取值 ──────────────────────────────────────────────────────────────────
 
     def spectrum_station(self) -> int:
@@ -794,6 +853,7 @@ class PlotInterface(QWidget):
         return self._ndbc_fields["folder"].text().strip()
 
     def wave_maps_params(self) -> dict:
+        # [EN] Return wave height plotting parameters (time step, wave file).
         """返回波高绘图参数（时间步长、波高文件）。"""
         try:
             time_step = float(self._wave_timestep.text().strip() or "6")
@@ -807,6 +867,7 @@ class PlotInterface(QWidget):
         }
 
     def wind_field_params(self) -> dict:
+        # [EN] Return wind field plotting parameters.
         """返回风场绘图参数。"""
         try:
             time_step = float(self._wind_timestep.text().strip() or "24")

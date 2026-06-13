@@ -3,6 +3,13 @@
 各方法接受已构建的 ``PipelineConfig``，转调对应用例并把日志转发给 ``on_log``，
 返回用例的 Result（含 ``image_files`` / ``messages`` / ``success``）。后台执行与忙碌态
 由窗口的 BackgroundRunner 负责。
+
+[EN] Plot page view model: bridges desktop to application plotting use cases.
+
+Each method accepts a built ``PipelineConfig``, delegates to the corresponding use case
+and forwards logs to ``on_log``, returning the use case's Result (with ``image_files`` /
+``messages`` / ``success``). Background execution and busy state are managed by the
+window's BackgroundRunner.
 """
 
 from __future__ import annotations
@@ -15,6 +22,7 @@ LogCallback = Callable[[str], None]
 
 
 class PlotViewModel:
+    # [EN] Drive wave height maps / spectrum / Jason-3 / NDBC plotting use cases.
     """驱动波高场图 / 谱图 / Jason-3 / NDBC 绘图用例。"""
 
     def __init__(self, *, on_log: Optional[LogCallback] = None) -> None:

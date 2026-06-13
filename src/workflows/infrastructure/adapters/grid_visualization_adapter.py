@@ -8,6 +8,20 @@
 
 对比：``infrastructure/plot/`` 下的 worker 在特定场景下进程内调用，因主窗口未同时
 展示 Qt 画布时后端冲突概率较低。若未来统一问题复现，可一并改为子进程模式。
+
+[EN] Run the grid visualization worker in a subprocess.
+
+Design rationale — why a subprocess instead of an in-process call
+------------------------------------------------------------------
+``grid_visualization/worker.py`` uses the matplotlib ``Agg`` backend and writes
+PNG files to disk. Importing matplotlib and switching backends within the same
+process while the Qt event loop is active easily causes crashes due to Qt
+conflicts. A subprocess provides a clean, isolated environment for matplotlib.
+
+By contrast, workers under ``infrastructure/plot/`` are called in-process in
+certain scenarios, since the main window does not simultaneously display a Qt
+canvas and backend conflict probability is lower. If the same issue resurfaces
+in the future, those can be migrated to subprocess mode as well.
 """
 
 from __future__ import annotations
@@ -41,6 +55,21 @@ def generate_grid_images(config: PipelineConfig, logger: CoreLogger) -> list[str
 
     异常:
         RuntimeError: worker 失败或未产生任何图片
+
+    [EN] Generate a list of grid preview PNG paths for the current pipeline configuration.
+
+    For nested grids, the worker is invoked separately for ``coarse/`` and ``fine/``;
+    for regular grids, the structured/smc/unst mode is selected by ``mesh_type``.
+
+    Args:
+        config: Pipeline configuration (containing working directory and grid type)
+        logger: Receives log lines from the worker's stdout
+
+    Returns:
+        List of absolute paths to the generated PNG files
+
+    Raises:
+        RuntimeError: Worker failed or produced no images
     """
     workdir = config.workdir.path
     if config.grid.grid_type == "nested":
@@ -59,7 +88,10 @@ def generate_grid_images(config: PipelineConfig, logger: CoreLogger) -> list[str
 
 
 def _run_worker(directory: Path, mode: str, logger: CoreLogger) -> dict:
-    """启动 ``grid_visualization.worker`` 子进程并解析 ``WW3TOOL_VIZ`` 协议输出。"""
+    """启动 ``grid_visualization.worker`` 子进程并解析 ``WW3TOOL_VIZ`` 协议输出。
+
+    [EN] Launch the ``grid_visualization.worker`` subprocess and parse its ``WW3TOOL_VIZ`` protocol output.
+    """
     src_dir = Path(__file__).resolve().parents[3]
     env = os.environ.copy()
     previous = env.get("PYTHONPATH", "")

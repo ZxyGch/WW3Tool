@@ -7,6 +7,16 @@
 - ``application/configuration.py``：YAML 加载、默认值合并与校验
 - ``application/*`` 各用例：只读访问已解析的 ``PipelineConfig``
 - ``desktop/view_models/``：桌面端与 CLI 共用同一套配置模型
+
+[EN] Pipeline configuration data classes for the headless preprocessing YAML interface.
+
+This module belongs to the ``domain/`` layer and maps sections of ``params.yml``
+to typed ``dataclass`` instances. It contains no parsing, validation, or I/O logic.
+
+Main consumers:
+- ``application/configuration.py``: YAML loading, default merging, and validation
+- ``application/*`` use cases: read-only access to the resolved ``PipelineConfig``
+- ``desktop/view_models/``: desktop and CLI share the same configuration models
 """
 
 from __future__ import annotations
@@ -34,6 +44,11 @@ class WorkdirConfig:
 
     关键字段：
     - ``path``：WW3 案例根目录，强迫场、网格与 namelist 均在其下生成
+
+    [EN] Local working directory path.
+
+    Key fields:
+    - ``path``: WW3 case root directory; forcing, grid, and namelist files are all generated under it
     """
 
     path: Path
@@ -47,6 +62,13 @@ class ForcingConfig:
     - ``wind`` / ``current`` / ``level`` / ``ice``：各场 NetCDF 源文件路径
     - ``process_mode``：``copy`` 或 ``move``，控制写入工作目录的方式
     - ``auto_associate``：是否根据文件名自动匹配场类型
+
+    [EN] Forcing source files and processing options (corresponds to YAML ``forcing:`` section).
+
+    Key fields:
+    - ``wind`` / ``current`` / ``level`` / ``ice``: NetCDF source file paths for each field
+    - ``process_mode``: ``copy`` or ``move``, controls how files are written to the working directory
+    - ``auto_associate``: whether to automatically match field types based on filenames
     """
 
     wind: Optional[Path] = None
@@ -64,6 +86,12 @@ class GridRegion:
     关键字段：
     - ``dx`` / ``dy``：经向、纬向格距（度）
     - ``lon`` / ``lat``：``[min, max]`` 形式的经度、纬度边界
+
+    [EN] Longitude/latitude extent and resolution of a rectangular grid region.
+
+    Key fields:
+    - ``dx`` / ``dy``: zonal and meridional grid spacing (degrees)
+    - ``lon`` / ``lat``: longitude and latitude bounds as ``[min, max]``
     """
 
     dx: Optional[float] = None
@@ -80,6 +108,13 @@ class StructuredGridSettings:
     - ``bathymetry``：地形数据源名称（见 ``STRUCTURED_BATHYMETRY_OPTIONS``）
     - ``coastline_precision``：海岸线精度档位
     - ``min_dist`` / ``cut_off`` / ``lim_bathy`` 等：gridgen 数值阈值
+
+    [EN] Structured (rectilinear) grid generation parameters.
+
+    Key fields:
+    - ``bathymetry``: bathymetry data source name (see ``STRUCTURED_BATHYMETRY_OPTIONS``)
+    - ``coastline_precision``: coastline precision level
+    - ``min_dist`` / ``cut_off`` / ``lim_bathy`` etc.: gridgen numerical thresholds
     """
 
     bathymetry: Optional[str] = None
@@ -100,6 +135,13 @@ class SMCGridSettings:
     - ``bathymetry`` / ``bathy_convention``：地形源与高程约定
     - ``n_levels`` / ``wlevel``：多级网格与水位参考
     - ``options``：透传给 gridgen 的额外键值对
+
+    [EN] Spherical Multi-Cell (SMC) unstructured grid parameters.
+
+    Key fields:
+    - ``bathymetry`` / ``bathy_convention``: bathymetry source and elevation convention
+    - ``n_levels`` / ``wlevel``: multi-level grid and water level reference
+    - ``options``: extra key-value pairs passed through to gridgen
     """
 
     bathymetry: Optional[str] = None
@@ -121,6 +163,13 @@ class UnstructuredGridSettings:
     - ``hmax`` / ``hshr`` / ``nwav``：网格尺寸与波数相关控制量
     - ``deep_ocean_threshold_m`` / ``margin_deg``：深海阈值与外扩边距
     - ``options``：底层 gridgen 额外选项
+
+    [EN] Triangular unstructured grid (triangle mesh) parameters.
+
+    Key fields:
+    - ``hmax`` / ``hshr`` / ``nwav``: mesh size and wavenumber-related control quantities
+    - ``deep_ocean_threshold_m`` / ``margin_deg``: deep-ocean threshold and outward margin
+    - ``options``: underlying gridgen extra options
     """
 
     hmax: Optional[float] = None
@@ -141,6 +190,14 @@ class GridConfig:
     - ``mesh_type``：``structured`` / ``smc`` / ``unstructured``
     - ``outer`` / ``inner``：外圈与可选内圈（嵌套）区域
     - ``structured`` / ``smc`` / ``unstructured``：按 ``mesh_type`` 选用的子配置
+
+    [EN] Aggregation of grid type, nested regions, and type-specific sub-configs
+    (corresponds to YAML ``grid:`` section).
+
+    Key fields:
+    - ``mesh_type``: ``structured`` / ``smc`` / ``unstructured``
+    - ``outer`` / ``inner``: outer and optional inner (nested) regions
+    - ``structured`` / ``smc`` / ``unstructured``: sub-config selected by ``mesh_type``
     """
 
     mesh_type: Optional[str] = None
@@ -163,6 +220,12 @@ class PointConfig:
     关键字段：
     - ``lon`` / ``lat``：点位坐标（度）
     - ``name``：写入 namelist 的站点名称
+
+    [EN] Single-point spectral output location (used when ``calc.mode=point``).
+
+    Key fields:
+    - ``lon`` / ``lat``: point coordinates (degrees)
+    - ``name``: station name written to the namelist
     """
 
     lon: float
@@ -177,6 +240,12 @@ class TrackPointConfig:
     关键字段：
     - ``datetime``：ISO 或 namelist 可解析的时间字符串
     - ``lon`` / ``lat``：该时刻位置
+
+    [EN] A space-time point along a track output path (used when ``calc.mode=track``).
+
+    Key fields:
+    - ``datetime``: ISO or namelist-parseable time string
+    - ``lon`` / ``lat``: position at that time
     """
 
     datetime: str
@@ -192,6 +261,12 @@ class CalcConfig:
     关键字段：
     - ``mode``：``region`` / ``point`` / ``track`` 等
     - ``points`` / ``track_points``：模式相关的空间采样列表
+
+    [EN] Computation mode and point/track configuration (corresponds to YAML ``calc:`` section).
+
+    Key fields:
+    - ``mode``: ``region`` / ``point`` / ``track``, etc.
+    - ``points`` / ``track_points``: mode-specific spatial sampling lists
     """
 
     mode: Optional[str] = None
@@ -205,6 +280,11 @@ class ParameterPresets:
 
     在 ``PipelineConfig`` 中携带一份可变副本，便于运行时覆盖默认值
     而不修改模块级常量。
+
+    [EN] Parameter enumeration preset copies for UI and validation (from ``parameter_catalog``).
+
+    Carries a mutable copy inside ``PipelineConfig`` so that defaults can be
+    overridden at runtime without modifying module-level constants.
     """
 
     output_scheme: Dict[str, List[str]] = field(
@@ -228,6 +308,14 @@ class WW3Config:
     - ``compute_precision`` / ``output_precision``：积分与输出时间步（秒）
     - ``inner_*``：嵌套内圈网格的独立时间步（可选）
     - ``output_scheme`` / ``st``：输出场方案与源项物理包
+
+    [EN] WAVEWATCH III run period and output scheme (corresponds to YAML ``ww3:`` section).
+
+    Key fields:
+    - ``start_date`` / ``end_date``: simulation start and end times
+    - ``compute_precision`` / ``output_precision``: integration and output time steps (seconds)
+    - ``inner_*``: independent time steps for the nested inner grid (optional)
+    - ``output_scheme`` / ``st``: output field scheme and source-term physics package
     """
 
     start_date: str = ""
@@ -247,6 +335,11 @@ class WW3GridSettings:
 
     ``parameters`` 键为 namelist 变量名（含 ``%`` 分隔符），值为字符串形式，
     由 namelist 写入层原样输出。
+
+    [EN] Spectral and grid-related numerical parameters in ``ww3_grid.nml``.
+
+    ``parameters`` keys are namelist variable names (including the ``%`` separator),
+    and values are strings that are written as-is by the namelist writer layer.
     """
 
     parameters: Optional[Dict[str, str]] = None
@@ -259,6 +352,12 @@ class SlurmConfig:
     关键字段：
     - ``cpu`` / ``nodes`` / ``cores``：分区与并行规模
     - ``cpu_group``：可用的 CPU 分区列表（供 UI 下拉选择）
+
+    [EN] Remote SLURM job resources (corresponds to YAML ``slurm:`` section).
+
+    Key fields:
+    - ``cpu`` / ``nodes`` / ``cores``: partition and parallelism scale
+    - ``cpu_group``: list of available CPU partitions (for UI dropdown)
     """
 
     cpu: Optional[str] = None
@@ -276,6 +375,14 @@ class ServerConfig:
     - ``password`` / ``key_file``：认证方式（二选一或组合）
     - ``default_remote_dir``：默认远程基础目录（从设置页写入）
     - ``remote_dir``：实际远程工作目录（第六步输入框写入，为空时回退到 default_remote_dir + 工作目录名）
+
+    [EN] SSH remote server connection and remote working directory (corresponds to YAML ``server:`` section).
+
+    Key fields:
+    - ``host`` / ``port`` / ``user``: connection target
+    - ``password`` / ``key_file``: authentication method (either or combined)
+    - ``default_remote_dir``: default remote base directory (set from the settings page)
+    - ``remote_dir``: actual remote working directory (set from step-6 input; falls back to default_remote_dir + workdir name when empty)
     """
 
     host: str = ""
@@ -289,7 +396,10 @@ class ServerConfig:
 
 @dataclass
 class WaveMapsConfig:
-    """波高填色/等值线地图后处理选项。"""
+    """波高填色/等值线地图后处理选项。
+
+    [EN] Wave height filled-color / contour map post-processing options.
+    """
 
     enabled: bool = True
     time_step_hours: Optional[float] = None
@@ -302,7 +412,10 @@ class WaveMapsConfig:
 
 @dataclass
 class SpectrumConfig:
-    """二维方向谱绘图选项。"""
+    """二维方向谱绘图选项。
+
+    [EN] 2-D directional spectrum plotting options.
+    """
 
     enabled: bool = False
     time_step_hours: Optional[float] = None
@@ -312,7 +425,10 @@ class SpectrumConfig:
 
 @dataclass
 class Jason3Config:
-    """WW3 结果与 Jason-3 卫星高度计匹配选项。"""
+    """WW3 结果与 Jason-3 卫星高度计匹配选项。
+
+    [EN] Options for matching WW3 results with Jason-3 satellite altimeter data.
+    """
 
     enabled: bool = False
     data_folder: Optional[Path] = None
@@ -324,7 +440,10 @@ class Jason3Config:
 
 @dataclass
 class NDBCConfig:
-    """WW3 结果与 NDBC 浮标观测匹配或下载选项。"""
+    """WW3 结果与 NDBC 浮标观测匹配或下载选项。
+
+    [EN] Options for matching WW3 results with NDBC buoy observations or downloading data.
+    """
 
     enabled: bool = False
     data_folder: Optional[Path] = None
@@ -334,7 +453,10 @@ class NDBCConfig:
 
 @dataclass
 class WindFieldConfig:
-    """风场填色图后处理选项。"""
+    """风场填色图后处理选项。
+
+    [EN] Wind field filled-color map post-processing options.
+    """
 
     time_step_hours: Optional[float] = None
     flag_type: Optional[str] = None
@@ -347,6 +469,12 @@ class PlotConfig:
 
     关键字段：
     - ``wave_maps`` / ``spectrum`` / ``jason3`` / ``ndbc``：各子任务开关与参数
+
+    [EN] Aggregated configuration for post-processing plotting and validation tasks
+    (corresponds to YAML ``plot:`` section).
+
+    Key fields:
+    - ``wave_maps`` / ``spectrum`` / ``jason3`` / ``ndbc``: switches and parameters for each sub-task
     """
 
     wave_maps: WaveMapsConfig = field(default_factory=WaveMapsConfig)
@@ -362,6 +490,12 @@ class PathsConfig:
 
     这些路径原存储在 ``config.json``，现迁移至 ``params.yml`` 以便按工作区管理。
     所有字段均为可选，省略时回退到项目默认路径。
+
+    [EN] External tool and data directory paths (corresponds to YAML ``paths:`` section).
+
+    These paths were previously stored in ``config.json`` and have been migrated
+    to ``params.yml`` for per-workspace management. All fields are optional;
+    omitted fields fall back to project default paths.
     """
 
     matlab_path: str = ""
@@ -383,6 +517,17 @@ class PipelineConfig:
     - ``base_dir``：相对路径解析基准目录
     - ``workdir``：本地案例工作目录
     - 其余字段：各业务段对应的嵌套 dataclass
+
+    [EN] Root configuration object for the full preprocessing/post-processing pipeline.
+
+    Assembled by ``load_pipeline_config`` from YAML and default values at each layer,
+    spanning the entire forcing -> grid -> ww3 namelist -> plot / remote workflow.
+
+    Key fields:
+    - ``source_path``: original ``params.yml`` path (optional, for traceability)
+    - ``base_dir``: base directory for resolving relative paths
+    - ``workdir``: local case working directory
+    - remaining fields: nested dataclasses for each business section
     """
 
     source_path: Optional[Path]

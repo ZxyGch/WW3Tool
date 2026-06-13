@@ -11,7 +11,7 @@ This generator wraps [SMCGTools](https://github.com/ww3-opentools/SMCGTools); me
 ## Quick start
 
 ```bash
-cd WW3-Grid-Generator/smc_generator
+cd meshgen/smc_generator
 python -m pip install netCDF4 pandas
 python create_grid.py
 ```
@@ -110,7 +110,7 @@ Temporary files use the prefix `_smc_generate_tmp*` during the run and are renam
 ## 快速开始
 
 ```bash
-cd WW3-Grid-Generator/smc_generator
+cd meshgen/smc_generator
 python -m pip install netCDF4 pandas
 python create_grid.py
 ```

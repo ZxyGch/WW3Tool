@@ -9,6 +9,18 @@
 ---------
 - 输入：``Step1Files``（各场类型的文件路径映射）
 - 输出：日志消息列表（``list[str]``），内容与桌面端 Step 1 概览面板一致
+
+[EN] Step 1 forcing file read-only inspection use case.
+
+Reads selected NetCDF forcing files and outputs summaries including file size,
+lon/lat range, resolution, and time axis for CLI and desktop preview before import.
+
+Pipeline step: Step 1 (forcing preparation) -- read-only inspection, no writes to workdir.
+
+Input/Output
+------------
+- Input: ``Step1Files`` (file path mapping for each field type)
+- Output: Log message list (``list[str]``), content matches desktop Step 1 overview panel
 """
 
 from __future__ import annotations
@@ -44,6 +56,16 @@ def report_forcing_file_overviews(
 
     Returns:
         完整日志消息列表；若无已选文件则返回提示消息。
+
+    [EN] Generate overview reports for selected forcing NetCDF files.
+    Iterates over wind, current, water level, and ice fields, outputting metadata summaries for existing files.
+
+    Args:
+        files: Local file paths for each forcing field type.
+        log: Optional log callback for real-time output.
+
+    Returns:
+        Complete log message list; returns a prompt message if no files are selected.
     """
     logger = CoreLogger(callback=log)
     selected = [
@@ -62,7 +84,10 @@ def report_forcing_file_overviews(
 
 
 def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> None:
-    """输出单个 NetCDF 强迫场文件的详细概览。"""
+    """输出单个 NetCDF 强迫场文件的详细概览。
+
+    [EN] Output a detailed overview of a single NetCDF forcing file.
+    """
     import numpy as np
     from netCDF4 import Dataset, num2date
 
@@ -102,7 +127,10 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
 
 
 def _report_resolution(label: str, values, logger: CoreLogger, np) -> None:
-    """记录坐标轴相邻格点间的平均间距。"""
+    """记录坐标轴相邻格点间的平均间距。
+
+    [EN] Record the average spacing between adjacent grid points on a coordinate axis.
+    """
     if len(values) <= 1:
         return
     differences = np.diff(values)
@@ -111,7 +139,10 @@ def _report_resolution(label: str, values, logger: CoreLogger, np) -> None:
 
 
 def _report_time(name: str, variable, logger: CoreLogger, np, num2date) -> None:
-    """解析并记录 NetCDF 时间变量的起止时刻、步数与平均间隔。"""
+    """解析并记录 NetCDF 时间变量的起止时刻、步数与平均间隔。
+
+    [EN] Parse and record the start/end times, step count, and average interval of a NetCDF time variable.
+    """
     try:
         units = getattr(variable, "units", None)
         if not units:
@@ -150,7 +181,10 @@ def _report_time(name: str, variable, logger: CoreLogger, np, num2date) -> None:
 
 
 def _first_variable(dataset, names: tuple[str, ...]):
-    """按候选名称列表在 NetCDF 数据集中查找第一个存在的变量。"""
+    """按候选名称列表在 NetCDF 数据集中查找第一个存在的变量。
+
+    [EN] Find the first existing variable in a NetCDF dataset by candidate name list.
+    """
     for name in names:
         if name in dataset.variables:
             return dataset.variables[name]
@@ -158,7 +192,10 @@ def _first_variable(dataset, names: tuple[str, ...]):
 
 
 def _first_named_variable(dataset, names: tuple[str, ...]):
-    """按候选名称列表查找变量，返回 (变量名, 变量对象) 或 (None, None)。"""
+    """按候选名称列表查找变量，返回 (变量名, 变量对象) 或 (None, None)。
+
+    [EN] Find a variable by candidate name list, returning (variable name, variable object) or (None, None).
+    """
     for name in names:
         if name in dataset.variables:
             return name, dataset.variables[name]
@@ -166,7 +203,10 @@ def _first_named_variable(dataset, names: tuple[str, ...]):
 
 
 def _format_size(size: int) -> str:
-    """将字节数格式化为人类可读的文件大小字符串。"""
+    """将字节数格式化为人类可读的文件大小字符串。
+
+    [EN] Format byte count into a human-readable file size string.
+    """
     if size < 1024:
         return f"{size} B"
     if size < 1024 * 1024:
@@ -177,7 +217,10 @@ def _format_size(size: int) -> str:
 
 
 def _format_interval(seconds: float) -> str:
-    """将秒数格式化为秒/分钟/小时/天的可读字符串。"""
+    """将秒数格式化为秒/分钟/小时/天的可读字符串。
+
+    [EN] Format seconds into a human-readable string of seconds/minutes/hours/days.
+    """
     if seconds < 60:
         return tr("time_seconds", "{value} 秒").format(value=f"{seconds:.0f}")
     if seconds < 3600:

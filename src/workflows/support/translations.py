@@ -7,6 +7,17 @@
 
 主要消费者：
 - ``infrastructure/`` 中自 src 迁移的 NetCDF、网格、WW3 相关服务
+
+[EN] Translation function migrated from legacy code.
+
+This module belongs to the ``support/`` layer. The src Desktop currently displays
+Chinese directly in the UI, but services migrated from the legacy codebase still
+use the ``tr(key, default)`` message-key calling convention. This function reads
+``public/languages/<LANGUAGE>.json``, where the language code comes from the
+``LANGUAGE`` field in ``public/config.json``.
+
+Main consumers:
+- ``infrastructure/`` NetCDF, grid, and WW3 related services migrated from src
 """
 
 from __future__ import annotations
@@ -19,7 +30,10 @@ _current_language: str | None = None
 
 
 def set_language(language_code: str) -> None:
-    """切换当前语言并清空缓存，供设置页即时应用。"""
+    """切换当前语言并清空缓存，供设置页即时应用。
+
+    [EN] Switch the current language and clear the cache for immediate application by the settings page.
+    """
     global _current_language, _translations
     _current_language = str(language_code or "zh_CN")
     _translations = _load_language(_current_language)
@@ -34,6 +48,16 @@ def tr(_key: str, default: str | None = None) -> str:
 
     Returns:
         用于展示的本地化或回退文本。
+
+    [EN] Translate a message key according to the current configured language;
+    fall back to the default text or the message key if missing.
+
+    Args:
+        _key: Message key.
+        default: Preferred fallback string; returns ``_key`` when ``None``.
+
+    Returns:
+        Localized or fallback text for display.
     """
     global _current_language, _translations
     language = _current_language or _configured_language()

@@ -35,7 +35,7 @@ You need `reference_data` ready first (bathymetry, coastline-related `.mat` / `.
 Run:
 
 ```bash
-cd WW3-Grid-Generator
+cd meshgen
 python3 get_reference_data.py
 ```
 
@@ -123,7 +123,7 @@ After generation, the output directory contains:
 
 
 ```bash
-cd WW3-Grid-Generator
+cd meshgen
 python get_reference_data.py
 ```
 

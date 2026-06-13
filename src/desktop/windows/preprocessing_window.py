@@ -69,6 +69,7 @@ from ..steps.server_ops_panel import ServerOpsPanel
 
 from ..components.scroll_area import NoHScrollArea
 
+# [EN] Unified log area line spacing: extra pixel value for consistent CJK/Latin line height.
 # 日志区统一行距：额外像素值，让中英文行高一致。
 _LOG_LINE_SPACING_EXTRA_PX = 3
 try:
@@ -308,6 +309,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             NavigationItemPosition.TOP,
             isTransparent=True,
         )
+        # [EN] "Settings" is a page in the left stacked widget (right-side log is shared), navigation only switches stacked pages.
         # 「设置」是左侧堆叠里的一页（右侧日志栏常驻共享），导航仅切换堆叠页。
         home_item.clicked.connect(lambda *_: self._show_home())
         self.navigationInterface.addItem(
@@ -410,12 +412,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._build_step_panels(content_widget, content_layout)
 
         scroll.setWidget(content_widget)
-        self.left_stacked.addWidget(scroll)  # index 0：预处理步骤
+        self.left_stacked.addWidget(scroll)  # [EN] index 0: preprocessing steps
+        # index 0：预处理步骤
         self._settings_interface = SettingsInterface(
             on_language_changed=self._restart_for_language_change,
             on_run_mode_changed=self._on_run_mode_changed_from_settings,
         )
-        self.left_stacked.addWidget(self._settings_interface)  # index 1：设置页（共享右侧日志）
+        self.left_stacked.addWidget(self._settings_interface)  # [EN] index 1: settings page (shares right-side log)
+        # index 1：设置页（共享右侧日志）
         self._plot_interface = PlotInterface(
             run_jason3=self._plot_jason3,
             run_download_jason3=self._plot_download_jason3,
@@ -434,12 +438,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             view_photo_subdir=self._plot_view_photo_subdir,
             open_photo_folder=self._plot_open_photo_folder,
         )
-        self.left_stacked.addWidget(self._plot_interface)  # index 2：绘图页（共享右侧日志）
+        self.left_stacked.addWidget(self._plot_interface)  # [EN] index 2: plot page (shares right-side log)
+        # index 2：绘图页（共享右侧日志）
         self._tools_interface = ToolsInterface(
             clean_all=self._tools_clean_all,
             clean_run=self._tools_clean_run,
         )
-        self.left_stacked.addWidget(self._tools_interface)  # index 3：工具页（共享右侧日志）
+        self.left_stacked.addWidget(self._tools_interface)  # [EN] index 3: tools page (shares right-side log)
+        # index 3：工具页（共享右侧日志）
         self.left_stacked.setCurrentIndex(0)
         left_layout.addWidget(self.left_stacked)
         QTimer.singleShot(200, self._update_run_mode_visibility)
@@ -459,6 +465,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
 
     def _update_run_mode_visibility(self, run_mode: str | None = None) -> None:
+        # [EN] Show/hide local run / server steps and Step 4 Slurm config based on RUN_MODE (aligned with src).
         """根据 RUN_MODE 显隐本地运行 / 服务器步骤与 Step 4 Slurm 配置（对齐 src）。"""
         if run_mode is None:
             run_mode = normalize_run_mode(_load_runtime_config().get("RUN_MODE", "both"))
@@ -640,6 +647,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         button.style().polish(button)
 
     def _apply_workdir_ui(self, folder: str) -> None:
+        # [EN] Only update workdir-related UI (fields/recent list/title), without triggering params adoption.
         """仅更新工作目录相关 UI（字段/最近列表/标题），不触发 params 采纳。"""
         folder = os.path.abspath(os.path.normpath(folder))
         self._set_path_value("workdir", folder, tr("choose_workdir", "选择工作目录"))
@@ -647,12 +655,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         add_recent_workdir(folder)
         self._append_log(tr("workdir_current", "当前工作目录：{folder}").format(folder=folder))
         self.setWindowTitle(f"{self._base_title}  |  {tr('workdir_path', '工作目录:')} {folder}")
+        # [EN] Refresh step 6 server path (append workdir name)
         # 刷新第六步服务器路径（追加工作目录名）
         self._refresh_server_path()
         if hasattr(self, "_plot_interface"):
             self._plot_interface.auto_detect_from_workdir(folder)
 
     def _show_plot_page(self) -> None:
+        # [EN] Switch to plot page and auto-detect wind.nc / ww3*.nc in workdir (aligned with src).
         """切换到绘图页，并自动检测工作目录中的 wind.nc / ww3*.nc（对齐 src）。"""
         if hasattr(self, "left_stacked") and self.left_stacked.count() >= 3:
             self.left_stacked.setCurrentIndex(2)
@@ -680,6 +690,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self.close()
 
     def set_work_directory(self, folder: str | None) -> None:
+        # [EN] Workdir entry: ensure params.yml exists in directory (generate from template + config.json if missing), and adopt as current.
+        # [EN] All subsequent load/save operations target ``<workdir>/params.yml``.
         """工作目录入口：确保目录内有 params.yml（缺失则按模板+config.json 生成），并切为当前。
 
         之后所有载入/保存都针对 ``<workdir>/params.yml``。
@@ -746,11 +758,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._loaded_config = config
         self._params_label.setText(str(self._params_path))
 
+        # [EN] Load defaults from root params.yml for fallback when workdir fields are empty
         # 从根 params.yml 加载默认值，供工作目录字段为空时回退使用
         defaults = self._load_root_defaults()
 
         if update_workdir_ui:
             self._apply_workdir_ui(str(config.workdir.path))
+        # [EN] Forcing field paths: not read from yml, directly scan workdir for standard-named files
         # 强迫场路径：不从 yml 读取，直接扫描工作目录中是否存在标准命名的文件
         from workflows.infrastructure.forcing.file_service import FileService
         scanned = FileService().scan_forcing_files(str(config.workdir.path))
@@ -763,6 +777,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         for key in ("wind", "current", "level", "ice"):
             value = getattr(scanned, key, None)
             self._set_path_value(key, str(value) if value else "", labels[key])
+        # [EN] process_mode / auto_associate: load_config already merged root defaults, use directly
         # process_mode / auto_associate：load_config 已用根默认值合并，直接使用
         pm = config.forcing.process_mode or defaults.get("forcing", {}).get("process_mode") or "copy"
         self._mode.setCurrentIndex(0 if pm == "copy" else 1)
@@ -772,6 +787,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._append_log(tr("params_loaded", "已载入参数文件：{path}").format(path=self._params_path))
 
     def _load_root_defaults(self) -> dict:
+        # [EN] Load root params.yml raw dict, used as default fallback for new workdir creation.
         """加载根目录 params.yml 原始字典，用作新建工作目录的默认值回退。"""
         try:
             from workflows.infrastructure.runtime_config import _read_root_params
@@ -798,6 +814,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._load_params(path)
 
     def _server_path_with_workdir(self, base_path: str) -> str:
+        # [EN] Append current workdir name to server base path (do not append again if last segment matches).
         """在服务器基础路径后追加当前工作目录名（末段相同时不重复追加）。"""
         if not base_path:
             return base_path
@@ -814,6 +831,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         return base_path
 
     def _refresh_server_path(self) -> None:
+        # [EN] Refresh step 6 server path input field.
+        # [EN] Use remote_dir directly when non-empty; fall back to default_remote_dir + workdir name when empty.
         """刷新第六步服务器路径输入框。
 
         remote_dir 非空时直接使用；为空时回退到 default_remote_dir + 工作目录名。
@@ -828,12 +847,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._server_ops_panel.set_server_path(self._server_path_with_workdir(base))
 
     def _effective_server_path(self, config: PipelineConfig) -> str:
+        # [EN] Display server path: use remote_dir directly when non-empty, otherwise default_remote_dir + workdir name.
         """显示用服务器路径：remote_dir 非空时直接使用，否则 default_remote_dir + 工作目录名。"""
         if config.server.remote_dir:
             return config.server.remote_dir
         return self._server_path_with_workdir(config.server.default_remote_dir)
 
     def _show_home(self) -> None:
+        # [EN] Switch back to home step page and refresh step 6 server path and step 4 optional group visibility per current config.json.
         """切回主页步骤页，并按当前 config.json 刷新第六步服务器路径与第四步可选分组显隐。"""
         self.left_stacked.setCurrentIndex(0)
         self._refresh_server_path()
@@ -848,6 +869,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             )
 
     def _render_summary(self, config: PipelineConfig) -> None:
+        # [EN] Override config with current UI form forcing paths (ensure Step 4 shows latest selection)
         # 用当前 UI 表单中的强迫场路径覆盖 config（确保 Step 4 显示最新选择）
         for key in ("wind", "current", "level", "ice"):
             text = self._paths[key].text().strip()
@@ -949,6 +971,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _form_overrides(self) -> dict:
+        # [EN] Collect current form values from all panels (shared by run config building and params.yml writeback).
         """收集各面板当前表单值（供构建运行配置与写回 params.yml 共用）。"""
         return dict(
             workdir=self._paths["workdir"].text().strip(),
@@ -1008,6 +1031,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         validation_stage: str = "grid",
         log: bool = False,
     ) -> Path | None:
+        # [EN] Unified entry for home page flow: first sync defaults from root params.yml, then write current form to workdir params.yml.
         """主页流程统一入口：先从根 params.yml 同步默认值，再把当前表单写入工作目录 params.yml。"""
         params_path = self._current_workdir_params_path(create=True)
         if params_path is None:
@@ -1053,6 +1077,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _calc_grid_bounds(self) -> dict | None:
+        # [EN] Read current workdir grid lon/lat bounding box for step 3 point validation.
         """读取当前工作目录网格的经纬度包围盒，供第三步点位校验。"""
         from ..steps.point_io import grid_bounds
 
@@ -1067,6 +1092,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _persist_params(self) -> bool:
+        # [EN] Write current form (including step 3 points) back to params.yml; report error and return False if points are incomplete.
+        # [EN] Called alongside step 4 "Confirm Parameters" to persist form edits to disk.
         """将当前表单（含第三步点位）写回 params.yml；点位不全则报错并返回 False。
 
         在第四步「确认参数」时顺带调用，使表单编辑落盘。
@@ -1376,6 +1403,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         return images, videos
 
     def _open_video_file(self, videos: list[str]) -> None:
+        # [EN] Open the most recent video file with the system default application.
         """用系统默认程序打开最新的视频文件。"""
         existing = [path for path in videos if os.path.isfile(path)]
         if not existing:
@@ -1385,6 +1413,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         QDesktopServices.openUrl(QUrl.fromLocalFile(target))
 
     def _present_plot_media(self, title: str, files: list[str]) -> None:
+        # [EN] Images go to sidebar; videos are opened directly with system player (not in sidebar).
         """图片进侧边栏；视频用系统播放器直接打开（不进侧边栏）。"""
         images, videos = self._split_image_and_video_paths(files)
         if videos:
@@ -1396,15 +1425,18 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._append_log(tr("plotting_done_no_images", "绘图完成，但未找到图片。"))
 
     def _show_grid_images(self, title: str, images: list[str]) -> None:
+        # [EN] Display results in window's right-side image drawer, without changing main splitter width.
         """在窗口右侧图片抽屉展示结果，不改变主 splitter 宽度。"""
         self.show_image_gallery(title, images)
 
     def _hide_grid_images(self) -> None:
         self.hide_image_gallery()
 
+    # [EN] ── Plotting (scientific post-processing)─────────────────────────────────────────────────────
     # ── 绘图（科研后处理）─────────────────────────────────────────────────────
 
     def _run_plot(self, runner_fn) -> None:
+        # [EN] Build plot stage config and execute a plotting use case in the background.
         """构建 plot 阶段配置并在后台执行一个绘图用例。"""
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
         if params_path is None:
@@ -1480,6 +1512,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._run_plot(lambda c: self._plot_vm.match_ndbc(c, lon_lat=lon_lat, time_range=time_range))
 
     def _plot_view_photo_subdir(self, subdir: str) -> None:
+        # [EN] View results under workdir ``photo/<subdir>`` (videos opened with system player).
         """查看工作目录 ``photo/<subdir>`` 下的结果（视频用系统播放器打开）。"""
         from workflows.infrastructure.plot.photo_output import (
             SUBDIR_WAVE_HEIGHT_VIDEO,
@@ -1556,6 +1589,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
 
     def _plot_ndbc_station_map(self) -> None:
+        # [EN] Show NDBC buoy station map in dialog (aligned with src run_ndbc_observation).
         """在对话框中展示 NDBC 浮标站点地图（对齐 src run_ndbc_observation）。"""
         lon_lat = self._plot_interface.ndbc_lon_lat()
         if not lon_lat:
@@ -1582,6 +1616,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         ndbc_folder = self._plot_interface.ndbc_folder().strip()
         if not ndbc_folder or not os.path.isdir(ndbc_folder):
+            # [EN] Fall back to PipelineConfig paths.ndbc_path
             # 回退到 PipelineConfig 的 paths.ndbc_path
             if self._loaded_config and self._loaded_config.paths.ndbc_path and os.path.isdir(self._loaded_config.paths.ndbc_path):
                 ndbc_folder = self._loaded_config.paths.ndbc_path
@@ -1640,6 +1675,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
 
     def _plot_spectrum_map(self) -> None:
+        # [EN] Show spectrum station map in dialog.
         """在对话框中展示谱站点地图。"""
         spec_file = self._plot_interface.spectrum_file_path()
         if not spec_file or not os.path.exists(spec_file):
@@ -1684,9 +1720,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             )
         )
 
+    # [EN] ── Local run ──────────────────────────────────────────────────────────────
     # ── 本地运行 ──────────────────────────────────────────────────────────────
 
     def _run_job(self, runner_fn, on_done=None) -> bool:
+        # [EN] Build plot stage config and execute a local/remote operation in the background.
         """构建 plot 阶段配置并在后台执行一个本地/远程操作。"""
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
         if params_path is None:
@@ -1715,6 +1753,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._show_error(str(error))
 
     def _sync_step5_if_needed(self) -> None:
+        # [EN] Sync state if remote VM has auto-connected but step 5 UI has not been updated.
         """若远程 VM 已自动连接但第五步 UI 未更新，同步状态。"""
         if not self._remote_vm.is_connected:
             return
@@ -1722,6 +1761,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         self._step5_ui_synced = True
         self._server_connect_panel.set_connected(True)
+        # [EN] Start polling
         # 启动轮询
         self._server_poll_config = self._build_poll_config()
         self._start_server_polling()
@@ -1749,6 +1789,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         else:
             self._append_log(tr("step5_no_running_local_task", "当前没有正在运行的本地任务"))
 
+    # [EN] ── Server: connect/queue/cancel ────────────────────────────────────────────────
     # ── 服务器：连接/队列/取消 ────────────────────────────────────────────────
 
     def _server_connect(self) -> None:
@@ -1771,6 +1812,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._stop_server_polling()
         else:
             self._step5_ui_synced = True
+            # [EN] Cache current config for polling, avoid rebuilding each time
             # 缓存当前配置用于轮询，避免每次重新构建
             self._server_poll_config = self._build_poll_config()
             self._start_server_polling()
@@ -1785,9 +1827,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         self._run_job(lambda c: self._remote_vm.cancel_job(c, job_id))
 
+    # [EN] ── Server status auto-polling (CPU ranking + task queue)────────────────────────────
     # ── 服务器状态自动轮询（CPU 排行 + 任务队列）────────────────────────────
 
     def _build_poll_config(self):
+        # [EN] Try to build PipelineConfig for polling; returns None on failure.
         """尝试构建轮询用的 PipelineConfig，失败时返回 None。"""
         try:
             params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
@@ -1798,9 +1842,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _start_server_polling(self) -> None:
+        # [EN] Start timer after successful connection, polling CPU ranking and task queue every 15 seconds.
         """连接成功后启动定时器，每 15 秒拉取 CPU 排行和任务队列。"""
         self._stop_server_polling()
         self._server_polling_active = True
+        # [EN] Pull once immediately
         # 立即拉取一次
         self._poll_server_status()
         self._server_poll_timer = QTimer(self)
@@ -1815,10 +1861,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._server_poll_timer = None
 
     def _poll_server_status(self) -> None:
+        # [EN] Lightweight pull: reuse persistent SSH connection, do not set busy flag, no log output.
         """轻量级拉取：复用持久化 SSH 连接，不设置 busy 标志，不输出日志。"""
         cfg = getattr(self, "_server_poll_config", None)
         if cfg is None or not getattr(self, "_server_polling_active", False):
             return
+        # [EN] Reuse ViewModel's persistent client, skip log callback
         # 复用 ViewModel 的持久化 client，跳过 log 回调
         from workflows.application.remote_ops import run_server_status
         persistent = self._remote_vm._client
@@ -1836,12 +1884,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             queue_lines = data.get("queue", []) or []
             self._server_connect_panel.update_cpu_table(cpu_data)
             self._server_connect_panel.update_queue_table(queue_lines)
+        # [EN] Stop polling when connection fails
         # 连接失败时停止轮询
         if not getattr(result, "success", True):
             self._step5_ui_synced = False
             self._stop_server_polling()
             self._server_connect_panel.set_connected(False)
 
+    # [EN] ── Server: operations ──────────────────────────────────────────────────────────
     # ── 服务器：操作 ──────────────────────────────────────────────────────────
 
     def _server_list_files(self) -> None:
@@ -1893,6 +1943,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         self._run_job(self._remote_vm.download_log)
 
+    # [EN] ── Tools: clean workdir ────────────────────────────────────────────────────
     # ── 工具：清理工作目录 ────────────────────────────────────────────────────
 
     def _tools_workdir(self) -> str | None:
@@ -1993,6 +2044,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._show_error(result.error)
         elif isinstance(result, dict) and result.get("error"):
             self._show_error(str(result["error"]))
+        # [EN] Refresh Step 4 panel forcing enabled state after forcing processing completes
         # 强迫场处理完毕后刷新 Step 4 面板的启用状态显示
         if self._loaded_config is not None:
             self._render_summary(self._loaded_config)

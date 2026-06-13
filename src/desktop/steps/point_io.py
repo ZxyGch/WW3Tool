@@ -5,6 +5,14 @@
 - ``grid_bounds``：按第二步网格类型读取经纬度包围盒，供导入/录入时的范围校验。
   结构化/嵌套读 ``grid.meta``（RECT），非结构读 ``grid.ww3``；与 src
   ``_read_grid_meta_bounds`` 一致，不跨类型回退。
+
+[EN] Step 3 point file parsing and grid boundary reading (pure logic, no Qt dependency).
+
+- ``parse_spectral_points_file`` / ``parse_track_points_file``: replicate src ``step3_service``
+  text format parsing, returning point lists and skip warnings.
+- ``grid_bounds``: read lon/lat bounding box by step 2 grid type for range validation during
+  import/entry. Structured/nested reads ``grid.meta`` (RECT), unstructured reads ``grid.ww3``;
+  consistent with src ``_read_grid_meta_bounds``, no cross-type fallback.
 """
 
 from __future__ import annotations
@@ -13,6 +21,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+# [EN] ``lon lat 'name'``: longitude, latitude, optional quoted name.
 # ``lon lat 'name'``：经度、纬度、可带引号的名称。
 _SPECTRAL_LINE = re.compile(r"(\S+)\s+(\S+)\s+['\"]?([^'\"]+)['\"]?")
 
@@ -36,6 +45,10 @@ def _in_bounds(lon: float, lat: float, bounds: dict | None) -> bool:
 def parse_spectral_points_file(
     path: str | Path, *, bounds: dict | None = None
 ) -> tuple[list[dict[str, Any]], list[str]]:
+    # [EN] Parse spectral points file: each line ``lon lat 'name'``, ``#`` comments and blank lines skipped, stops at ``STOPSTRING``.
+    #
+    # [EN] Returns ``(points, warnings)``; ``points`` elements are ``{"lon", "lat", "name"}``.
+    # [EN] Points outside global lon/lat range or (when given) grid bounding box are skipped and logged to ``warnings``.
     """解析谱点文件：每行 ``lon lat 'name'``，``#`` 注释与空行跳过，遇 ``STOPSTRING`` 停止。
 
     返回 ``(points, warnings)``；``points`` 元素为 ``{"lon", "lat", "name"}``。
@@ -74,6 +87,10 @@ def parse_spectral_points_file(
 def parse_track_points_file(
     path: str | Path, *, bounds: dict | None = None
 ) -> tuple[list[dict[str, Any]], list[str]]:
+    # [EN] Parse track points file: each line ``date time lon lat [name...]`` (e.g. ``20250101 000000 120 20 T1``).
+    #
+    # [EN] Returns ``(points, warnings)``; ``points`` elements are ``{"datetime", "lon", "lat", "name"}``,
+    # [EN] ``datetime`` formatted as ``"YYYYMMDD HHMMSS"``.
     """解析航迹文件：每行 ``date time lon lat [name…]``（如 ``20250101 000000 120 20 T1``）。
 
     返回 ``(points, warnings)``；``points`` 元素为 ``{"datetime", "lon", "lat", "name"}``，
@@ -150,6 +167,11 @@ def _union(a: dict | None, b: dict | None) -> dict | None:
 
 
 def grid_bounds(workdir: str | Path, mesh_type: str, grid_type: str) -> dict | None:
+    # [EN] Read lon/lat bounding box by grid type; returns ``None`` when parsing fails or type does not support bounding box validation.
+    #
+    # [EN] - structured / nested: read RECT range from ``grid.meta`` (nested takes coarse/fine union).
+    # [EN] - unstructured: read range from ``grid.ww3`` nodes.
+    # [EN] - smc: returns ``None`` (only global lon/lat validation).
     """按网格类型读取经纬度包围盒；无法解析或类型不支持包围盒校验时返回 ``None``。
 
     - structured / 嵌套：从 ``grid.meta`` 取 RECT 范围（嵌套取 coarse/fine 并集）。

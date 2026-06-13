@@ -9,6 +9,19 @@
 ---------
 - 输入：``PipelineConfig``、风场 NetCDF 路径或 ``GridRegion``
 - 输出：``GridBounds``、``GridPreviewResult``（图片路径与日志消息）
+
+[EN] Step 2 grid read-only tool use cases.
+
+Provides read-only/preview functionality including wind field bounds reading,
+nested region scaling, area map preview, and grid visualization without writing
+to the workdir. For reuse by desktop ViewModels and future CLI inspection commands.
+
+Pipeline step: Step 2 (grid configuration and preview) -- auxiliary tools, not the main generation flow.
+
+Input/Output
+------------
+- Input: ``PipelineConfig``, wind field NetCDF path or ``GridRegion``
+- Output: ``GridBounds``, ``GridPreviewResult`` (image paths and log messages)
 """
 
 from __future__ import annotations
@@ -32,6 +45,15 @@ class GridBounds:
         lat_min: 最小纬度（度）。
         lat_max: 最大纬度（度）。
         source_path: 源文件的绝对路径。
+
+    [EN] Geographic bounds parsed from a NetCDF wind field file.
+
+    Attributes:
+        lon_min: Minimum longitude (degrees).
+        lon_max: Maximum longitude (degrees).
+        lat_min: Minimum latitude (degrees).
+        lat_max: Maximum latitude (degrees).
+        source_path: Absolute path of the source file.
     """
 
     lon_min: float
@@ -49,6 +71,13 @@ class WindTimeRange:
         start_date: 首个时间点，``YYYYMMDD``。
         end_date: 最后一个时间点，``YYYYMMDD``。
         source_path: 源文件的绝对路径。
+
+    [EN] Time range parsed from a NetCDF wind field file.
+
+    Attributes:
+        start_date: First time point, ``YYYYMMDD``.
+        end_date: Last time point, ``YYYYMMDD``.
+        source_path: Absolute path of the source file.
     """
 
     start_date: str
@@ -64,6 +93,13 @@ class GridPreviewResult:
         images: 生成的预览图片绝对路径列表。
         title: 预览窗口标题（供 UI 使用）。
         messages: 执行过程中的日志消息。
+
+    [EN] Return result of grid preview or visualization operation.
+
+    Attributes:
+        images: List of absolute paths of generated preview images.
+        title: Preview window title (for UI use).
+        messages: Log messages during execution.
     """
 
     images: list[str]
@@ -83,6 +119,18 @@ def read_wind_bounds(path: str | Path, log: Optional[LogCallback] = None) -> Gri
 
     Raises:
         RuntimeError: 文件不存在或未找到经度/纬度变量时。
+
+    [EN] Read lon/lat range from a wind field NetCDF file.
+
+    Args:
+        path: Wind field NetCDF file path.
+        log: Optional log callback.
+
+    Returns:
+        Parsed ``GridBounds``.
+
+    Raises:
+        RuntimeError: When file does not exist or lon/lat variables are not found.
     """
     import numpy as np
     from netCDF4 import Dataset
@@ -122,6 +170,18 @@ def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) ->
 
     Raises:
         RuntimeError: 文件不存在、未找到时间变量或时间变量无法转换时。
+
+    [EN] Read time range from a wind field NetCDF file.
+
+    Args:
+        path: Wind field NetCDF file path.
+        log: Optional log callback.
+
+    Returns:
+        Parsed ``WindTimeRange``.
+
+    Raises:
+        RuntimeError: When file does not exist, time variable not found, or time variable cannot be converted.
     """
     import numpy as np
     from netCDF4 import Dataset, num2date
@@ -174,6 +234,19 @@ def scale_nested_region(region: GridRegion, factor: float, *, expand: bool) -> G
 
     Raises:
         ValueError: ``factor`` 不大于 0 时。
+
+    [EN] Scale the nested grid region relative to the region center, consistent with desktop Step 2 controls.
+
+    Args:
+        region: Current outer/inner grid region config.
+        factor: Nested contraction coefficient (must be > 0).
+        expand: ``True`` to expand the region, ``False`` to shrink it.
+
+    Returns:
+        New scaled ``GridRegion`` (with updated dx/dy and lon/lat).
+
+    Raises:
+        ValueError: When ``factor`` is not greater than 0.
     """
     if factor <= 0:
         raise ValueError(tr("nested_factor_must_positive", "嵌套收缩系数必须大于 0"))
@@ -204,6 +277,16 @@ def render_region_map(
 
     Returns:
         含单张预览图路径与日志的 ``GridPreviewResult``。
+
+    [EN] Generate a region map PNG preview based on the configured outer/inner grid extents.
+
+    Args:
+        config: Pipeline config (uses region info from ``config.grid``).
+        output_path: Output PNG file path.
+        log: Optional log callback.
+
+    Returns:
+        ``GridPreviewResult`` with a single preview image path and log.
     """
     from ..infrastructure.region_map_renderer import render_region_map_png
 
@@ -240,6 +323,15 @@ def visualize_grid(
 
     Returns:
         含多张网格图路径与日志的 ``GridPreviewResult``。
+
+    [EN] Generate visualization images for existing grid artifacts in the workdir.
+
+    Args:
+        config: Pipeline config (workdir and grid type).
+        log: Optional log callback.
+
+    Returns:
+        ``GridPreviewResult`` with multiple grid image paths and log.
     """
     from ..infrastructure.adapters.grid_visualization_adapter import generate_grid_images
 
@@ -250,7 +342,10 @@ def visualize_grid(
 
 
 def _first_variable(dataset, names: tuple[str, ...]):
-    """按候选名称列表在 NetCDF 数据集中查找第一个存在的变量。"""
+    """按候选名称列表在 NetCDF 数据集中查找第一个存在的变量。
+
+    [EN] Find the first existing variable in a NetCDF dataset by candidate name list.
+    """
     for name in names:
         if name in dataset.variables:
             return dataset.variables[name]

@@ -1,11 +1,23 @@
 """WW3 Step 1 强迫场导入用例（基础设施层）。
 
+[EN] WW3 Step 1 forcing field import use cases (infrastructure layer).
+
 本模块封装 Step 1「选择并导入强迫场 NetCDF」的 I/O 编排：变量检测、目标路径
 生成、复制/移动、风场归一化及多场合并文件的自动关联。类名保留 ``UseCase`` 后缀
 为历史兼容；底部类型别名提供更符合基础设施命名的新名称。
 
+[EN] This module encapsulates the I/O orchestration for Step 1 "select and import forcing
+NetCDF": variable detection, target path generation, copy/move, wind normalization, and
+auto-association of multi-field merged files. Class names retain the ``UseCase`` suffix for
+historical compatibility; type aliases at the bottom provide names more consistent with
+infrastructure naming conventions.
+
 与 ``workflows.application.forcing_preparation`` 的关系：应用层负责流程与 UI 状态，
 本层只处理文件系统与 NetCDF 格式，不包含 Qt 依赖。
+
+[EN] Relationship with ``workflows.application.forcing_preparation``: the application layer
+handles workflow and UI state, while this layer only deals with the file system and NetCDF
+formats, without any Qt dependencies.
 """
 
 from __future__ import annotations
@@ -24,7 +36,10 @@ from .wind_normalize_service import WindNormalizeService
 
 
 def _merge_forcing_files(target: Step1Files, patch: Step1Files) -> None:
-    """将 ``patch`` 中非空路径合并进 ``target``。"""
+    """将 ``patch`` 中非空路径合并进 ``target``。
+
+    [EN] Merge non-empty paths from ``patch`` into ``target``.
+    """
     for f in (ForcingField.WIND, ForcingField.CURRENT, ForcingField.LEVEL, ForcingField.ICE):
         path = patch.get(f)
         if path:
@@ -34,6 +49,8 @@ def _merge_forcing_files(target: Step1Files, patch: Step1Files) -> None:
 @dataclass
 class ForcingImportResult:
     """单次强迫场导入操作的返回结构。
+
+    [EN] Return structure for a single forcing import operation.
 
     属性:
         success: 是否成功完成导入
@@ -46,6 +63,18 @@ class ForcingImportResult:
         display_log_path: 日志中展示给用户的路径
         detected_fields: 文件中检测到的场字典
         files_patch: 需合并进 Step 1 状态的路径补丁
+
+    [EN] Attributes:
+        success: Whether the import completed successfully
+        field: The field type of this import (may be set even on failure)
+        invalid_reason: Validation failure reason, e.g. ``missing_variables``
+        error: User-readable error message
+        target_filename: Target filename written to the working directory
+        actual_file_path: Actual source/target absolute path used
+        normalized_wind_path: Path to normalized ``wind.nc`` (wind-only workflow)
+        display_log_path: Path displayed to the user in logs
+        detected_fields: Dictionary of fields detected in the file
+        files_patch: Path patch to merge into Step 1 state
     """
     success: bool
     field: Optional[ForcingField] = None
@@ -62,19 +91,33 @@ class ForcingImportResult:
 class AutoAssociateUseCase:
     """将多场合并 NetCDF 自动映射到 Step 1 各场选择。
 
+    [EN] Automatically map multi-field merged NetCDF files to Step 1 field selections.
+
     当用户开启「自动关联」且单个文件同时含 wind/current/level/ice 变量时，
     同一文件路径会写入 ``Step1Files`` 的多个槽位。
+
+    [EN] When the user enables "auto-associate" and a single file contains wind/current/level/ice
+    variables simultaneously, the same file path is written to multiple slots in ``Step1Files``.
     """
 
     def execute(self, detected_fields: dict[str, bool], actual_file_path: str) -> Step1Files:
         """根据检测结果填充 ``Step1Files``。
 
+        [EN] Populate ``Step1Files`` based on detection results.
+
         参数:
             detected_fields: 各场是否存在的布尔字典
             actual_file_path: 已复制到工作目录的文件路径
 
+        [EN] Parameters:
+            detected_fields: Boolean dictionary indicating which fields are present
+            actual_file_path: File path already copied to the working directory
+
         返回:
             仅包含检测为 True 的场及其路径的 ``Step1Files``
+
+        [EN] Returns:
+            A ``Step1Files`` containing only detected-True fields and their paths.
         """
         files = Step1Files()
         if not actual_file_path:
@@ -86,7 +129,10 @@ class AutoAssociateUseCase:
 
 
 class ImportForcingFileUseCase:
-    """导入流场/水位场/海冰场 NetCDF 到工作目录（Step 1 非风场分支）。"""
+    """导入流场/水位场/海冰场 NetCDF 到工作目录（Step 1 非风场分支）。
+
+    [EN] Import current/level/ice NetCDF files to the working directory (Step 1 non-wind branch).
+    """
 
     def __init__(
         self,
@@ -112,6 +158,8 @@ class ImportForcingFileUseCase:
     ) -> ForcingImportResult:
         """执行单场或多场（自动关联）导入。
 
+        [EN] Execute single-field or multi-field (auto-associated) import.
+
         参数:
             field: 用户选择的场类型（current/level/ice）
             file_path: 源 NetCDF 绝对路径
@@ -119,8 +167,18 @@ class ImportForcingFileUseCase:
             auto_associate: 是否根据文件内变量自动关联其他场
             process_mode: ``copy`` 或 ``move``
 
+        [EN] Parameters:
+            field: User-selected field type (current/level/ice)
+            file_path: Source NetCDF absolute path
+            selected_folder: WW3 working directory
+            auto_associate: Whether to auto-associate other fields based on file variables
+            process_mode: ``copy`` or ``move``
+
         返回:
             ``ForcingImportResult``，失败时 ``success=False`` 并附带原因
+
+        [EN] Returns:
+            ``ForcingImportResult``; ``success=False`` with reason on failure.
         """
         inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
         detected_fields = inspect_result.get("detected", {}) or {}
@@ -175,7 +233,10 @@ class ImportForcingFileUseCase:
         )
 
     def _log_existing_target(self, file_path: str, target_file: str, target_filename: str) -> bool:
-        """记录目标文件是否已存在，并返回是否仍需复制/修复。"""
+        """记录目标文件是否已存在，并返回是否仍需复制/修复。
+
+        [EN] Log whether the target file already exists and return whether copy/fix is still needed.
+        """
         need_process = True
         if os.path.exists(target_file):
             try:
@@ -209,8 +270,14 @@ class ImportForcingFileUseCase:
 class ImportWindForcingUseCase:
     """导入并归一化风场 NetCDF（Step 1 风场专用分支）。
 
+    [EN] Import and normalize wind NetCDF (Step 1 wind-specific branch).
+
     纯风场文件走 ``WindNormalizeService`` 直接写出；多场合并文件先复制修复，
     再额外生成标准 ``wind.nc`` 供 WW3 ``ww3_prnc`` 使用。
+
+    [EN] Pure wind files go directly through ``WindNormalizeService`` for output; multi-field
+    merged files are first copied and fixed, then a standard ``wind.nc`` is additionally
+    generated for WW3 ``ww3_prnc`` use.
     """
 
     def __init__(
@@ -238,14 +305,25 @@ class ImportWindForcingUseCase:
     ) -> ForcingImportResult:
         """执行风场导入：检测变量、复制/归一化并可选自动关联其他场。
 
+        [EN] Execute wind import: detect variables, copy/normalize, and optionally auto-associate other fields.
+
         参数:
             file_path: 源 NetCDF 绝对路径
             selected_folder: WW3 工作目录
             auto_associate: 是否根据文件内变量自动关联其他场
             process_mode: ``copy`` 或 ``move``
 
+        [EN] Parameters:
+            file_path: Source NetCDF absolute path
+            selected_folder: WW3 working directory
+            auto_associate: Whether to auto-associate other fields based on file variables
+            process_mode: ``copy`` or ``move``
+
         返回:
             ``ForcingImportResult``，成功时 ``normalized_wind_path`` 指向标准风场文件
+
+        [EN] Returns:
+            ``ForcingImportResult``; on success ``normalized_wind_path`` points to the standard wind file.
         """
         inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
         detected_fields = inspect_result.get("detected", {}) or {}
@@ -364,19 +442,27 @@ class ImportWindForcingUseCase:
 
 
 class ScanWorkdirForcingUseCase:
-    """从已有工作目录恢复 Step 1 强迫场文件列表。"""
+    """从已有工作目录恢复 Step 1 强迫场文件列表。
+
+    [EN] Restore the Step 1 forcing file list from an existing working directory.
+    """
 
     def __init__(self, file_service: FileService) -> None:
         self._file_service = file_service
 
     def execute(self, selected_folder: Optional[str]) -> Step1Files:
-        """扫描目录并返回 ``Step1Files``；目录为空或无效时返回空结构。"""
+        """扫描目录并返回 ``Step1Files``；目录为空或无效时返回空结构。
+
+        [EN] Scan the directory and return ``Step1Files``; returns empty structure if directory is empty or invalid.
+        """
         if not selected_folder:
             return Step1Files()
         return self._file_service.scan_forcing_files(selected_folder)
 
 
 # 更符合基础设施层命名习惯的类型别名（旧 UseCase 名保留以兼容桌面端）
+# [EN] Type aliases with names more consistent with infrastructure layer conventions
+# (legacy UseCase names retained for desktop-side compatibility)
 ForcingAutoAssociator = AutoAssociateUseCase
 ForcingFileImporter = ImportForcingFileUseCase
 WindForcingImporter = ImportWindForcingUseCase

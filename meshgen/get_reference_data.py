@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Download WW3-Grid-Generator/reference_data.
+Download meshgen/reference_data.
 
 Default: GitHub Release asset tag ``data`` — fetch ``part_aa`` … ``part_ad``,
-concatenate into ``reference_data.zip``, extract under WW3-Grid-Generator.
+concatenate into ``reference_data.zip``, extract under meshgen.
 
 Optional ``--legacy``: fetch from original upstreams (NOAA GSHHS FTP, CEDA GEBCO
 zip, dengwirda RTopo zip) — slower and more fragile, but does not rely on the
@@ -212,7 +212,7 @@ def download_reference_data_github(
        otherwise extract directly into ``ref_dir``.
 
     Args:
-        work_dir: WW3-Grid-Generator root (parent of ``reference_data``); temp parts + zip live here.
+        work_dir: meshgen root (parent of ``reference_data``); temp parts + zip live here.
         ref_dir: Target ``.../reference_data`` directory (used for flat zips).
         log: Callable for progress messages (default ``print``).
     """
@@ -320,7 +320,7 @@ def main_legacy(root: Path, ref_dir: Path, log=print) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Fetch WW3-Grid-Generator/reference_data (default: GitHub WW3Tool release bundle)."
+        description="Fetch meshgen/reference_data (default: GitHub WW3Tool release bundle)."
     )
     parser.add_argument(
         "--legacy",
@@ -333,7 +333,7 @@ def main() -> None:
         default=None,
         metavar="DIR",
         help=(
-            "Directory to receive reference_data files (default: <WW3-Grid-Generator>/reference_data). "
+            "Directory to receive reference_data files (default: <meshgen>/reference_data). "
             "Split parts and reference_data.zip are written under DIR's parent."
         ),
     )

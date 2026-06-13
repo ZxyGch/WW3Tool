@@ -1,0 +1,9 @@
+# opts.jig config. file; created by JIGSAW's PYTHON interface 
+  GEOM_FILE=geom.msh
+  HFUN_FILE=spac.msh
+  HFUN_SCAL=absolute
+  HFUN_HMAX=100.0
+  MESH_FILE=/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/unstructured_generator/unst_msh_gen/mesh_workspace/uglo_poly_nBlkS.msh
+  MESH_DIMS=2
+  OPTM_COST=skew-cos
+  OPTM_ITER=64

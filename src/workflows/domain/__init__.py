@@ -7,6 +7,18 @@ infrastructure 或 UI。此处集中 re-export 供上层 ``from workflows.domain
 - ``application/configuration.py``：YAML 解析与校验
 - ``application/*`` 各用例模块
 - ``desktop/view_models/``：桌面端视图模型
+
+[EN] Public exports of domain models for WW3Tool headless workflows.
+
+This package belongs to the ``domain/`` layer and contains only data classes,
+enums, and constants. It does not depend on application, infrastructure, or UI.
+Symbols are re-exported here for convenient ``from workflows.domain import ...``
+usage by upper layers.
+
+Main consumers:
+- ``application/configuration.py``: YAML parsing and validation
+- ``application/*`` use-case modules
+- ``desktop/view_models/``: desktop view models
 """
 
 from .config_models import (

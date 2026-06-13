@@ -473,7 +473,7 @@ def create_grid(**kwargs):
     # Get the base directory (where this script is located)
     script_path = os.path.abspath(__file__)
     base_dir = os.path.dirname(script_path)
-    # Toolkit root = WW3-Grid-Generator/ (reference_data, result); scripts live in structured_generator/pygridgen/
+    # Toolkit root = meshgen/ (reference_data, result); scripts live in structured_generator/pygridgen/
     base_name = os.path.basename(base_dir)
     if base_name in ('python', 'python_version', 'pygridgen'):
         parent = os.path.dirname(base_dir)
@@ -684,6 +684,7 @@ def create_grid(**kwargs):
             1.0 / obstr_scale,
             1.0,
             is_global_override=params["IS_GLOBAL"],
+            ref_dir_override=params["ref_dir"],
         )
         if _meta_rc != 0:
             raise RuntimeError(f"Failed to write grid.meta: {_meta_msg}")
@@ -920,6 +921,7 @@ def create_grid(**kwargs):
         1.0 / obstr_scale,
         1.0,
         is_global_override=params["IS_GLOBAL"],
+        ref_dir_override=params["ref_dir"],
     )
     if _meta_rc != 0:
         raise RuntimeError(f"Failed to write grid.meta: {_meta_msg}")

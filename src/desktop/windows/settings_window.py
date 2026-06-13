@@ -532,7 +532,7 @@ class SettingsInterface(QWidget):
             tr("set_reference_data_label", "Reference Data 路径："),
             "REFERENCE_DATA_PATH",
             directory=True,
-            placeholder=tr("set_reference_data_ph", "默认路径：WW3Tool/WW3-Grid-Generator/reference_data"),
+            placeholder=tr("set_reference_data_ph", "默认路径：WW3Tool/meshgen/reference_data"),
         )
         self._path_field(
             layout,

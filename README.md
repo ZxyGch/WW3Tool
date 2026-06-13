@@ -38,25 +38,29 @@ If you find this tool useful, please give it a ⭐️ 🥳
 ## Quick Start
 
 ```sh
-python3 runDesktop.py
+python3 run.py
 ```
 
 If anything fails to install or some packages are missing, please install them manually.
 
-`runDesktop.py` starts an independently implemented preprocessing home page through `src/desktop`. Its Fluent styling, navigation, step cards, and right-hand log panel are aligned with the established application; settings and plotting views will be brought across during migration. Desktop actions call `src/workflows` rather than the old main-window business implementation.
+`run.py` is the single entry point and is responsible for runtime setup (venv, dependencies, import paths). With no arguments it launches the Desktop GUI, an independently implemented preprocessing home page built on `src/desktop`. Its Fluent styling, navigation, step cards, and right-hand log panel are aligned with the established application. Desktop actions call `src/workflows` rather than the old main-window business implementation.
+
+```sh
+python3 run.py shell                 # interactive REPL
+python3 run.py shell params.yml
+```
 
 ### Scripted Preprocessing
 
-The new architecture starts in `src`. For scripted workflows or server-side preprocessing, use `src/run.py`:
+For scripted workflows or server-side preprocessing, pass a subcommand to the same `run.py`:
 
 ```sh
-python3 src/run.py
-python3 src/run.py validate params.yml
-python3 src/run.py prepare-forcing params.yml
-python3 src/run.py run params.yml
+python3 run.py validate params.yml
+python3 run.py prepare-forcing params.yml
+python3 run.py run params.yml
 ```
 
-Running `python3 src/run.py` without arguments checks runtime packages, installs missing ones from `src/requirements.txt`, then automatically reads the root-level `params.yml` and runs the full preprocessing workflow. On the first run, if `params.yml` does not exist, a template is created for editing and is not executed immediately. Existing parameter files are never overwritten. `python3 src/run.py print-example` remains available for printing a template separately.
+`run.py` checks runtime packages and installs missing ones from `src/requirements.txt` before dispatching (lightweight commands such as `print-example` and `create-workdir` skip this check). The repository-root `params.yml` is a template only and must not be run directly — use `python3 run.py create-workdir --name my_case` first, then edit and run the copy inside the work directory. `python3 run.py print-example` prints a template to stdout.
 
 `prepare-forcing` runs only Step 1 forcing preparation: copy/move, variable detection, wind normalization, and combined-forcing auto-association.
 
@@ -65,7 +69,7 @@ The command entrypoint directly calls `src/workflows`. The desktop preprocessing
 Running without arguments or explicitly using `run` reads the YAML parameter file and prepares forcing files, grid files, calculation-mode artifacts, and WW3 namelists/scripts. It does not execute WAVEWATCH III, upload to a server, or generate plots. If the work directory already contains grid files, use `--skip-grid`:
 
 ```sh
-python3 src/run.py run params.yml --skip-grid
+python3 run.py run params.yml --skip-grid
 ```
 
 The `grid` section of `params.yml` is grouped by mesh type: `structured` contains bathymetry, coastline precision, and pygridgen thresholds; `smc` contains bathymetry, refinement, physics, and boundary settings; and `unstructured` contains triangular-mesh sizing and regional settings. For `grid_type: nested`, provide `inner` explicitly or omit it to derive the inner region using `nested_contraction_coefficient`.
@@ -139,7 +143,7 @@ If a file contains multiple forcing fields, the corresponding buttons will be au
 
 The `reference_data` package contains gebco, etopo1/2, coastline boundaries, and other files needed for grid generation. Without `reference_data`, grid files cannot be generated.
 
-If `WW3Tool/WW3-Grid-Generator/reference_data` does not contain these files, a download window will appear in step 2.
+If `WW3Tool/meshgen/reference_data` does not contain these files, a download window will appear in step 2.
 
 ![](public/resource/README-media/2026-03-30%2016.02.47.png)
 
@@ -147,7 +151,7 @@ Click Download: the program will download from [GitHub Release](https://github.c
 
 ![](public/resource/README-media/2026-03-30%2016.03.00.png)
 
-If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to `WW3Tool/WW3-Grid-Generator/reference_data`.
+If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to `WW3Tool/meshgen/reference_data`.
 
 
 
@@ -157,7 +161,7 @@ If GitHub is too slow or fails, you can download from [OneDrive](https://tiangon
 
 ![](public/resource/README-media/2026-03-30%2016.04.17.png)
 
-Click Generate Grid to call `WW3-Grid-Generator/structured_generator/pygridgen` and generate grid files into the working directory.
+Click Generate Grid to call `meshgen/structured_generator/pygridgen` and generate grid files into the working directory.
 
 Smaller DX/DY gives higher resolution because DX/DY is the spacing between grid points.
 
@@ -186,7 +190,7 @@ Finally, four files will be created in the working directory: `grid.bot`, `grid.
    - Content: grid description for WAVEWATCH III `ww3_grid`
    - Includes: grid size, resolution, ranges, etc.
 
-Generated grids are automatically cached in `WW3Tool/WW3-Grid-Generator/cache`.
+Generated grids are automatically cached in `WW3Tool/meshgen/cache`.
 
 ![](workSpace/2026-03-30_16-06-30/photo/grid/grid_bathymetry.png)
 ![](workSpace/2026-03-30_16-06-30/photo/grid/grid_obstruction_x.png)
@@ -224,7 +228,7 @@ When a working directory contains `coarse` and `fine`, opening it automatically 
 
 #### Grid cache
 
-To avoid unnecessary computation, each generated grid is cached in `WW3Tool/WW3-Grid-Generator/cache`.
+To avoid unnecessary computation, each generated grid is cached in `WW3Tool/meshgen/cache`.
 
 A key is generated from the grid parameters as the folder name. Each time you generate a grid, the cache is checked first; if it exists, the cached grid files are used directly.
 
@@ -245,7 +249,7 @@ Each cache folder also contains `params.json`:
       10.0,
       30.0
     ],
-    "ref_dir": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/reference_data",
+    "ref_dir": "/Users/zxy/ocean/WW3Tool/meshgen/reference_data",
     "bathymetry": "GEBCO",
     "coastline_precision": "full"
   }

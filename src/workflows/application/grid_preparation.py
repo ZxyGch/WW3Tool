@@ -9,6 +9,18 @@
 ---------
 - 输入：``PipelineConfig``（含 ``grid.*`` 与 ``workdir``）
 - 输出：``GridGenerationResult``（工作目录路径与日志消息）
+
+[EN] Step 2 grid generation standalone use case.
+
+Only executes the grid generation step without importing forcing fields or writing
+the WW3 namelist, for the desktop "generate grid only" button and CLI grid subcommands.
+
+Pipeline step: Step 2 (grid generation).
+
+Input/Output
+------------
+- Input: ``PipelineConfig`` (containing ``grid.*`` and ``workdir``)
+- Output: ``GridGenerationResult`` (workdir path and log messages)
 """
 
 from __future__ import annotations
@@ -30,6 +42,12 @@ class GridGenerationResult:
     Attributes:
         workdir: 网格产物所在的工作目录绝对路径。
         messages: 执行过程中的日志消息列表。
+
+    [EN] Execution result of the grid generation step.
+
+    Attributes:
+        workdir: Absolute path of the workdir containing grid artifacts.
+        messages: Log message list during execution.
     """
 
     workdir: str
@@ -52,11 +70,20 @@ def run_generate_grid(
 
     Returns:
         含工作目录与完整日志的 ``GridGenerationResult``。
+
+    [EN] Call the grid backend according to config to generate grid-related artifacts.
+    Validates config with ``stage="grid"`` before execution; automatically creates the workdir.
+
+    Args:
+        config: Pipeline config.
+        log: Optional log callback.
+
+    Returns:
+        ``GridGenerationResult`` with workdir and complete log.
     """
     validate_pipeline_config(config, stage="grid")
     logger = CoreLogger(callback=log)
     config.workdir.path.mkdir(parents=True, exist_ok=True)
-    logger.log(tr("workdir_current", "工作目录：{folder}").format(folder=config.workdir.path))
     generate_grid(config, logger, use_cache=use_cache)
     logger.log(tr("status_grid_done", "网格生成完成"))
     return GridGenerationResult(

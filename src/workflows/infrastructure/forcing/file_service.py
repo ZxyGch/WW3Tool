@@ -1,11 +1,20 @@
 """WW3 Step 1 强迫场文件 I/O 与格式修复服务。
 
+[EN] WW3 Step 1 forcing field file I/O and format fixing service.
+
 用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并在副本上执行
 WW3 兼容性格式修正，包括：
+
+[EN] After the user selects a NetCDF file, this module is responsible for copying or moving
+it to the working directory and performing WW3-compatible format fixes on the copy, including:
 
 - 时间变量 ``calendar`` 设为 ``standard``，``units`` 去掉多余时分秒；
 - 将 ``wndewd/wndnwd`` 重命名为 ``u10/v10``（部分再分析产品使用旧名）；
 - 扫描工作目录，按文件名规则或变量检测恢复 Step 1 四类场路径。
+
+[EN] - Setting the time variable ``calendar`` to ``standard`` and removing redundant time-of-day from ``units``;
+- Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
+- Scanning the working directory to recover Step 1 field paths via filename rules or variable detection.
 """
 import os
 import shutil
@@ -21,22 +30,35 @@ from .variable_detector import VariableDetector
 class FileService:
     """强迫场文件的复制、修复与工作目录扫描服务。
 
+    [EN] Service for copying, fixing, and scanning the working directory for forcing files.
+
     参数:
         logger: 可选日志对象，需实现 ``log`` 方法或 Qt ``log_signal``。
+
+    [EN] Parameters:
+        logger: Optional logger object, must implement ``log`` method or Qt ``log_signal``.
     """
     
     def __init__(self, logger=None):
         """
         初始化文件服务
+
+        [EN] Initialize the file service.
         
         参数:
             logger: 日志记录器（需要包含 log 方法）
+
+        [EN] Parameters:
+            logger: Logger (must have a log method)
         """
         self.logger = logger
         self.path_manager = FilePathManager()
     
     def log(self, msg: str):
-        """记录日志"""
+        """记录日志
+
+        [EN] Log a message.
+        """
         if self.logger and hasattr(self.logger, 'log_signal'):
             try:
                 self.logger.log_signal.emit(msg)
@@ -49,22 +71,31 @@ class FileService:
     def _rewrite_wind_vars_to_u10_v10(self, source_path: str, wndewd_name: str, wndnwd_name: str) -> None:
         """原地重写 NetCDF，将 wndewd/wndnwd 重命名为 u10/v10。
 
+        [EN] Rewrite the NetCDF in place, renaming wndewd/wndnwd to u10/v10.
+
         netCDF4 不支持删除变量，故通过临时文件完整复制并替换变量名，
         保留全局属性、维度、压缩与 ``_FillValue`` 设置。
+
+        [EN] netCDF4 does not support deleting variables, so this method performs a full copy
+        via a temporary file and replaces variable names, preserving global attributes,
+        dimensions, compression, and ``_FillValue`` settings.
         """
         temp_file = source_path + ".tmp"
         with Dataset(source_path, "r") as src:
             file_format = getattr(src, "file_format", "NETCDF4")
             with Dataset(temp_file, "w", format=file_format) as dst:
                 # 复制全局属性
+                # [EN] Copy global attributes
                 for attr_name in src.ncattrs():
                     dst.setncattr(attr_name, src.getncattr(attr_name))
 
                 # 复制维度
+                # [EN] Copy dimensions
                 for dim_name, dim in src.dimensions.items():
                     dst.createDimension(dim_name, len(dim) if not dim.isunlimited() else None)
 
                 # 复制变量（wndewd/wndnwd -> u10/v10）
+                # [EN] Copy variables (wndewd/wndnwd -> u10/v10)
                 for var_name, var in src.variables.items():
                     if var_name == wndewd_name:
                         new_name = "u10"
@@ -74,6 +105,7 @@ class FileService:
                         new_name = var_name
 
                     # 处理 _FillValue 与过滤器
+                    # [EN] Handle _FillValue and filters
                     var_attrs = {k: var.getncattr(k) for k in var.ncattrs()}
                     fill_value = var_attrs.pop("_FillValue", None)
                     var_kwargs = {}
@@ -106,26 +138,40 @@ class FileService:
     def copy_and_fix_forcing_file(self, source_file: str, target_file: str, process_mode: str = "copy") -> Optional[str]:
         """
         复制或移动强迫场文件到工作目录，并修复时间变量格式问题和风场变量名（如果存在）
+
+        [EN] Copy or move a forcing file to the working directory, and fix time variable format
+        issues and wind variable names (if present).
         
         参数:
             source_file: 源文件路径
             target_file: 目标文件路径
             process_mode: 处理方式，"copy" 或 "move"
+
+        [EN] Parameters:
+            source_file: Source file path
+            target_file: Target file path
+            process_mode: Processing mode, "copy" or "move"
         
         返回:
             目标文件路径，如果失败返回 None
+
+        [EN] Returns:
+            Target file path, or None if failed.
         """
         try:
             # 如果目标文件已存在且与源文件相同，不需要再次处理
+            # [EN] If the target file already exists and is the same as the source, skip processing
             if os.path.exists(target_file):
                 try:
                     if os.path.samefile(source_file, target_file):
                         return target_file
                 except OSError:
                     # 如果无法比较（例如跨文件系统），继续处理
+                    # [EN] If comparison fails (e.g. cross-filesystem), continue processing
                     pass
 
             # 1. 复制或移动文件到工作目录
+            # [EN] 1. Copy or move the file to the working directory
             if not os.path.exists(os.path.dirname(target_file)):
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
 
@@ -135,6 +181,7 @@ class FileService:
                 shutil.copy2(source_file, target_file)
 
             # 2. 检查是否存在格式问题
+            # [EN] 2. Check for format issues
             needs_fix_calendar = False
             needs_fix_units = False
             needs_fix_wind_vars = False
@@ -146,18 +193,21 @@ class FileService:
 
             with Dataset(target_file, "r") as f:
                 # 查找时间变量
+                # [EN] Find the time variable
                 for var_name in ["valid_time", "time", "Time", "TIME", "t", "MT", "mt"]:
                     if var_name in f.variables:
                         time_var_name = var_name
                         break
 
                 # 检查是否需要修复风场变量名（wndewd/wndnwd -> u10/v10）
+                # [EN] Check if wind variable names need fixing (wndewd/wndnwd -> u10/v10)
                 if "wndewd" in f.variables or "WNDEWD" in f.variables:
                     has_wndewd = True
                 if "wndnwd" in f.variables or "WNDNWD" in f.variables:
                     has_wndnwd = True
                 
                 # 如果存在 wndewd/wndnwd 且不存在 u10/v10，需要修复
+                # [EN] If wndewd/wndnwd exist and u10/v10 do not, fixing is needed
                 if has_wndewd and has_wndnwd:
                     if "u10" not in f.variables and "v10" not in f.variables:
                         needs_fix_wind_vars = True
@@ -166,57 +216,75 @@ class FileService:
                     time_var = f.variables[time_var_name]
 
                     # 检查 Calendar 属性是否需要修复
+                    # [EN] Check if the Calendar attribute needs fixing
                     current_calendar = getattr(time_var, 'calendar', None)
                     if current_calendar != 'standard':
                         needs_fix_calendar = True
 
                     # 检查时间单位格式是否需要修复
+                    # [EN] Check if the time units format needs fixing
                     if hasattr(time_var, 'units') and time_var.units:
                         old_units = time_var.units
                         parts = old_units.split()
                         # 检查是否包含时间部分（第四部分包含 ":"，如 "00:00:00"）
+                        # [EN] Check if it contains a time portion (4th part contains ":", e.g. "00:00:00")
                         if len(parts) >= 4 and ':' in parts[3]:
                             # 包含时间部分，只保留前三个部分（单位、since、日期）
+                            # [EN] Contains time portion; keep only the first three parts (unit, since, date)
                             new_units = ' '.join(parts[:3])
                             if new_units != old_units:
                                 needs_fix_units = True
                         # 检查日期部分是否包含时间（如 "2025-01-01T00:00:00"）
+                        # [EN] Check if the date part contains time (e.g. "2025-01-01T00:00:00")
                         elif len(parts) >= 3 and 'T' in parts[2]:
                             # 日期部分包含时间，移除 T 之后的内容
+                            # [EN] Date part contains time; remove everything after 'T'
                             date_part = parts[2].split('T')[0]
                             new_units = f"{parts[0]} {parts[1]} {date_part}"
                             if new_units != old_units:
                                 needs_fix_units = True
 
             # 3. 如果需要修复风场变量名，需要重新创建文件（因为 netCDF4 不支持删除变量）
+            # [EN] 3. If wind variable names need fixing, recreate the file (netCDF4 does not support deleting variables)
             # 先处理风场变量修复，因为这会创建新文件，然后再处理时间变量修复
+            # [EN] Fix wind variables first (this creates a new file), then fix time variables
             if needs_fix_wind_vars:
                 try:
                     with Dataset(target_file, "r") as src:
                         # 确定变量名（处理大小写）
+                        # [EN] Determine variable names (handle case)
                         wndewd_name = "wndewd" if "wndewd" in src.variables else "WNDEWD"
                         wndnwd_name = "wndnwd" if "wndnwd" in src.variables else "WNDNWD"
                     self._rewrite_wind_vars_to_u10_v10(target_file, wndewd_name, wndnwd_name)
                     self.log(tr("log_wind_vars_fixed", "✅ 已修复风场变量名：wndewd/wndnwd -> u10/v10"))
                 except Exception as e:
                     # 记录详细错误信息
+                    # [EN] Log detailed error message
                     self.log(tr("log_wind_vars_fix_failed", "⚠️ 修复风场变量名失败: {error}").format(error=str(e)))
                     # 不抛出异常，继续处理，让调用者决定如何处理
+                    # [EN] Do not raise; continue processing and let the caller decide how to handle
 
             # 4. 如果存在时间变量格式问题，在工作目录的副本上进行修复
+            # [EN] 4. If time variable format issues exist, fix them on the working directory copy
             # 注意：不使用 renameVariable/renameDimension 重命名 valid_time -> time，
+            # [EN] Note: Do not use renameVariable/renameDimension to rename valid_time -> time,
             # 因为 netCDF4 在变量名与维度名相同时 rename 会导致数据损坏（全部变成 fill value）。
+            # [EN] because netCDF4 corrupts data (all values become fill value) when renaming a variable
+            # whose name matches a dimension name.
             # 变量名标准化由 reorder_nc 的 non-same-file 路径自动完成。
+            # [EN] Variable name standardization is handled automatically by reorder_nc's non-same-file path.
             if needs_fix_calendar or needs_fix_units:
                 with Dataset(target_file, "r+") as f:
                     if time_var_name:
                         time_var = f.variables[time_var_name]
 
                         # 修复 Calendar 属性
+                        # [EN] Fix the Calendar attribute
                         if needs_fix_calendar:
                             time_var.calendar = 'standard'
 
                         # 修复时间单位格式
+                        # [EN] Fix the time units format
                         if needs_fix_units:
                             time_var.units = new_units
 
@@ -226,14 +294,21 @@ class FileService:
 
         except Exception as e:
             # 修复失败时记录但不中断流程
+            # [EN] Log but do not interrupt the workflow if fixing fails
             self.log(tr("log_copy_fix_failed", "⚠️ 复制或修复文件时出错: {error}").format(error=e))
             return None
 
     def scan_forcing_files(self, selected_folder: str) -> Step1Files:
         """扫描工作目录，推断 wind/current/level/ice 四类场对应的 NetCDF 路径。
 
+        [EN] Scan the working directory and infer NetCDF paths for wind/current/level/ice fields.
+
         匹配顺序：单场标准名（``wind.nc`` 等）→ 组合文件名解析 → 打开文件做变量检测。
         不修改 UI，返回 ``Step1Files`` 供 CLI 或 ViewModel 使用。
+
+        [EN] Matching order: single-field standard names (``wind.nc``, etc.) -> combined filename parsing
+        -> open file and detect variables. Does not modify the UI; returns ``Step1Files``
+        for CLI or ViewModel use.
         """
         files = Step1Files()
         try:
@@ -290,12 +365,21 @@ class FileService:
     def detect_and_fill_forcing_fields(self, instance, selected_folder: str):
         """扫描工作目录并将检测结果同步到桌面端 Step 1 控件。
 
+        [EN] Scan the working directory and sync detection results to the desktop Step 1 controls.
+
         内部调用 ``scan_forcing_files``，再更新 ``selected_*_file`` 属性及
         风/流/水位/海冰选择按钮的显示文本。
+
+        [EN] Internally calls ``scan_forcing_files``, then updates ``selected_*_file`` attributes
+        and the display text of wind/current/level/ice selection buttons.
 
         参数:
             instance: 主窗口实例（需含按钮与 ``selected_*_file`` 属性）
             selected_folder: 当前 WW3 工作目录
+
+        [EN] Parameters:
+            instance: Main window instance (must have buttons and ``selected_*_file`` attributes)
+            selected_folder: Current WW3 working directory
         """
         try:
             found_files = self.scan_forcing_files(selected_folder)

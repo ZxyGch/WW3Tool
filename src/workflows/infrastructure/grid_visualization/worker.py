@@ -3,6 +3,12 @@
 """
 网格可视化子进程：非结构 grid.ww3（Gmsh）、结构化 grid.nml（WW3 描述）/ bot / mask / obst，以及 SMC 的 grid_cell.dat + 输出目录中的 grid.json（运行配置，或由旧版元数据格式兼容）。
 生成图片到 <grid_dir>/photo/grid/，并写入 .grid_viz_cache.json 供主进程跳过未改网格。
+
+[EN] Grid visualization subprocess: unstructured grid.ww3 (Gmsh), structured grid.nml
+(WW3 description) / bot / mask / obst, and SMC grid_cell.dat + grid.json in the output
+directory (run configuration, or legacy metadata format compatibility).
+Generates images to <grid_dir>/photo/grid/ and writes .grid_viz_cache.json so the main
+process can skip unchanged grids.
 """
 from __future__ import annotations
 
@@ -33,14 +39,21 @@ def _viz_tr(key: str, default: str) -> str:
     except Exception:
         return default
 # 结构线框：按「边」抽样而非按「三角形」抽样，避免随机抽三角形导致邻边缺失、看起来像碎块。
+# [EN] Structure wireframe: sample by "edges" rather than "triangles" to avoid random triangle sampling
+# causing missing adjacent edges that look like fragmented pieces.
 STRUCTURE_MAX_EDGES = 800_000
 STRUCTURED_MAX_LINES = 400
 # 导出 PNG 分辨率（提高 DPI 与画布尺寸以改善抽屉/放大查看时的清晰度）
+# [EN] Output PNG resolution (increased DPI and canvas size for better clarity when zooming in)
 OUTPUT_DPI = 300
 
 
 def _configure_matplotlib_cjk_fonts() -> None:
-    """Figure 标题/色标含中文时，默认 DejaVu Sans 无 CJK 会缺字；优先使用系统常见中日韩字体。"""
+    """Figure 标题/色标含中文时，默认 DejaVu Sans 无 CJK 会缺字；优先使用系统常见中日韩字体。
+
+    [EN] When figure titles/colorbars contain Chinese characters, the default DejaVu Sans lacks
+    CJK glyphs; prefer common system CJK fonts to avoid missing characters.
+    """
     import matplotlib
 
     sysname = platform.system()
@@ -82,12 +95,18 @@ def _configure_matplotlib_cjk_fonts() -> None:
 
 
 def emit_log(msg: str) -> None:
-    """向 stdout 输出 ``WW3TOOL_VIZ\\tLOG\\t`` 协议行，供父进程解析。"""
+    """向 stdout 输出 ``WW3TOOL_VIZ\\tLOG\\t`` 协议行，供父进程解析。
+
+    [EN] Emit a ``WW3TOOL_VIZ\\tLOG\\t`` protocol line to stdout for the parent process to parse.
+    """
     print(f"{VIZ_PREFIX}\tLOG\t{msg}", flush=True)
 
 
 def emit_result(obj: dict) -> None:
-    """向 stdout 输出 ``WW3TOOL_VIZ\\tRESULT\\t`` JSON 结果行。"""
+    """向 stdout 输出 ``WW3TOOL_VIZ\\tRESULT\\t`` JSON 结果行。
+
+    [EN] Emit a ``WW3TOOL_VIZ\\tRESULT\\t`` JSON result line to stdout.
+    """
     print(f"{VIZ_PREFIX}\tRESULT\t{json.dumps(obj, ensure_ascii=False)}", flush=True)
 
 
@@ -165,7 +184,10 @@ def _structured_grid_desc_path(grid_dir: str) -> str | None:
 
 
 def _is_smc_legacy_run_metadata(doc: object) -> bool:
-    """旧版 create_grid 写入的元数据：顶层含 cells_file、bathymetry_file 等。"""
+    """旧版 create_grid 写入的元数据：顶层含 cells_file、bathymetry_file 等。
+
+    [EN] Legacy metadata written by create_grid: top-level contains cells_file, bathymetry_file, etc.
+    """
     if not isinstance(doc, dict):
         return False
     if not isinstance(doc.get("cells_file"), str) or not str(doc.get("cells_file", "")).strip():
@@ -175,7 +197,10 @@ def _is_smc_legacy_run_metadata(doc: object) -> bool:
 
 
 def _is_smc_flat_config_doc(doc: object) -> bool:
-    """与 smc_generator 输入一致的平铺 grid.json（input/grid/physics/…）。"""
+    """与 smc_generator 输入一致的平铺 grid.json（input/grid/physics/…）。
+
+    [EN] Flat grid.json consistent with smc_generator input (input/grid/physics/...).
+    """
     if not isinstance(doc, dict):
         return False
     inp = doc.get("input")
@@ -219,7 +244,11 @@ def _smc_resolve_bathy_for_smc_viz(raw: str, grid_dir: str) -> str:
 
 
 def _smc_flat_config_to_run_info(doc: dict, grid_dir: str) -> dict:
-    """将输出目录内复制的平铺 grid.json 转成可视化使用的内部结构（含 grid_json 与 dlon/dlat）。"""
+    """将输出目录内复制的平铺 grid.json 转成可视化使用的内部结构（含 grid_json 与 dlon/dlat）。
+
+    [EN] Convert the flat grid.json copied into the output directory into an internal structure
+    for visualization (containing grid_json and dlon/dlat).
+    """
     inp = doc.get("input") or {}
     raw_bathy = str(inp.get("bathymetry_file") or "").strip()
     bathy_path = _smc_resolve_bathy_for_smc_viz(raw_bathy, grid_dir)
@@ -276,7 +305,11 @@ def _smc_flat_config_to_run_info(doc: dict, grid_dir: str) -> dict:
 
 
 def smc_run_metadata_path(grid_dir: str) -> str | None:
-    """输出目录中的 ``grid.json``（平铺配置或旧版元数据），需同目录存在 ``grid_cell.dat``。"""
+    """输出目录中的 ``grid.json``（平铺配置或旧版元数据），需同目录存在 ``grid_cell.dat``。
+
+    [EN] The ``grid.json`` in the output directory (flat config or legacy metadata);
+    ``grid_cell.dat`` must also exist in the same directory.
+    """
     root = os.path.abspath(os.path.normpath(grid_dir))
     cell = os.path.join(root, "grid_cell.dat")
     if not os.path.isfile(cell):
@@ -298,7 +331,10 @@ def smc_run_metadata_path(grid_dir: str) -> str | None:
 
 
 def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
-    """根据网格类型收集输入文件 mtime/size，用于可视化缓存失效判断。"""
+    """根据网格类型收集输入文件 mtime/size，用于可视化缓存失效判断。
+
+    [EN] Collect input file mtime/size based on grid type for visualization cache invalidation.
+    """
     if mode == "unst":
         p = os.path.join(grid_dir, "grid.ww3")
         fp = _stat_fp(p)
@@ -498,6 +534,14 @@ def _smc_extent_for_plot(run_info: dict, lon_c: np.ndarray, lat_c: np.ndarray) -
     与可视化不一致时），改用格点分位数范围，避免网线全被裁掉得到「空图」。
 
     若稳健格点跨度仍接近全球，再退回区域框。
+
+    [EN] SMC map extent: for regional runs, if most cell centers fall within ``regional_bounds``,
+    use that bounding box (+ margin), consistent with ``set_extent``, preventing outliers from
+    stretching the canvas to global scale; if cell centers mostly fall outside the box (when
+    indices/origin are inconsistent with visualization), fall back to cell quantile ranges to
+    avoid all grid lines being clipped, resulting in an "empty plot".
+
+    If the robust cell span still approaches global scale, fall back to the regional bounding box.
     """
     if lon_c.size == 0:
         rb0 = _smc_regional_bounds_from_run_info(run_info)
@@ -570,8 +614,10 @@ def _smc_unique_rect_outline_segments(
 
 
 # 水深图：按格块多边形填色，过大时抽样（避免内存/渲染过久）
+# [EN] Bathymetry plot: fill by cell polygon; subsample when too large (to avoid excessive memory/rendering time)
 SMC_VIZ_BATHY_MAX_CELLS = 450_000
 # 结构图：对「格块」上限，超过则按索引步长稀疏化再做去重边（极少数特大海域网格）
+# [EN] Structure plot: cap on "cells"; when exceeded, sparsify by index stride before deduplicating edges (very rare, extremely large ocean grids)
 SMC_VIZ_STRUCT_MAX_CELLS = 2_500_000
 
 
@@ -601,7 +647,10 @@ def _smc_cell_rect_vertices(cel: np.ndarray, zlon: float, zlat: float, dlon: flo
 
 
 def run_smc(grid_dir: str) -> dict:
-    """读取 SMC ``grid_cell.dat`` 与 ``grid.json`` 元数据，生成格块水深与边界结构图。"""
+    """读取 SMC ``grid_cell.dat`` 与 ``grid.json`` 元数据，生成格块水深与边界结构图。
+
+    [EN] Read SMC ``grid_cell.dat`` and ``grid.json`` metadata, and generate cell bathymetry and boundary structure plots.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
@@ -750,7 +799,10 @@ def run_smc(grid_dir: str) -> dict:
 
 
 def cache_is_current(grid_dir: str, mode: str) -> bool:
-    """检查 ``.grid_viz_cache.json`` 是否与当前输入指纹一致且输出 PNG 均存在。"""
+    """检查 ``.grid_viz_cache.json`` 是否与当前输入指纹一致且输出 PNG 均存在。
+
+    [EN] Check whether ``.grid_viz_cache.json`` matches the current input fingerprint and all output PNGs exist.
+    """
     photo_dir = os.path.join(grid_dir, "photo", "grid")
     fp_now = input_fingerprint(grid_dir, mode)
     if fp_now is None:
@@ -885,6 +937,11 @@ def unst_wireframe_segments(
     从有效三角形提取无向唯一边，得到 LineCollection 用的线段数组 (n_seg, 2, 2)[lonlat]。
     tri_mpl_mask 与 Matplotlib Triangulation.mask 一致：True 表示该三角形不绘制。
     返回 (segments, n_unique_edges_before_cap)。
+
+    [EN] Extract undirected unique edges from valid triangles, producing a segment array
+    (n_seg, 2, 2)[lonlat] for LineCollection.
+    tri_mpl_mask is consistent with Matplotlib Triangulation.mask: True means the triangle is not drawn.
+    Returns (segments, n_unique_edges_before_cap).
     """
     ntri = int(ect.shape[0])
     if ntri == 0:
@@ -1076,7 +1133,10 @@ def plot_structured_grid_structure(lon: np.ndarray, lat: np.ndarray, output_path
 
 
 def run_unst(grid_dir: str) -> dict:
-    """读取 ``grid.ww3``（Gmsh 格式）并生成非结构网格水深图与结构线图。"""
+    """读取 ``grid.ww3``（Gmsh 格式）并生成非结构网格水深图与结构线图。
+
+    [EN] Read ``grid.ww3`` (Gmsh format) and generate unstructured grid bathymetry and structure wireframe plots.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
@@ -1178,7 +1238,10 @@ def run_unst(grid_dir: str) -> dict:
 
 
 def run_structured(grid_dir: str) -> dict:
-    """读取 structured 网格 bot/mask/obst 与描述文件，生成水深/结构/掩膜/阻障图。"""
+    """读取 structured 网格 bot/mask/obst 与描述文件，生成水深/结构/掩膜/阻障图。
+
+    [EN] Read structured grid bot/mask/obst and description files, and generate bathymetry/structure/mask/obstruction plots.
+    """
     photo_dir = os.path.join(grid_dir, "photo", "grid")
     os.makedirs(photo_dir, exist_ok=True)
     fp_now = input_fingerprint(grid_dir, "structured")
@@ -1261,7 +1324,10 @@ def run_structured(grid_dir: str) -> dict:
 
 
 def main():
-    """CLI 入口：解析 ``--mode`` 与 ``--grid-dir``，执行对应可视化并输出协议结果。"""
+    """CLI 入口：解析 ``--mode`` 与 ``--grid-dir``，执行对应可视化并输出协议结果。
+
+    [EN] CLI entry point: parse ``--mode`` and ``--grid-dir``, execute the corresponding visualization, and output protocol results.
+    """
     _ensure_worker_language()
     p = argparse.ArgumentParser(description="WW3Tool grid visualization worker")
     p.add_argument("--mode", choices=("unst", "structured", "smc"), required=True)

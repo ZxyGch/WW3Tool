@@ -33,7 +33,7 @@ class PipelineStepState:
 
 
 class PipelineViewModel:
-    """Bridge from desktop actions to the same workflows used by src/run.py."""
+    """Bridge from desktop actions to the same workflows used by run.py."""
 
     def __init__(
         self,
@@ -46,6 +46,8 @@ class PipelineViewModel:
         self.state = PipelineStepState()
 
     def load_config(self, params_path: str | Path, *, validation_stage: str = "full") -> PipelineConfig:
+        # [EN] Load workdir params.yml; empty values auto-fall-back to root params.yml defaults.
+        # [EN] If workdir params.yml cannot be parsed (YAML syntax error or structural anomaly), fall back entirely to root params.yml.
         """加载工作目录 params.yml，空值自动回退到根 params.yml 默认值。
 
         若工作目录 params.yml 无法解析（YAML 语法错误或结构异常），整体回退到根 params.yml。
@@ -64,6 +66,7 @@ class PipelineViewModel:
         except Exception:
             pass
 
+        # [EN] Fill empty values in workdir with root params.yml defaults
         # 用根 params.yml 默认值填充工作目录中的空值
         root_path = _repo_params_path()
         if root_path.is_file():
@@ -320,6 +323,9 @@ class PipelineViewModel:
         validation_stage: str = "grid",
         **overrides,
     ) -> Path:
+        # [EN] Merge form overrides into params.yml and write back to disk, returning the written path.
+        # [EN] Override names match :meth:`config_from_form` (workdir/wind/.../calc_points etc.);
+        # [EN] parsing and validation are done before writing to avoid persisting invalid configs.
         """将表单覆盖项合并进 params.yml 并写回磁盘，返回写入路径。
 
         覆盖项与 :meth:`config_from_form` 同名（workdir/wind/.../calc_points 等）；
@@ -347,6 +353,7 @@ class PipelineViewModel:
         *,
         target_path: str | Path | None = None,
     ) -> Path:
+        # [EN] Only update ``server.remote_dir`` in params.yml, used by step 6 path input.
         """只更新 params.yml 的 ``server.remote_dir``，用于第六步路径输入框。"""
         source_path = Path(params_path).expanduser().resolve()
         raw = _load_raw_yaml(source_path)
@@ -366,6 +373,9 @@ class PipelineViewModel:
         return destination
 
     def sync_from_root(self, workdir_params_path: str | Path) -> Path:
+        # [EN] Sync root params.yml template to workdir (overwrite), preserving case-specific fields.
+        # [EN] Preserved fields: ``workdir.path``, ``forcing`` file paths (wind/current/level/ice).
+        # [EN] All other parameters are overwritten from root params.yml to ensure latest defaults take effect.
         """将根 params.yml 模板同步到工作目录（覆盖），保留 case 专属字段。
 
         保留的字段：``workdir.path``、``forcing`` 的文件路径（wind/current/level/ice）。
@@ -377,6 +387,7 @@ class PipelineViewModel:
         root_path = _repo_params_path()
 
         yaml = _import_yaml()
+        # [EN] 1) Read current workdir, preserve case-specific fields
         # 1) 读当前工作目录，保存 case 专属字段
         case_fields: dict = {}
         if dest.is_file():
@@ -387,6 +398,7 @@ class PipelineViewModel:
                     k: old.get("forcing", {}).get(k)
                     for k in ("wind", "current", "level", "ice", "process_mode", "auto_associate")
                 }
+                # [EN] Preserve ww3 dates and calc points (case-specific values set by user in form)
                 # 保留 ww3 日期和 calc 点位（用户在表单中设置的 case 专属值）
                 case_fields["ww3_dates"] = {
                     k: old.get("ww3", {}).get(k)
@@ -394,6 +406,7 @@ class PipelineViewModel:
                     if old.get("ww3", {}).get(k)
                 }
                 case_fields["calc"] = old.get("calc", {})
+                # [EN] Preserve per-case server.remote_dir (custom value written by step 6 input)
                 # 保留 per-case 的 server.remote_dir（第六步输入框写入的自定义值）
                 old_server = old.get("server", {}) or {}
                 if old_server.get("remote_dir"):
@@ -401,10 +414,12 @@ class PipelineViewModel:
             except Exception:
                 pass
 
+        # [EN] 2) Read root params.yml
         # 2) 读根 params.yml
         raw = _load_raw_yaml(root_path) if root_path.is_file() else {}
         raw.pop("desktop", None)
 
+        # [EN] 3) Restore case-specific fields
         # 3) 恢复 case 专属字段
         if "workdir" in case_fields:
             raw["workdir"] = case_fields["workdir"]
@@ -449,6 +464,8 @@ class PipelineViewModel:
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
     ) -> dict:
+        # [EN] Load raw yaml, overlay form overrides, return merged raw.
+        # [EN] Priority: form > params.yml.
         """载入原始 yaml，叠加表单覆盖，返回合并后的 raw。
 
         优先级：表单 > params.yml。
@@ -486,6 +503,7 @@ class PipelineViewModel:
         if ww3_overrides:
             raw["ww3"] = {**_as_dict(raw.get("ww3")), **ww3_overrides}
         if ww3_grid_overrides:
+            # [EN] Step 4 visible spectrum/timestep groups override ww3_grid (after config.json overrides -> form takes priority).
             # 第四步可见的频谱/时间步分组覆盖 ww3_grid（在 config.json 覆盖之后 → 表单优先）。
             raw["ww3_grid"] = {**_as_dict(raw.get("ww3_grid")), **ww3_grid_overrides}
         if slurm_overrides:
@@ -495,6 +513,7 @@ class PipelineViewModel:
         return raw
 
     def init_workdir_params(self, source: Path | None, target: Path, workdir: str) -> Path:
+        # [EN] Generate params.yml for a new workdir: full copy of root template, only modify workdir.path and clear forcing paths and dates.
         """为新工作目录生成 params.yml：完整复制根模板，仅修改 workdir.path 并清空强迫场路径和日期。"""
         import shutil
 
@@ -531,6 +550,7 @@ class PipelineViewModel:
         ww3["end_date"] = None
         raw["ww3"] = ww3
 
+        # [EN] Clear per-case server.remote_dir, let step 6 fall back to default_remote_dir + workdir name
         # 清空 per-case 的 server.remote_dir，让第六步回退到 default_remote_dir + 工作目录名
         server = raw.get("server") or {}
         server["remote_dir"] = ""
@@ -722,11 +742,18 @@ def _strip_unstructured_dem_file(raw: dict) -> None:
 
 
 def _repo_params_path() -> Path:
+    # [EN] Repository root params.yml path (used as fallback template for new workdir params).
     """仓库根 params.yml 路径（作为新工作目录 params 的回退模板）。"""
     return Path(__file__).resolve().parents[3] / "params.yml"
 
 
 def _deep_merge_defaults(defaults: dict, overrides: dict) -> dict:
+    # [EN] Deep merge: defaults as base, non-None values in overrides replace corresponding positions.
+    #
+    # [EN] - overrides value is ``None`` -> keep defaults value
+    # [EN] - overrides value is dict -> recursive merge
+    # [EN] - overrides value is other non-None -> direct override
+    # [EN] - keys not in defaults -> keep overrides value
     """深度合并：以 defaults 为底，overrides 中非 None 的值覆盖对应位置。
 
     - overrides 中值为 ``None`` → 保留 defaults 的值

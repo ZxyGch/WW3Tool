@@ -8,18 +8,35 @@
 - ``domain/config_models.py``：构造默认预设
 - ``application/configuration.py``：校验用户输入是否在允许范围内
 - ``desktop/`` 视图层：下拉框与选项列表展示
+
+[EN] Built-in parameter enumerations and default presets for the preprocessing workflow.
+
+This module belongs to the ``domain/`` layer and defines only constants, with no
+dependencies on other layers. Option lists are used by
+``config_models.ParameterPresets`` to populate defaults, and by
+``application/configuration.py`` during YAML validation.
+
+Main consumers:
+- ``domain/config_models.py``: construct default presets
+- ``application/configuration.py``: validate user input against allowed values
+- ``desktop/`` view layer: dropdown and option list display
 """
 
 # 结构化网格可选地形数据源
+# [EN] Selectable bathymetry data sources for structured grids
 STRUCTURED_BATHYMETRY_OPTIONS = ("GEBCO", "ETOP1", "ETOP2")
 # 非结构化 SMC 网格可选地形数据源
+# [EN] Selectable bathymetry data sources for unstructured SMC grids
 SMC_BATHYMETRY_OPTIONS = ("ETOPO1", "ETOPO2", "GEBCO")
 # 海岸线精度档位（与 gridgen 工具参数对应）
+# [EN] Coastline precision levels (corresponding to gridgen tool parameters)
 COASTLINE_PRECISION_OPTIONS = ("full", "high", "inter", "low", "coarse")
 # WW3 输出文件按时间切分的粒度
+# [EN] Time-split granularity for WW3 output files
 FILE_SPLIT_OPTIONS = ("none", "hour", "day", "month", "year")
 
 # WAVEWATCH III 输出场变量代码，与旧版设置页可选字段一致
+# [EN] WAVEWATCH III output field variable codes, consistent with legacy settings page selectable fields
 OUTPUT_FIELD_OPTIONS = (
     "DPT", "CUR", "WND", "AST", "WLV", "ICE", "IBG", "D50", "IC1", "IC5",
     "HS", "LM", "T02", "T0M1", "T01", "FP", "DIR", "SPR", "DP", "HIG",
@@ -36,6 +53,7 @@ OUTPUT_FIELD_OPTIONS = (
 )
 
 # 标准输出方案默认包含的场变量子集
+# [EN] Default field variable subset included in the standard output scheme
 DEFAULT_OUTPUT_FIELDS = (
     "HS",
     "DIR",
@@ -51,6 +69,7 @@ DEFAULT_OUTPUT_FIELDS = (
 )
 
 # 命名输出方案：键为方案名，值为场变量代码元组
+# [EN] Named output schemes: key is scheme name, value is a tuple of field variable codes
 DEFAULT_OUTPUT_SCHEME_PRESETS = {
     "standard": DEFAULT_OUTPUT_FIELDS,
     "with_spectrum": DEFAULT_OUTPUT_FIELDS + ("EF",),
@@ -60,4 +79,7 @@ DEFAULT_OUTPUT_SCHEME_PRESETS = {
 # 源项（ST）物理包预设：值为可执行文件目录。
 # 旧版 Step4 桥接层会将其转换为 model 根目录后再拼接 ``/exe``。
 # 不内置任何预设，用户通过 params.yml 或设置界面自行配置。
+# [EN] Source-term (ST) physics package presets: values are executable directories.
+# The legacy Step4 bridge layer converts them to the model root directory before appending ``/exe``.
+# No built-in presets; users configure via params.yml or the settings UI.
 DEFAULT_ST_PRESETS: dict[str, str] = {}

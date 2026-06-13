@@ -2,6 +2,13 @@
 
 ``write_ww3meta`` 产出 ``grid.meta`` 等描述文件；本模块在工作目录内按优先级
 定位可用于可视化与复制的网格描述路径，并列出需随案例拷贝的 basename 列表。
+
+[EN] Structured WW3 grid description file path resolution.
+
+``write_ww3meta`` produces description files such as ``grid.meta``; this module
+locates, by priority, the grid description paths within the working directory
+that can be used for visualization and copying, and lists the basenames that
+should accompany each case.
 """
 from __future__ import annotations
 
@@ -12,7 +19,10 @@ from .rect_grid_desc_parse import parse_structured_grid_description
 
 
 def _is_ww3_full_nml_file(path: str) -> bool:
-    """判断是否为含 ``&DEPTH_NML`` 等段的完整 legacy ``grid.nml``。"""
+    """判断是否为含 ``&DEPTH_NML`` 等段的完整 legacy ``grid.nml``。
+
+    [EN] Check whether this is a full legacy ``grid.nml`` file containing ``&DEPTH_NML`` and similar sections.
+    """
     try:
         with open(path, encoding="utf-8", errors="ignore") as f:
             chunk = f.read(16000)
@@ -26,6 +36,12 @@ def structured_grid_desc_path(folder: str) -> str | None:
 
     优先级：可解析的 ``grid.meta`` → 完整 ``grid.nml`` → ``ww3_grid.nml.grid``
     → 任意 ``ww3_grid.nml.*`` → 原始 ``grid.meta``。
+
+    [EN] Return the absolute path of the preferred grid description file in the directory;
+    returns ``None`` when no file can be parsed.
+
+    Priority: parseable ``grid.meta`` -> full ``grid.nml`` -> ``ww3_grid.nml.grid``
+    -> any ``ww3_grid.nml.*`` -> raw ``grid.meta``.
     """
     if not folder or not os.path.isdir(folder):
         return None
@@ -47,7 +63,10 @@ def structured_grid_desc_path(folder: str) -> str | None:
 
 
 def structured_grid_desc_basenames_to_copy(folder: str) -> list[str]:
-    """返回打包/同步工作目录时应复制的网格描述文件 basename 列表。"""
+    """返回打包/同步工作目录时应复制的网格描述文件 basename 列表。
+
+    [EN] Return the list of grid description file basenames to copy when packaging/synchronizing the working directory.
+    """
     if os.path.isfile(os.path.join(folder, "grid.meta")) and parse_structured_grid_description(
         os.path.join(folder, "grid.meta")
     ):

@@ -4,4 +4,12 @@
 其他宿主环境。当前仅包含命令行适配器 ``command_line``。
 
 依赖方向：interfaces → application → infrastructure → domain
+
+[EN] External entry-point adapter layer (interfaces).
+
+This package is the outermost layer of ``workflows/``, exposing application
+use cases to the CLI, scripts, or other future host environments. Currently
+it only contains the command-line adapter ``command_line``.
+
+Dependency direction: interfaces -> application -> infrastructure -> domain
 """

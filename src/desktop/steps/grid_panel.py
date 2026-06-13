@@ -104,6 +104,7 @@ class GridStepPanel:
         self._align_left_control_columns(outer_grid, inner_grid, type_grid)
         layout.addLayout(type_grid)
 
+        # [EN] SMC inline parameters (shown when SMC grid is selected)
         # SMC 内联参数（选择 SMC 网格时显示）
         self.smc_params_widget = QWidget()
         smc_layout = QGridLayout(self.smc_params_widget)
@@ -116,6 +117,7 @@ class GridStepPanel:
         self.smc_params_widget.hide()
         layout.addWidget(self.smc_params_widget)
 
+        # [EN] Unstructured grid inline parameters (shown when unstructured grid is selected)
         # 非结构网格内联参数（选择非结构网格时显示）
         self.unst_params_widget = QWidget()
         unst_layout = QGridLayout(self.unst_params_widget)
@@ -331,12 +333,15 @@ class GridStepPanel:
         unstructured = idx == 2
         self.grid_type_label.setVisible(structured)
         self.grid_type_combo.setVisible(structured)
+        # [EN] DX/DY hidden for SMC and unstructured modes
         # DX/DY 在 SMC 和非结构下隐藏
         for key in ("grid_dx", "grid_dy"):
             self.fields[key].setVisible(structured)
             self.field_labels[key].setVisible(structured)
+        # [EN] SMC inline parameters
         # SMC 内联参数
         self.smc_params_widget.setVisible(smc)
+        # [EN] Unstructured inline parameters
         # 非结构内联参数
         self.unst_params_widget.setVisible(unstructured)
         if not structured:

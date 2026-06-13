@@ -304,6 +304,7 @@ desktop:
   run_mode: both
   default_workdir: /Users/zxy/ocean/Paper/WW3Tool/workSpace
   recent_workdirs:
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-13_17-17-19
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-12_20-18-24
   forcing_field_dir: ''
   forcing_process_mode: Copy

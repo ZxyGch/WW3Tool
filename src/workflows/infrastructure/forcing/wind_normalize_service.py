@@ -1,13 +1,24 @@
 """WW3 Step 1 风场 NetCDF 归一化服务。
 
+[EN] WW3 Step 1 wind field NetCDF normalization service.
+
 从桌面端 Step 1 逻辑抽取，将各类再分析/预报风场统一转换为 WW3 ``ww3_prnc``
 可读格式，主要处理：
+
+[EN] Extracted from the desktop Step 1 logic, this module converts various reanalysis/forecast
+wind fields into a unified WW3 ``ww3_prnc``-readable format. Main processing includes:
 
 - 维度顺序统一为 ``(time, latitude, longitude)``；
 - 经纬度变量名标准化，必要时翻转 lat/lon 递增方向；
 - 东/北风分量统一命名为 ``u10/v10``；
 - 时间轴转为 ``seconds since 1970-01-01``；
 - 大文件分块或并行变换以控制内存占用。
+
+[EN] - Unifying dimension order to ``(time, latitude, longitude)``;
+- Standardizing lat/lon variable names, flipping lat/lon increment direction when necessary;
+- Renaming eastward/northward wind components to ``u10/v10``;
+- Converting time axis to ``seconds since 1970-01-01``;
+- Chunking or parallel transformation for large files to control memory usage.
 """
 
 from __future__ import annotations
@@ -31,7 +42,10 @@ def _transform_wind_chunks_for_pool(
     lat_needs_flip,
     lon_needs_flip,
 ):
-    """多进程池用的纯数组变换：转置、纬向/经向翻转并保证 C 连续。"""
+    """多进程池用的纯数组变换：转置、纬向/经向翻转并保证 C 连续。
+
+    [EN] Pure array transform for multiprocessing pool: transpose, lat/lon flip, and ensure C-contiguous.
+    """
 
     def _transform(chunk):
         chunk = np.asarray(chunk)
@@ -51,7 +65,10 @@ def _transform_wind_chunks_for_pool(
 
 
 def _get_available_memory_bytes() -> int:
-    """尽力检测当前可用物理内存（字节），用于分块大小决策。"""
+    """尽力检测当前可用物理内存（字节），用于分块大小决策。
+
+    [EN] Best-effort detection of currently available physical memory (bytes), used for chunk size decisions.
+    """
     try:
         import psutil
 
@@ -99,7 +116,10 @@ def _get_available_memory_bytes() -> int:
 
 
 class WindNormalizeService:
-    """将风场 NetCDF 归一化为 WW3 标准布局的服务类。"""
+    """将风场 NetCDF 归一化为 WW3 标准布局的服务类。
+
+    [EN] Service class for normalizing wind field NetCDF into the WW3 standard layout.
+    """
 
     def normalize(
         self,
@@ -109,13 +129,23 @@ class WindNormalizeService:
     ) -> bool:
         """读取源文件并写出归一化后的风场 NetCDF。
 
+        [EN] Read the source file and write the normalized wind field NetCDF.
+
         参数:
             source_file: 原始 NetCDF 路径
             output_file: 目标路径（通常为工作目录下的 ``wind.nc``）
             log: 可选进度/诊断日志回调
 
+        [EN] Parameters:
+            source_file: Original NetCDF path
+            output_file: Target path (typically ``wind.nc`` in the working directory)
+            log: Optional progress/diagnostic log callback
+
         返回:
             成功写入为 ``True``，读取或写入失败为 ``False``
+
+        [EN] Returns:
+            ``True`` if written successfully, ``False`` on read or write failure.
         """
         if not source_file:
             self._emit(log, tr("log_select_origin_file_first", "❌ 请先选择原始数据文件！"))
@@ -614,6 +644,9 @@ class WindNormalizeService:
 
     @staticmethod
     def _emit(log: Optional[Callable[[str], None]], message: str) -> None:
-        """若提供 log 回调则输出一条消息。"""
+        """若提供 log 回调则输出一条消息。
+
+        [EN] Output a message if a log callback is provided.
+        """
         if log is not None:
             log(message)

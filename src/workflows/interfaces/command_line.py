@@ -1,6 +1,6 @@
 """无界面预处理与后处理的命令行适配器。
 
-本模块属于 ``interfaces/`` 入口层，解析 ``src/run.py`` 传入的子命令与参数，
+本模块属于 ``interfaces/`` 入口层，解析 ``run.py`` 传入的子命令与参数，
 从指定工作目录中加载 ``params.yml`` 后委派给 ``application/`` 对应用例执行。
 
 **工作目录约定**：根目录 ``params.yml`` 仅作为模板，CLI 不允许直接使用。
@@ -15,7 +15,28 @@
 - 辅助：``print-example`` 输出示例 YAML
 
 主要消费者：
-- 仓库根目录 ``src/run.py``（``main()`` 的实际入口）
+- 仓库根目录 ``run.py``（``main()`` 的实际入口）
+
+[EN] Command-line adapter for headless preprocessing and post-processing.
+
+This module belongs to the ``interfaces/`` entry-point layer. It parses subcommands
+and arguments passed from ``run.py``, loads ``params.yml`` from the specified
+working directory, and delegates to the corresponding ``application/`` use case.
+
+**Working directory convention**: The root ``params.yml`` is only a template and
+cannot be used directly by the CLI. All subcommands accept a ``workdir`` argument
+(directory containing ``params.yml``); the current directory is used when omitted.
+Use ``create-workdir`` to create a working directory from the template first.
+
+Command groups:
+- Working directory: ``create-workdir``
+- Preprocessing: ``validate``, ``prepare-forcing``, ``generate-grid``, ``run``
+- Post-processing/plotting: ``plot-wave-maps``, ``plot-spectrum``, ``plot-jason3``, ``plot-jason3-swh``, ``download-jason3``, ``plot-ndbc``
+- Remote operations: ``connect-test``, ``upload``, ``submit`` and other SLURM/SSH operations
+- Auxiliary: ``print-example`` outputs a sample YAML
+
+Main consumers:
+- Repository root ``run.py`` (the actual entry point of ``main()``)
 """
 
 from __future__ import annotations
@@ -31,12 +52,18 @@ from ..support.translations import tr
 
 
 def _repo_root_path() -> Path:
-    """返回仓库根目录的绝对路径。"""
+    """返回仓库根目录的绝对路径。
+
+    [EN] Return the absolute path of the repository root directory.
+    """
     return Path(__file__).resolve().parents[3]
 
 
 def _is_root_params(path: Path) -> bool:
-    """判断 *path* 是否指向仓库根目录的 params.yml（模板文件）。"""
+    """判断 *path* 是否指向仓库根目录的 params.yml（模板文件）。
+
+    [EN] Check whether *path* points to the repository root params.yml (template file).
+    """
     root_params = _repo_root_path() / "params.yml"
     try:
         return os.path.normpath(str(path.resolve())) == os.path.normpath(str(root_params))
@@ -53,6 +80,15 @@ def resolve_params_path(workdir_arg: str | None) -> str:
 
     Raises:
         ConfigError: 工作目录中无 ``params.yml``，或路径指向根目录模板。
+
+    [EN] Resolve the absolute path of params.yml from the working directory argument.
+
+    - If *workdir_arg* is a file path, use that file directly.
+    - If *workdir_arg* is a directory, look for ``params.yml`` inside it.
+    - If ``None``, use the current working directory.
+
+    Raises:
+        ConfigError: No ``params.yml`` in the working directory, or the path points to the root template.
     """
     if workdir_arg is not None:
         p = Path(workdir_arg).resolve()
@@ -78,7 +114,7 @@ def resolve_params_path(workdir_arg: str | None) -> str:
                 "cli_root_params_rejected",
                 "不允许直接使用仓库根目录的 params.yml（它是模板文件）。\n"
                 "请先使用 create-workdir 命令复制到工作目录：\n"
-                "  python3 src/run.py create-workdir --name my_workdir",
+                "  python3 run.py create-workdir --name my_workdir",
             )
         )
 
@@ -86,12 +122,17 @@ def resolve_params_path(workdir_arg: str | None) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """构造 ``src/run.py`` 使用的 argparse 解析器及全部子命令。
+    """构造 ``run.py`` 使用的 argparse 解析器及全部子命令。
 
     Returns:
         已注册所有子命令与参数的 ``ArgumentParser`` 实例。
+
+    [EN] Build the argparse parser used by ``run.py`` with all subcommands.
+
+    Returns:
+        An ``ArgumentParser`` instance with all subcommands and arguments registered.
     """
-    parser = argparse.ArgumentParser(prog="python3 src/run.py")
+    parser = argparse.ArgumentParser(prog="python3 run.py")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # ── workdir management ─────────────────────────────────────────────────
@@ -254,11 +295,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 # 仅需 plot 段校验、跳过预处理必填项的命令集合
+# [EN] Commands that only require plot-stage validation, skipping preprocessing prerequisites
 _PLOT_COMMANDS = {
     "plot-wave-maps", "plot-spectrum",
     "plot-jason3", "plot-jason3-swh", "download-jason3", "plot-ndbc",
 }
 # 远程 SSH/SLURM 操作命令集合
+# [EN] Remote SSH/SLURM operation commands
 _REMOTE_COMMANDS = {
     "connect-test", "list-files", "upload", "submit", "check-status",
     "queue-status", "download-results", "download-log",
@@ -274,6 +317,14 @@ def _handle_create_workdir(name: str) -> int:
 
     Returns:
         ``0`` 成功，``1`` 失败。
+
+    [EN] Create a new working directory from the root params.yml template.
+
+    Args:
+        name: Name of the new working directory (created under the current directory).
+
+    Returns:
+        ``0`` on success, ``1`` on failure.
     """
     root_params = _repo_root_path() / "params.yml"
     if not root_params.is_file():
@@ -295,7 +346,7 @@ def _handle_create_workdir(name: str) -> int:
     target = workdir / "params.yml"
     shutil.copy2(str(root_params), str(target))
     print(
-        tr("cli_workdir_created", "已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 src/run.py run {name}")
+        tr("cli_workdir_created", "已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 run.py run {name}")
         .format(path=workdir, name=name)
     )
     return 0
@@ -310,6 +361,15 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         进程退出码：``0`` 成功，``1`` 运行时异常，``2`` 参数/配置错误，
         ``3`` 破坏性远程操作未加 ``--confirm``。
+
+    [EN] CLI main entry point: parse commands, load configuration, and execute the corresponding use case.
+
+    Args:
+        argv: Command-line argument list; uses ``sys.argv[1:]`` when ``None``.
+
+    Returns:
+        Process exit code: ``0`` success, ``1`` runtime exception, ``2`` argument/config error,
+        ``3`` destructive remote operation without ``--confirm``.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -323,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         # cancel-job: job_id 必填
+        # [EN] cancel-job: job_id is required
         if args.command == "cancel-job":
             if not getattr(args, "job_id", None):
                 print(
@@ -332,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
 
         # 从工作目录解析 params.yml 路径
+        # [EN] Resolve params.yml path from the working directory
         params_path = resolve_params_path(getattr(args, "workdir", None))
 
         # Plot and remote commands skip preprocessing validation
@@ -465,6 +527,15 @@ def _run_all_plots(config) -> int:
 
     Returns:
         各子任务退出码的最大值（任一失败则非零）。
+
+    [EN] Execute plotting/matching in sequence according to the ``enabled`` flags
+    of each sub-task in the ``plot:`` section.
+
+    Args:
+        config: Resolved ``PipelineConfig``.
+
+    Returns:
+        Maximum exit code across all sub-tasks (non-zero if any failed).
     """
     rc = 0
     cfg = config.plot
@@ -491,6 +562,15 @@ def _run_wave_maps(config, *, contour: bool = False) -> int:
 
     Returns:
         ``0`` 成功，``1`` 生成失败。
+
+    [EN] Generate wave height filled-color or contour maps.
+
+    Args:
+        config: Resolved ``PipelineConfig``.
+        contour: Use contour mode when ``True``, otherwise filled-color.
+
+    Returns:
+        ``0`` on success, ``1`` on generation failure.
     """
     if contour:
         from ..application.plot_wave_maps import run_contour_maps
@@ -514,6 +594,16 @@ def _run_spectrum(config, *, mode: str = "all", station_index: int = 0) -> int:
 
     Returns:
         ``0`` 成功，``1`` 生成失败。
+
+    [EN] Generate 2-D directional spectrum plots.
+
+    Args:
+        config: Resolved ``PipelineConfig``.
+        mode: ``first`` / ``all`` / ``selected``, controls the time frame range to plot.
+        station_index: Station index used when ``mode=selected``.
+
+    Returns:
+        ``0`` on success, ``1`` on generation failure.
     """
     from ..application.plot_spectrum import run_spectrum
     result = run_spectrum(config, log=print, mode=mode, station_index=station_index)
@@ -528,6 +618,11 @@ def _run_match_jason3(config) -> int:
 
     Returns:
         ``0`` 成功，``1`` 匹配失败。
+
+    [EN] Perform spatiotemporal matching of WW3 output with Jason-3 satellite data.
+
+    Returns:
+        ``0`` on success, ``1`` on matching failure.
     """
     from ..application.match_jason3 import run_match_jason3
     result = run_match_jason3(config, log=print)
@@ -542,6 +637,11 @@ def _run_jason3_swh(config) -> int:
 
     Returns:
         ``0`` 成功，``1`` 生成失败。
+
+    [EN] Plot Jason-3 satellite SWH / track distribution maps.
+
+    Returns:
+        ``0`` on success, ``1`` on generation failure.
     """
     from ..application.match_jason3 import run_jason3_swh
     result = run_jason3_swh(config, log=print)
@@ -556,6 +656,11 @@ def _run_download_jason3(config) -> int:
 
     Returns:
         ``0`` 成功，``1`` 下载失败。
+
+    [EN] Download Jason-3 L2 data for the configured time range.
+
+    Returns:
+        ``0`` on success, ``1`` on download failure.
     """
     from ..application.download_jason3 import run_download_jason3
     result = run_download_jason3(config, log=print)
@@ -570,6 +675,11 @@ def _run_match_ndbc(config, *, download: bool = False) -> int:
 
     Returns:
         ``0`` 成功，``1`` 匹配失败。
+
+    [EN] Match WW3 output with NDBC buoy observations, or just download data when ``download=True``.
+
+    Returns:
+        ``0`` on success, ``1`` on matching failure.
     """
     if download:
         return _run_download_ndbc(config)
@@ -589,6 +699,14 @@ def _remote(fn) -> int:
 
     Returns:
         ``0`` 成功，``1`` 操作失败。
+
+    [EN] Execute a remote use case and uniformly handle ``success`` / ``error`` results.
+
+    Args:
+        fn: No-argument callable returning a result object with ``success`` and ``error`` attributes.
+
+    Returns:
+        ``0`` on success, ``1`` on operation failure.
     """
     result = fn()
     if not result.success:
@@ -607,6 +725,16 @@ def _remote_destructive(fn, *, confirmed: bool, name: str) -> int:
 
     Returns:
         ``0`` 成功，``1`` 操作失败，``3`` 未确认。
+
+    [EN] Wrap a remote destructive operation that requires explicit ``--confirm``.
+
+    Args:
+        fn: Remote use case callable to execute after confirmation is granted.
+        confirmed: Whether the user passed ``--confirm`` on the command line.
+        name: Subcommand name, used for error messages.
+
+    Returns:
+        ``0`` on success, ``1`` on operation failure, ``3`` if not confirmed.
     """
     if not confirmed:
         print(
@@ -622,6 +750,11 @@ def _run_download_ndbc(config) -> int:
 
     Returns:
         ``0`` 成功，``1`` 下载失败。
+
+    [EN] Download NDBC buoy observation data.
+
+    Returns:
+        ``0`` on success, ``1`` on download failure.
     """
     from ..application.match_ndbc import run_download_ndbc
     result = run_download_ndbc(config, log=print)

@@ -11,6 +11,20 @@
 
     桌面端：真实 Qt 控件 → Mixin 调用 ``self.widget.text()``
     CLI 端：``_TextValue(字符串)`` → Mixin 调用相同 API
+
+[EN] Prepare WW3 namelist and run scripts in a headless (no-GUI) environment.
+
+Architecture note — Object Adapter pattern
+-------------------------------------------
+``ModifyWW3NML`` and ``StepFourServiceMixin`` were originally Qt Mixins: methods
+read UI parameters via ``self.some_widget.text()`` / ``.currentText()``.
+
+``_WW3Adapter`` is a headless *object adapter*: it inherits from those Mixins but
+replaces real Qt widgets with lightweight stub objects from ``widget_stubs.py``,
+injecting pure Python values from ``PipelineConfig`` without importing Qt.
+
+    Desktop: real Qt widgets -> Mixin calls ``self.widget.text()``
+    CLI:     ``_TextValue(string)`` -> Mixin calls the same API
 """
 
 from __future__ import annotations
@@ -34,7 +48,10 @@ from ..ww3.widget_stubs import _Checkbox, _ComboValue, _Table, _TextValue
 
 
 class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
-    """将 ``PipelineConfig`` 与 Step 1 强迫场路径映射为 Mixin 所需的桩控件属性。"""
+    """将 ``PipelineConfig`` 与 Step 1 强迫场路径映射为 Mixin 所需的桩控件属性。
+
+    [EN] Map ``PipelineConfig`` and Step 1 forcing field paths to stub widget properties expected by the Mixin.
+    """
 
     def __init__(self, config: PipelineConfig, files: Step1Files, logger: CoreLogger, app_config: Dict[str, Any]) -> None:
         self._logger = logger
@@ -43,6 +60,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
 
         self.grid_type_var = "嵌套网格" if config.grid.grid_type == "nested" else "普通网格"
         # 存储原始 mesh_type 供检测方法使用（避免翻译后文本不匹配）
+        # [EN] Store the raw mesh_type for detection methods (to avoid mismatches with translated text)
         self._raw_mesh_type = config.grid.mesh_type
         if config.grid.mesh_type == "unstructured":
             self.mesh_type_var = "非结构网格"
@@ -90,16 +108,25 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
         self.track_points_table = _Table(_track_rows(config.calc.track_points))
 
     def log(self, message: str) -> None:
-        """将 Mixin 内部日志转发至 ``CoreLogger``。"""
+        """将 Mixin 内部日志转发至 ``CoreLogger``。
+
+        [EN] Forward Mixin internal logs to ``CoreLogger``.
+        """
         self._logger.log(message)
 
     def _show_info_bar(self, *_args, **_kwargs) -> None:
-        """CLI 模式下忽略桌面信息条。"""
+        """CLI 模式下忽略桌面信息条。
+
+        [EN] Ignore desktop info bar messages in CLI mode.
+        """
         return None
 
 
 def _spectral_rows(points: Iterable[PointConfig]) -> List[List[Any]]:
-    """将谱点配置转为 Mixin 表格行（含表头）。"""
+    """将谱点配置转为 Mixin 表格行（含表头）。
+
+    [EN] Convert spectral point configurations to Mixin table rows (including header).
+    """
     rows: List[List[Any]] = [["lon", "lat", "name"]]
     for i, point in enumerate(points, 1):
         rows.append([point.lon, point.lat, point.name or f"Point_{i}"])
@@ -107,7 +134,10 @@ def _spectral_rows(points: Iterable[PointConfig]) -> List[List[Any]]:
 
 
 def _track_rows(points: Iterable[TrackPointConfig]) -> List[List[Any]]:
-    """将航迹点配置转为 Mixin 表格行（含表头）。"""
+    """将航迹点配置转为 Mixin 表格行（含表头）。
+
+    [EN] Convert track point configurations to Mixin table rows (including header).
+    """
     rows: List[List[Any]] = [["datetime", "lon", "lat", "name"]]
     for i, point in enumerate(points, 1):
         rows.append([point.datetime, point.lon, point.lat, point.name or f"Track_{i}"])
@@ -115,7 +145,10 @@ def _track_rows(points: Iterable[TrackPointConfig]) -> List[List[Any]]:
 
 
 def _resolve_st_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
-    """解析源项（ST）方案名称，优先使用流水线配置。"""
+    """解析源项（ST）方案名称，优先使用流水线配置。
+
+    [EN] Resolve the source term (ST) scheme name, preferring the pipeline configuration.
+    """
     if config.ww3.st:
         return str(config.ww3.st)
     versions = app_config.get("ST_VERSIONS") or []
@@ -128,7 +161,10 @@ def _resolve_st_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
 
 
 def _resolve_output_scheme_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
-    """输出变量方案在运行时配置中的键名（``__params__`` 表示来自 params.yml）。"""
+    """输出变量方案在运行时配置中的键名（``__params__`` 表示来自 params.yml）。
+
+    [EN] Key name of the output variable scheme in the runtime config (``__params__`` indicates it comes from params.yml).
+    """
     return "__params__"
 
 
@@ -136,10 +172,15 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     """构建供 WW3 namelist 生成使用的运行时配置字典。
 
     路径全部来自 ``PipelineConfig.paths``（params.yml），项目参数来自其他段。
+
+    [EN] Build the runtime configuration dictionary used for WW3 namelist generation.
+
+    All paths come from ``PipelineConfig.paths`` (params.yml); project parameters come from other sections.
     """
     merged: Dict[str, Any] = {}
 
     # 路径参数全部来自 params.yml 的 paths: 段
+    # [EN] Path parameters all come from the paths: section of params.yml
     paths = config.paths
     merged["MATLAB_PATH"] = paths.matlab_path
     merged["GRIDGEN_VERSION"] = config.grid.gridgen_version
@@ -147,6 +188,7 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     merged["WW3BIN_PATH"] = paths.ww3bin_path
 
     # 项目参数来自 PipelineConfig 各段
+    # [EN] Project parameters come from various sections of PipelineConfig
     merged["FILE_SPLIT"] = config.ww3.file_split
     merged["DEFAULT_CPU"] = config.slurm.cpu
     merged["NODE_NUM"] = config.slurm.nodes
@@ -175,8 +217,10 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     ]
 
     # 谱分区输出方案：全部来自 PipelineConfig.presets.output_scheme (params.yml)
+    # [EN] Spectral partition output scheme: all from PipelineConfig.presets.output_scheme (params.yml)
     schemes = copy.deepcopy(config.presets.output_scheme)
     # 追加当前项目方案作为 __params__，供下游 namelist 模板使用
+    # [EN] Append the current project scheme as __params__ for use by downstream namelist templates
     if config.ww3.output_scheme in config.presets.output_scheme:
         schemes["__params__"] = list(config.presets.output_scheme[config.ww3.output_scheme])
     merged["OUTPUT_VARS_SCHEMES"] = schemes
@@ -184,14 +228,20 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
 
 
 def _ww3_grid_paths(config: PipelineConfig) -> List[Path]:
-    """返回需写入谱/时间步参数的 ``ww3_grid.nml`` 路径列表。"""
+    """返回需写入谱/时间步参数的 ``ww3_grid.nml`` 路径列表。
+
+    [EN] Return the list of ``ww3_grid.nml`` paths that need spectral/timestep parameters written into them.
+    """
     if config.grid.grid_type == "nested":
         return [config.workdir.path / "coarse" / "ww3_grid.nml", config.workdir.path / "fine" / "ww3_grid.nml"]
     return [config.workdir.path / "ww3_grid.nml"]
 
 
 def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None:
-    """将 ``ww3_grid.parameters`` 中的数值写回已有 ``ww3_grid.nml`` 对应 namelist 段。"""
+    """将 ``ww3_grid.parameters`` 中的数值写回已有 ``ww3_grid.nml`` 对应 namelist 段。
+
+    [EN] Write numeric values from ``ww3_grid.parameters`` back into the corresponding namelist sections of existing ``ww3_grid.nml`` files.
+    """
     parameters = config.ww3_grid.parameters
     values = {
         "SPECTRUM_NML": {
@@ -241,7 +291,10 @@ def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None
 
 @contextmanager
 def _patched_load_config(config: Dict[str, Any]):
-    """临时将各 WW3 模块的 ``load_config`` 指向合并后的内存配置。"""
+    """临时将各 WW3 模块的 ``load_config`` 指向合并后的内存配置。
+
+    [EN] Temporarily redirect ``load_config`` in each WW3 module to the merged in-memory configuration.
+    """
     originals = {
         "runtime": runtime_config.load_config,
         "modify": getattr(modify_ww3_nml_module, "load_config", None),
@@ -276,6 +329,18 @@ def prepare_ww3_files(config: PipelineConfig, files: Step1Files, logger: CoreLog
         1. 构建 ``_WW3Adapter`` 并 patch ``load_config``；
         2. 调用 ``modify_ww3_file()`` 写出 namelist；
         3. 将 ``ww3_grid.parameters`` 数值写回 ``ww3_grid.nml``。
+
+    [EN] Generate WW3 namelist and auxiliary scripts based on the pipeline configuration and Step 1 forcing field paths.
+
+    Args:
+        config: Complete pipeline configuration (grid, computation mode, SLURM, WW3 time range, etc.)
+        files: Step 1 selected wind/current/level/ice file paths
+        logger: Progress and diagnostic logging
+
+    Workflow:
+        1. Build ``_WW3Adapter`` and patch ``load_config``;
+        2. Call ``modify_ww3_file()`` to write out the namelist;
+        3. Write ``ww3_grid.parameters`` values back into ``ww3_grid.nml``.
     """
     app_config = _merged_runtime_config(config)
     adapter = _WW3Adapter(config, files, logger, app_config)

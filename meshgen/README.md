@@ -1,10 +1,10 @@
-# WW3-Grid-Generator
+# meshgen
 
 [English](#english) | [简体中文](#简体中文)
 
 ## English
 
-`WW3-Grid-Generator` bundles three WW3 mesh workflows in one place:
+`meshgen` bundles three WW3 mesh workflows in one place:
 
 - **Structured rectilinear grid** (`structured_generator`)
 - **SMC grid** (`smc_generator`)
@@ -15,7 +15,7 @@ Each is a wrapper around upstream tools—[gridgen](https://gitlab.ifremer.fr/wa
 ### Directory layout
 
 ```text
-WW3-Grid-Generator/
+meshgen/
 ├── get_reference_data.py
 ├── reference_data/                  # external reference data
 ├── structured_generator/            # structured (regular / curvilinear) grids
@@ -34,7 +34,7 @@ You need `reference_data` first (bathymetry, coastline-related `.mat` / `.nc`, e
 Run:
 
 ```bash
-cd WW3-Grid-Generator
+cd meshgen
 python3 get_reference_data.py
 ```
 
@@ -54,7 +54,7 @@ More detail:
 
 ## 简体中文
 
-`WW3-Grid-Generator` 将三类 WW3 网格流程整合在一个目录中：
+`meshgen` 将三类 WW3 网格流程整合在一个目录中：
 
 - **结构化矩形网格生成器**（`structured_generator`）
 - **SMC 网格生成器**（`smc_generator`）
@@ -65,7 +65,7 @@ More detail:
 ### 目录结构
 
 ```text
-WW3-Grid-Generator/
+meshgen/
 ├── get_reference_data.py
 ├── reference_data/                  # 外部参考数据
 ├── structured_generator/            # 结构化（规则/曲线）网格

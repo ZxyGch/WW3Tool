@@ -1,7 +1,7 @@
 # workflows — 架构说明
 
 `workflows/` 是 WW3Tool CLI 和 Desktop 共用的核心代码包，负责所有与 WW3 相关的业务逻辑。
-Desktop 层（`src/desktop/`）调用这里，CLI 入口（`src/run.py`）也调用这里，两者不直接共享代码。
+Desktop 层（`src/desktop/`）调用这里，CLI 入口（根目录 `run.py`）也调用这里，两者不直接共享代码。
 
 ---
 

@@ -1,4 +1,7 @@
-"""本地运行面板（主页步骤区）：执行 local.sh 与 ww3_ounf/ounp/trnc。"""
+"""本地运行面板（主页步骤区）：执行 local.sh 与 ww3_ounf/ounp/trnc。
+
+[EN] Local run panel (home step area): execute local.sh and ww3_ounf/ounp/trnc.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +16,7 @@ from workflows.support.translations import tr
 
 
 class LocalRunPanel:
+    # [EN] Local run controls: WW3 bin path + run/stop + ounf/ounp/trnc.
     """本地运行控件：WW3 bin 路径 + 运行/停止 + ounf/ounp/trnc。"""
 
     def __init__(
@@ -52,6 +56,7 @@ class LocalRunPanel:
 
         start = self.bin_edit.text().strip()
         if not start or not Path(start).is_dir():
+            # [EN] Fall back to system root directory when path does not exist
             start = str(Path.home().anchor)  # 路径不存在时回退到系统根目录
         path = QFileDialog.getExistingDirectory(
             self.widget, tr("step5_choose_ww3bin", "选择 WW3 bin 目录"), start
@@ -64,6 +69,7 @@ class LocalRunPanel:
 
 
 def _default_bin() -> str:
+    # [EN] Default WW3 bin directory: prefer ``paths.ww3bin_path`` from params.yml, fall back to config.json.
     """默认 WW3 bin 目录：优先读 params.yml 的 ``paths.ww3bin_path``，回退到 config.json。"""
     try:
         from pathlib import Path as _Path

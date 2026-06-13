@@ -53,7 +53,7 @@ def _timesteps_from_grid(lon: np.ndarray, lat: np.ndarray, fmin: float = 0.0339)
     return tglob, max_tcfl, tref, tsrc
 
 
-def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=None):
+def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=None, ref_dir_override=None):
     """
     Write ``grid.meta`` with the same blocks and formatting as MATLAB ``write_ww3meta.m``.
 
@@ -104,8 +104,11 @@ def write_ww3meta(fname, fname_nml, gtype, lon, lat, *args, is_global_override=N
             bathy_nml = read_namelist(fname_nml, "BATHY_FILE")
             grid_name = str(init_nml.get("fname", file_prefix))
             isglobal = int(outgrid_nml.get("is_global", isglobal))
+            # Prefer the runtime ref_dir passed by the caller (dynamically computed,
+            # authoritative) over the static REF_DIR in the namelist file.
+            ref_dir_raw = ref_dir_override if ref_dir_override else init_nml["ref_dir"]
             ref_dir = os.path.normpath(
-                os.path.abspath(os.path.expanduser(str(init_nml["ref_dir"]).strip().strip("'\"")))
+                os.path.abspath(os.path.expanduser(str(ref_dir_raw).strip().strip("'\"")))
             )
             ref_grid = str(bathy_nml["ref_grid"])
             xvar = str(bathy_nml["xvar"])

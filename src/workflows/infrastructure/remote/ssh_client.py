@@ -2,6 +2,11 @@
 
 所有方法均为*同步*调用，通过 ``log`` 回调输出进度。
 桌面层在自有线程中包装；CLI 直接调用。
+
+[EN] Pure SSH/SFTP client — no Qt, no threads, no signals.
+
+All methods are *synchronous* calls, reporting progress via a ``log`` callback.
+The desktop layer wraps calls in its own thread; CLI calls directly.
 """
 
 from __future__ import annotations
@@ -20,7 +25,10 @@ _noop: LogFn = lambda _: None
 
 
 def _make_ssh():
-    """延迟导入 paramiko；未安装时抛出带安装提示的 RuntimeError。"""
+    """延迟导入 paramiko；未安装时抛出带安装提示的 RuntimeError。
+
+    [EN] Lazy-import paramiko; raises a RuntimeError with installation instructions if not installed.
+    """
     try:
         import paramiko
         return paramiko
@@ -40,10 +48,23 @@ class SshClient:
         client.upload_folder(local, remote, log=print)
         client.exec_script("server.sh", remote_dir, log=print)
         client.close()
+
+    [EN] Thin wrapper around paramiko for SSH/SFTP.
+
+    Typical usage::
+
+        client = SshClient(config)
+        client.connect(log=print)          # raises ConnectionError on failure
+        client.upload_folder(local, remote, log=print)
+        client.exec_script("server.sh", remote_dir, log=print)
+        client.close()
     """
 
     def __init__(self, config: ServerConfig) -> None:
-        """保存 ``ServerConfig``；连接在 ``connect()`` 时建立。"""
+        """保存 ``ServerConfig``；连接在 ``connect()`` 时建立。
+
+        [EN] Store ``ServerConfig``; the connection is established when ``connect()`` is called.
+        """
         self._config = config
         self._ssh = None
         self._conn_args: Optional[Tuple[str, int, str, str]] = None
@@ -51,7 +72,10 @@ class SshClient:
     # ── connection ────────────────────────────────────────────────────────────
 
     def connect(self, *, log: LogFn = _noop, timeout: int = 15) -> None:
-        """建立 SSH 连接；失败时抛出 ``ConnectionError``。"""
+        """建立 SSH 连接；失败时抛出 ``ConnectionError``。
+
+        [EN] Establish an SSH connection; raises ``ConnectionError`` on failure.
+        """
         paramiko = _make_ssh()
         cfg = self._config
         if not cfg.host or not cfg.user:
@@ -87,20 +111,29 @@ class SshClient:
         log(tr("connect_success_log", "✅ 连接服务器成功"))
 
     def is_alive(self) -> bool:
-        """当前 SSH 传输层是否仍处于活动状态。"""
+        """当前 SSH 传输层是否仍处于活动状态。
+
+        [EN] Whether the current SSH transport layer is still active.
+        """
         if self._ssh is None:
             return False
         transport = self._ssh.get_transport()
         return transport is not None and transport.is_active()
 
     def ensure_connected(self, *, log: LogFn = _noop) -> None:
-        """若连接已断开则自动重连。"""
+        """若连接已断开则自动重连。
+
+        [EN] Automatically reconnect if the connection has been dropped.
+        """
         if not self.is_alive():
             log("⚠️ SSH 连接已断开，尝试重新连接...")
             self.connect(log=log)
 
     def close(self) -> None:
-        """关闭 SSH 连接并释放底层 socket。"""
+        """关闭 SSH 连接并释放底层 socket。
+
+        [EN] Close the SSH connection and release the underlying socket.
+        """
         if self._ssh is not None:
             try:
                 self._ssh.close()
@@ -120,6 +153,10 @@ class SshClient:
         """在远程主机执行 shell 脚本并流式输出日志。
 
         返回进程退出码。
+
+        [EN] Execute a shell script on the remote host with streaming log output.
+
+        Returns the process exit code.
         """
         self.ensure_connected(log=log)
         cmd = (
@@ -144,7 +181,10 @@ class SshClient:
         return code
 
     def exec_command(self, cmd: str, *, log: LogFn = _noop, timeout: int = 30) -> Tuple[str, str, int]:
-        """执行任意远程命令，返回 ``(stdout, stderr, exit_code)``。"""
+        """执行任意远程命令，返回 ``(stdout, stderr, exit_code)``。
+
+        [EN] Execute an arbitrary remote command, returning ``(stdout, stderr, exit_code)``.
+        """
         self.ensure_connected(log=log)
         stdin, stdout, stderr = self._ssh.exec_command(cmd, get_pty=True, timeout=timeout)
         out = stdout.read().decode("utf-8", errors="ignore").strip()
@@ -159,7 +199,10 @@ class SshClient:
         return self._ssh.open_sftp()
 
     def list_files(self, remote_dir: str) -> List[str]:
-        """列出远程目录下的文件名。"""
+        """列出远程目录下的文件名。
+
+        [EN] List file names in the remote directory.
+        """
         sftp = self._sftp()
         try:
             return sftp.listdir(remote_dir)
@@ -191,6 +234,10 @@ class SshClient:
         """通过 SFTP 递归上传本地目录到 ``remote_dir``。
 
         上传前会将 ``server.sh`` 等脚本规范为 LF 换行。
+
+        [EN] Recursively upload a local directory to ``remote_dir`` via SFTP.
+
+        Scripts such as ``server.sh`` are normalized to LF line endings before upload.
         """
         self.ensure_connected(log=log)
         sftp = self._sftp()

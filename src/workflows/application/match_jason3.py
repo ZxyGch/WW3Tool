@@ -9,6 +9,19 @@
 ---------
 - 输入：``PipelineConfig``（``plot.jason3.*`` 与结果目录）
 - 输出：``Jason3Result``（输出目录、PNG 列表、成功标志与错误信息）
+
+[EN] Jason-3 satellite significant wave height (SWH) matching and plotting use case.
+
+Performs spatiotemporal matching of WW3 model output with Jason-3 along-track observations,
+or plots Jason-3 SWH distributions independently, for CLI ``plot-jason3`` / ``plot-jason3-swh``
+commands and the desktop post-processing panel.
+
+Pipeline step: Post-processing (Step 4 result validation) -- satellite observation comparison.
+
+Input/Output
+------------
+- Input: ``PipelineConfig`` (``plot.jason3.*`` and result directory)
+- Output: ``Jason3Result`` (output directory, PNG list, success flag and error info)
 """
 
 from __future__ import annotations
@@ -41,6 +54,15 @@ class Jason3Result:
         messages: 执行过程中的日志消息。
         success: 操作是否成功完成。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Return result of Jason-3 matching or SWH plotting operation.
+
+    Attributes:
+        output_folder: Result file output directory.
+        image_files: List of generated PNG image paths.
+        messages: Log messages during execution.
+        success: Whether the operation completed successfully.
+        error: Error description on failure; ``None`` on success.
     """
 
     output_folder: str
@@ -51,7 +73,10 @@ class Jason3Result:
 
 
 def _resolve_result_folder(config: PipelineConfig) -> Path:
-    """解析 WW3 结果目录：使用 ``workdir``。"""
+    """解析 WW3 结果目录：使用 ``workdir``。
+
+    [EN] Resolve the WW3 result directory: use ``workdir``.
+    """
     return config.workdir.path
 
 
@@ -59,7 +84,10 @@ def _resolve_jason3_data_folder(
     config: PipelineConfig,
     override: Optional[str] = None,
 ) -> Optional[str]:
-    """解析 Jason-3 本地数据目录：UI/CLI 覆盖 > params > paths.jason_path > 项目 jason3/。"""
+    """解析 Jason-3 本地数据目录：UI/CLI 覆盖 > params > paths.jason_path > 项目 jason3/。
+
+    [EN] Resolve Jason-3 local data directory: UI/CLI override > params > paths.jason_path > project jason3/.
+    """
     if override and os.path.isdir(override):
         return os.path.abspath(override)
     cfg = config.plot.jason3

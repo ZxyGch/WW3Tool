@@ -2,6 +2,12 @@
 
 从 ``PipelineConfig`` 取工作目录、从 ``config.json`` 取 ``WW3BIN_PATH``，调用
 ``LocalRunService``。``local.sh`` 缺失时回退仓库 ``public/ww3/local.sh``。
+
+[EN] Local run use case: execute local.sh and ww3_ounf/ounp/trnc.
+
+Takes the workdir from ``PipelineConfig`` and ``WW3BIN_PATH`` from ``config.json``,
+calls ``LocalRunService``. Falls back to repository ``public/ww3/local.sh`` when
+``local.sh`` is missing.
 """
 
 from __future__ import annotations
@@ -42,7 +48,10 @@ def run_local(
     *,
     bin_dir: Optional[str] = None,
 ) -> LocalRunResult:
-    """运行工作目录下的 ``local.sh``（流式日志，可经 ``service.stop()`` 停止）。"""
+    """运行工作目录下的 ``local.sh``（流式日志，可经 ``service.stop()`` 停止）。
+
+    [EN] Run ``local.sh`` in the workdir (streaming logs, can be stopped via ``service.stop()``).
+    """
     logger = CoreLogger(callback=log)
     ret = service.run_script(str(config.workdir.path), _bin_dir(config, bin_dir), logger.log, fallback_script=_fallback_script())
     if ret == 0:

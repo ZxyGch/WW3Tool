@@ -1,12 +1,24 @@
 """无 GUI 网格生成适配器。
 
-根据 ``PipelineConfig.grid.mesh_type`` 调用 WW3-Grid-Generator 下对应生成器：
+根据 ``PipelineConfig.grid.mesh_type`` 调用 meshgen 下对应生成器：
 
 - ``structured``：pygridgen ``create_grid``；
 - ``smc``：SMC 生成器子进程；
 - ``unstructured``：非结构网格 JSON 驱动流程。
 
 嵌套网格时会分别在外层 ``coarse/`` 与内层 ``fine/`` 目录产出网格文件。
+
+[EN] Headless grid generation adapter.
+
+Invokes the corresponding generator under meshgen based on
+``PipelineConfig.grid.mesh_type``:
+
+- ``structured``: pygridgen ``create_grid``;
+- ``smc``: SMC generator subprocess;
+- ``unstructured``: unstructured grid JSON-driven workflow.
+
+For nested grids, grid files are produced in the outer ``coarse/`` and inner
+``fine/`` directories respectively.
 """
 
 from __future__ import annotations
@@ -25,7 +37,7 @@ from typing import Any, Dict
 from ..runtime_config import (
     SMC_GRID_JSON_DEFAULTS,
     UNST_MSH_GEN_CONFIG_DEFAULTS,
-    get_project_gridgen_path,
+    get_project_meshgen_path,
 )
 
 from ...domain.config_models import GridConfig, GridRegion, PipelineConfig
@@ -52,7 +64,7 @@ REFERENCE_DATA_REQUIRED_FILES = [
 def _reference_dir(config: GridConfig) -> Path:
     if config.reference_data_path:
         return config.reference_data_path
-    return Path(get_project_gridgen_path()) / "reference_data"
+    return Path(get_project_meshgen_path()) / "reference_data"
 
 
 def _check_reference_data(ref_dir: Path) -> None:
@@ -67,6 +79,7 @@ def _check_reference_data(ref_dir: Path) -> None:
 
 
 # 用户面板的测深源名称 -> pygridgen ref_grid（亦即缓存键中标识测深数据的稳定名称）。
+# [EN] User panel bathymetry source name -> pygridgen ref_grid (i.e. the stable name identifying bathymetry data in cache keys).
 _STRUCTURED_BATHY_MAP = {"GEBCO": "gebco", "ETOP1": "etopo1", "ETOP2": "etopo2"}
 
 
@@ -75,11 +88,11 @@ def _structured_ref_grid(settings: Any) -> str:
 
 
 def _pygridgen_dir() -> Path:
-    return Path(get_project_gridgen_path()) / "structured_generator" / "pygridgen"
+    return Path(get_project_meshgen_path()) / "structured_generator" / "pygridgen"
 
 
 def _grid_cache_dir() -> Path:
-    cache_dir = Path(get_project_gridgen_path()) / "cache"
+    cache_dir = Path(get_project_meshgen_path()) / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -208,7 +221,10 @@ def _save_structured_cache(
 
 @contextmanager
 def _pygridgen_import_path():
-    """临时将 pygridgen 目录加入 ``sys.path``，供子进程内 ``import grid`` 使用。"""
+    """临时将 pygridgen 目录加入 ``sys.path``，供子进程内 ``import grid`` 使用。
+
+    [EN] Temporarily add the pygridgen directory to ``sys.path`` so that ``import grid`` works inside the subprocess.
+    """
     pygridgen_dir = _pygridgen_dir()
     path_str = str(pygridgen_dir)
     inserted = path_str not in sys.path
@@ -459,7 +475,7 @@ def _save_unstructured_cache(cache_key: str, grid_file: Path, grid_json: Dict[st
 
 
 def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
-    root = Path(get_project_gridgen_path())
+    root = Path(get_project_meshgen_path())
     smc_dir = root / "smc_generator"
     cfg = json.loads(json.dumps(SMC_GRID_JSON_DEFAULTS))
     settings = config.grid.smc
@@ -523,7 +539,7 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
 
 
 def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
-    root = Path(get_project_gridgen_path())
+    root = Path(get_project_meshgen_path())
     unst_dir = root / "unstructured_generator"
     unst_msh_gen_abs = str(unst_dir / "unst_msh_gen")
     jigsaw_root_abs = str(unst_dir / "jigsaw-python")
@@ -630,6 +646,15 @@ def generate_grid(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
 
     异常:
         RuntimeError: 参考数据缺失、外部命令失败或不支持的 ``mesh_type``
+
+    [EN] Generate a WW3 grid according to the configuration and write it to the working directory.
+
+    Args:
+        config: Pipeline configuration containing grid type, region extent, and working directory
+        logger: Logger for outputting generation progress and external command logs
+
+    Raises:
+        RuntimeError: Reference data missing, external command failure, or unsupported ``mesh_type``
     """
     if config.grid.mesh_type == "structured":
         _generate_structured(config, logger, use_cache=use_cache)

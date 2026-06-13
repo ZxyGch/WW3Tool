@@ -7,6 +7,16 @@
 ---------
 - 输入：``PipelineConfig``（``plot.jason3.*`` 与结果目录）、时间范围、本地目录
 - 输出：``Jason3DownloadResult``（下载目录、统计信息与成功标志）
+
+[EN] Jason-3 satellite data download use case.
+
+Downloads Jason-3 L2 NetCDF products (GDR / IGDR / OGDR) from NCEI remote directories
+by time range, for the CLI ``download-jason3`` command and desktop post-processing panel.
+
+Input/Output
+------------
+- Input: ``PipelineConfig`` (``plot.jason3.*`` and result directory), time range, local directory
+- Output: ``Jason3DownloadResult`` (download directory, statistics and success flag)
 """
 
 from __future__ import annotations
@@ -38,6 +48,18 @@ class Jason3DownloadResult:
         messages: 执行过程中的日志消息。
         success: 操作是否成功完成。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Return result of Jason-3 download operation.
+
+    Attributes:
+        output_folder: Target directory for data download.
+        downloaded: Number of newly downloaded files.
+        skipped: Number of skipped files (already exist locally).
+        failed: Number of failed downloads.
+        total: Total number of remote candidate files.
+        messages: Log messages during execution.
+        success: Whether the operation completed successfully.
+        error: Error description on failure; ``None`` on success.
     """
 
     output_folder: str
@@ -51,7 +73,10 @@ class Jason3DownloadResult:
 
 
 def _resolve_result_folder(config: PipelineConfig) -> Path:
-    """解析 WW3 结果目录：使用 ``workdir``。"""
+    """解析 WW3 结果目录：使用 ``workdir``。
+
+    [EN] Resolve the WW3 result directory: use ``workdir``.
+    """
     return config.workdir.path
 
 
@@ -74,6 +99,18 @@ def run_download_jason3(
 
     Returns:
         ``Jason3DownloadResult``；时间范围缺失时 ``success=False``。
+
+    [EN] Download Jason-3 L2 products from NCEI to a local directory by time range.
+
+    Args:
+        config: Pipeline config; downloads to ``workdir/jason3_data`` when ``plot.jason3.data_folder`` is empty.
+        log: Optional log callback.
+        time_range: ``[start_YYYYMMDD, end_YYYYMMDD]``; required.
+        local_folder: Optional, overrides the download target directory.
+        base_catalog_url: NCEI Jason-3 product root URL.
+
+    Returns:
+        ``Jason3DownloadResult``; ``success=False`` when time range is missing.
     """
     from ..infrastructure.plot.jason3_download_worker import _download_jason3_worker
 
@@ -135,6 +172,7 @@ def run_download_jason3(
             messages=list(logger.messages),
         )
 
+    # [EN] Worker did not return a result dictionary
     # worker 没有返回结果字典
     return Jason3DownloadResult(
         output_folder=download_folder,

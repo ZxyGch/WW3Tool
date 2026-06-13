@@ -1,6 +1,9 @@
 """第五步：连接服务器 面板（主页步骤区）。
 
 连接后内嵌显示 CPU 占用排行和任务队列，仿照 src 旧版实现。
+
+[EN] Step 5: Connect to server panel (home step area).
+After connecting, embedded CPU usage ranking and task queue are displayed, following the src legacy implementation.
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from workflows.support.translations import tr
 _TITLE_KEY = "step6_title"
 _TITLE_DEFAULT = "第五步：连接服务器"
 
+# [EN] ── Task state mapping ────────────────────────────────────────────────────────
 # ── 任务状态映射 ────────────────────────────────────────────────────────
 _STATE_MAP = {
     "RUNNING": ("queue_status_running", "运行中"),
@@ -39,6 +43,7 @@ _ACTIVE_STATES = {"RUNNING", "PENDING", "COMPLETING", "CONFIGURING", "SUSPENDED"
 
 
 class ServerConnectPanel:
+    # [EN] Connect to server + CPU ranking + task queue + cancel task.
     """连接服务器 + CPU 排行 + 任务队列 + 取消任务。"""
 
     def __init__(
@@ -58,16 +63,19 @@ class ServerConnectPanel:
         layout.setContentsMargins(0, 0, 0, 0)
         self._group.viewLayout.setContentsMargins(11, 10, 11, 12)
 
+        # [EN] ── Connect button ────────────────────────────────────────────────────
         # ── 连接按钮 ────────────────────────────────────────────────────
         self.connect_button = create_button(tr("step6_connect", "连接服务器"), connect)
         layout.addWidget(self.connect_button)
 
+        # [EN] ── CPU usage ranking title ────────────────────────────────────────────
         # ── CPU 占用排行标题 ────────────────────────────────────────────
         self._cpu_title = self._build_section_title(
             tr("step6_cpu_ranking", "CPU 占用排行")
         )
         layout.addWidget(self._cpu_title)
 
+        # [EN] ── CPU usage ranking table ────────────────────────────────────────────
         # ── CPU 占用排行表格 ────────────────────────────────────────────
         self._cpu_table = TableWidget()
         self._cpu_table.setColumnCount(3)
@@ -94,12 +102,14 @@ class ServerConnectPanel:
         self._cpu_table.setVisible(False)
         layout.addWidget(self._cpu_table)
 
+        # [EN] ── Task queue title ────────────────────────────────────────────────
         # ── 任务队列标题 ────────────────────────────────────────────────
         self._queue_title = self._build_section_title(
             tr("step6_queue_ranking", "任务队列 占用排行")
         )
         layout.addWidget(self._queue_title)
 
+        # [EN] ── Task queue container (dynamically add cards)────────────────────────────────
         # ── 任务队列容器（动态添加卡片）────────────────────────────────
         self._queue_container = QWidget()
         self._queue_container.setSizePolicy(
@@ -111,6 +121,7 @@ class ServerConnectPanel:
         self._queue_container.setVisible(False)
         layout.addWidget(self._queue_container)
 
+        # [EN] ── Cancel task section ────────────────────────────────────────────────
         # ── 取消任务区域 ────────────────────────────────────────────────
         self._cancel_widget = QWidget()
         cancel_row = QHBoxLayout(self._cancel_widget)
@@ -128,6 +139,7 @@ class ServerConnectPanel:
         self.widget = self._group
         self.set_connected(False)
 
+    # [EN] ── Public API ──────────────────────────────────────────────────────────
     # ── 公共接口 ──────────────────────────────────────────────────────────
 
     def job_id(self) -> str:
@@ -144,11 +156,13 @@ class ServerConnectPanel:
         except Exception:
             pass
         self.connect_button.setVisible(not connected)
-        self._cancel_widget.setVisible(False)  # 由 update_queue_table 控制显隐
+        self._cancel_widget.setVisible(False)  # [EN] Visibility controlled by update_queue_table
+        # 由 update_queue_table 控制显隐
         if not connected:
             self._hide_cpu_and_queue()
 
     def update_cpu_table(self, rows: list) -> None:
+        # [EN] Update CPU ranking table. rows: [[pid, user, cpu%], ...]
         """更新 CPU 排行表格。rows: [[pid, user, cpu%], ...]"""
         valid = []
         for row in rows:
@@ -165,6 +179,7 @@ class ServerConnectPanel:
             self._cpu_table.setVisible(False)
             return
 
+        # [EN] Header + data rows
         # 表头 + 数据行
         self._cpu_table.setRowCount(len(valid) + 1)
         for col, text in enumerate(["PID", "USER", "CPU%"]):
@@ -184,6 +199,7 @@ class ServerConnectPanel:
                 self._cpu_table.setItem(i, col, item)
 
         self._cpu_table.resizeRowsToContents()
+        # [EN] Dynamic height
         # 动态高度
         total_h = sum(self._cpu_table.rowHeight(r) for r in range(self._cpu_table.rowCount()))
         self._cpu_table.setMinimumHeight(max(60, total_h + 6))
@@ -192,6 +208,7 @@ class ServerConnectPanel:
         self._cpu_table.setVisible(True)
 
     def update_queue_table(self, lines: list) -> None:
+        # [EN] Update task queue display. lines: squeue output lines.
         """更新任务队列显示。lines: squeue 输出行列表。"""
         tasks = self._parse_squeue_lines(lines)
         if not tasks:
@@ -199,6 +216,7 @@ class ServerConnectPanel:
             self._cancel_widget.setVisible(False)
             return
 
+        # [EN] Check whether to rebuild cards
         # 检查是否需要重建卡片
         existing_count = self._queue_layout.count()
         if existing_count != len(tasks):
@@ -210,6 +228,7 @@ class ServerConnectPanel:
         self._queue_container.setVisible(True)
         self._cancel_widget.setVisible(True)
 
+    # [EN] ── Internal methods ──────────────────────────────────────────────────────────
     # ── 内部方法 ──────────────────────────────────────────────────────────
 
     def _build_section_title(self, text: str) -> QWidget:
@@ -243,6 +262,7 @@ class ServerConnectPanel:
         self._clear_queue_display()
 
     def _parse_squeue_lines(self, lines: list) -> list[dict]:
+        # [EN] Parse squeue lines, return list of task dicts.
         """解析 squeue 行，返回任务字典列表。"""
         tasks = []
         for ln in lines:
@@ -325,6 +345,7 @@ class ServerConnectPanel:
         return table
 
     def _update_existing_queue_cards(self, tasks: list[dict]) -> None:
+        # [EN] Only update existing card contents, without rebuilding.
         """仅更新已有卡片的内容，不重建。"""
         fields_keys = ["jobid", "partition", "name", "state", "time", "nodes", "nodelist"]
         labels = [

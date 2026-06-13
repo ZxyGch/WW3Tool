@@ -6,6 +6,15 @@
 
 与 ``infrastructure/plot/*`` 及 ``queue_bridge.ImmediateQueue`` 路径一致，
 但子进程执行可释放 GIL，并与 Qt 事件循环隔离。
+
+[EN] Run matplotlib plotting workers in subprocesses to avoid blocking the desktop UI main thread.
+
+Plotting worker convention signature::
+
+    worker(*args, log_queue, result_queue, **kwargs)
+
+Consistent with ``infrastructure/plot/*`` and ``queue_bridge.ImmediateQueue`` paths,
+but subprocess execution releases the GIL and isolates from the Qt event loop.
 """
 
 from __future__ import annotations
@@ -44,6 +53,18 @@ def run_subprocess_worker(
 
     Returns:
         ``result_queue`` 上收到的全部对象列表。
+
+    [EN] Execute ``target(*args, log_queue, result_queue)`` in a subprocess and collect results.
+
+    Args:
+        target: Worker entry point; the last two arguments are queue objects injected by this function.
+        args: Positional arguments passed to the worker before the queues.
+        on_log: Log callback; when ``"__DONE__"`` is received, only marks completion without invoking the callback.
+        poll_interval: Queue polling interval (seconds).
+        join_timeout: ``Process.join`` timeout (seconds).
+
+    Returns:
+        List of all objects received on ``result_queue``.
     """
     ctx = multiprocessing.get_context("spawn")
     log_queue = ctx.Queue()
@@ -97,7 +118,10 @@ def _plot_worker_entry(
     log_queue,
     result_queue,
 ) -> None:
-    """子进程入口（模块级，便于 multiprocessing spawn 序列化）。"""
+    """子进程入口（模块级，便于 multiprocessing spawn 序列化）。
+
+    [EN] Subprocess entry point (module-level for easy multiprocessing spawn serialization).
+    """
     target, args, kwargs = payload
     target(*args, log_queue, result_queue, **kwargs)
 
@@ -109,7 +133,10 @@ def run_plot_worker(
     kwargs: Optional[dict[str, Any]] = None,
     on_log: Optional[Callable[[str], None]] = None,
 ) -> Any:
-    """运行绘图 worker 并返回 ``result_queue`` 上最后一个对象（若有）。"""
+    """运行绘图 worker 并返回 ``result_queue`` 上最后一个对象（若有）。
+
+    [EN] Run a plotting worker and return the last object on ``result_queue`` (if any).
+    """
     results = run_subprocess_worker(
         _plot_worker_entry,
         ((target, args, kwargs or {}),),

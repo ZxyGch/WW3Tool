@@ -6,13 +6,22 @@
 
 Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
 
-WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可以完成基本的 WAVEWATCH III 流程化运行。
+使用 WW3Tool 可以完成基本的 WAVEWATCH III 流程化运行，包括以下功能：
 
-本软件包括以下功能：
+1. 支持多种强迫场：
 
-1. 支持多种强迫场：风场 (ERA5，CFSR，CCMP)、流场 (Copernicus)、水位场(Copernicus)、海冰场(Copernicus)，包含对强迫场的自动修复功能 （纬度排序、时间修复、变量修复）
+- 风场 (ERA5，CFSR，CCMP)
+- 流场 (Copernicus)
+- 水位场(Copernicus)
+- 海冰场(Copernicus)
 
-2. gridgen，pygridgen 结构化矩形网格生成，JIGSAW 三角形非结构化网格生成，SMCGTools SMC 网格生成，对于结构化矩形网格支持最多两层的嵌套网格模式
+程序包含对强迫场的变量的自动修复功能 （纬度排序、时间修复、变量修复）
+
+2. 支持三种类型的网格: 结构化矩形网格、三角形非结构化网格、SMC 网格
+
+- gridgen 结构化矩形网格生成，对于结构化矩形网格支持最多两层的嵌套网格模式。
+- JIGSAW 三角形非结构化网格生成
+- SMCGTools 的 SMC 网格生成
 
 3. 支持区域计算、二维谱点计算、航迹计算
 
@@ -22,11 +31,11 @@ WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可
 
 6. 波高图、波高视频、等高线图、二维谱图、JASON3 卫星轨迹图、二维谱图
 
-这个软件可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码）
-
-软件支持中英文切换，交互式终端可通过 `--lang en_US` 切换到英文，默认为中文。
+WW3Tool 可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码），软件支持中英文切换，交互式终端可通过 `--lang en_US` 切换到英文，默认为中文。
 
 实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
+
+---
 
 我本科不是海洋科学的，现在是研究生一年级，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 [atomgoto@gmail.com](mailto:atomgoto@gmail.com) 或在 issue 中提出意见
 
@@ -36,66 +45,63 @@ WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可
 
 ## 快速开始
 
-```sh
-python3 runDesktop.py
-```
-
-如果还有什么安装失败或缺失的包，请手动安装
-
-
-
-### 交互式命令行
-
-如果更习惯终端操作，可以使用 `runInteractive.py` 进入交互式 REPL 环境：
+`run.py` 是整个软件的唯一入口，通过它提供三种调用方式：
 
 ```sh
-python3 runInteractive.py
-python3 runInteractive.py /path/to/workdir/params.yml
-python3 runInteractive.py --lang en_US
+python3 run.py                 # 1. 图形界面 (默认)
+python3 run.py shell           # 2. 交互式终端
+python3 run.py run params.yml  # 3. 无界面 CLI (一次性子命令)
 ```
 
+如果还有什么安装失败或缺失的包，请手动安装。
 
 
-### 指令化预处理流程
 
-新架构代码从 `src` 开始维护。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `src/run.py`：
+### 1. 图形界面
+
+![](public/resource/README-media/2026-03-29%2012.28.47.png)
+
 
 ```sh
-python3 src/run.py
-python3 src/run.py create-workdir myRun
-python3 src/run.py validate /path/to/workdir/params.yml
-python3 src/run.py prepare-forcing /path/to/workdir/params.yml
-python3 src/run.py generate-grid /path/to/workdir/params.yml
-python3 src/run.py prepare-ww3 /path/to/workdir/params.yml
-python3 src/run.py run /path/to/workdir/params.yml
-python3 src/run.py upload /path/to/workdir/params.yml --confirm
-python3 src/run.py submit /path/to/workdir/params.yml
-python3 src/run.py check-status /path/to/workdir/params.yml
-python3 src/run.py download-results /path/to/workdir/params.yml
-python3 src/run.py plot-wave-maps /path/to/workdir/params.yml
-python3 src/run.py plot-jason3 /path/to/workdir/params.yml
-python3 src/run.py plot-ndbc /path/to/workdir/params.yml --download
+python3 run.py
 ```
 
-单独执行 `python3 src/run.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。CLI 不允许直接使用项目根目录的 `params.yml`（那是模板），必须先用 `create-workdir` 创建工作目录，然后对工作目录的 `params.yml` 执行操作。也可以使用 `python3 src/run.py print-example` 单独输出模板内容。
+不带任何参数即启动图形界面，是最常用的方式。
 
-命令按功能分为四组：预处理（`create-workdir`、`validate`、`prepare-forcing`、`generate-grid`、`prepare-ww3`、`run-pre-workflow`）、后处理/绘图（`plot-wave-maps`、`plot-spectrum`、`plot-jason3`、`plot-jason3-swh`、`download-jason3`、`plot-ndbc`）、远程运维（`connect-test`、`ssh`、`list-files`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`）、辅助（`print-example`、`config`、`print`）。
 
-`prepare-forcing` 只执行第一步强迫场准备，包括复制/移动、变量识别、风场标准化和组合强迫场自动关联。`generate-grid` 单独执行网格生成，支持 `--no-cache` 跳过缓存。`prepare-ww3` 只生成 WW3 namelist 文件（ww3_grid.nml、ww3_shel.nml、ww3_prnc.nml 等），不会重跑强迫场和网格，适合在已经准备好强迫场和网格之后单独调整 WW3 配置。
 
-指令入口直接调用 `src/workflows`。桌面入口的预处理主页同样调用 workflows，当前覆盖强迫场准备、参数校验和预处理文件生成；其余界面动作会按步骤迁移到相同逻辑。
+### 2. 交互式命令行
 
-显式使用 `run` 会读取工作目录的 YAML 参数文件，完成强迫场准备、网格生成、计算模式产物和 WW3 配置文件生成，但不会自动执行 WAVEWATCH III、上传服务器或绘图。如果工作目录中已经有网格文件，可以使用 `--skip-grid` 跳过网格生成：
+![](public/resource/README-media/截屏2026-06-13%2016.30.04.png)
+
+如果更习惯终端操作，可以用 `run.py shell` 进入交互式 REPL 环境，加载配置后反复执行各步骤：
 
 ```sh
-python3 src/run.py run /path/to/workdir/params.yml --skip-grid
+python3 run.py shell
+python3 run.py shell /path/to/workdir/params.yml
+python3 run.py shell --lang en_US
 ```
 
-`params.yml` 中的 `grid` 参数按网格类型分组：`structured` 包含水深、海岸线精度及 pygridgen 阈值；`smc` 包含水深类型、细化层数、物理和边界参数；`unstructured` 包含三角网格尺度、梯度、深水阈值及区域边界细分参数。`grid_type: nested` 时可显式填写 `inner`，也可以省略 `inner` 并由 `nested_contraction_coefficient` 自动生成内网格区域。
 
-`params.yml` 顶部的 `presets` 预存可用选项，供脚本校验并供后续桌面界面复用，包括输出字段方案、ST 路径、水深、海岸线精度和文件分割。代码本身不预设任何 ST 版本，所有 ST 预设完全由 `params.yml` 中的 `presets.st` 定义，以名称映射服务器可执行目录路径，例如 `ST2: /public/home/.../model/exe`，随后由 `ww3.st: ST2` 选择使用哪条路径。`presets.output_scheme` 中完整定义字段数组，例如 `standard: [HS, DIR, FP, T02, WND]`，实际运行时通过 `ww3.output_scheme: standard` 选择方案。
 
-`ww3_grid` 直接使用 `ww3_grid.nml` 键名，例如 `SPECTRUM%XFR`、`TIMESTEPS%DTMAX`、`GRID%ZLIM`，用于配置频谱离散、数值积分步长和近岸深度参数。嵌套网格还可以通过 `ww3.inner_compute_precision` 与 `ww3.inner_output_precision` 单独配置内网格输出；`slurm.server_script_path` 可选用自定义 `server.sh` 模板。
+### 3. 无界面 CLI 
+
+每个步骤都可作为一次性子命令直接调用，读取工作目录的 `params.yml` 后执行并退出：
+
+```sh
+python3 run.py validate params.yml          # 校验配置
+python3 run.py prepare-forcing params.yml   # 准备强迫场
+python3 run.py generate-grid params.yml     # 生成网格
+python3 run.py run params.yml               # 完整预处理
+python3 run.py plot params.yml              # 绘图
+```
+
+这种"一条命令一个步骤、无需人工交互"的形式特别适合脚本自动化与 AI（如 Claude Code 等）调用：AI 可以直接发起这些命令、读取标准输出与退出码来判断每一步是否成功，无需操作图形界面。
+
+完整子命令列表见 `python3 run.py --help`。
+
+
+
 
 
 
@@ -117,6 +123,10 @@ python3 src/run.py run /path/to/workdir/params.yml --skip-grid
 
 
 ## 功能实现细节
+
+### 整体架构 
+
+
 
 ### 创建工作目录
 
@@ -165,7 +175,7 @@ python3 src/run.py run /path/to/workdir/params.yml --skip-grid
 
 reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它们是网格生成的必要数据，如果没有 reference_data，将无法生成网格文件。
 
-如果 WW3Tool/WW3-Grid-Generator/reference_data 没有找到这些数据文件，那么在第二步生成网格时会弹出一个下载窗口
+如果 WW3Tool/meshgen/reference_data 没有找到这些数据文件，那么在第二步生成网格时会弹出一个下载窗口
 
 ![](public/resource/README-media/2026-03-29%2012.52.20.png)
 
@@ -173,7 +183,7 @@ reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它�
 
 ![](public/resource/README-media/2026-03-29%2013.04.16.png)
 
-若 GitHub下载过慢或失败，可从 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48) 手动下载，解压到 WW3Tool/WW3-Grid-Generator/reference_data
+若 GitHub下载过慢或失败，可从 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48) 手动下载，解压到 WW3Tool/meshgen/reference_data
 
 
 
@@ -188,7 +198,7 @@ reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它�
 
 ![](public/resource/README-media/2026-03-29%2013.28.40.png)
 
-点击生成网格，会调用 WW3-Grid-Generator/structured_generator/pygridgen 生成网格文件到工作目录.
+点击生成网格，会调用 meshgen/structured_generator/pygridgen 生成网格文件到工作目录.
 
 DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
@@ -217,7 +227,7 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
    - 内容：供 WAVEWATCH III `ww3_grid` 使用的网格描述
    - 包含：网格尺寸、分辨率、范围等信息
 
-   生成的网格会自动缓存到 WW3Tool/WW3-Grid-Generator/cache
+   生成的网格会自动缓存到 WW3Tool/meshgen/cache
 
 
    
@@ -253,7 +263,7 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 #### 网格缓存
 
-为了避免无意义的计算，每次生成的网格我们都会在 WW3Tool/WW3-Grid-Generator/cache 中缓存。
+为了避免无意义的计算，每次生成的网格我们都会在 WW3Tool/meshgen/cache 中缓存。
 
 根据网格的生成参数生成 key，作为文件夹的名称，这样每次生成网格的时候会先遍历缓存，如果已经存在缓存了，则直接使用缓存的网格文件。
 
@@ -274,7 +284,7 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
       10.0,
       30.0
     ],
-    "ref_dir": "/Users/zxy/ocean/WW3Tool/WW3-Grid-Generator/reference_data",
+    "ref_dir": "/Users/zxy/ocean/WW3Tool/meshgen/reference_data",
     "bathymetry": "GEBCO",
     "coastline_precision": "full"
   }
@@ -1005,18 +1015,6 @@ sinfo
 #### 卫星拟合图
 
 ![](public/resource/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
-
-
-
-### 命令行绘图与远程操作
-
-上面介绍的绘图和服务器操作都可以通过 CLI 完成，不需要打开桌面界面。
-
-绘图相关命令：`plot-wave-maps` 绘制波高图（加 `--contour` 使用等高线图），`plot-spectrum` 绘制二维谱图（`--mode normalized/actual`，`--station 3` 指定站点），`plot-jason3` 匹配并绘制 JASON3 卫星数据，`plot-jason3-swh` 绘制卫星 SWH 轨迹图，`download-jason3` 从 NOAA 下载 JASON3 L2 数据，`plot-ndbc` 匹配 NDBC 浮标数据（加 `--download` 自动下载）。
-
-远程操作命令：`connect-test` 测试 SSH 连接，`upload` 上传工作目录（需 `--confirm`），`submit` 提交 Slurm 计算任务（可用 `--script` 指定自定义脚本），`check-status` 检查任务状态，`queue-status` 查看 Slurm 队列，`download-results` 下载结果文件（嵌套模式加 `--nested` 只下载 fine），`download-log` 下载运行日志，`clear-remote` 清空远程工作目录（需 `--confirm`），`cancel-job` 取消 Slurm 任务。
-
-交互式终端还额外提供 `ssh` 命令，可以直接打开 SSH 终端连接到服务器，以及 `config` 命令查看当前配置摘要。
 
 
 

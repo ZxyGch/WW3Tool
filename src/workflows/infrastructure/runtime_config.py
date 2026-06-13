@@ -111,12 +111,13 @@ def get_project_root():
     return PROJECT_ROOT
 
 
-def get_project_gridgen_path():
-    """返回 WW3-Grid-Generator 根目录（固定为项目根下子目录）。
+def get_project_meshgen_path():
+    """返回 meshgen 根目录（固定为项目根下子目录）。
 
-    不从 ``config.json`` 或环境变量 ``GRIDGEN_PATH`` 覆盖，保证网格工具版本与仓库一致。
+    该目录汇集结构化/SMC/非结构三类网格生成后端及其 reference_data、cache。
+    不从 ``config.json`` 或环境变量覆盖，保证网格工具版本与仓库一致。
     """
-    return os.path.normpath(os.path.join(PROJECT_ROOT, "WW3-Grid-Generator"))
+    return os.path.normpath(os.path.join(PROJECT_ROOT, "meshgen"))
 
 
 # 非结构网格：设置页与 Step2 使用的「扁平」键（与 grid.json 互转）；持久化仅使用 unstructured_generator/grid.json
@@ -160,7 +161,7 @@ UNSTRUCTURED_GRID_SCALING_DEFAULTS = {
 
 def get_unstructured_grid_json_path():
     return os.path.normpath(
-        os.path.join(get_project_gridgen_path(), "unstructured_generator", "grid.json")
+        os.path.join(get_project_meshgen_path(), "unstructured_generator", "grid.json")
     )
 
 
@@ -171,7 +172,7 @@ def get_unst_msh_gen_config_path():
 
 def default_unst_dem_file_relpath():
     """reference_data 中 RTopo DEM 的相对路径，相对于 unstructured_generator/（与 grid.json 同目录）。"""
-    g = get_project_gridgen_path()
+    g = get_project_meshgen_path()
     ug = os.path.normpath(os.path.join(g, "unstructured_generator"))
     dem_abs = os.path.join(g, "reference_data", "RTopo_2_0_4_GEBCO_v2024_60sec_pixel.nc")
     try:
@@ -432,9 +433,9 @@ def smc_bathymetry_combo_index_from_path(bathy_value) -> int:
 
 
 def get_smc_grid_json_path():
-    """WW3-Grid-Generator/smc_generator/grid.json 绝对路径。"""
+    """meshgen/smc_generator/grid.json 绝对路径。"""
     return os.path.normpath(
-        os.path.join(get_project_gridgen_path(), "smc_generator", "grid.json")
+        os.path.join(get_project_meshgen_path(), "smc_generator", "grid.json")
     )
 
 

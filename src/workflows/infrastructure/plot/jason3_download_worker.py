@@ -1,12 +1,22 @@
 """Jason-3 卫星数据下载 Worker — 从 NCEI 远程目录检索并下载 Jason-3 L2 产品。
 
+[EN] Jason-3 satellite data download Worker — retrieve and download Jason-3 L2 products from NCEI remote directories.
+
 在独立进程（或同步 ImmediateQueue 桥接）中执行，通过 ``log_queue`` 与
 ``result_queue`` 与调用方通信。负责：
 1. 按时间范围扫描远程 GDR / IGDR / OGDR 三级产品目录
 2. 构建文件索引（带本地 JSON 缓存）
 3. 跳过本地已存在文件，增量下载 NetCDF 产品
 
+[EN] Runs in a separate process (or synchronous ImmediateQueue bridge), communicating with
+the caller via ``log_queue`` and ``result_queue``. Responsibilities:
+1. Scan remote GDR / IGDR / OGDR product directories by time range
+2. Build file index (with local JSON cache)
+3. Skip locally existing files and incrementally download NetCDF products
+
 依赖：requests, urllib3（重试策略）；不依赖 PyQt 或 src 包。
+
+[EN] Dependencies: requests, urllib3 (retry strategy); no dependency on PyQt or src package.
 """
 
 import hashlib
@@ -26,7 +36,7 @@ from urllib3.util.retry import Retry
 from ...support.translations import tr
 
 # ---------------------------------------------------------------------------
-# 常量
+# 常量 / Constants
 # ---------------------------------------------------------------------------
 
 _JASON3_TIME_PATTERN = re.compile(r"(\d{8}_\d{6})_(\d{8}_\d{6})")
@@ -46,11 +56,14 @@ _JASON3_SOURCE_SPECS = (
 
 
 # ---------------------------------------------------------------------------
-# 辅助函数
+# 辅助函数 / Helper functions
 # ---------------------------------------------------------------------------
 
 def _queue_log(log_queue, message, update=False):
-    """向日志队列发送消息；``update=True`` 时用 ``__UPDATE__`` 前缀。"""
+    """向日志队列发送消息；``update=True`` 时用 ``__UPDATE__`` 前缀。
+
+    [EN] Send a message to the log queue; use ``__UPDATE__`` prefix when ``update=True``.
+    """
     try:
         if update:
             log_queue.put(("__UPDATE__", message))
@@ -61,7 +74,10 @@ def _queue_log(log_queue, message, update=False):
 
 
 def _parse_time_range(time_range):
-    """将 ``[start_str, end_str]``（YYYYMMDD）解析为 datetime 对。"""
+    """将 ``[start_str, end_str]``（YYYYMMDD）解析为 datetime 对。
+
+    [EN] Parse ``[start_str, end_str]`` (YYYYMMDD) into a datetime pair.
+    """
     start_str, end_str = time_range
     start_dt = datetime.strptime(start_str + "_000000", "%Y%m%d_%H%M%S")
     end_dt = datetime.strptime(end_str + "_235959", "%Y%m%d_%H%M%S")
@@ -69,7 +85,10 @@ def _parse_time_range(time_range):
 
 
 def _parse_filename_time_range(filename):
-    """从文件名中提取 ``YYYYMMDD_HHMMSS_YYYYMMDD_HHMMSS`` 时间范围。"""
+    """从文件名中提取 ``YYYYMMDD_HHMMSS_YYYYMMDD_HHMMSS`` 时间范围。
+
+    [EN] Extract the ``YYYYMMDD_HHMMSS_YYYYMMDD_HHMMSS`` time range from the filename.
+    """
     match = _JASON3_TIME_PATTERN.search(filename)
     if not match:
         return None
@@ -80,12 +99,18 @@ def _parse_filename_time_range(filename):
 
 
 def _ranges_overlap(start_a, end_a, start_b, end_b):
-    """判断两个闭区间是否有重叠。"""
+    """判断两个闭区间是否有重叠。
+
+    [EN] Determine whether two closed intervals overlap.
+    """
     return end_a >= start_b and start_a <= end_b
 
 
 def _iter_days(start_dt, end_dt):
-    """按天迭代 ``start_dt.date()`` 到 ``end_dt.date()``。"""
+    """按天迭代 ``start_dt.date()`` 到 ``end_dt.date()``。
+
+    [EN] Iterate day by day from ``start_dt.date()`` to ``end_dt.date()``.
+    """
     current_day = start_dt.date()
     end_day = end_dt.date()
     while current_day <= end_day:
@@ -94,7 +119,10 @@ def _iter_days(start_dt, end_dt):
 
 
 def _covered_days_for_filename(filename, start_dt, end_dt):
-    """返回文件名时间范围与请求范围重叠的天数集合。"""
+    """返回文件名时间范围与请求范围重叠的天数集合。
+
+    [EN] Return the set of days where the filename's time range overlaps the requested range.
+    """
     file_time = _parse_filename_time_range(filename)
     if not file_time:
         return set()
@@ -108,7 +136,10 @@ def _covered_days_for_filename(filename, start_dt, end_dt):
 
 
 def _extract_links(html_text):
-    """从 HTML 文本中提取所有 href 值。"""
+    """从 HTML 文本中提取所有 href 值。
+
+    [EN] Extract all href values from HTML text.
+    """
     return _HTML_HREF_PATTERN.findall(html_text)
 
 

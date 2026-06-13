@@ -9,6 +9,19 @@
 ---------
 - 输入：``PipelineConfig``（含 ``forcing.*`` 路径与处理模式）
 - 输出：``Step1Files``，记录各场类型在工作目录中的实际文件路径
+
+[EN] Step 1 forcing field preparation use case.
+
+Imports wind, current, water level, and ice NetCDF files specified in the configuration
+into the workdir, performing variable detection, path normalization, and optional wind
+field normalization for subsequent WW3 preprocessing.
+
+Pipeline step: Step 1 (forcing preparation).
+
+Input/Output
+------------
+- Input: ``PipelineConfig`` (containing ``forcing.*`` paths and processing mode)
+- Output: ``Step1Files``, recording actual file paths for each field type in the workdir
 """
 
 from __future__ import annotations
@@ -47,6 +60,21 @@ def prepare_forcing(
 
     Raises:
         RuntimeError: 任一场的导入用例返回失败时。
+
+    [EN] Import and prepare forcing field files according to configuration.
+    By default processes all four field types; when ``fields`` is provided, only updates
+    the single field type triggered by the UI.
+
+    Args:
+        config: Pipeline config with forcing source paths and ``process_mode`` / ``auto_associate``.
+        logger: Logger; import messages are written here.
+        fields: Optional, restricts the field types to process; ``None`` means all fields.
+
+    Returns:
+        Final file path mapping for each field type in the workdir.
+
+    Raises:
+        RuntimeError: When any field's import use case returns failure.
     """
     workdir = config.workdir.path
     workdir.mkdir(parents=True, exist_ok=True)
@@ -113,7 +141,10 @@ def prepare_forcing(
 
 
 def _merge(target: Step1Files, patch: Step1Files) -> Step1Files:
-    """将 patch 中的非空场路径合并到 target 副本中。"""
+    """将 patch 中的非空场路径合并到 target 副本中。
+
+    [EN] Merge non-empty field paths from patch into a copy of target.
+    """
     out = target.copy()
     for field in (ForcingField.WIND, ForcingField.CURRENT, ForcingField.LEVEL, ForcingField.ICE):
         path = patch.get(field)

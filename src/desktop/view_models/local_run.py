@@ -1,4 +1,7 @@
-"""本地运行视图模型：桥接桌面到 application.local_run，并持有可停止的执行服务。"""
+"""本地运行视图模型：桥接桌面到 application.local_run，并持有可停止的执行服务。
+
+[EN] Local run view model: bridges desktop to application.local_run and holds a stoppable execution service.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ LogCallback = Callable[[str], None]
 
 
 class LocalRunViewModel:
+    # [EN] Drive local WW3 runs and ww3_ounf/ounp/trnc, with stop support.
     """驱动本地 WW3 运行与 ww3_ounf/ounp/trnc，支持停止。"""
 
     def __init__(self, *, on_log: Optional[LogCallback] = None) -> None:

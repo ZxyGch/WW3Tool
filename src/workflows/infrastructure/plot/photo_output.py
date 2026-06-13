@@ -1,4 +1,7 @@
-"""统一绘图输出目录：``{workdir}/photo/<subdir>/``。"""
+"""统一绘图输出目录：``{workdir}/photo/<subdir>/``。
+
+[EN] Unified plotting output directory: ``{workdir}/photo/<subdir>/``.
+"""
 
 from __future__ import annotations
 
@@ -21,12 +24,18 @@ SUBDIR_NDBC_FIT = "ndbc_fit"
 
 
 def photo_subdir(base_folder: str, subdir: str) -> str:
-    """返回 ``{base_folder}/photo/{subdir}`` 路径（不创建目录）。"""
+    """返回 ``{base_folder}/photo/{subdir}`` 路径（不创建目录）。
+
+    [EN] Return the ``{base_folder}/photo/{subdir}`` path (does not create the directory).
+    """
     return os.path.join(base_folder, PHOTO_ROOT, subdir)
 
 
 def prepare_photo_subdir(base_folder: str, subdir: str) -> str:
-    """清空并重建 ``photo/<subdir>``，返回其绝对路径。"""
+    """清空并重建 ``photo/<subdir>``，返回其绝对路径。
+
+    [EN] Clear and rebuild ``photo/<subdir>``, returning its absolute path.
+    """
     path = photo_subdir(base_folder, subdir)
     if os.path.isdir(path):
         for name in os.listdir(path):
@@ -43,7 +52,10 @@ def prepare_photo_subdir(base_folder: str, subdir: str) -> str:
 
 
 def collect_photo_files(base_folder: str, subdir: str, pattern: str = "*") -> List[str]:
-    """收集 ``photo/<subdir>`` 下匹配 glob 模式的文件路径。"""
+    """收集 ``photo/<subdir>`` 下匹配 glob 模式的文件路径。
+
+    [EN] Collect file paths under ``photo/<subdir>`` matching the glob pattern.
+    """
     path = photo_subdir(base_folder, subdir)
     if not os.path.isdir(path):
         return []

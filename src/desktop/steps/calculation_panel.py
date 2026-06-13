@@ -6,6 +6,18 @@
 点位通过 :class:`PointEditDialog` 录入/编辑，或从文件导入（:mod:`point_io`），
 均按当前网格包围盒（``bounds_provider``）校验。``points()`` / ``track_points()``
 供窗口注入运行配置与（在第四步确认参数时）写回 params.yml。
+
+[EN] Step 3 panel: calculation mode selection + spectral/track point editing.
+
+Three modes: region-scale calculation (no points needed), spectral point-by-point
+calculation (spectral point table), and track mode (track table). Table styling
+follows src: headers as row 0, Qt column headers hidden, no borders, no vertical
+headers or scrollbars, height auto-fits content; buttons are "Add / Edit / Delete"
+in one row + full-width "Import". Points are entered/edited via
+:class:`PointEditDialog` or imported from files (:mod:`point_io`), all validated
+against the current grid bounding box (``bounds_provider``). ``points()`` /
+``track_points()`` are used by the window to inject run configuration and write
+back to params.yml (when confirming parameters in step 4).
 """
 
 from __future__ import annotations
@@ -38,6 +50,7 @@ from workflows.support.translations import tr
 _MODES = ["region", "spectral_point", "track"]
 _LEFT = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
 _CENTER = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+# [EN] Table headers for each table type: (title, alignment). Matches src step3_ui.
 # 每种表格的表头：(标题, 对齐)。与 src step3_ui 一致。
 _HEADER_KEYS = {
     "spectral": [("step3_longitude", "经度", _LEFT), ("step3_latitude", "纬度", _CENTER), ("step3_name", "名称", _CENTER)],
@@ -147,6 +160,7 @@ class CalculationStepPanel:
         return block, table
 
     def _set_header_row(self, table: TableWidget, kind: str) -> None:
+        # [EN] Write header cells in row 0 (matching src: hide Qt column headers, use first row as header).
         """在第 0 行写入表头单元格（与 src 一致：隐藏 Qt 列头，用首行作表头）。"""
         if table.rowCount() == 0:
             table.insertRow(0)
@@ -279,6 +293,7 @@ class CalculationStepPanel:
         return self.track_table if kind == "track" else self.spectral_table
 
     def _selected_data_row(self, kind: str) -> int | None:
+        # [EN] Currently selected data row (row 0 is header, returns ``None`` for no valid selection).
         """当前选中数据行（第 0 行为表头，返回 ``None`` 表示无有效选择）。"""
         row = self._table(kind).currentRow()
         return row if row >= 1 else None
@@ -294,6 +309,7 @@ class CalculationStepPanel:
         return max(0, self._table(kind).rowCount() - 1)
 
     def _resize_table_to_content(self, table: TableWidget) -> None:
+        # [EN] Fix table height to total row height so it fully expands with no scrollbar.
         """将表格高度固定为所有行的总高，使其完全展开、不出现滚动条。"""
         table.resizeRowsToContents()
         total = sum(table.rowHeight(r) for r in range(table.rowCount()))
@@ -326,7 +342,8 @@ class CalculationStepPanel:
 
     def _read_rows(self, table: TableWidget, *, numeric: tuple[int, ...]) -> list[list]:
         rows: list[list] = []
-        for row in range(1, table.rowCount()):  # 第 0 行是表头
+        for row in range(1, table.rowCount()):  # [EN] Row 0 is the header
+            # 第 0 行是表头
             cells: list = []
             ok = True
             for col in range(table.columnCount()):

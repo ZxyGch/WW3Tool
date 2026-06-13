@@ -8,6 +8,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QSizePolicy
 from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
+# [EN] Step 4 optional "spectrum parameters / numerical integration timestep" groups (visibility controlled by settings page toggle).
 # Step 4 可选「频谱参数 / 数值积分时间步长」分组（由设置页开关控制是否显示）。
 _SPECTRUM_SPECS = [
     ("SPECTRUM%XFR", "set_freq_inc", "频率增量："),
@@ -54,6 +55,7 @@ class WW3StepPanel:
         self._slurm_hideables: list[QWidget] = []
         group, layout = create_header_card(parent, tr("step4_title", "第四步：配置WW3运行参数"))
 
+        # [EN] ── Forcing field enabled state (read-only display, shows which fields are enabled when multiple selected)──
         # ── 强迫场启用状态（只读显示，多选时展示哪些场已启用）──
         self._forcing_widget = QWidget()
         forcing_layout = QVBoxLayout(self._forcing_widget)
@@ -77,6 +79,7 @@ class WW3StepPanel:
             label = QLabel(field_name)
             cb = CheckBox("")
             cb.setChecked(False)
+            # [EN] Compress CheckBox to keep only the checkbox part, let addStretch push it to the right
             # 压缩 CheckBox 只保留勾选框部分，让 addStretch 将其推到最右
             cb.setFixedWidth(22)
             cb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -86,6 +89,7 @@ class WW3StepPanel:
             row_widget.setVisible(False)
             forcing_layout.addWidget(row_widget)
             self._forcing_checkboxes[field_key] = {"checkbox": cb, "widget": row_widget}
+        # [EN] Wind field must be selected, force restore on click
         # 风场必须选中，点击后强制恢复
         wind_cb = self._forcing_checkboxes["wind"]["checkbox"]
         wind_cb.toggled.connect(lambda checked: wind_cb.setChecked(True))
@@ -145,6 +149,7 @@ class WW3StepPanel:
         wave_grid.addWidget(self.output_scheme_combo, 4, 1)
         layout.addLayout(wave_grid)
 
+        # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
         # 可选分组：与 wave_grid 相同，直接 addWidget/addLayout（勿再包一层 QWidget）。
         self._spectrum_fields = self._build_param_section(
             layout, section_title, tr("spectrum_config", "频谱参数"), _SPECTRUM_SPECS, self._spectrum_hideables
@@ -194,6 +199,7 @@ class WW3StepPanel:
         for grid_key, edit in {**self._spectrum_fields, **self._timesteps_fields}.items():
             edit.setText(str(params.get(grid_key, "")))
 
+        # [EN] ── Forcing field enabled state ──
         # ── 强迫场启用状态 ──
         forcing = config.forcing
         has_wind = bool(forcing.wind)
@@ -201,6 +207,7 @@ class WW3StepPanel:
         has_level = bool(forcing.level)
         has_ice = bool(forcing.ice)
         has_other = has_current or has_level or has_ice
+        # [EN] Hide when only wind field or no fields; show entire section when other fields exist
         # 只有风场或无任何场时隐藏；有其他场时显示整个区域
         self._forcing_widget.setVisible(has_other)
         for key, active in [
@@ -212,6 +219,7 @@ class WW3StepPanel:
             info = self._forcing_checkboxes[key]
             info["widget"].setVisible(active)
             info["checkbox"].setChecked(active)
+        # [EN] Wind field always checked (forced restore via toggled signal on click)
         # 风场始终勾选（点击后由 toggled 信号强制恢复）
         if has_wind:
             self._forcing_checkboxes["wind"]["checkbox"].setChecked(True)
@@ -244,6 +252,7 @@ class WW3StepPanel:
         specs: list[tuple[str, str, str]],
         hideables: list[QWidget],
     ) -> dict[str, LineEdit]:
+        # [EN] Section title + field grid (title style same as Slurm / WAVEWATCH).
         """小节标题 + 字段网格（标题样式与 Slurm / WAVEWATCH 相同）。"""
         title_widget = section_title(title)
         parent_layout.addWidget(title_widget)
@@ -267,6 +276,7 @@ class WW3StepPanel:
         return fields
 
     def set_step4_sections_visible(self, show_spectrum: bool, show_timesteps: bool) -> None:
+        # [EN] Show/hide Step 4 spectrum/timestep groups based on settings page toggle.
         """按设置页开关显隐 Step 4 的频谱/时间步分组。"""
         self._show_spectrum = bool(show_spectrum)
         self._show_timesteps = bool(show_timesteps)
@@ -278,6 +288,7 @@ class WW3StepPanel:
             self.widget.updateGeometry()
 
     def set_slurm_visible(self, visible: bool) -> None:
+        # [EN] Show/hide Slurm config based on run mode (hidden in local mode).
         """按运行方式显隐 Slurm 配置（本地模式隐藏）。"""
         for widget in self._slurm_hideables:
             widget.setVisible(visible)
@@ -295,6 +306,7 @@ class WW3StepPanel:
         return edit.text().strip() if edit is not None else ""
 
     def ww3_grid_overrides(self) -> dict[str, str]:
+        # [EN] Only when a group is visible, use its fields as ww3_grid overrides (form takes priority over config.json).
         """仅当某分组可见时，将其字段作为 ww3_grid 覆盖（表单优先于 config.json）。"""
         out: dict[str, str] = {}
         if getattr(self, "_show_spectrum", False):
@@ -338,6 +350,7 @@ class WW3StepPanel:
         self.field_labels[key] = field_label
 
     def _align_control_columns(self, *grids: QGridLayout) -> None:
+        # [EN] Align label column width for Slurm / WAVEWATCH main form only.
         """仅对齐 Slurm / WAVEWATCH 主表单的标签列宽。"""
         labels = [
             self.st_label,

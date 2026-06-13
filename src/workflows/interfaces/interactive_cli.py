@@ -12,7 +12,24 @@
 - 多语言支持（通过 tr() 翻译函数）
 
 主要消费者：
-- ``runInteractive.py``：交互式 CLI 入口脚本
+- ``run.py shell``：交互式 CLI 入口（根目录 run.py 的 shell 子命令）
+
+[EN] Interactive CLI interface (similar to Claude Code / Codex).
+
+Provides a REPL-style command-line interface with auto-completion, colored output,
+and interactive command execution. All commands are delegated to use-case functions
+in the ``application/`` layer.
+
+Main features:
+- Tab auto-completion for commands
+- Colored log output (ANSI escape codes)
+- Built-in help system
+- Support for loading/switching params.yml configurations
+- Confirmation prompts before destructive operations
+- Multi-language support (via tr() translation function)
+
+Main consumers:
+- ``run.py shell``: interactive CLI entry (the shell subcommand of root run.py)
 """
 
 from __future__ import annotations
@@ -32,6 +49,7 @@ from ..support.translations import tr
 
 
 # ANSI 颜色代码
+# [EN] ANSI color codes
 class _Colors:
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -44,14 +62,20 @@ class _Colors:
 
 
 def _color(text: str, color: str) -> str:
-    """为文本添加 ANSI 颜色（若终端不支持则原样返回）。"""
+    """为文本添加 ANSI 颜色（若终端不支持则原样返回）。
+
+    [EN] Add ANSI color to text (return as-is if terminal does not support it).
+    """
     if not sys.stdout.isatty():
         return text
     return f"{color}{text}{_Colors.RESET}"
 
 
 def _rl_prompt(text: str, color: str) -> str:
-    """为 readline 提示符添加 ANSI 颜色，用 \\001/\\002 标记不可见字符。"""
+    """为 readline 提示符添加 ANSI 颜色，用 \\001/\\002 标记不可见字符。
+
+    [EN] Add ANSI color to a readline prompt, using \\001/\\002 to mark non-visible characters.
+    """
     if not sys.stdout.isatty():
         return text
     return f"\001{color}\002{text}\001{_Colors.RESET}\002"
@@ -82,7 +106,10 @@ _HISTORY_MAX_LINES = 500
 
 
 def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
-    """构建帮助分组（运行时调用 tr()，确保语言切换后即时生效）。"""
+    """构建帮助分组（运行时调用 tr()，确保语言切换后即时生效）。
+
+    [EN] Build help groups (calls tr() at runtime so language switches take effect immediately).
+    """
     return [
         (
             tr("icli_grp_config", "配置管理"),
@@ -142,7 +169,10 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
 
 
 class InteractiveCLI(cmd.Cmd):
-    """交互式 WW3Tool CLI，提供 REPL 界面调用 workflows 用例。"""
+    """交互式 WW3Tool CLI，提供 REPL 界面调用 workflows 用例。
+
+    [EN] Interactive WW3Tool CLI providing a REPL interface for invoking workflow use cases.
+    """
 
     prompt = _rl_prompt("ww3> ", _Colors.BLUE)
 
@@ -155,7 +185,10 @@ class InteractiveCLI(cmd.Cmd):
 
     @property
     def intro(self) -> str:
-        """动态生成欢迎语，确保语言切换后即时生效。"""
+        """动态生成欢迎语，确保语言切换后即时生效。
+
+        [EN] Dynamically generate the welcome message so language switches take effect immediately.
+        """
         return (
             _bold(tr("icli_intro", "\n🌊 WW3Tool 交互式命令行界面"))
             + "\n"
@@ -164,9 +197,13 @@ class InteractiveCLI(cmd.Cmd):
         )
 
     # ── 历史记录持久化 ───────────────────────────────────────────────────
+    # [EN] ── History persistence ──────────────────────────────────────────
 
     def preloop(self) -> None:
-        """启动时加载历史命令文件。"""
+        """启动时加载历史命令文件。
+
+        [EN] Load command history file on startup.
+        """
         try:
             readline.read_history_file(str(_HISTORY_FILE))
         except FileNotFoundError:
@@ -174,32 +211,43 @@ class InteractiveCLI(cmd.Cmd):
         readline.set_history_length(_HISTORY_MAX_LINES)
 
     def postloop(self) -> None:
-        """退出时保存历史命令文件。"""
+        """退出时保存历史命令文件。
+
+        [EN] Save command history file on exit.
+        """
         try:
             readline.write_history_file(str(_HISTORY_FILE))
         except OSError:
             pass
 
     # ── 美化帮助 ──────────────────────────────────────────────────────────
+    # [EN] ── Pretty help ─────────────────────────────────────────────────
 
     def do_help(self, arg: str) -> None:
-        """显示分组彩色帮助信息。"""
+        """显示分组彩色帮助信息。
+
+        [EN] Display grouped colored help information.
+        """
         if arg:
             # 单条命令帮助：解析 docstring 并翻译描述部分
+            # [EN] Single command help: parse docstring and translate the description part
             cmd_name = arg.strip().replace("-", "_")
             method = getattr(self, f"do_{cmd_name}", None)
             if method and method.__doc__:
                 doc = method.__doc__
                 # docstring 格式: "command [opts]  — 描述"
+                # [EN] docstring format: "command [opts]  — description"
                 if " — " in doc:
                     prefix, desc = doc.split(" — ", 1)
                     # 在帮助分组中查找对应的翻译键
+                    # [EN] Look up the corresponding translation key in help groups
                     for _, cmds in _help_groups():
                         for cmd_text, translated_desc in cmds:
                             if cmd_text.split()[0].replace("-", "_") == cmd_name:
                                 print(f"{prefix} — {translated_desc}")
                                 return
                     # 未找到匹配（如 print-example），直接输出
+                    # [EN] No match found (e.g. print-example), output directly
                     print(doc)
                 else:
                     print(doc)
@@ -215,6 +263,7 @@ class InteractiveCLI(cmd.Cmd):
         groups = _help_groups()
 
         # 计算命令列最大宽度
+        # [EN] Calculate maximum width for the command column
         max_cmd_len = max(
             len(cmd_text)
             for _, cmds in groups
@@ -233,6 +282,7 @@ class InteractiveCLI(cmd.Cmd):
         print()
 
         # 典型流程提示（上下分叉：本地 vs 远程）
+        # [EN] Typical workflow hint (fork: local vs remote)
         g = _color
         print(f"  {_bold(_color(tr('icli_workflow', '典型流程'), _Colors.YELLOW))}")
         print(f"    {g('create-workdir', _Colors.GREEN)} → {g('prepare-forcing', _Colors.GREEN)} → {g('generate-grid', _Colors.GREEN)} → {g('run-pre-workflow', _Colors.GREEN)} → {g('plot-wave-maps', _Colors.GREEN)}")
@@ -240,24 +290,34 @@ class InteractiveCLI(cmd.Cmd):
         print()
 
     def parseline(self, line: str) -> tuple[str | None, str | None, str]:
-        """重写行解析：支持含 '-' 的命令名（如 prepare-forcing → do_prepare_forcing）。"""
+        """重写行解析：支持含 '-' 的命令名（如 prepare-forcing → do_prepare_forcing）。
+
+        [EN] Override line parsing: support command names containing '-' (e.g. prepare-forcing -> do_prepare_forcing).
+        """
         stripped = line.strip()
         if not stripped:
             return None, None, line
         # 提取第一个 token（命令名），将其中的 '-' 替换为 '_'
+        # [EN] Extract the first token (command name), replacing '-' with '_'
         parts = stripped.split(None, 1)
         cmd_name = parts[0].replace("-", "_")
         arg = parts[1] if len(parts) > 1 else ""
         # 检查是否对应已注册的 do_xxx 方法
+        # [EN] Check if it corresponds to a registered do_xxx method
         if hasattr(self, f"do_{cmd_name}"):
             return cmd_name, arg, line
         # 回退到默认解析（处理 help、? 等内置命令）
+        # [EN] Fall back to default parsing (handle built-in commands like help, ?)
         return super().parseline(line)
 
     def _load_config(self, path: str) -> bool:
-        """加载或重新加载 params.yml 配置文件。"""
+        """加载或重新加载 params.yml 配置文件。
+
+        [EN] Load or reload a params.yml configuration file.
+        """
         try:
             # 去除用户可能输入的引号
+            # [EN] Strip any quotes the user may have entered
             path = path.strip().strip("'\"")
             source = Path(path).expanduser().resolve()
             self._config = load_pipeline_config(str(source), validation_stage="plot")
@@ -272,27 +332,40 @@ class InteractiveCLI(cmd.Cmd):
             return False
 
     def _require_config(self) -> bool:
-        """检查是否已加载配置，未加载时提示用户。"""
+        """检查是否已加载配置，未加载时提示用户。
+
+        [EN] Check if a configuration has been loaded; prompt the user if not.
+        """
         if self._config is None:
             print(_warn(tr("icli_no_config", "⚠ 未加载配置文件，请先使用 'load <params.yml>' 加载参数")))
             return False
         return True
 
     def _log_callback(self, message: str) -> None:
-        """日志回调函数，实时输出到终端。"""
+        """日志回调函数，实时输出到终端。
+
+        [EN] Log callback function, outputs in real time to the terminal.
+        """
         print(message)
 
     # ── 配置管理命令 ─────────────────────────────────────────────────────
+    # [EN] ── Configuration management commands ───────────────────────────
 
     def do_load(self, arg: str) -> None:
-        """load <params.yml>  — 加载参数配置文件"""
+        """load <params.yml>  — 加载参数配置文件
+
+        [EN] load <params.yml>  — Load a parameter configuration file
+        """
         if not arg.strip():
             print(_warn(tr("icli_usage_load", "用法：load <params.yml 路径>")))
             return
         self._load_config(arg.strip())
 
     def do_config(self, arg: str) -> None:
-        """config  — 显示当前配置摘要"""
+        """config  — 显示当前配置摘要
+
+        [EN] config  — Display current configuration summary
+        """
         if not self._require_config():
             return
         cfg = self._config
@@ -430,7 +503,10 @@ class InteractiveCLI(cmd.Cmd):
         print()
 
     def do_print(self, arg: str) -> None:
-        """print  — 输出当前 params.yml 内容"""
+        """print  — 输出当前 params.yml 内容
+
+        [EN] print  — Output current params.yml content
+        """
         if not self._require_config():
             return
         try:
@@ -440,13 +516,17 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_create_workdir(self, arg: str) -> None:
-        """create-workdir <name>  — 从模板创建新工作目录"""
+        """create-workdir <name>  — 从模板创建新工作目录
+
+        [EN] create-workdir <name>  — Create a new working directory from template
+        """
         name = arg.strip().strip("'\"")
         if not name:
             print(_warn(tr("icli_usage_create_workdir", "用法：create-workdir <目录名称>")))
             return
 
         # 查找根 params.yml 模板
+        # [EN] Look for the root params.yml template
         root = Path(__file__).resolve().parents[3]
         root_params = root / "params.yml"
         if not root_params.is_file():
@@ -463,6 +543,7 @@ class InteractiveCLI(cmd.Cmd):
         shutil.copy2(str(root_params), str(target))
 
         # 自动将 workdir.path 改为新目录路径
+        # [EN] Automatically update workdir.path to the new directory path
         import re
         content = target.read_text(encoding="utf-8")
         content = re.sub(
@@ -481,9 +562,13 @@ class InteractiveCLI(cmd.Cmd):
         return []
 
     # ── 预处理命令 ─────────────────────────────────────────────────────────
+    # [EN] ── Preprocessing commands ───────────────────────────────────────
 
     def do_validate(self, arg: str) -> None:
-        """validate [--stage forcing|grid|full]  — 校验当前配置文件"""
+        """validate [--stage forcing|grid|full]  — 校验当前配置文件
+
+        [EN] validate [--stage forcing|grid|full]  — Validate current configuration file
+        """
         if not self._require_config():
             return
         stage = "full"
@@ -501,7 +586,10 @@ class InteractiveCLI(cmd.Cmd):
         return self._complete_options(text, ["--stage", "--stage forcing", "--stage grid", "--stage full"])
 
     def do_prepare_forcing(self, arg: str) -> None:
-        """prepare-forcing  — 准备强迫场（Step 1）"""
+        """prepare-forcing  — 准备强迫场（Step 1）
+
+        [EN] prepare-forcing  — Prepare forcing fields (Step 1)
+        """
         if not self._require_config():
             return
         try:
@@ -513,7 +601,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_generate_grid(self, arg: str) -> None:
-        """generate-grid [--no-cache]  — 生成网格（Step 2）"""
+        """generate-grid [--no-cache]  — 生成网格（Step 2）
+
+        [EN] generate-grid [--no-cache]  — Generate grid (Step 2)
+        """
         if not self._require_config():
             return
         use_cache = "--no-cache" not in arg
@@ -526,7 +617,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_run_pre_workflow(self, arg: str) -> None:
-        """run-pre-workflow [--skip-grid] [--no-cache]  — 完整预处理流程"""
+        """run-pre-workflow [--skip-grid] [--no-cache]  — 完整预处理流程
+
+        [EN] run-pre-workflow [--skip-grid] [--no-cache]  — Full preprocessing pipeline
+        """
         if not self._require_config():
             return
         skip_grid = "--skip-grid" in arg
@@ -545,7 +639,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_prepare_ww3(self, arg: str) -> None:
-        """prepare-ww3  — 仅生成 WW3 namelist（不重跑强迫场和网格）"""
+        """prepare-ww3  — 仅生成 WW3 namelist（不重跑强迫场和网格）
+
+        [EN] prepare-ww3  — Generate WW3 namelist only (without re-running forcing and grid)
+        """
         if not self._require_config():
             return
         try:
@@ -564,7 +661,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_plot_wave_maps(self, arg: str) -> None:
-        """plot-wave-maps [--contour]  — 生成波高填色图或等值线图"""
+        """plot-wave-maps [--contour]  — 生成波高填色图或等值线图
+
+        [EN] plot-wave-maps [--contour]  — Generate wave height filled-color or contour maps
+        """
         if not self._require_config():
             return
         contour = "--contour" in arg
@@ -580,7 +680,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_plot_spectrum(self, arg: str) -> None:
-        """plot-spectrum [--mode first|all|selected] [--station N]  — 生成方向谱图"""
+        """plot-spectrum [--mode first|all|selected] [--station N]  — 生成方向谱图
+
+        [EN] plot-spectrum [--mode first|all|selected] [--station N]  — Generate directional spectrum plots
+        """
         if not self._require_config():
             return
         mode = "all"
@@ -603,7 +706,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_plot_jason3(self, arg: str) -> None:
-        """plot-jason3  — WW3 结果与 Jason-3 卫星数据匹配"""
+        """plot-jason3  — WW3 结果与 Jason-3 卫星数据匹配
+
+        [EN] plot-jason3  — Match WW3 output with Jason-3 satellite data
+        """
         if not self._require_config():
             return
         try:
@@ -618,7 +724,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_plot_jason3_swh(self, arg: str) -> None:
-        """plot-jason3-swh  — 绘制 Jason-3 卫星 SWH / 轨迹图"""
+        """plot-jason3-swh  — 绘制 Jason-3 卫星 SWH / 轨迹图
+
+        [EN] plot-jason3-swh  — Plot Jason-3 satellite SWH / track maps
+        """
         if not self._require_config():
             return
         try:
@@ -633,7 +742,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_download_jason3(self, arg: str) -> None:
-        """download-jason3  — 下载 Jason-3 L2 数据"""
+        """download-jason3  — 下载 Jason-3 L2 数据
+
+        [EN] download-jason3  — Download Jason-3 L2 data
+        """
         if not self._require_config():
             return
         try:
@@ -648,7 +760,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_plot_ndbc(self, arg: str) -> None:
-        """plot-ndbc [--download]  — WW3 结果与 NDBC 浮标匹配或下载数据"""
+        """plot-ndbc [--download]  — WW3 结果与 NDBC 浮标匹配或下载数据
+
+        [EN] plot-ndbc [--download]  — Match WW3 output with NDBC buoys or download data
+        """
         if not self._require_config():
             return
         download = "--download" in arg
@@ -664,9 +779,13 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     # ── 远程运维命令 ───────────────────────────────────────────────────────
+    # [EN] ── Remote operations commands ────────────────────────────────────
 
     def do_connect_test(self, arg: str) -> None:
-        """connect-test  — 测试 SSH 连接"""
+        """connect-test  — 测试 SSH 连接
+
+        [EN] connect-test  — Test SSH connection
+        """
         if not self._require_config():
             return
         try:
@@ -681,7 +800,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_ssh(self, arg: str) -> None:
-        """ssh  — 打开交互式 SSH 终端"""
+        """ssh  — 打开交互式 SSH 终端
+
+        [EN] ssh  — Open an interactive SSH terminal
+        """
         if not self._require_config():
             return
         server = self._config.server
@@ -690,6 +812,7 @@ class InteractiveCLI(cmd.Cmd):
             return
 
         # 优先使用系统 ssh 命令（完整交互体验）
+        # [EN] Prefer system ssh command (full interactive experience)
         ssh_cmd = ["ssh", "-p", str(server.port)]
         if server.key_file:
             ssh_cmd.extend(["-i", str(server.key_file)])
@@ -701,16 +824,19 @@ class InteractiveCLI(cmd.Cmd):
 
         try:
             # 使用系统 ssh 客户端（支持完整交互）
+            # [EN] Use system ssh client (supports full interaction)
             ret = subprocess.call(ssh_cmd)
             if ret != 0:
                 print()
                 print(_warn(tr("icli_ssh_returned", "⚠ SSH 会话已结束，返回码：{}").format(ret)))
                 # 如果系统 ssh 失败且配置了密码，尝试 paramiko 回退
+                # [EN] If system ssh fails and password is configured, try paramiko fallback
                 if server.password and ret != 0:
                     print(_info(tr("icli_ssh_paramiko_fallback", "  尝试使用 paramiko 回退连接...")))
                     self._ssh_via_paramiko()
         except FileNotFoundError:
             # 系统 ssh 命令不存在，回退到 paramiko
+            # [EN] System ssh command not found, fall back to paramiko
             print(_warn(tr("icli_no_ssh_binary", "⚠ 未找到系统 ssh 命令，使用 paramiko 回退")))
             self._ssh_via_paramiko()
         except KeyboardInterrupt:
@@ -718,7 +844,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_ssh_interrupted", "  SSH 会话已中断")))
 
     def _ssh_via_paramiko(self) -> None:
-        """使用 paramiko invoke_shell 提供交互式 SSH 终端（回退方案）。"""
+        """使用 paramiko invoke_shell 提供交互式 SSH 终端（回退方案）。
+
+        [EN] Provide an interactive SSH terminal using paramiko invoke_shell (fallback).
+        """
         try:
             from ..infrastructure.remote.ssh_client import SshClient
         except ImportError:
@@ -734,6 +863,7 @@ class InteractiveCLI(cmd.Cmd):
             print()
 
             # 获取 paramiko SSH client 并打开交互式 shell
+            # [EN] Get the paramiko SSH client and open an interactive shell
             ssh = client._ssh
             channel = ssh.invoke_shell()
             channel.settimeout(0.1)
@@ -741,6 +871,7 @@ class InteractiveCLI(cmd.Cmd):
             import select
             while True:
                 # 检查是否有数据可读
+                # [EN] Check if there is data available to read
                 r, _, _ = select.select([channel, sys.stdin], [], [], 0.1)
                 if channel in r:
                     try:
@@ -767,7 +898,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_ssh_closed", "  SSH 终端已关闭")))
 
     def do_list_files(self, arg: str) -> None:
-        """list-files  — 列出远程工作目录文件"""
+        """list-files  — 列出远程工作目录文件
+
+        [EN] list-files  — List files in the remote working directory
+        """
         if not self._require_config():
             return
         try:
@@ -780,7 +914,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_upload(self, arg: str) -> None:
-        """upload --confirm  — 上传本地工作目录到远程（需 --confirm）"""
+        """upload --confirm  — 上传本地工作目录到远程（需 --confirm）
+
+        [EN] upload --confirm  — Upload local working directory to remote (requires --confirm)
+        """
         if not self._require_config():
             return
         if "--confirm" not in arg:
@@ -799,7 +936,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_submit(self, arg: str) -> None:
-        """submit [--script server.sh]  — 在远程执行提交脚本"""
+        """submit [--script server.sh]  — 在远程执行提交脚本
+
+        [EN] submit [--script server.sh]  — Execute a submit script on the remote server
+        """
         if not self._require_config():
             return
         script = "server.sh"
@@ -819,7 +959,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_check_status(self, arg: str) -> None:
-        """check-status  — 检查远程任务状态"""
+        """check-status  — 检查远程任务状态
+
+        [EN] check-status  — Check remote task status
+        """
         if not self._require_config():
             return
         try:
@@ -832,7 +975,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_queue_status(self, arg: str) -> None:
-        """queue-status  — 查看 SLURM 队列"""
+        """queue-status  — 查看 SLURM 队列
+
+        [EN] queue-status  — View SLURM queue
+        """
         if not self._require_config():
             return
         try:
@@ -845,7 +991,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_download_results(self, arg: str) -> None:
-        """download-results [--nested]  — 下载远程 WW3 结果"""
+        """download-results [--nested]  — 下载远程 WW3 结果
+
+        [EN] download-results [--nested]  — Download remote WW3 results
+        """
         if not self._require_config():
             return
         nested = "--nested" in arg
@@ -861,7 +1010,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_download_log(self, arg: str) -> None:
-        """download-log  — 下载远程日志文件"""
+        """download-log  — 下载远程日志文件
+
+        [EN] download-log  — Download remote log files
+        """
         if not self._require_config():
             return
         try:
@@ -876,7 +1028,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_clear_remote(self, arg: str) -> None:
-        """clear-remote --confirm  — 清空远程工作目录（需 --confirm）"""
+        """clear-remote --confirm  — 清空远程工作目录（需 --confirm）
+
+        [EN] clear-remote --confirm  — Clear remote working directory (requires --confirm)
+        """
         if not self._require_config():
             return
         if "--confirm" not in arg:
@@ -895,7 +1050,10 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     def do_cancel_job(self, arg: str) -> None:
-        """cancel-job <job_id>  — 取消 SLURM 任务"""
+        """cancel-job <job_id>  — 取消 SLURM 任务
+
+        [EN] cancel-job <job_id>  — Cancel a SLURM job
+        """
         if not self._require_config():
             return
         job_id = arg.strip()
@@ -914,34 +1072,52 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
     # ── 辅助命令 ───────────────────────────────────────────────────────────
+    # [EN] ── Auxiliary commands ────────────────────────────────────────────
 
     def do_print_example(self, arg: str) -> None:
-        """print-example  — 打印示例 params.yml"""
+        """print-example  — 打印示例 params.yml
+
+        [EN] print-example  — Print example params.yml
+        """
         print(EXAMPLE_YAML)
 
     def do_exit(self, arg: str) -> bool:
-        """exit  — 退出交互式 CLI"""
+        """exit  — 退出交互式 CLI
+
+        [EN] exit  — Exit the interactive CLI
+        """
         print(_info(tr("icli_goodbye", "👋 再见！")))
         return True
 
     def do_quit(self, arg: str) -> bool:
-        """quit  — 退出交互式 CLI"""
+        """quit  — 退出交互式 CLI
+
+        [EN] quit  — Exit the interactive CLI
+        """
         return self.do_exit(arg)
 
     def do_EOF(self, arg: str) -> bool:
-        """处理 Ctrl+D"""
+        """处理 Ctrl+D
+
+        [EN] Handle Ctrl+D
+        """
         print()
         return self.do_exit(arg)
 
     # ── 自动补全支持 ───────────────────────────────────────────────────────
+    # [EN] ── Auto-completion support ───────────────────────────────────────
 
     def complete_load(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        """Tab 补全文件路径"""
+        """Tab 补全文件路径
+
+        [EN] Tab-complete file paths
+        """
         if not text:
             return [str(p) for p in Path(".").glob("*.yml")]
         return [str(p) for p in Path(text).parent.glob(f"{Path(text).name}*.yml")]
 
     # 为所有命令添加通用补全（参数选项）
+    # [EN] Add generic completion for all commands (argument options)
     def _complete_options(self, text: str, options: list[str]) -> list[str]:
         return [opt for opt in options if opt.startswith(text)]
 
@@ -974,8 +1150,12 @@ class InteractiveCLI(cmd.Cmd):
 
 
 def _find_default_params() -> Optional[str]:
-    """查找项目根目录下的 params.yml，返回其路径或 None。"""
+    """查找项目根目录下的 params.yml，返回其路径或 None。
+
+    [EN] Look for params.yml under the project root directory; return its path or None.
+    """
     # interactive_cli.py 位于 src/workflows/interfaces/
+    # [EN] interactive_cli.py is located at src/workflows/interfaces/
     root = Path(__file__).resolve().parents[3]
     default = root / "params.yml"
     if default.is_file():
@@ -992,6 +1172,15 @@ def main(params_path: Optional[str] = None) -> int:
 
     Returns:
         退出码（始终为 0）。
+
+    [EN] Interactive CLI main entry point.
+
+    Args:
+        params_path: Optional params.yml path to auto-load on startup.
+            When ``None``, automatically looks for ``params.yml`` in the project root.
+
+    Returns:
+        Exit code (always 0).
     """
     if params_path is None:
         params_path = _find_default_params()
