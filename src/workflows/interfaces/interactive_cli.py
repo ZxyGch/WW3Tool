@@ -90,17 +90,17 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("load <params.yml>", tr("icli_help_load", "加载参数配置文件")),
                 ("config", tr("icli_help_config", "显示当前配置摘要")),
                 ("print", tr("icli_help_print", "输出当前 params.yml 内容")),
-                ("create-workdir <name>", tr("icli_help_create_workdir", "从模板创建新工作目录")),
             ],
         ),
         (
             tr("icli_grp_preproc", "预处理"),
             [
+                ("create-workdir <name>", tr("icli_help_create_workdir", "从模板创建新工作目录")),
                 ("validate [--stage forcing|grid|full]", tr("icli_help_validate", "校验当前配置文件")),
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
                 ("generate-grid [--no-cache]", tr("icli_help_generate_grid", "生成网格（Step 2）")),
-                ("run-pre-workflow [--skip-grid] [--no-cache]", tr("icli_help_run", "完整预处理流程")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
+                ("run-pre-workflow [--skip-grid] [--no-cache]", tr("icli_help_run", "完整预处理流程")),
             ],
         ),
         (
