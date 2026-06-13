@@ -6,6 +6,18 @@
 
 为隔离全局状态，使用 ``Figure`` + ``FigureCanvasQTAgg`` 直接嵌入（不经 pyplot）。
 matplotlib/cartopy 缺失时构造抛 ``ImportError``，由调用方降级提示。
+
+[EN] Step 3 "Select Points on Map" dialog.
+
+Embeds a cartopy + matplotlib canvas in-process (consistent with src step3). Clicking
+on the map selects points by lon/lat. Supports multi-select and deleting the last point.
+On confirm, ``selected_points`` is a list of new points
+``[{"lon","lat","name"}, ...]``. Clicks are validated against the grid bounding box;
+out-of-bounds clicks are ignored.
+
+To isolate global state, uses ``Figure`` + ``FigureCanvasQTAgg`` directly embedded
+(not via pyplot). If matplotlib/cartopy is missing, construction raises ``ImportError``,
+and the caller should handle graceful degradation.
 """
 
 from __future__ import annotations
@@ -29,7 +41,11 @@ _TITLE = "在地图上选点（点击地图选择点位，可多选）"
 
 
 class MapPointPickerDialog(MessageBoxBase):
-    """卡片式选点对话框：左侧地图画布，右侧确认/取消/删除上一个点。"""
+    """卡片式选点对话框：左侧地图画布，右侧确认/取消/删除上一个点。
+
+    [EN] Card-style point selection dialog: map canvas on the left,
+    confirm/cancel/delete-last-point buttons on the right.
+    """
 
     def __init__(
         self,
@@ -41,6 +57,8 @@ class MapPointPickerDialog(MessageBoxBase):
     ) -> None:
         super().__init__(parent)
         # 延迟导入：缺依赖时由调用方捕获 ImportError 降级。
+        # [EN] Lazy import: when dependencies are missing, the caller catches
+        # ImportError for graceful degradation.
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.figure import Figure
         import cartopy.crs as ccrs
@@ -61,6 +79,7 @@ class MapPointPickerDialog(MessageBoxBase):
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self._reject)
 
         # ── 显示范围（带边距）──
+        # [EN] Display extent (with padding)
         lon_range = bounds["lon_max"] - bounds["lon_min"]
         lat_range = bounds["lat_max"] - bounds["lat_min"]
         mlon = max(lon_range * 0.1, 2.0)
@@ -83,8 +102,10 @@ class MapPointPickerDialog(MessageBoxBase):
             self._ax.add_feature(cfeature.LAND, facecolor="#f0f0f0")
             self._ax.coastlines(resolution="50m", linewidth=0.6)
         except Exception:
+            # [EN] Point selection still works when Natural Earth data is missing
             pass  # 自然地球数据缺失时仍可选点
         # 网格范围矩形
+        # [EN] Grid bounding rectangle
         bx = [bounds["lon_min"], bounds["lon_max"], bounds["lon_max"], bounds["lon_min"], bounds["lon_min"]]
         by = [bounds["lat_min"], bounds["lat_min"], bounds["lat_max"], bounds["lat_max"], bounds["lat_min"]]
         self._ax.plot(bx, by, transform=ccrs.PlateCarree(), color="blue", linewidth=2, linestyle="--")
@@ -100,6 +121,7 @@ class MapPointPickerDialog(MessageBoxBase):
         self._canvas.mpl_connect("button_press_event", self._on_click)
 
         # ── 布局：左画布 + 右按钮 ──
+        # [EN] Layout: left canvas + right buttons
         content = QWidget()
         row = QHBoxLayout(content)
         row.setContentsMargins(2, 2, 2, 2)
@@ -122,6 +144,8 @@ class MapPointPickerDialog(MessageBoxBase):
         holder = QWidget()
         holder.setLayout(buttons)
         # 宽度按最宽按钮（"确认并添加点位"）自适应，避免文字被截断。
+        # [EN] Width auto-adapts to the widest button ("Confirm and Add Point"),
+        # avoiding text truncation.
         width = max(160, confirm.sizeHint().width() + 24)
         holder.setFixedWidth(width)
         row.addWidget(holder, 0)
@@ -152,9 +176,11 @@ class MapPointPickerDialog(MessageBoxBase):
             return
         b = self._bounds
         if not (b["lon_min"] <= lon <= b["lon_max"] and b["lat_min"] <= lat <= b["lat_max"]):
+            # [EN] Out of bounds, ignore
             return  # 越界忽略
         for p in self._existing + self._selected:
             if abs(p["lon"] - lon) < 1e-3 and abs(p["lat"] - lat) < 1e-3:
+                # [EN] Duplicate, ignore
                 return  # 重复忽略
         name = str(len(self._existing) + len(self._selected))
         ccrs = self._ccrs
@@ -224,7 +250,11 @@ class MapPointPickerDialog(MessageBoxBase):
 
 
 def _configure_cjk_fonts() -> None:
-    """复用网格可视化 worker 的 CJK 字体配置，避免标题缺字。"""
+    """复用网格可视化 worker 的 CJK 字体配置，避免标题缺字。
+
+    [EN] Reuse the CJK font configuration from the grid visualization worker
+    to avoid missing characters in titles.
+    """
     try:
         from workflows.infrastructure.grid_visualization.worker import _configure_matplotlib_cjk_fonts
 

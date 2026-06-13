@@ -3,6 +3,14 @@
 谱点输入 lon/lat/name；航迹点额外输入 datetime（``YYYYMMDD HHMMSS``）。
 内部元素布局对齐 src step3：``MessageBoxBase`` + 标签/输入两列网格，输入框套用
 窗口输入样式；点击确定时校验，不合法用 ``InfoBar`` 提示并阻止关闭。
+
+[EN] Step 3 single-point entry/edit dialog.
+
+Spectral points require lon/lat/name; track points additionally require datetime
+(``YYYYMMDD HHMMSS``). Internal layout is aligned with src step3: ``MessageBoxBase``
+with a two-column grid of labels/inputs, input fields using the window input style.
+Validation runs on confirm; invalid input triggers an ``InfoBar`` warning and prevents
+closing.
 """
 
 from __future__ import annotations
@@ -32,6 +40,23 @@ class PointEditDialog(MessageBoxBase):
 
     成功后 ``self.value`` 为点位 dict：谱点 ``{"lon","lat","name"}``，
     航迹 ``{"datetime","lon","lat","name"}``。
+
+    [EN] Enter or edit a single spectral / track point.
+
+    Args:
+        parent: Parent window (should be the top-level window so the overlay
+            covers the entire window).
+        kind: ``"spectral"`` or ``"track"``.
+        initial: Pre-filled values (passed when editing).
+        bounds: Optional grid bounding box; if provided, an extra check ensures
+            the point falls within the grid extent.
+        input_style: Input field stylesheet (consistent with other input fields
+            in the window).
+        default_name: Default name when left blank (usually the current index
+            when adding new points).
+
+    On success ``self.value`` is the point dict: spectral ``{"lon","lat","name"}``,
+    track ``{"datetime","lon","lat","name"}``.
     """
 
     def __init__(
@@ -105,7 +130,11 @@ class PointEditDialog(MessageBoxBase):
         return edit
 
     def validate(self) -> bool:
-        """qfluentwidgets 在点击确定时调用；返回 ``False`` 阻止关闭。"""
+        """qfluentwidgets 在点击确定时调用；返回 ``False`` 阻止关闭。
+
+        [EN] Called by qfluentwidgets when the confirm button is clicked;
+        returning ``False`` prevents the dialog from closing.
+        """
         try:
             lon = float(self._lon_edit.text().strip())
             lat = float(self._lat_edit.text().strip())

@@ -1,4 +1,8 @@
-"""带左右分隔线的小节标题（与 src 版 step4_ui / preprocessing 一致）。"""
+"""带左右分隔线的小节标题（与 src 版 step4_ui / preprocessing 一致）。
+
+[EN] Section title with horizontal separator lines on both sides
+(consistent with the src step4_ui / preprocessing version).
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,10 @@ from . import styles
 
 
 def create_section_title(text: str) -> QWidget:
-    """返回与 Slurm / WAVEWATCH 小节标题相同样式的容器。"""
+    """返回与 Slurm / WAVEWATCH 小节标题相同样式的容器。
+
+    [EN] Returns a container styled the same as the Slurm / WAVEWATCH section titles.
+    """
     container = QWidget()
     row = QHBoxLayout(container)
     row.setContentsMargins(0, 0, 0, 0)

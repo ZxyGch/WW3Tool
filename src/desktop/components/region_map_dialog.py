@@ -3,6 +3,11 @@
 Uses qfluentwidgets MessageBoxBase so the platform-level compositing (semi-transparent
 overlay, click-outside-to-close, rounded card) is handled by qfluentwidgets itself.
 
+[EN] Region map loading + display dialog for Step 2 "View Map".
+
+Uses qfluentwidgets MessageBoxBase so the platform-level compositing (semi-transparent
+overlay, click-outside-to-close, rounded card) is handled by qfluentwidgets itself.
+
 Sizing strategy
 ---------------
 1. In showEvent, post a single QTimer shot that sets card.setFixedSize(dw, dh) once

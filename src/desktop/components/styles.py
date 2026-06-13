@@ -2,6 +2,12 @@
 
 与 :class:`preprocessing_window.PreprocessingWindow` 内联样式保持一致，集中一处
 便于复用与统一。主题判断使用 qfluentwidgets ``isDarkTheme``。
+
+[EN] Theme-aware control stylesheets (shared by the settings page and others).
+
+Kept consistent with the inline styles in
+:class:`preprocessing_window.PreprocessingWindow`, centralized here for easy
+reuse and uniformity. Theme detection uses qfluentwidgets ``isDarkTheme``.
 """
 
 from __future__ import annotations
@@ -55,7 +61,11 @@ def combo_style() -> str:
 
 
 def label_style(*, extra: str = "") -> str:
-    """主题感知的字段标签样式（直接设在 QLabel 上，勿用类型选择器）。"""
+    """主题感知的字段标签样式（直接设在 QLabel 上，勿用类型选择器）。
+
+    [EN] Theme-aware field label style (apply directly to QLabel; do not use
+    a type selector).
+    """
     color = "#FFFFFF" if is_dark() else "#000000"
     parts = [f"color: {color};"]
     if extra:

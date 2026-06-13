@@ -2,6 +2,12 @@
 
 在父窗口右侧悬浮展示 PNG 列表，点击遮罩关闭；样式与交互对齐 src 第二步
 网格可视化的侧边抽屉。
+
+[EN] Right-side image drawer component (shared by grid visualization, plotting results, etc.).
+
+Displays a floating PNG list on the right side of the parent window; clicking the mask
+closes it. Style and interaction are aligned with the src Step 2 grid visualization
+side drawer.
 """
 
 from __future__ import annotations
@@ -23,7 +29,11 @@ from qfluentwidgets import isDarkTheme
 from workflows.support.translations import tr
 
 class _GalleryImageLoader(QObject):
-    """在后台线程解码图片，经 Qt 信号回到主线程构建 UI。"""
+    """在后台线程解码图片，经 Qt 信号回到主线程构建 UI。
+
+    [EN] Decode images in a background thread, then return to the main thread
+    via Qt signals to build the UI.
+    """
 
     loaded = pyqtSignal(str, list)
 
@@ -47,7 +57,10 @@ class _GalleryImageLoader(QObject):
 
 
 class _ClickableImage(QLabel):
-    """按面板宽度等比缩放显示，点击打开原图。"""
+    """按面板宽度等比缩放显示，点击打开原图。
+
+    [EN] Scale display proportionally to panel width; click to open the original image.
+    """
 
     def __init__(self, path: str, source: QImage | None = None) -> None:
         super().__init__()
@@ -77,7 +90,10 @@ class _ClickableImage(QLabel):
 
 
 class ImageGalleryPanel(QWidget):
-    """右侧抽屉内的图片列表面板。"""
+    """右侧抽屉内的图片列表面板。
+
+    [EN] Image list panel inside the right-side drawer.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -235,11 +251,17 @@ class ImageGalleryPanel(QWidget):
         return "#2d2d2d" if isDarkTheme() else "#f5f5f5"
 
 # 程序打开侧栏后短暂忽略点击，避免按钮 mouse release 落在透明层上立刻关闭。
+# [EN] Briefly ignore clicks after the sidebar opens, to prevent a button mouse release
+# landing on the transparent layer and immediately closing the drawer.
 _CLICK_GUARD_MS = 450
 
 
 class ImageGalleryDrawer(QWidget):
-    """覆盖父窗口的透明事件层，右侧滑入图片抽屉；点击面板外区域关闭。"""
+    """覆盖父窗口的透明事件层，右侧滑入图片抽屉；点击面板外区域关闭。
+
+    [EN] Transparent event layer overlaid on the parent window; slides in the image
+    drawer from the right side. Clicking outside the panel closes it.
+    """
 
     def __init__(self, parent: QWidget | None = None, *, on_close=None) -> None:
         super().__init__(parent)
@@ -260,7 +282,10 @@ class ImageGalleryDrawer(QWidget):
         self.hide()
 
     def sync_host_geometry(self, host_rect: QRect) -> None:
-        """根据父容器尺寸更新抽屉布局。"""
+        """根据父容器尺寸更新抽屉布局。
+
+        [EN] Update the drawer layout based on the parent container size.
+        """
         self._host_rect = QRect(host_rect)
         if not self._host_rect.isValid():
             return
@@ -272,6 +297,8 @@ class ImageGalleryDrawer(QWidget):
         if not image_paths:
             return
         # 推迟到当前按钮 click 处理完再展开，避免 release 落在本层上触发关闭。
+        # [EN] Defer expansion until the current button click is fully processed,
+        # to avoid the release event landing on this layer and triggering close.
         QTimer.singleShot(0, lambda: self._open_gallery_impl(title, image_paths))
 
     def hide_gallery(self) -> None:
@@ -396,7 +423,11 @@ class ImageGalleryDrawer(QWidget):
 
 
 class ImageGalleryHost:
-    """可混入任意窗口，提供统一的右侧图片抽屉绑定与展示 API。"""
+    """可混入任意窗口，提供统一的右侧图片抽屉绑定与展示 API。
+
+    [EN] Mixin that can be added to any window, providing a unified right-side image
+    drawer binding and display API.
+    """
 
     _image_gallery: ImageGalleryDrawer | None = None
     _image_gallery_parent: QWidget | None = None

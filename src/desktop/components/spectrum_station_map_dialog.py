@@ -1,6 +1,10 @@
 """二维谱站点地图对话框。
 
 在 matplotlib/cartopy 地图上展示二维谱输出站点位置。
+
+[EN] 2D spectrum station map dialog.
+
+Displays 2D spectral output station locations on a matplotlib/cartopy map.
 """
 
 from __future__ import annotations
@@ -22,7 +26,10 @@ from workflows.support.translations import tr
 
 
 class SpectrumStationMapDialog(QDialog):
-    """二维谱站点地图对话框。"""
+    """二维谱站点地图对话框。
+
+    [EN] 2D spectrum station map dialog.
+    """
 
     def __init__(
         self,
@@ -54,7 +61,10 @@ class SpectrumStationMapDialog(QDialog):
         layout.addLayout(btn_bar)
 
     def _render_map(self) -> None:
-        """从谱文件读取站点并渲染地图。"""
+        """从谱文件读取站点并渲染地图。
+
+        [EN] Read stations from the spectrum file and render the map.
+        """
         try:
             import numpy as np
             import cartopy.crs as ccrs
@@ -91,6 +101,7 @@ class SpectrumStationMapDialog(QDialog):
                 return
 
             # 确定地图范围
+            # [EN] Determine map extent
             margin = max((float(lon.max()) - float(lon.min())) * 0.1, 2.0)
             lon_min = float(lon.min()) - margin
             lon_max = float(lon.max()) + margin
@@ -98,6 +109,7 @@ class SpectrumStationMapDialog(QDialog):
             lat_max = float(lat.max()) + margin
 
             # 投影方式
+            # [EN] Projection method
             if lon_min < 0 or lon_max < 0:
                 proj = ccrs.Mercator(central_longitude=180)
             else:
@@ -112,6 +124,7 @@ class SpectrumStationMapDialog(QDialog):
             ax.coastlines(resolution="10m", linewidth=0.6)
 
             # 绘制站点
+            # [EN] Plot stations
             for i, (s_lon, s_lat) in enumerate(zip(lon, lat)):
                 ax.plot(float(s_lon), float(s_lat), "ro", markersize=10,
                         transform=ccrs.PlateCarree(),
@@ -142,7 +155,10 @@ class SpectrumStationMapDialog(QDialog):
             self._show_no_data_figure(tr("plotting_cartopy_required", "需要安装 cartopy 库才能显示站点地图"))
 
     def _show_no_data_figure(self, message: Optional[str] = None) -> None:
-        """显示无数据提示。"""
+        """显示无数据提示。
+
+        [EN] Display a no-data message.
+        """
         try:
             from matplotlib.figure import Figure
             from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas

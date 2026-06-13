@@ -1,4 +1,7 @@
-"""NDBC 浮标站点地图对话框（对齐 src ``plot_ndbc._show_ndbc_station_map``）。"""
+"""NDBC 浮标站点地图对话框（对齐 src ``plot_ndbc._show_ndbc_station_map``）。
+
+[EN] NDBC buoy station map dialog (aligned with src ``plot_ndbc._show_ndbc_station_map``).
+"""
 
 from __future__ import annotations
 
@@ -22,7 +25,10 @@ from workflows.support.translations import tr
 
 
 class NDBCStationMapDialog(MessageBoxBase):
-    """在地图上展示 NDBC 浮标站点，支持切换站点名称标签。"""
+    """在地图上展示 NDBC 浮标站点，支持切换站点名称标签。
+
+    [EN] Displays NDBC buoy stations on a map, with toggleable station name labels.
+    """
 
     def __init__(
         self,
