@@ -24,6 +24,8 @@ WW3Tool 是 WAVEWATCH III 模型的前置准备操作软件，使用本软件可
 
 这个软件可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码）
 
+软件支持中英文切换，CLI 和交互式终端均可通过 `--lang en_US` 切换到英文，默认为中文。
+
 实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
 
 我本科不是海洋科学的，现在是研究生一年级，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 [atomgoto@gmail.com](mailto:atomgoto@gmail.com) 或在 issue 中提出意见
@@ -41,32 +43,74 @@ python3 runDesktop.py
 
 `runDesktop.py` 从 `src2/desktop` 启动独立实现的预处理主页。主页已按原应用的 Fluent 风格、导航、步骤卡片和右侧日志分栏进行对齐；设置与绘图等功能页将在迁移过程中继续补入。桌面动作调用 `src2/workflows`，不依赖旧主窗口业务实现。
 
+### 交互式命令行
+
+如果更习惯终端操作，可以使用 `runInteractive.py` 进入交互式 REPL 环境：
+
+```sh
+python3 runInteractive.py
+python3 runInteractive.py /path/to/workdir/params.yml
+python3 runInteractive.py --lang en_US
+```
+
+启动后会进入 `ww3>` 提示符，支持 Tab 补全、上下键历史浏览和彩色输出。所有命令按功能分为五组：
+
+配置管理：`create-workdir`、`load`、`config`
+
+预处理：`validate`、`prepare-forcing`、`generate-grid`、`prepare-ww3`、`run`
+
+后处理/绘图：`plot`、`plot-wave-maps`、`plot-spectrum`、`match-jason3`、`jason3-swh`、`download-jason3`、`match-ndbc`
+
+远程运维：`connect-test`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`、`ssh`、`list-files`
+
+辅助：`print-example`、`help`、`exit`
+
+典型的工作流程分两条路径：
+
+本地运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run` → `plot`
+
+服务器运行：`create-workdir` → `prepare-forcing` → `generate-grid` → `run` → `upload` → `submit` → `check-status` → `download-results`
+
+`create-workdir` 会从根 `params.yml` 模板复制一份到新的工作目录，并自动把 `workdir.path` 改成对应路径。`prepare-ww3` 是交互式终端独有的命令，它只生成 WW3 namelist 文件，不会重跑强迫场和网格。`upload` 会自动连接 SSH，破坏性操作（`upload`、`clear-remote`）需要加 `--confirm`。输入 `help` 可以查看所有命令的说明，输入 `help <命令>` 查看单个命令的帮助。
+
 ### 指令化预处理流程
 
 新架构代码从 `src2` 开始维护；旧 `src` 暂时保留为参考和兼容 fallback。如果希望在流程脚本或服务器任务中调用预处理功能，可以使用 `runCLI.py`：
 
 ```sh
 python3 runCLI.py
-python3 runCLI.py validate params.yml
-python3 runCLI.py prepare-forcing params.yml
-python3 runCLI.py run params.yml
+python3 runCLI.py create-workdir myRun
+python3 runCLI.py validate /path/to/workdir/params.yml
+python3 runCLI.py prepare-forcing /path/to/workdir/params.yml
+python3 runCLI.py generate-grid /path/to/workdir/params.yml
+python3 runCLI.py prepare-ww3 /path/to/workdir/params.yml
+python3 runCLI.py run /path/to/workdir/params.yml
+python3 runCLI.py upload /path/to/workdir/params.yml --confirm
+python3 runCLI.py submit /path/to/workdir/params.yml
+python3 runCLI.py check-status /path/to/workdir/params.yml
+python3 runCLI.py download-results /path/to/workdir/params.yml
+python3 runCLI.py plot /path/to/workdir/params.yml
+python3 runCLI.py match-jason3 /path/to/workdir/params.yml
+python3 runCLI.py match-ndbc /path/to/workdir/params.yml --download
 ```
 
-单独执行 `python3 runCLI.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。随后程序会自动读取项目根目录下的 `params.yml` 并执行完整预处理流程。首次运行且参数文件不存在时，会先创建示例模板并等待你填写，不会用空模板直接执行；已有文件不会被覆盖。也可以使用 `python3 runCLI.py print-example` 单独输出模板内容。
+单独执行 `python3 runCLI.py` 会检查运行所需依赖；如果有缺失，会自动依据 `src/requirements.txt` 安装。CLI 不允许直接使用项目根目录的 `params.yml`（那是模板），必须先用 `create-workdir` 创建工作目录，然后对工作目录的 `params.yml` 执行操作。也可以使用 `python3 runCLI.py print-example` 单独输出模板内容。
 
-`prepare-forcing` 只执行第一步强迫场准备，包括复制/移动、变量识别、风场标准化和组合强迫场自动关联。
+命令按功能分为五组：工作目录管理（`create-workdir`）、预处理（`validate`、`prepare-forcing`、`generate-grid`、`run`）、后处理/绘图（`plot`、`plot-wave-maps`、`plot-spectrum`、`match-jason3`、`jason3-swh`、`download-jason3`、`match-ndbc`）、远程运维（`connect-test`、`list-files`、`upload`、`submit`、`check-status`、`queue-status`、`download-results`、`download-log`、`clear-remote`、`cancel-job`）、辅助（`print-example`）。
+
+`prepare-forcing` 只执行第一步强迫场准备，包括复制/移动、变量识别、风场标准化和组合强迫场自动关联。`generate-grid` 单独执行网格生成，支持 `--no-cache` 跳过缓存。`prepare-ww3` 只生成 WW3 namelist 文件（ww3_grid.nml、ww3_shel.nml、ww3_prnc.nml 等），不会重跑强迫场和网格，适合在已经准备好强迫场和网格之后单独调整 WW3 配置。
 
 指令入口直接调用 `src2/workflows`。桌面入口的预处理主页同样调用 workflows，当前覆盖强迫场准备、参数校验和预处理文件生成；其余界面动作会按步骤迁移到相同逻辑。
 
-不带参数执行和显式使用 `run` 都会读取 YAML 参数文件，完成强迫场准备、网格生成、计算模式产物和 WW3 配置文件生成，但不会自动执行 WAVEWATCH III、上传服务器或绘图。如果工作目录中已经有网格文件，可以使用 `--skip-grid` 跳过网格生成：
+显式使用 `run` 会读取工作目录的 YAML 参数文件，完成强迫场准备、网格生成、计算模式产物和 WW3 配置文件生成，但不会自动执行 WAVEWATCH III、上传服务器或绘图。如果工作目录中已经有网格文件，可以使用 `--skip-grid` 跳过网格生成：
 
 ```sh
-python3 runCLI.py run params.yml --skip-grid
+python3 runCLI.py run /path/to/workdir/params.yml --skip-grid
 ```
 
 `params.yml` 中的 `grid` 参数按网格类型分组：`structured` 包含水深、海岸线精度及 pygridgen 阈值；`smc` 包含水深类型、细化层数、物理和边界参数；`unstructured` 包含三角网格尺度、梯度、深水阈值及区域边界细分参数。`grid_type: nested` 时可显式填写 `inner`，也可以省略 `inner` 并由 `nested_contraction_coefficient` 自动生成内网格区域。
 
-`params.yml` 顶部的 `presets` 预存可用选项，供脚本校验并供后续桌面界面复用，包括输出字段方案、ST 路径、水深、海岸线精度和文件分割。`presets.st` 以名称映射服务器可执行目录路径，例如 `ST2: /public/home/.../model/exe`，随后由 `ww3.st: ST2` 选择使用哪条路径。`presets.output_scheme` 中完整定义字段数组，例如 `standard: [HS, DIR, FP, T02, WND]`，实际运行时通过 `ww3.output_scheme: standard` 选择方案。
+`params.yml` 顶部的 `presets` 预存可用选项，供脚本校验并供后续桌面界面复用，包括输出字段方案、ST 路径、水深、海岸线精度和文件分割。代码本身不预设任何 ST 版本，所有 ST 预设完全由 `params.yml` 中的 `presets.st` 定义，以名称映射服务器可执行目录路径，例如 `ST2: /public/home/.../model/exe`，随后由 `ww3.st: ST2` 选择使用哪条路径。`presets.output_scheme` 中完整定义字段数组，例如 `standard: [HS, DIR, FP, T02, WND]`，实际运行时通过 `ww3.output_scheme: standard` 选择方案。
 
 `ww3_grid` 直接使用 `ww3_grid.nml` 键名，例如 `SPECTRUM%XFR`、`TIMESTEPS%DTMAX`、`GRID%ZLIM`，用于配置频谱离散、数值积分步长和近岸深度参数。嵌套网格还可以通过 `ww3.inner_compute_precision` 与 `ww3.inner_output_precision` 单独配置内网格输出；`slurm.server_script_path` 可选用自定义 `server.sh` 模板。
 
@@ -978,6 +1022,20 @@ sinfo
 #### 卫星拟合图
 
 ![](public/resource/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
+
+
+
+### 命令行绘图与远程操作
+
+上面介绍的绘图和服务器操作都可以通过 CLI 完成，不需要打开桌面界面。
+
+绘图相关命令：`plot` 执行所有已启用的绘图任务，`plot-wave-maps` 绘制波高图（加 `--contour` 使用等高线图），`plot-spectrum` 绘制二维谱图（`--mode normalized/actual`，`--station 3` 指定站点），`match-jason3` 匹配 JASON3 卫星数据，`jason3-swh` 绘制卫星 SWH 轨迹图，`download-jason3` 从 NOAA 下载 JASON3 L2 数据，`match-ndbc` 匹配 NDBC 浮标数据（加 `--download` 自动下载）。
+
+远程操作命令：`connect-test` 测试 SSH 连接，`upload` 上传工作目录（需 `--confirm`），`submit` 提交 Slurm 计算任务（可用 `--script` 指定自定义脚本），`check-status` 检查任务状态，`queue-status` 查看 Slurm 队列，`download-results` 下载结果文件（嵌套模式加 `--nested` 只下载 fine），`download-log` 下载运行日志，`clear-remote` 清空远程工作目录（需 `--confirm`），`cancel-job` 取消 Slurm 任务。
+
+交互式终端还额外提供 `ssh` 命令，可以直接打开 SSH 终端连接到服务器，以及 `config` 命令查看当前配置摘要。
+
+
 
 ## 文件获取
 
