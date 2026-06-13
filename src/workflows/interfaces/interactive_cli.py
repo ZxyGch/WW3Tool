@@ -312,13 +312,14 @@ class InteractiveCLI(cmd.Cmd):
             print(f"    {tr('icli_grid_range', '范围：经度 {} ~ {}，纬度 {} ~ {}').format(outer.lon[0], outer.lon[1], outer.lat[0], outer.lat[1])}")
         if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
             s = cfg.grid.structured
-            print(f"    dx/dy：{s.dx} / {s.dy}，水深：{s.bathymetry or not_set}，海岸线：{s.coastline_precision or not_set}")
+            dx_dy = f"dx={outer.dx}, dy={outer.dy}" if outer and outer.dx and outer.dy else ""
+            print(f"    {dx_dy + '，' if dx_dy else ''}水深：{s.bathymetry or not_set}，海岸线：{s.coastline_precision or not_set}")
         elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
             s = cfg.grid.smc
-            print(f"    水深：{s.bathymetry or not_set}，细化层数：{s.refinement_levels}")
+            print(f"    水深：{s.bathymetry or not_set}，层数：{s.n_levels or not_set}")
         elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
             u = cfg.grid.unstructured
-            print(f"    网格尺度：{u.mesh_size or not_set}")
+            print(f"    hmax：{u.hmax or not_set}")
 
         # 强迫场
         print(f"\n  {_bold(tr('icli_forcing', '强迫场'))}")
