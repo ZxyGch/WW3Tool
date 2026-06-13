@@ -313,13 +313,14 @@ class InteractiveCLI(cmd.Cmd):
         if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
             s = cfg.grid.structured
             dx_dy = f"dx={outer.dx}, dy={outer.dy}" if outer and outer.dx and outer.dy else ""
-            print(f"    {dx_dy + '，' if dx_dy else ''}水深：{s.bathymetry or not_set}，海岸线：{s.coastline_precision or not_set}")
+            prefix = f"{dx_dy}，" if dx_dy else ""
+            print(f"    {tr('icli_structured_info', '{}水深：{}，海岸线：{}').format(prefix, s.bathymetry or not_set, s.coastline_precision or not_set)}")
         elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
             s = cfg.grid.smc
-            print(f"    水深：{s.bathymetry or not_set}，层数：{s.n_levels or not_set}")
+            print(f"    {tr('icli_smc_bathymetry', '水深：{}').format(s.bathymetry or not_set)}，{tr('icli_smc_levels', '层数：{}').format(s.n_levels or not_set)}")
         elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
             u = cfg.grid.unstructured
-            print(f"    hmax：{u.hmax or not_set}")
+            print(f"    {tr('icli_unst_hmax', 'hmax：{}').format(u.hmax or not_set)}")
 
         # 强迫场
         print(f"\n  {_bold(tr('icli_forcing', '强迫场'))}")
@@ -327,41 +328,41 @@ class InteractiveCLI(cmd.Cmd):
         print(f"    {tr('icli_current', '流场：{}').format(cfg.forcing.current or not_set)}")
         print(f"    {tr('icli_level', '水位：{}').format(cfg.forcing.level or not_set)}")
         print(f"    {tr('icli_ice', '海冰：{}').format(cfg.forcing.ice or not_set)}")
-        print(f"    处理模式：{cfg.forcing.process_mode}，自动关联：{'✓' if cfg.forcing.auto_associate else '✗'}")
+        print(f"    {tr('icli_process_mode', '处理模式：{}').format(cfg.forcing.process_mode)}，{tr('icli_auto_associate', '自动关联：{}').format('✓' if cfg.forcing.auto_associate else '✗')}")
 
         # 计算模式
         print(f"\n  {_bold(tr('icli_config_calc', '计算模式'))}")
-        print(f"    模式：{cfg.calc.mode or not_set}")
+        print(f"    {tr('icli_calc_mode', '模式：{}').format(cfg.calc.mode or not_set)}")
         if cfg.calc.mode == "point":
-            print(f"    谱点数：{len(cfg.calc.points)}")
+            print(f"    {tr('icli_spectral_points', '谱点数：{}').format(len(cfg.calc.points))}")
         elif cfg.calc.mode == "track":
-            print(f"    航迹点数：{len(cfg.calc.track_points)}")
+            print(f"    {tr('icli_track_points', '航迹点数：{}').format(len(cfg.calc.track_points))}")
 
         # WW3 配置
         print(f"\n  {_bold(tr('icli_config_ww3', 'WW3 配置'))}")
         print(f"    {tr('icli_ww3_period', '时段：{} ~ {}').format(cfg.ww3.start_date, cfg.ww3.end_date)}")
-        print(f"    计算精度：{cfg.ww3.compute_precision or not_set}s，输出精度：{cfg.ww3.output_precision or not_set}s")
-        print(f"    输出方案：{cfg.ww3.output_scheme or not_set}，ST：{cfg.ww3.st or not_cfg}")
+        print(f"    {tr('icli_compute_precision', '计算精度：{}s').format(cfg.ww3.compute_precision or not_set)}，{tr('icli_output_precision', '输出精度：{}s').format(cfg.ww3.output_precision or not_set)}")
+        print(f"    {tr('icli_output_scheme', '输出方案：{}').format(cfg.ww3.output_scheme or not_set)}，{tr('icli_ww3_st', 'ST：{}').format(cfg.ww3.st or not_cfg)}")
 
         # WW3 Grid 参数
         wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
         if wg:
             spectrum = f"XFR={wg.get('SPECTRUM%XFR', '?')}, FREQ1={wg.get('SPECTRUM%FREQ1', '?')}, NK={wg.get('SPECTRUM%NK', '?')}, NTH={wg.get('SPECTRUM%NTH', '?')}"
             timesteps = f"DTMAX={wg.get('TIMESTEPS%DTMAX', '?')}, DTXY={wg.get('TIMESTEPS%DTXY', '?')}, DTKTH={wg.get('TIMESTEPS%DTKTH', '?')}, DTMIN={wg.get('TIMESTEPS%DTMIN', '?')}"
-            print(f"    频谱：{spectrum}")
-            print(f"    时间步：{timesteps}")
+            print(f"    {tr('icli_spectrum_params', '频谱：{}').format(spectrum)}")
+            print(f"    {tr('icli_timesteps_params', '时间步：{}').format(timesteps)}")
 
         # Slurm
         print(f"\n  {_bold(tr('icli_config_slurm', 'Slurm'))}")
-        print(f"    CPU：{cfg.slurm.cpu or not_cfg}，核数：{cfg.slurm.cores}，节点：{cfg.slurm.nodes}")
+        print(f"    {tr('icli_slurm_cpu', 'CPU：{}').format(cfg.slurm.cpu or not_cfg)}，{tr('icli_slurm_cores', '核数：{}').format(cfg.slurm.cores)}，{tr('icli_slurm_nodes', '节点：{}').format(cfg.slurm.nodes)}")
         if cfg.slurm.cpu_group:
-            print(f"    CPU 组：{cfg.slurm.cpu_group}")
+            print(f"    {tr('icli_slurm_cpu_group', 'CPU 组：{}').format(cfg.slurm.cpu_group)}")
 
         # 服务器
         print(f"\n  {_bold(tr('icli_config_server', '服务器'))}")
         print(f"    {tr('icli_server', '主机：{}').format(cfg.server.host or not_cfg)}")
         if cfg.server.host:
-            print(f"    用户：{cfg.server.user or not_cfg}，远程目录：{cfg.server.default_remote_dir or not_cfg}")
+            print(f"    {tr('icli_server_user', '用户：{}').format(cfg.server.user or not_cfg)}，{tr('icli_remote_dir', '远程目录：{}').format(cfg.server.default_remote_dir or not_cfg)}")
 
         # 绘图
         enabled_plots = []
@@ -376,7 +377,7 @@ class InteractiveCLI(cmd.Cmd):
         if cfg.plot.wind_field and cfg.plot.wind_field.time_step_hours is not None:
             enabled_plots.append("wind-field")
         print(f"\n  {_bold(tr('icli_config_plot', '绘图'))}")
-        print(f"    启用任务：{', '.join(enabled_plots) if enabled_plots else not_cfg}")
+        print(f"    {tr('icli_enabled_tasks', '启用任务：{}').format(', '.join(enabled_plots) if enabled_plots else not_cfg)}")
         print()
 
     def do_print(self, arg: str) -> None:
