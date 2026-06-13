@@ -106,7 +106,6 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
         (
             tr("icli_grp_plot", "后处理 / 绘图"),
             [
-                ("plot", tr("icli_help_plot", "执行所有启用的绘图任务")),
                 ("plot-wave-maps [--contour]", tr("icli_help_plot_wave_maps", "生成波高填色图或等值线图")),
                 ("plot-spectrum [--mode ...] [--station N]", tr("icli_help_plot_spectrum", "生成方向谱图")),
                 ("match-jason3", tr("icli_help_match_jason3", "WW3 结果与 Jason-3 卫星数据匹配")),
@@ -236,8 +235,8 @@ class InteractiveCLI(cmd.Cmd):
         # 典型流程提示（上下分叉：本地 vs 远程）
         g = _color
         print(f"  {_bold(_color(tr('icli_workflow', '典型流程'), _Colors.YELLOW))}")
-        print(f"    {g('create-workdir', _Colors.GREEN)} → {g('prepare-forcing', _Colors.GREEN)} → {g('generate-grid', _Colors.GREEN)} → {g('run-pre-workflow', _Colors.GREEN)} → {g('plot', _Colors.GREEN)}")
-        print(f"                                                                              └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
+        print(f"    {g('create-workdir', _Colors.GREEN)} → {g('prepare-forcing', _Colors.GREEN)} → {g('generate-grid', _Colors.GREEN)} → {g('run-pre-workflow', _Colors.GREEN)} → {g('plot-wave-maps', _Colors.GREEN)}")
+        print(f"                                                                                         └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
         print()
 
     def parseline(self, line: str) -> tuple[str | None, str | None, str]:
@@ -561,21 +560,6 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_prepare_ww3", "▶ 正在生成 WW3 namelist...")))
             prepare_ww3_files(self._config, files, logger)
             print(_success(tr("icli_done_prepare_ww3", "✓ WW3 namelist 生成完成")))
-        except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
-
-    def do_plot(self, arg: str) -> None:
-        """plot  — 执行所有启用的绘图任务"""
-        if not self._require_config():
-            return
-        try:
-            from .command_line import _run_all_plots
-            print(_info(tr("icli_start_plot", "▶ 开始执行绘图任务...")))
-            rc = _run_all_plots(self._config)
-            if rc == 0:
-                print(_success(tr("icli_done_plot", "✓ 绘图任务完成")))
-            else:
-                print(_warn(tr("icli_partial_plot", "⚠ 部分绘图任务失败")))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
 
