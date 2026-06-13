@@ -308,8 +308,8 @@ class InteractiveCLI(cmd.Cmd):
         print(f"\n  {_bold(tr('icli_config_grid', '网格'))}")
         print(f"    {tr('icli_grid_type', '类型：{} / {}').format(cfg.grid.mesh_type, cfg.grid.grid_type)}")
         outer = cfg.grid.outer
-        if outer:
-            print(f"    {tr('icli_grid_range', '范围：经度 {} ~ {}，纬度 {} ~ {}').format(outer.lon_min, outer.lon_max, outer.lat_min, outer.lat_max)}")
+        if outer and outer.lon and outer.lat:
+            print(f"    {tr('icli_grid_range', '范围：经度 {} ~ {}，纬度 {} ~ {}').format(outer.lon[0], outer.lon[1], outer.lat[0], outer.lat[1])}")
         if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
             s = cfg.grid.structured
             print(f"    dx/dy：{s.dx} / {s.dy}，水深：{s.bathymetry or not_set}，海岸线：{s.coastline_precision or not_set}")
