@@ -104,44 +104,17 @@ def _bold(text: str) -> str:
 _HISTORY_FILE = Path.home() / ".ww3tool_history"
 _HISTORY_MAX_LINES = 500
 
-# ── 大型 ASCII Art Logo ────────────────────────────────────────────────────
-# [EN] ── Large ASCII Art Logo ──────────────────────────────────────────────
-_SHELL_BANNER = r"""
-                ____    ____  ________  __      _______   ___
-                \   \  /   / /  _____/ /  |    /       | /   |
-                 \   \/   / /  /  __  /   |   /   ____/ /    |
-                  \    __/ /  /_/  / / /| |  /   /     /  ___|
-                   \  /   /  _____/ /  | | /   /___  /  /
-                    \/   /________/ /   |/ /_______ \/  /
-                                 /               /    \
-                               /_______________/ \____\
-                                                  \______\
-"""
-_SHELL_BANNER_WAVE = r"""
-                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-              ~~  ~    ~     ~       ~     ~    ~  ~~
-           ~~    ~   🌊    ~     ~      🌊   ~    ~~
-        ~~   ~       ~        ~     ~       ~   ~~
-     ~~  ~    ~  ~     ~  ~     ~     ~  ~    ~  ~
-   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-"""
+# ── 大型 ASCII Art Logo（pyfiglet）─────────────────────────────────────────
+# [EN] ── Large ASCII Art Logo (pyfiglet) ───────────────────────────────────
+try:
+    import pyfiglet as _pyfiglet
 
-_SHELL_BANNER_FULL = r"""
-        ____    ____  ________  __      _______   ___
-        \   \  /   / /  _____/ /  |    /       | /   |
-         \   \/   / /  /  __  /   |   /   ____/ /    |
-          \    __/ /  /_/  / / /| |  /   /     /  ___|
-           \  /   /  _____/ /  | | /   /___  /  /
-            \/   /________/ /   |/ /_______ \/  /
-                          /               /    \
-                        /_______________/ \____\
-                                           \______\
-         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      ~~    ~     ~      ~   🌊   ~      ~     ~     ~~
-   ~~    ~    ~      ~         ~         ~      ~    ~~
- ~~  ~     ~     ~     ~   ~     ~   ~     ~     ~  ~~
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-"""
+    def _render_banner(text: str = "WW3Tool") -> str:
+        return _pyfiglet.figlet_format(text, font="standard")
+
+except ImportError:
+    def _render_banner(text: str = "WW3Tool") -> str:
+        return text
 
 
 
@@ -235,17 +208,12 @@ class InteractiveCLI(cmd.Cmd):
         reset = _Colors.RESET
         bold = _Colors.BOLD
 
-        banner = _SHELL_BANNER_FULL
+        banner = _render_banner("WW3Tool")
         lines = banner.split("\n")
 
         colored_lines: list[str] = []
-        wave_started = False
         for line in lines:
-            if "~" in line:
-                wave_started = True
-            if wave_started:
-                colored_lines.append(f"{blue}{line}{reset}")
-            elif line.strip():
+            if line.strip():
                 colored_lines.append(f"{cyan}{line}{reset}")
             else:
                 colored_lines.append(line)

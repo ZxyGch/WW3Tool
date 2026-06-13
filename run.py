@@ -7,12 +7,6 @@
     python3 run.py shell [params]        → 启动交互式 REPL（可选带 params.yml）
     python3 run.py <子命令> [选项] [工作目录]  → 无界面 CLI
 
-内部委派关系（均为进程内 import 调用）：
-
-    无参          → desktop.application.main
-    shell         → workflows.interfaces.interactive_cli.main
-    其它子命令     → workflows.interfaces.command_line.main
-
 ----------------------------------------------------------------------
 无界面 CLI 子命令
 ----------------------------------------------------------------------
@@ -25,10 +19,10 @@
   create-workdir --name my_case   从根 params.yml 模板创建新工作目录
 
 二、预处理
-  validate [--stage forcing|grid|full]   校验 params.yml 是否合法
+  validate                               校验 params.yml 是否合法
   prepare-forcing                        只做 Step 1：准备强迫场（wind.nc 等）
-  generate-grid [--no-cache]             只做 Step 2：生成网格
-  run [--skip-grid] [--no-cache]         完整预处理（强迫场 → 网格 → WW3 namelist）
+  generate-grid                          只做 Step 2：生成网格
+  run                                    完整预处理（强迫场 → 网格 → WW3 namelist）
 
 三、后处理 / 绘图（配置见 params.yml 的 plot: 段）
   plot                                   执行 plot 段里所有 enabled=true 的任务
@@ -86,10 +80,10 @@ first. ``<workdir>`` may be omitted, in which case the current directory
   create-workdir --name my_case   Create a new workdir from the root params.yml template
 
 2. Preprocessing
-  validate [--stage forcing|grid|full]   Validate whether params.yml is legal
+  validate                               Validate whether params.yml is legal
   prepare-forcing                        Step 1 only: prepare forcing fields (wind.nc etc.)
-  generate-grid [--no-cache]             Step 2 only: generate the grid
-  run [--skip-grid] [--no-cache]         Full preprocessing (forcing -> grid -> WW3 namelist)
+  generate-grid                          Step 2 only: generate the grid
+  run                                    Full preprocessing (forcing -> grid -> WW3 namelist)
 
 3. Post-processing / plotting (configured in the plot: section of params.yml)
   plot                                   Run all enabled=true tasks in the plot section
@@ -122,23 +116,67 @@ Exit codes
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import os
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
 ENTRY_SCRIPT = ROOT / "run.py"
+REQUIREMENTS_FILE = ROOT / "src" / "requirements.txt"
+VENV_DIR = ROOT / ".venv"
 
 # 无需完整虚拟环境/依赖即可执行的轻量 CLI 子命令。
 # [EN] Lightweight CLI subcommands that don't require the full venv/dependencies.
 _LIGHT_CLI_COMMANDS = {"--help", "-h", "print-example", "create-workdir"}
 
+# 项目所需的全部依赖包及其对应的导入模块名。
+# [EN] All required packages and their importable module names.
+_REQUIRED_IMPORTS = {
+    "numpy": "numpy",
+    "netCDF4": "netCDF4",
+    "pandas": "pandas",
+    "matplotlib": "matplotlib",
+    "cartopy": "cartopy",
+    "Pillow": "PIL",
+    "scipy": "scipy",
+    "scikit-image": "skimage",
+    "opencv-python": "cv2",
+    "paramiko": "paramiko",
+    "PyQt6": "PyQt6.QtWidgets",
+    "PyQt6-Fluent-Widgets": "qfluentwidgets",
+    "requests": "requests",
+    "PyYAML": "yaml",
+    "pyfiglet": "pyfiglet",
+}
+
+# 用于在子进程中检测缺失依赖的内联脚本。
+# [EN] Inline script to detect missing dependencies in a subprocess.
+_CHECK_SCRIPT = """\
+import importlib.util
+import json
+import sys
+
+missing = []
+for name, module in json.loads(sys.argv[1]).items():
+    try:
+        ok = importlib.util.find_spec(module) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        ok = False
+    if not ok:
+        missing.append(name)
+print(json.dumps(missing))
+"""
+
 
 def _bootstrap_src_imports() -> None:
-    """将 src 加入 sys.path，以便 import venv_and_deps、workflows、desktop 等模块。
+    """将 src 加入 sys.path，以便 import workflows、desktop 等模块。
 
-    [EN] Add src to sys.path so venv_and_deps, workflows and desktop can be imported.
+    [EN] Add src to sys.path so workflows and desktop can be imported.
     """
     src_str = str(ROOT / "src")
     if src_str not in sys.path:
@@ -240,10 +278,8 @@ def main(argv: list[str] | None = None) -> int:
         mode = "cli"
 
     if _requires_full_dependencies(mode, rest):
-        from venv_and_deps import ensure_runtime
-
         try:
-            ensure_runtime(entry_script=ENTRY_SCRIPT, argv=original)
+            _ensure_runtime(entry_script=ENTRY_SCRIPT, argv=original)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             print(
                 _tr("cli_dependency_init_failed", "依赖初始化失败：{error}").format(error=exc),
@@ -265,6 +301,143 @@ def main(argv: list[str] | None = None) -> int:
     from workflows.interfaces.command_line import main as run_commands
 
     return run_commands(rest)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 虚拟环境与依赖管理（原 venv_and_deps.py）
+# Venv & dependency management (formerly venv_and_deps.py)
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _venv_python_path() -> Path:
+    if os.name == "nt":
+        return VENV_DIR / "Scripts" / "python.exe"
+    return VENV_DIR / "bin" / "python"
+
+
+def _running_in_project_venv() -> bool:
+    try:
+        return Path(sys.prefix).resolve() == VENV_DIR.resolve()
+    except OSError:
+        return False
+
+
+def _is_externally_managed_environment() -> bool:
+    marker = Path(sysconfig.get_path("stdlib")) / "EXTERNALLY-MANAGED"
+    return marker.is_file()
+
+
+def _missing_requirements() -> list[str]:
+    missing: list[str] = []
+    for requirement, module_name in _REQUIRED_IMPORTS.items():
+        try:
+            available = importlib.util.find_spec(module_name) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            available = False
+        if not available:
+            missing.append(requirement)
+    return missing
+
+
+def _missing_requirements_for_python(python: Path) -> list[str]:
+    proc = subprocess.run(
+        [str(python), "-c", _CHECK_SCRIPT, json.dumps(_REQUIRED_IMPORTS)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or f"Failed to detect dependencies: {python}")
+    return json.loads(proc.stdout.strip() or "[]")
+
+
+def _ensure_project_venv() -> Path:
+    venv_python = _venv_python_path()
+    if venv_python.is_file():
+        return venv_python
+    print(f"Creating project virtual environment: {VENV_DIR}")
+    subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
+    if not venv_python.is_file():
+        raise RuntimeError(f"Failed to create virtual environment: {venv_python}")
+    return venv_python
+
+
+def _resolve_install_python() -> Path:
+    if _running_in_project_venv():
+        return Path(sys.executable)
+    if _is_externally_managed_environment():
+        return _ensure_project_venv()
+    if _venv_python_path().is_file():
+        return _venv_python_path()
+    return Path(sys.executable)
+
+
+def _pip_install(python: Path) -> None:
+    subprocess.run(
+        [str(python), "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)],
+        check=True,
+    )
+
+
+def _different_executable_path(left: Path, right: Path) -> bool:
+    # Do not resolve symlinks here: venv/bin/python often points to the
+    # Homebrew interpreter, but executing through that path still activates
+    # the virtual environment via sys.prefix.
+    return left.absolute() != right.absolute()
+
+
+def _reexec(python: Path, entry_script: Path, argv: list[str]) -> None:
+    args = [str(python), str(entry_script), *argv]
+    os.execv(str(python), args)
+
+
+def _ensure_dependencies(*, quiet: bool = False) -> Path | None:
+    """Install missing dependencies. Returns venv python when caller must re-exec."""
+    missing = _missing_requirements()
+    if not missing:
+        if not quiet:
+            print("Dependency check passed.")
+        return None
+
+    if not REQUIREMENTS_FILE.is_file():
+        raise RuntimeError(f"Requirements file not found: {REQUIREMENTS_FILE}")
+
+    print("Missing dependencies, installing automatically: " + ", ".join(missing))
+    install_python = _resolve_install_python()
+    try:
+        _pip_install(install_python)
+    except subprocess.CalledProcessError:
+        if _different_executable_path(install_python, Path(sys.executable)):
+            raise
+        install_python = _ensure_project_venv()
+        _pip_install(install_python)
+
+    if _different_executable_path(install_python, Path(sys.executable)):
+        return install_python
+
+    remaining = _missing_requirements()
+    if remaining:
+        raise RuntimeError("Still unimportable after installation: " + ", ".join(remaining))
+    print("Dependencies installed.")
+    return None
+
+
+def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None) -> None:
+    """Ensure dependencies and re-exec into the project venv when needed."""
+    argv = list(argv or [])
+    venv_python = _venv_python_path()
+
+    if venv_python.is_file() and not _running_in_project_venv():
+        print(f"Using project virtual environment: {VENV_DIR}")
+        _reexec(venv_python, entry_script, argv)
+
+    reexec_python = _ensure_dependencies()
+    if reexec_python is not None:
+        print(f"Switched to project virtual environment: {VENV_DIR}")
+        _reexec(reexec_python, entry_script, argv)
+
+    if _missing_requirements():
+        raise RuntimeError("Still unimportable after installation: " + ", ".join(_missing_requirements()))
 
 
 if __name__ == "__main__":
