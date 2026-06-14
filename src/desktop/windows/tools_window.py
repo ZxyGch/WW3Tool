@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QProgressBar,
     QSizePolicy,
     QTableWidgetItem,
@@ -158,11 +157,6 @@ class ToolsInterface(QWidget):
         output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
         layout.addLayout(output_row)
 
-        self._merge_status = QLabel(tr("merge_inline_empty", "请添加至少两个 NetCDF 文件"))
-        self._merge_status.setWordWrap(True)
-        self._merge_status.setStyleSheet(styles.label_style())
-        layout.addWidget(self._merge_status)
-
         self._merge_progress = QProgressBar()
         self._merge_progress.setRange(0, 100)
         self._merge_progress.setValue(0)
@@ -178,8 +172,6 @@ class ToolsInterface(QWidget):
         self._merge_button.setEnabled(
             not busy and bool(self._merge_analysis and self._merge_analysis.valid and self._merge_output.text())
         )
-        if busy:
-            self._merge_status.setText(tr("merge_inline_analyzing", "正在分析强迫场文件..."))
 
     def _add_merge_files(self) -> None:
         start = str(Path(self._merge_paths[0]).parent) if self._merge_paths else self._get_forcing_dir()
@@ -208,7 +200,6 @@ class ToolsInterface(QWidget):
         self._merge_analysis = None
         self._merge_table.setRowCount(0)
         self._merge_output.clear()
-        self._merge_status.setText(tr("merge_inline_empty", "请添加至少两个 NetCDF 文件"))
         self._merge_progress.hide()
         self._merge_progress.setValue(0)
         self._merge_button.setEnabled(False)
@@ -251,7 +242,7 @@ class ToolsInterface(QWidget):
 
     def _on_merge_analysis_done(self, result: object) -> None:
         if isinstance(result, dict):
-            self._merge_status.setText(str(result.get("error", tr("tools_merge_failed", "合并失败"))))
+            self._merge_log_received.emit(str(result.get("error", tr("tools_merge_failed", "合并失败"))))
             self._merge_button.setEnabled(False)
             return
         if not isinstance(result, tuple) or len(result) != 2:
@@ -271,15 +262,19 @@ class ToolsInterface(QWidget):
                 item = QTableWidgetItem(value)
                 item.setToolTip(info.error or info.path)
                 self._merge_table.setItem(row, column, item)
-        if analysis.valid:
-            self._merge_status.setText(
+        if not analysis.valid:
+            self._merge_log_received.emit(
+                tr("tools_merge_failed", "合并失败：{error}").format(
+                    error="\n".join(analysis.errors)
+                )
+            )
+        elif self._log:
+            self._merge_log_received.emit(
                 tr("merge_inline_valid", "校验通过：{strategy}，共 {steps} 个时间步").format(
                     strategy=analysis.strategy,
                     steps=analysis.time_steps,
                 )
             )
-        else:
-            self._merge_status.setText("\n".join(analysis.errors))
         self._set_merge_busy(False)
 
     def _start_merge(self) -> None:
@@ -294,7 +289,6 @@ class ToolsInterface(QWidget):
         self._merge_progress.setValue(0)
         self._merge_progress.show()
         merging_message = tr("merge_inline_merging", "正在合并，请稍候...")
-        self._merge_status.setText(merging_message)
         self._merge_log_received.emit(merging_message)
         self._runner.run(
             lambda: merge_forcing_netcdf(
@@ -309,7 +303,6 @@ class ToolsInterface(QWidget):
     def _on_merge_progress(self, value: int, message: str) -> None:
         value = max(0, min(100, int(value)))
         self._merge_progress.setValue(value)
-        self._merge_status.setText(f"{message}（{value}%）")
         progress_bucket = value // 10 * 10
         if progress_bucket > self._last_logged_progress or value == 100:
             self._last_logged_progress = progress_bucket
@@ -318,15 +311,11 @@ class ToolsInterface(QWidget):
     def _on_merge_done(self, result: object) -> None:
         if isinstance(result, dict):
             error = str(result.get("error", tr("tools_merge_failed", "合并失败")))
-            self._merge_status.setText(error)
             self._merge_log_received.emit(
                 tr("tools_merge_failed", "合并失败：{error}").format(error=error)
             )
             self._set_merge_busy(False)
             return
-        self._merge_status.setText(
-            tr("merge_inline_done", "合并完成：{path}").format(path=result)
-        )
         self._set_merge_busy(False)
 
 
