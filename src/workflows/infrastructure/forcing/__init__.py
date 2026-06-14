@@ -14,6 +14,7 @@ application-layer modules such as ``forcing_preparation``.
 - ``variable_detector``：检测 wind/current/level/ice 四类 WW3 强迫变量；
 - ``file_service``：复制/移动文件并修复时间轴、风场变量名等格式问题；
 - ``wind_normalize_service``：将风场重排为 WW3 可读的 (time, lat, lon) 布局；
+- ``merge_service``：分析并合并多个 NetCDF 强迫场文件，支持时间拼接与不同场合并；
 - ``use_cases``：封装 Step 1 导入、扫描工作目录等编排入口（历史命名保留 UseCase 后缀）。
 
 [EN] Main submodules:
@@ -21,5 +22,6 @@ application-layer modules such as ``forcing_preparation``.
 - ``variable_detector``: Detect wind/current/level/ice WW3 forcing variables;
 - ``file_service``: Copy/move files and fix format issues such as time axis and wind variable names;
 - ``wind_normalize_service``: Rearrange wind fields into WW3-readable (time, lat, lon) layout;
+- ``merge_service``: Analyze and merge NetCDF forcing files by time or by distinct forcing fields;
 - ``use_cases``: Orchestration entry points for Step 1 import, working directory scanning, etc. (UseCase suffix retained for historical compatibility).
 """

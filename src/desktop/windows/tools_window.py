@@ -1,4 +1,4 @@
-"""工具子界面：清理工作目录（迁移自 src ``_create_tools_page``）。
+"""工具子界面：清理工作目录与强迫场文件合并。
 
 作为 FluentWindow 左侧堆叠的一页，右侧共享日志常驻。删除逻辑为纯函数（无 Qt），
 界面按钮经构造注入的回调交由窗口执行（确认对话框 + 日志）。
@@ -8,19 +8,38 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
-from qfluentwidgets import PrimaryPushButton
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QSizePolicy,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+from qfluentwidgets import InfoBar, LineEdit, PrimaryPushButton, PushButton, TableWidget
 
+from ..background_runner import BackgroundRunner
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components import styles
+from workflows.infrastructure.forcing.merge_service import (
+    MergeAnalysis,
+    analyze_merge_inputs,
+    merge_forcing_netcdf,
+)
 from workflows.support.translations import tr
 
 
 class ToolsInterface(QWidget):
-    """常用工具页：清理工作目录。"""
+    """常用工具页：清理工作目录 + 合并强迫场。"""
+
+    _merge_log_received = pyqtSignal(str)
 
     def __init__(
         self,
@@ -28,9 +47,18 @@ class ToolsInterface(QWidget):
         *,
         clean_all: Callable[[], None],
         clean_run: Callable[[], None],
+        log: Callable[[str], None] | None = None,
+        get_forcing_dir: Callable[[], str] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("tools_interface")
+        self._log = log
+        self._get_forcing_dir = get_forcing_dir or (lambda: "")
+        self._merge_paths: list[str] = []
+        self._merge_analysis: MergeAnalysis | None = None
+        self._runner = BackgroundRunner(self)
+        if self._log:
+            self._merge_log_received.connect(self._log, Qt.ConnectionType.QueuedConnection)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -47,12 +75,23 @@ class ToolsInterface(QWidget):
         scroll.setWidget(content)
         outer.addWidget(scroll)
 
+        # ── 清理工作目录卡片 ──
         group, layout = create_header_card(content, tr("tools_clean_workdir_card_title", "清理工作目录"))
         layout.addWidget(self._button(tr("tools_clean_workdir_all", "清空所有文件"), clean_all))
         layout.addWidget(self._button(tr("tools_clean_workdir_run_files", "清空运行文件 (.ww3 .log .bin)"), clean_run))
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
         vbox.addWidget(group)
+
+        # ── 合并强迫场卡片 ──
+        merge_group, merge_layout = create_header_card(
+            content, tr("tools_merge_forcing_card_title", "合并强迫场文件"),
+        )
+        self._build_merge_form(merge_layout)
+        merge_group.viewLayout.setContentsMargins(11, 10, 11, 12)
+        merge_group.viewLayout.addLayout(merge_layout)
+        vbox.addWidget(merge_group)
+
         vbox.addStretch(1)
 
     @staticmethod
@@ -62,6 +101,207 @@ class ToolsInterface(QWidget):
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.clicked.connect(handler)
         return button
+
+    @staticmethod
+    def _small_button(text: str, handler: Callable[[], None]) -> PushButton:
+        button = PushButton(text)
+        button.clicked.connect(handler)
+        return button
+
+    def _build_merge_form(self, layout: QVBoxLayout) -> None:
+        self._merge_table = TableWidget()
+        self._merge_table.setColumnCount(3)
+        self._merge_table.setHorizontalHeaderLabels(
+            [
+                tr("merge_inline_col_filename", "文件"),
+                tr("merge_inline_col_fields", "强迫场"),
+                tr("merge_inline_col_time", "时间范围"),
+            ]
+        )
+        self._merge_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._merge_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._merge_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._merge_table.setBorderVisible(True)
+        self._merge_table.setWordWrap(False)
+        self._merge_table.verticalHeader().setVisible(False)
+        header = self._merge_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._merge_table.setColumnWidth(0, 160)
+        self._merge_table.setMinimumHeight(150)
+        layout.addWidget(self._merge_table)
+
+        file_buttons = QHBoxLayout()
+        file_buttons.setSpacing(8)
+        file_buttons.addWidget(self._small_button(tr("merge_inline_add", "添加文件"), self._add_merge_files), 1)
+        file_buttons.addWidget(
+            self._small_button(tr("merge_inline_remove", "移除选中"), self._remove_merge_files), 1
+        )
+        file_buttons.addWidget(self._small_button(tr("merge_inline_clear", "清空"), self._clear_merge_files), 1)
+        layout.addLayout(file_buttons)
+
+        output_row = QHBoxLayout()
+        output_row.setSpacing(8)
+        self._merge_output = LineEdit()
+        self._merge_output.setReadOnly(True)
+        self._merge_output.setPlaceholderText(tr("merge_inline_output_placeholder", "请选择输出文件"))
+        self._merge_output.setStyleSheet(styles.input_style())
+        output_row.addWidget(self._merge_output, 1)
+        output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
+        layout.addLayout(output_row)
+
+        self._merge_status = QLabel(tr("merge_inline_empty", "请添加至少两个 NetCDF 文件"))
+        self._merge_status.setWordWrap(True)
+        self._merge_status.setStyleSheet(styles.label_style())
+        layout.addWidget(self._merge_status)
+
+        self._merge_button = self._button(tr("merge_inline_start", "开始合并"), self._start_merge)
+        self._merge_button.setEnabled(False)
+        layout.addWidget(self._merge_button)
+
+    def _set_merge_busy(self, busy: bool) -> None:
+        self._merge_button.setEnabled(
+            not busy and bool(self._merge_analysis and self._merge_analysis.valid and self._merge_output.text())
+        )
+        if busy:
+            self._merge_status.setText(tr("merge_inline_analyzing", "正在分析强迫场文件..."))
+
+    def _add_merge_files(self) -> None:
+        start = str(Path(self._merge_paths[0]).parent) if self._merge_paths else self._get_forcing_dir()
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            tr("tools_merge_select_title", "选择强迫场文件（可多选）"),
+            start,
+            "NetCDF (*.nc *.nc4);;All Files (*)",
+        )
+        if not paths:
+            return
+        self._merge_paths = list(dict.fromkeys([*self._merge_paths, *paths]))
+        if not self._merge_output.text():
+            self._merge_output.setText(self._default_merge_output(self._merge_paths[0]))
+        self._analyze_merge_files()
+
+    def _remove_merge_files(self) -> None:
+        rows = {index.row() for index in self._merge_table.selectedIndexes()}
+        if not rows:
+            return
+        self._merge_paths = [path for index, path in enumerate(self._merge_paths) if index not in rows]
+        self._analyze_merge_files()
+
+    def _clear_merge_files(self) -> None:
+        self._merge_paths.clear()
+        self._merge_analysis = None
+        self._merge_table.setRowCount(0)
+        self._merge_output.clear()
+        self._merge_status.setText(tr("merge_inline_empty", "请添加至少两个 NetCDF 文件"))
+        self._merge_button.setEnabled(False)
+
+    def _choose_merge_output(self) -> None:
+        start = self._merge_output.text().strip()
+        if not start and self._merge_paths:
+            start = self._default_merge_output(self._merge_paths[0])
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("tools_merge_save_title", "保存合并后的文件"),
+            start,
+            "NetCDF (*.nc)",
+        )
+        if path:
+            if not path.lower().endswith((".nc", ".nc4")):
+                path += ".nc"
+            self._merge_output.setText(path)
+            self._set_merge_busy(False)
+
+    @staticmethod
+    def _default_merge_output(first_path: str) -> str:
+        directory = Path(first_path).parent
+        candidate = directory / "merged_forcing.nc"
+        number = 2
+        while candidate.exists():
+            candidate = directory / f"merged_forcing_{number}.nc"
+            number += 1
+        return str(candidate)
+
+    def _analyze_merge_files(self) -> None:
+        self._merge_analysis = None
+        self._merge_table.setRowCount(0)
+        if not self._merge_paths:
+            self._clear_merge_files()
+            return
+        paths = tuple(self._merge_paths)
+        self._set_merge_busy(True)
+        self._runner.run(lambda: (paths, analyze_merge_inputs(paths)), self._on_merge_analysis_done)
+
+    def _on_merge_analysis_done(self, result: object) -> None:
+        if isinstance(result, dict):
+            self._merge_status.setText(str(result.get("error", tr("tools_merge_failed", "合并失败"))))
+            self._merge_button.setEnabled(False)
+            return
+        if not isinstance(result, tuple) or len(result) != 2:
+            return
+        analyzed_paths, analysis = result
+        if tuple(self._merge_paths) != analyzed_paths:
+            return
+        if not isinstance(analysis, MergeAnalysis):
+            return
+        self._merge_analysis = analysis
+        self._merge_table.setRowCount(0)
+        for info in analysis.files:
+            row = self._merge_table.rowCount()
+            self._merge_table.insertRow(row)
+            values = (info.filename, info.forcing_fields, info.time_range)
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(info.error or info.path)
+                self._merge_table.setItem(row, column, item)
+        if analysis.valid:
+            self._merge_status.setText(
+                tr("merge_inline_valid", "校验通过：{strategy}，共 {steps} 个时间步").format(
+                    strategy=analysis.strategy,
+                    steps=analysis.time_steps,
+                )
+            )
+        else:
+            self._merge_status.setText("\n".join(analysis.errors))
+        self._set_merge_busy(False)
+
+    def _start_merge(self) -> None:
+        if not self._merge_analysis or not self._merge_analysis.valid:
+            return
+        output = self._merge_output.text().strip()
+        if not output:
+            return
+        paths = tuple(self._merge_paths)
+        self._set_merge_busy(True)
+        self._merge_status.setText(tr("merge_inline_merging", "正在合并，请稍候..."))
+        self._runner.run(
+            lambda: merge_forcing_netcdf(paths, output, log=self._merge_log_received.emit),
+            self._on_merge_done,
+        )
+
+    def _on_merge_done(self, result: object) -> None:
+        if isinstance(result, dict):
+            error = str(result.get("error", tr("tools_merge_failed", "合并失败")))
+            self._merge_status.setText(error)
+            InfoBar.error(
+                title=tr("tools_merge_forcing_card_title", "合并强迫场文件"),
+                content=error,
+                duration=4000,
+                parent=self,
+            )
+            self._set_merge_busy(False)
+            return
+        self._merge_status.setText(
+            tr("merge_inline_done", "合并完成：{path}").format(path=result)
+        )
+        InfoBar.success(
+            title=tr("tools_merge_forcing_card_title", "合并强迫场文件"),
+            content=tr("tools_merge_success_short", "已合并 {n} 个文件").format(n=len(self._merge_paths)),
+            duration=2500,
+            parent=self,
+        )
+        self._set_merge_busy(False)
 
 
 # ── 删除逻辑（纯函数，无 Qt）────────────────────────────────────────────────

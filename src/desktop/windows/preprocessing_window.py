@@ -443,6 +443,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._tools_interface = ToolsInterface(
             clean_all=self._tools_clean_all,
             clean_run=self._tools_clean_run,
+            log=self._append_log,
+            get_forcing_dir=lambda: str(get_forcing_field_default_dir() or ""),
         )
         self.left_stacked.addWidget(self._tools_interface)  # [EN] index 3: tools page (shares right-side log)
         # index 3：工具页（共享右侧日志）
