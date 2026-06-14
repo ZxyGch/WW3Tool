@@ -167,6 +167,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
                 ("recommend-cfl", tr("icli_help_recommend_cfl", "按 CFL 公式推荐时间步长")),
+                ("recommend-grid", tr("icli_help_recommend_grid", "按区域范围推荐网格间距/分辨率")),
                 ("run-workflow", tr("icli_help_run_workflow", "完整预处理流程")),
                 ("local-run", tr("icli_help_local_run", "执行当前工作目录的 local.sh")),
             ],
@@ -753,13 +754,18 @@ class InteractiveCLI(cmd.Cmd):
         if not self._require_config():
             return
         try:
-            from ..domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps
+            from ..domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps_from_spacing
 
             cfg = self._config
             grid = cfg.grid
-            dx, dy, lat_s, lat_n = _extract_grid_spacing(grid)
-            if dx is None:
-                print(_warn(tr("icli_cfl_need_grid", "⚠️ 请先在网格配置中填写有效的 DX、DY 与纬度范围")))
+            # 按网格类型取最小尺度：非结构化用 hmin，结构化/SMC 用 DX/DY+纬度
+            # [EN] Min spacing by mesh type: unstructured→hmin, structured/SMC→DX/DY+lat
+            dxy_m, reason = _cfl_spacing_from_grid(grid)
+            if dxy_m is None:
+                if reason == "need_hmin":
+                    print(_warn(tr("icli_cfl_need_hmin", "⚠️ 请先填写有效的非结构网格最小尺度 hmin（km）")))
+                else:
+                    print(_warn(tr("icli_cfl_need_grid", "⚠️ 请先在网格配置中填写有效的 DX、DY 与纬度范围")))
                 return
 
             freq1 = _extract_freq1(cfg)
@@ -767,8 +773,7 @@ class InteractiveCLI(cmd.Cmd):
                 print(_warn(tr("icli_cfl_need_freq1", "⚠️ 请填写有效的起始频率 FREQ1（Hz）")))
                 return
 
-            lat_mid = (lat_s + lat_n) / 2.0
-            rec = recommend_timesteps(dx_deg=dx, dy_deg=dy, freq1=freq1, lat_deg=lat_mid)
+            rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1)
             new_params = as_ww3_grid_parameters(rec)
 
             # 更新内存配置
@@ -787,6 +792,53 @@ class InteractiveCLI(cmd.Cmd):
             print(f"  DTMIN = {rec.dtmin} s")
             print(f"  CFL ratio = {rec.cfl_ratio:.2f}")
             print(_success(tr("icli_cfl_persisted", "✅ 已写入 {}" ).format(self._params_path)))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_recommend_grid(self, arg: str) -> None:
+        """recommend-grid  — 按区域范围推荐网格间距/分辨率，自动写入配置
+
+        [EN] recommend-grid  — Recommend grid spacing/resolution from the domain
+        extent, auto-write to config.
+        """
+        if not self._require_config():
+            return
+        try:
+            from ..domain.grid_spacing_recommendation import recommend_grid_params
+
+            grid = self._config.grid
+            outer = grid.outer
+            if not outer or not outer.lon or not outer.lat:
+                print(_warn(tr("icli_recgrid_need_box", "⚠️ 请先在网格配置中填写有效的经纬度范围")))
+                return
+            lon = [float(outer.lon[0]), float(outer.lon[1])]
+            lat = [float(outer.lat[0]), float(outer.lat[1])]
+
+            rec = recommend_grid_params(grid.mesh_type, lon, lat)
+            if rec is None:
+                print(_warn(tr("icli_recgrid_need_box", "⚠️ 请先在网格配置中填写有效的经纬度范围")))
+                return
+
+            # 更新内存配置 [EN] Update in-memory config
+            if rec.section == "unstructured":
+                grid.unstructured.hmax = float(rec.values["hmax"])
+                grid.unstructured.hmin = float(rec.values["hmin"])
+                grid.unstructured.hshr = float(rec.values["hshr"])
+                grid.unstructured.dhdx = float(rec.values["dhdx"])
+            elif rec.section == "smc":
+                grid.smc.n_levels = int(rec.values["n_levels"])
+            else:
+                grid.outer.dx = float(rec.values["dx"])
+                grid.outer.dy = float(rec.values["dy"])
+
+            # 回写 params.yml [EN] Persist to params.yml
+            _persist_grid_params(self._params_path, rec.section, rec.values)
+
+            print(_bold(tr("icli_recgrid_result", "📐 网格参数推荐（{mesh}，跨度≈{span} km）").format(
+                mesh=rec.mesh_type, span=int(rec.span_km))))
+            for key, value in rec.values.items():
+                print(f"  {key} = {value}")
+            print(_success(tr("icli_cfl_persisted", "✅ 已写入 {}").format(self._params_path)))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
@@ -1287,39 +1339,39 @@ class InteractiveCLI(cmd.Cmd):
         return self._complete_options(text, ["--confirm"])
 
 
-def _extract_grid_spacing(grid) -> tuple:
-    """从网格配置中提取 dx、dy、lat_south、lat_north，无法提取时返回 (None, None, None, None)。
+def _cfl_spacing_from_grid(grid) -> tuple:
+    """按网格类型返回 CFL 所需的最小网格尺度（米）与失败原因 ``(dxy_m, reason)``。
 
-    [EN] Extract dx, dy, lat_south, lat_north from grid config; returns (None, None, None, None) on failure.
+    - 非结构化：用近岸最小尺度 ``hmin``（km）。
+    - 结构化 / SMC：用基准格距 ``grid.outer.dx/dy``（度）与纬度中点；SMC 的 base cell
+      即最细 cell，故与结构化同源（多分辨率只把部分 cell 往粗合并）。
+
+    [EN] Min grid spacing (m) for CFL by mesh type; returns ``(dxy_m, reason)``.
+    Unstructured → ``hmin``; structured/SMC → ``grid.outer.dx/dy`` + latitude.
     """
+    from ..domain.timestep_recommendation import cfl_spacing_meters
+
     try:
-        if grid.mesh_type == "structured" and grid.structured and grid.outer:
-            outer = grid.outer
-            dx = float(outer.dx) if outer.dx else None
-            dy = float(outer.dy) if outer.dy else None
-            lat_s = float(outer.lat[0]) if outer.lat else None
-            lat_n = float(outer.lat[1]) if outer.lat else None
-            if dx and dy and lat_s is not None and lat_n is not None:
-                return dx, dy, lat_s, lat_n
-        elif grid.mesh_type == "smc" and grid.smc:
-            s = grid.smc
-            dx = float(s.dx) if getattr(s, "dx", None) else None
-            dy = float(s.dy) if getattr(s, "dy", None) else None
-            lat_s = float(s.lat_south) if getattr(s, "lat_south", None) else None
-            lat_n = float(s.lat_north) if getattr(s, "lat_north", None) else None
-            if dx and dy and lat_s is not None and lat_n is not None:
-                return dx, dy, lat_s, lat_n
-        elif grid.mesh_type == "unstructured" and grid.unstructured and grid.outer:
-            outer = grid.outer
-            dx = float(outer.dx) if outer.dx else None
-            dy = float(outer.dy) if outer.dy else None
-            lat_s = float(outer.lat[0]) if outer.lat else None
-            lat_n = float(outer.lat[1]) if outer.lat else None
-            if dx and dy and lat_s is not None and lat_n is not None:
-                return dx, dy, lat_s, lat_n
+        if grid.mesh_type == "unstructured":
+            hmin = getattr(grid.unstructured, "hmin", None) if grid.unstructured else None
+            hmin = float(hmin) if hmin is not None else None
+            return cfl_spacing_meters("unstructured", hmin_km=hmin)
+
+        outer = grid.outer
+        if not outer or not outer.dx or not outer.dy or not outer.lat:
+            return None, "need_grid"
+        dx = float(outer.dx)
+        dy = float(outer.dy)
+        lat_mid = (float(outer.lat[0]) + float(outer.lat[1])) / 2.0
     except (TypeError, ValueError, AttributeError, IndexError):
-        pass
-    return None, None, None, None
+        return None, "need_grid"
+
+    return cfl_spacing_meters(
+        "smc" if grid.mesh_type == "smc" else "structured",
+        dx_deg=dx,
+        dy_deg=dy,
+        lat_deg=lat_mid,
+    )
 
 
 def _extract_freq1(cfg) -> Optional[float]:
@@ -1389,6 +1441,72 @@ def _persist_ww3_grid_timesteps(params_path: str, new_params: dict) -> None:
         for key in missing:
             lines.insert(insert_idx, f"  {key}: {new_params[key]}\n")
             insert_idx += 1
+
+    with open(params_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def _persist_grid_params(params_path: str, section: str, values: dict) -> None:
+    """将网格推荐参数写回 params.yml 的 ``grid.<section>`` 子小节。
+
+    按缩进定位 ``grid:`` 顶级段与其下的 ``<section>:`` 小节，仅在该小节范围内逐行替换
+    目标键，避免误改其它同名键（如内圈 ``inner`` 的 dx/dy）。保留原有格式与注释。
+    [EN] Write recommended grid params back under ``grid.<section>`` in params.yml.
+         Indentation-scoped to that subsection so same-named keys elsewhere
+         (e.g. ``inner`` dx/dy) are not touched. Preserves formatting/comments.
+    """
+    import re
+
+    def indent_of(s: str) -> int:
+        return len(s) - len(s.lstrip(" "))
+
+    with open(params_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # 1) 定位 grid: 顶级段 [g0, g1)
+    g0 = next(
+        (i for i, ln in enumerate(lines) if indent_of(ln) == 0 and ln.lstrip().startswith("grid:")),
+        None,
+    )
+    if g0 is None:
+        return
+    g1 = len(lines)
+    for i in range(g0 + 1, len(lines)):
+        ln = lines[i]
+        if ln.strip() and not ln.lstrip().startswith("#") and indent_of(ln) == 0:
+            g1 = i
+            break
+
+    # 2) 在 grid 段内定位 section: 小节头与缩进
+    s_hdr = next(
+        (i for i in range(g0 + 1, g1) if lines[i].lstrip().startswith(f"{section}:")),
+        None,
+    )
+    if s_hdr is None:
+        return
+    s_indent = indent_of(lines[s_hdr])
+    s1 = g1
+    for i in range(s_hdr + 1, g1):
+        ln = lines[i]
+        if ln.strip() and not ln.lstrip().startswith("#") and indent_of(ln) <= s_indent:
+            s1 = i
+            break
+
+    # 3) 在 section 范围内替换目标键
+    updated: set = set()
+    for i in range(s_hdr + 1, s1):
+        for key, value in values.items():
+            m = re.match(rf"^(\s*){re.escape(key)}\s*:.*$", lines[i])
+            if m:
+                lines[i] = f"{m.group(1)}{key}: {value}\n"
+                updated.add(key)
+                break
+
+    # 4) 缺失键插入到 section 头之后
+    missing = [k for k in values if k not in updated]
+    insert_indent = " " * (s_indent + 2)
+    for off, key in enumerate(missing):
+        lines.insert(s_hdr + 1 + off, f"{insert_indent}{key}: {values[key]}\n")
 
     with open(params_path, "w", encoding="utf-8") as f:
         f.writelines(lines)

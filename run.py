@@ -22,6 +22,7 @@
   validate                               校验 params.yml 是否合法
   prepare-forcing                        只做 Step 1：准备强迫场（wind.nc 等）
   generate-grid                          只做 Step 2：生成网格
+  recommend-grid                         按区域范围推荐网格间距/分辨率并写回 params.yml
   run                                    完整预处理（强迫场 → 网格 → WW3 namelist）
 
 三、后处理 / 绘图（配置见 params.yml 的 plot: 段）
@@ -83,6 +84,7 @@ first. ``<workdir>`` may be omitted, in which case the current directory
   validate                               Validate whether params.yml is legal
   prepare-forcing                        Step 1 only: prepare forcing fields (wind.nc etc.)
   generate-grid                          Step 2 only: generate the grid
+  recommend-grid                         Recommend grid spacing/resolution from the domain extent, write to params.yml
   run                                    Full preprocessing (forcing -> grid -> WW3 namelist)
 
 3. Post-processing / plotting (configured in the plot: section of params.yml)

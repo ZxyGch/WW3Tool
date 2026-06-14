@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Optional
 
 PI = math.pi
 G = 9.8
@@ -46,6 +47,37 @@ def compute_tcfl(dxy_m: float, freq1: float) -> float:
     return dxy_m * freq1 * 4.0 * PI / G
 
 
+def cfl_spacing_meters(
+    mesh_type: Optional[str],
+    *,
+    dx_deg: Optional[float] = None,
+    dy_deg: Optional[float] = None,
+    lat_deg: float = 0.0,
+    hmin_km: Optional[float] = None,
+) -> tuple[Optional[float], str]:
+    """按网格类型返回 CFL 所需的最小网格尺度（米）。
+
+    返回 ``(dxy_m, reason)``：成功时 ``reason`` 为空串；失败时 ``dxy_m`` 为 ``None`` 且
+    ``reason`` 为错误标识（``"need_grid"`` / ``"need_hmin"``）。
+
+    - 结构化 / SMC：最细 cell = 基准格距 ``dx/dy``（度），按纬度换算成米。
+      （SMC 的多分辨率只把部分 cell 往粗合并，base 即最细，故与结构化同源。）
+    - 非结构化：最细边 = ``hmin``（km），直接换算成米，不经过度→米。
+
+    [EN] Minimum grid spacing (m) for the CFL formula, by mesh type. SMC's base
+    cell is its finest cell (coarsening only merges cells upward), so it shares
+    the structured path; unstructured uses ``hmin`` (km) directly.
+    """
+    if mesh_type == "unstructured":
+        if hmin_km is None or hmin_km <= 0:
+            return None, "need_hmin"
+        return float(hmin_km) * 1000.0, ""
+    # 结构化与 SMC：度制基准格距
+    if not dx_deg or not dy_deg or dx_deg <= 0 or dy_deg <= 0:
+        return None, "need_grid"
+    return grid_spacing_meters(float(dx_deg), float(dy_deg), lat_deg), ""
+
+
 def recommend_timesteps(
     *,
     dx_deg: float,
@@ -56,8 +88,29 @@ def recommend_timesteps(
     dtmin: int = 15,
     cfl_factor: float = 0.9,
 ) -> TimestepRecommendation:
-    """Return WW3-compatible timestep seconds from grid and spectrum settings."""
+    """Return WW3-compatible timestep seconds from a lon/lat grid and FREQ1."""
     dxy_m = grid_spacing_meters(dx_deg, dy_deg, lat_deg)
+    return recommend_timesteps_from_spacing(
+        dxy_m=dxy_m,
+        freq1=freq1,
+        has_strong_current=has_strong_current,
+        dtmin=dtmin,
+        cfl_factor=cfl_factor,
+    )
+
+
+def recommend_timesteps_from_spacing(
+    *,
+    dxy_m: float,
+    freq1: float,
+    has_strong_current: bool = False,
+    dtmin: int = 15,
+    cfl_factor: float = 0.9,
+) -> TimestepRecommendation:
+    """Return WW3-compatible timestep seconds from an explicit min spacing (m).
+
+    Mesh-type-agnostic core: callers resolve ``dxy_m`` via ``cfl_spacing_meters``
+    (structured/SMC from degree spacing, unstructured from ``hmin``)."""
     tcfl = compute_tcfl(dxy_m, freq1)
     dtxy = max(1, int(round(cfl_factor * tcfl)))
     dtmax = max(1, int(round(3.0 * dtxy)))

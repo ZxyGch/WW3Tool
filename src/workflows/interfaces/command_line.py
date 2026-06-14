@@ -159,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "Run only grid generation"))
     p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
+    p_recgrid = sub.add_parser(
+        "recommend-grid",
+        help=tr("cli_help_recommend_grid", "Recommend grid spacing/resolution from the domain extent and write to params.yml"),
+    )
+    p_recgrid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
     p_run = sub.add_parser("run", help=tr("cli_help_run", "Run headless preprocessing"))
     p_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
@@ -382,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
             stage = "full"
         if args.command == "prepare-forcing":
             stage = "forcing"
-        if args.command == "generate-grid":
+        if args.command in ("generate-grid", "recommend-grid"):
             stage = "grid"
 
         config = load_pipeline_config(params_path, validation_stage=stage)
@@ -400,6 +406,9 @@ def main(argv: list[str] | None = None) -> int:
             from ..application.grid_preparation import run_generate_grid
             run_generate_grid(config, log=print, use_cache=True)
             return 0
+
+        if args.command == "recommend-grid":
+            return _run_recommend_grid(config, params_path)
 
         if args.command == "run":
             from ..application.preprocessing_workflow import run_pipeline
@@ -530,6 +539,38 @@ def _run_all_plots(config) -> int:
         else:
             rc = max(rc, _run_match_ndbc(config))
     return rc
+
+
+def _run_recommend_grid(config, params_path: str) -> int:
+    """按区域范围推荐网格间距/分辨率，打印并写回 params.yml。
+
+    [EN] Recommend grid spacing/resolution from the domain extent; print and
+    persist to params.yml. Returns ``0`` on success, ``1`` when the extent is
+    missing/invalid.
+    """
+    from ..domain.grid_spacing_recommendation import recommend_grid_params
+    from .interactive_cli import _persist_grid_params
+
+    grid = config.grid
+    outer = grid.outer
+    if not outer or not outer.lon or not outer.lat:
+        print(tr("cli_recgrid_need_box", "❌ 请先在 params.yml 的 grid.outer 中填写有效的经纬度范围"), file=sys.stderr)
+        return 1
+    lon = [float(outer.lon[0]), float(outer.lon[1])]
+    lat = [float(outer.lat[0]), float(outer.lat[1])]
+
+    rec = recommend_grid_params(grid.mesh_type, lon, lat)
+    if rec is None:
+        print(tr("cli_recgrid_need_box", "❌ 请先在 params.yml 的 grid.outer 中填写有效的经纬度范围"), file=sys.stderr)
+        return 1
+
+    _persist_grid_params(params_path, rec.section, rec.values)
+    print(tr("cli_recgrid_result", "📐 网格参数推荐（{mesh}，跨度≈{span} km）：").format(
+        mesh=rec.mesh_type, span=int(rec.span_km)))
+    for key, value in rec.values.items():
+        print(f"  {key} = {value}")
+    print(tr("cli_recgrid_persisted", "✅ 已写入 {path}").format(path=params_path))
+    return 0
 
 
 def _run_wave_maps(config, *, contour: bool = False) -> int:
