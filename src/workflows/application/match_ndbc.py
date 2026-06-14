@@ -100,7 +100,7 @@ def run_match_ndbc(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_ndbc_data_folder_missing", "plot.ndbc.data_folder 未配置"),
+            error=tr("plotting_ndbc_data_folder_missing", "❌ plot.ndbc.data_folder 未配置"),
         )
 
     ww3_file = _find_ww3_nc(result_folder)
@@ -109,7 +109,7 @@ def run_match_ndbc(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_ww3_output_nc_not_found", "未在 {folder} 找到 WW3 输出 nc 文件").format(folder=result_folder),
+            error=tr("plotting_ww3_output_nc_not_found", "❌ 未在 {folder} 找到 WW3 输出 nc 文件").format(folder=result_folder),
         )
 
     out_folder = os.path.join(result_folder, "ndbc_match")
@@ -138,11 +138,11 @@ def run_match_ndbc(
             image_files=images,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
     logger.log(
-        tr("plotting_ndbc_match_generated", "NDBC 匹配结果已生成至：{path}").format(
+        tr("plotting_ndbc_match_generated", "✅ NDBC 匹配结果已生成至：{path}").format(
             path=photo_subdir(result_folder, SUBDIR_NDBC_FIT)
         )
     )
@@ -201,10 +201,10 @@ def run_download_ndbc(
             output_folder=download_folder,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
-    logger.log(tr("plotting_ndbc_downloaded_to", "NDBC 数据已下载至：{path}").format(path=download_folder))
+    logger.log(tr("plotting_ndbc_downloaded_to", "✅ NDBC 数据已下载至：{path}").format(path=download_folder))
     return NDBCResult(
         output_folder=download_folder,
         messages=list(logger.messages),

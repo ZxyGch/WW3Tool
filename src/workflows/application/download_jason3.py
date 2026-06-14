@@ -134,7 +134,7 @@ def run_download_jason3(
             success=False,
             error=tr(
                 "plotting_jason_download_time_range_missing",
-                "time_range 必须提供 [起始日期, 结束日期]（格式 YYYYMMDD）",
+                "❌ time_range 必须提供 [起始日期, 结束日期]（格式 YYYYMMDD）",
             ),
         )
 
@@ -154,13 +154,13 @@ def run_download_jason3(
                 total=worker_result.get("total", 0),
                 messages=list(logger.messages),
                 success=False,
-                error=tr("plotting_jason_download_not_ok", "下载未完全成功"),
+                error=tr("plotting_jason_download_not_ok", "⚠️ 下载未完全成功"),
             )
 
         logger.log(
             tr(
                 "plotting_jason_download_finished",
-                "Jason-3 数据已下载至：{path}",
+                "✅ Jason-3 数据已下载至：{path}",
             ).format(path=download_folder)
         )
         return Jason3DownloadResult(
@@ -178,5 +178,5 @@ def run_download_jason3(
         output_folder=download_folder,
         messages=list(logger.messages),
         success=False,
-        error=tr("unknown_error", "未知错误"),
+        error=tr("unknown_error", "❌ 未知错误"),
     )

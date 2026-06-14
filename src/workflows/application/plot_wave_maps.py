@@ -122,11 +122,11 @@ def run_wave_maps(
             image_files=images,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
     logger.log(
-        tr("plotting_wave_maps_generated_to", "波高图已生成至：{path}").format(
+        tr("plotting_wave_maps_generated_to", "✅ 波高图已生成至：{path}").format(
             path=photo_subdir(out_dir, SUBDIR_WAVE_HEIGHT)
         )
     )
@@ -184,11 +184,11 @@ def run_contour_maps(
             image_files=images,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
     logger.log(
-        tr("plotting_contour_generated_to", "等值线图已生成至：{path}").format(
+        tr("plotting_contour_generated_to", "✅ 等值线图已生成至：{path}").format(
             path=photo_subdir(out_dir, SUBDIR_WAVE_HEIGHT_CONTOUR)
         )
     )
@@ -234,7 +234,7 @@ def run_wind_swell_maps(
     error_msg: Optional[str] = None
 
     for v_val, label in ((2, "wind-sea"), (3, "swell")):
-        logger.log(tr("plotting_wind_swell_start", "开始生成{label}填色图...").format(label=label))
+        logger.log(tr("plotting_wind_swell_start", "🔄 开始生成{label}填色图...").format(label=label))
 
         worker_result = run_plot_worker(
             _make_wave_maps_worker,
@@ -255,7 +255,7 @@ def run_wind_swell_maps(
 
         if worker_result and isinstance(worker_result, dict) and worker_result.get("status") == "error":
             has_error = True
-            error_msg = str(worker_result.get("error", tr("unknown_error", "未知错误")))
+            error_msg = str(worker_result.get("error", tr("unknown_error", "❌ 未知错误")))
             break
 
         if v_val == 2:
@@ -274,7 +274,7 @@ def run_wind_swell_maps(
         )
 
     logger.log(
-        tr("plotting_wind_swell_generated_to", "风浪/涌浪图已生成至：{path}").format(
+        tr("plotting_wind_swell_generated_to", "✅ 风浪/涌浪图已生成至：{path}").format(
             path=photo_subdir(out_dir, SUBDIR_WIND_SWELL)
         )
     )
@@ -339,11 +339,11 @@ def run_wave_video(
             image_files=all_files,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
     logger.log(
-        tr("plotting_wave_video_generated_to", "波高视频已生成至：{path}").format(
+        tr("plotting_wave_video_generated_to", "✅ 波高视频已生成至：{path}").format(
             path=photo_subdir(out_dir, SUBDIR_WAVE_HEIGHT_VIDEO)
         )
     )

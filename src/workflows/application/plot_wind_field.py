@@ -161,7 +161,7 @@ def run_wind_field(
             messages=list(logger.messages),
             success=False,
             error=str(
-                worker_result.get("error", tr("unknown_error", "未知错误"))
+                worker_result.get("error", tr("unknown_error", "❌ 未知错误"))
             ),
         )
 
@@ -173,7 +173,7 @@ def run_wind_field(
 
     logger.log(
         tr("plotting_wind_field_generated_to",
-           "风场图已生成至：{path}")
+           "✅ 风场图已生成至：{path}")
         .format(path=photo_subdir(out_dir, SUBDIR_WIND_FIELD))
     )
     return WindFieldResult(

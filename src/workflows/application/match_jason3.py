@@ -174,7 +174,7 @@ def run_match_jason3(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_jason3_data_folder_missing", "plot.jason3.data_folder 未配置"),
+            error=tr("plotting_jason3_data_folder_missing", "❌ plot.jason3.data_folder 未配置"),
         )
 
     ww3_file = _find_ww3_nc(result_folder)
@@ -183,7 +183,7 @@ def run_match_jason3(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_ww3_output_nc_not_found", "未在 {folder} 找到 WW3 输出 nc 文件").format(folder=result_folder),
+            error=tr("plotting_ww3_output_nc_not_found", "❌ 未在 {folder} 找到 WW3 输出 nc 文件").format(folder=result_folder),
         )
 
     worker_result = run_plot_worker(
@@ -204,11 +204,11 @@ def run_match_jason3(
             image_files=images,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
     logger.log(
-        tr("plotting_jason3_match_generated", "Jason-3 匹配结果已生成至：{path}").format(
+        tr("plotting_jason3_match_generated", "✅ Jason-3 匹配结果已生成至：{path}").format(
             path=photo_subdir(result_folder, SUBDIR_JASON3_FIT)
         )
     )
@@ -249,7 +249,7 @@ def run_jason3_swh(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_jason3_data_folder_missing", "plot.jason3.data_folder 未配置"),
+            error=tr("plotting_jason3_data_folder_missing", "❌ plot.jason3.data_folder 未配置"),
         )
 
     effective_lon_lat = _resolve_jason3_lon_lat(config, lon_lat)
@@ -258,7 +258,7 @@ def run_jason3_swh(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_fill_lonlat_range", "请正确填写经纬度范围"),
+            error=tr("plotting_fill_lonlat_range", "❌ 请正确填写经纬度范围"),
         )
 
     effective_time_range = _resolve_jason3_time_range(config, time_range)
@@ -267,7 +267,7 @@ def run_jason3_swh(
             output_folder=result_folder,
             messages=list(logger.messages),
             success=False,
-            error=tr("plotting_fill_time_range", "请填写开始和结束时间（格式：YYYYMMDD）"),
+            error=tr("plotting_fill_time_range", "❌ 请填写开始和结束时间（格式：YYYYMMDD）"),
         )
 
     worker_result = run_plot_worker(
@@ -286,11 +286,11 @@ def run_jason3_swh(
             image_files=images,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
     logger.log(
-        tr("plotting_jason3_swh_generated", "Jason-3 SWH 图已生成至：{path}").format(
+        tr("plotting_jason3_swh_generated", "✅ Jason-3 SWH 图已生成至：{path}").format(
             path=photo_subdir(result_folder, SUBDIR_JASON3_SATELLITE)
         )
     )

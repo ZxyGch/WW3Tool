@@ -127,10 +127,10 @@ def run_spectrum(
             image_files=images,
             messages=list(logger.messages),
             success=False,
-            error=str(worker_result.get("error", tr("unknown_error", "未知错误"))),
+            error=str(worker_result.get("error", tr("unknown_error", "❌ 未知错误"))),
         )
 
-    logger.log(tr("plotting_spectrum_generated_to", "频谱图已生成至：{path}").format(path=photo_dir))
+    logger.log(tr("plotting_spectrum_generated_to", "✅ 频谱图已生成至：{path}").format(path=photo_dir))
     return SpectrumResult(
         output_folder=folder_str,
         image_files=images,
