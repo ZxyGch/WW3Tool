@@ -21,14 +21,16 @@ def _write_forcing(
     units: str = "hours since 2025-01-01 00:00:00",
     lat: tuple[float, ...] = (10.0, 11.0),
     time_last: bool = False,
+    time_name: str = "time",
     value_offset: float = 0.0,
 ) -> None:
     with nc.Dataset(path, "w") as ds:
         ds.title = "merge test"
-        ds.createDimension("time", None)
+        ds.createDimension(time_name, None)
         ds.createDimension("latitude", len(lat))
         ds.createDimension("longitude", 2)
-        time = ds.createVariable("time", "f8", ("time",))
+        time = ds.createVariable(time_name, "f8", (time_name,))
+        time.standard_name = "time"
         time.units = units
         time.calendar = "standard"
         time[:] = times
@@ -38,7 +40,11 @@ def _write_forcing(
         longitude[:] = [120.0, 121.0]
         static = ds.createVariable("land_mask", "i1", ("latitude", "longitude"))
         static[:] = [[0, 1], [1, 0]]
-        dims = ("latitude", "longitude", "time") if time_last else ("time", "latitude", "longitude")
+        dims = (
+            ("latitude", "longitude", time_name)
+            if time_last
+            else (time_name, "latitude", "longitude")
+        )
         for var_index, name in enumerate(variables):
             var = ds.createVariable(name, "f4", dims, fill_value=-32767.0, zlib=True)
             var.units = "m/s"
@@ -153,3 +159,22 @@ def test_repository_era5_sample_no_longer_fails_on_fill_value(tmp_path: Path) ->
     merge_forcing_netcdf([str(sample), str(second)], str(output))
     with nc.Dataset(output) as ds:
         assert "_FillValue" in ds.variables["u10"].ncattrs()
+
+
+def test_recognizes_cf_valid_time_and_normalizes_output_dimension(tmp_path: Path) -> None:
+    first = tmp_path / "first.nc"
+    second = tmp_path / "second.nc"
+    output = tmp_path / "merged.nc"
+    _write_forcing(first, times=[0, 1], time_name="valid_time")
+    _write_forcing(second, times=[2, 3], time_name="valid_time", value_offset=10)
+
+    analysis = analyze_merge_inputs([str(first), str(second)])
+    assert analysis.valid
+    assert analysis.files[0].has_time
+    assert "2025-01-01" in analysis.files[0].time_range
+    merge_forcing_netcdf([str(first), str(second)], str(output))
+
+    with nc.Dataset(output) as ds:
+        assert "time" in ds.dimensions
+        assert "valid_time" not in ds.dimensions
+        assert ds.variables["u10"].dimensions[0] == "time"

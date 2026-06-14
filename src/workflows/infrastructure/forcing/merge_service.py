@@ -53,6 +53,7 @@ class _GroupPlan:
     data_variables: tuple[str, ...]
     times: Any
     time_sources: list[tuple[str, int]]
+    time_names: dict[str, str]
 
 
 @dataclass
@@ -76,6 +77,25 @@ def _find_coord(ds, candidates: tuple[str, ...]):
     for name in candidates:
         if name in ds.variables:
             return ds.variables[name]
+    return None
+
+
+def _time_name(ds) -> str | None:
+    """Return the CF time coordinate/dimension name, preferring literal ``time``."""
+
+    if "time" in ds.dimensions and "time" in ds.variables:
+        return "time"
+    for name, var in ds.variables.items():
+        if (
+            len(var.dimensions) == 1
+            and var.dimensions[0] == name
+            and name in ds.dimensions
+            and (
+                str(getattr(var, "standard_name", "")).lower() == "time"
+                or str(getattr(var, "axis", "")).upper() == "T"
+            )
+        ):
+            return name
     return None
 
 
@@ -131,7 +151,8 @@ def read_netcdf_info(path: str) -> NetCDFFileInfo:
     filename = os.path.basename(path)
     try:
         with nc.Dataset(path, "r") as ds:
-            time_var = ds.variables.get("time")
+            time_name = _time_name(ds)
+            time_var = ds.variables.get(time_name) if time_name else None
             fields = VariableDetector.detect_forcing_fields(path)
             return NetCDFFileInfo(
                 path=os.path.abspath(path),
@@ -142,7 +163,7 @@ def read_netcdf_info(path: str) -> NetCDFFileInfo:
                 if _find_coord(ds, ("longitude", "lon", "x")) is not None else "-",
                 time_range=_format_time_range(time_var) if time_var is not None else "-",
                 variables=", ".join(_data_variable_names(ds)) or "-",
-                has_time="time" in ds.dimensions and time_var is not None,
+                has_time=time_var is not None,
                 forcing_fields=", ".join(fields) or "-",
             )
     except Exception as exc:
@@ -167,13 +188,17 @@ def _arrays_equal(left, right) -> bool:
         return False
 
 
-def _variable_definition(var) -> tuple:
+def _normalized_dimensions(var, time_name: str) -> tuple[str, ...]:
+    return tuple("time" if name == time_name else name for name in var.dimensions)
+
+
+def _variable_definition(var, time_name: str) -> tuple:
     attrs = {
         name: var.getncattr(name)
         for name in var.ncattrs()
         if name != "_FillValue"
     }
-    return str(var.dtype), tuple(var.dimensions), attrs
+    return str(var.dtype), _normalized_dimensions(var, time_name), attrs
 
 
 def _validate_group(paths: list[str], data_variables: tuple[str, ...]) -> _GroupPlan:
@@ -181,18 +206,28 @@ def _validate_group(paths: list[str], data_variables: tuple[str, ...]) -> _Group
     datasets = [nc.Dataset(path, "r") for path in paths]
     try:
         first = datasets[0]
+        first_time_name = _time_name(first)
+        if first_time_name is None:
+            raise ValueError(
+                tr("tools_merge_no_time_dim", "文件缺少 time 维度：{path}").format(
+                    path=os.path.basename(paths[0])
+                )
+            )
+        time_names: dict[str, str] = {}
         for ds, path in zip(datasets, paths):
-            if "time" not in ds.dimensions or "time" not in ds.variables:
+            time_name = _time_name(ds)
+            if time_name is None:
                 raise ValueError(
                     tr("tools_merge_no_time_dim", "文件缺少 time 维度：{path}").format(
                         path=os.path.basename(path)
                     )
                 )
+            time_names[path] = time_name
             if _data_variable_names(ds) != data_variables:
                 raise ValueError(tr("tools_merge_variable_mismatch", "待拼接文件的数据变量不一致"))
 
             for dim_name, dim in first.dimensions.items():
-                if dim_name == "time":
+                if dim_name == first_time_name:
                     continue
                 if dim_name not in ds.dimensions or len(ds.dimensions[dim_name]) != len(dim):
                     raise ValueError(
@@ -211,13 +246,15 @@ def _validate_group(paths: list[str], data_variables: tuple[str, ...]) -> _Group
                         )
 
             for var_name in data_variables:
-                if _variable_definition(first.variables[var_name]) != _variable_definition(ds.variables[var_name]):
+                if _variable_definition(first.variables[var_name], first_time_name) != _variable_definition(
+                    ds.variables[var_name], time_name
+                ):
                     raise ValueError(
                         tr("tools_merge_definition_mismatch", "变量定义不一致：{variable}").format(
                             variable=var_name
                         )
                     )
-                if "time" not in first.variables[var_name].dimensions and not _arrays_equal(
+                if first_time_name not in first.variables[var_name].dimensions and not _arrays_equal(
                     first.variables[var_name][:], ds.variables[var_name][:]
                 ):
                     raise ValueError(
@@ -230,7 +267,7 @@ def _validate_group(paths: list[str], data_variables: tuple[str, ...]) -> _Group
         for ds, path in zip(datasets, paths):
             entries.extend(
                 (float(value), path, index)
-                for index, value in enumerate(_canonical_times(ds.variables["time"]))
+                for index, value in enumerate(_canonical_times(ds.variables[time_names[path]]))
             )
         entries.sort(key=lambda item: item[0])
 
@@ -242,11 +279,18 @@ def _validate_group(paths: list[str], data_variables: tuple[str, ...]) -> _Group
                 previous_path, previous_index = sources[-1]
                 for var_name in data_variables:
                     var = opened[path].variables[var_name]
-                    if "time" not in var.dimensions:
+                    time_name = time_names[path]
+                    previous_time_name = time_names[previous_path]
+                    if time_name not in var.dimensions:
                         continue
-                    axis = var.dimensions.index("time")
+                    axis = var.dimensions.index(time_name)
+                    previous_axis = opened[previous_path].variables[var_name].dimensions.index(previous_time_name)
                     if not _arrays_equal(
-                        np.take(opened[previous_path].variables[var_name][:], previous_index, axis=axis),
+                        np.take(
+                            opened[previous_path].variables[var_name][:],
+                            previous_index,
+                            axis=previous_axis,
+                        ),
                         np.take(var[:], index, axis=axis),
                     ):
                         raise ValueError(
@@ -262,7 +306,7 @@ def _validate_group(paths: list[str], data_variables: tuple[str, ...]) -> _Group
                 continue
             unique_times.append(value)
             sources.append((path, index))
-        return _GroupPlan(paths, data_variables, np.asarray(unique_times), sources)
+        return _GroupPlan(paths, data_variables, np.asarray(unique_times), sources, time_names)
     finally:
         for ds in datasets:
             ds.close()
@@ -273,8 +317,13 @@ def _validate_cross_groups(groups: list[_GroupPlan]) -> None:
     if len(groups) < 2:
         return
     reference = groups[0]
+    reference_time_name = reference.time_names[reference.paths[0]]
     with nc.Dataset(reference.paths[0], "r") as first:
-        reference_dims = {name: len(dim) for name, dim in first.dimensions.items() if name != "time"}
+        reference_dims = {
+            name: len(dim)
+            for name, dim in first.dimensions.items()
+            if name != reference_time_name
+        }
         reference_coords = {
             name: first.variables[name][:]
             for name in reference_dims
@@ -284,7 +333,12 @@ def _validate_cross_groups(groups: list[_GroupPlan]) -> None:
         if not _arrays_equal(reference.times, group.times):
             raise ValueError(tr("tools_merge_cross_time_mismatch", "不同强迫场的时间轴不一致"))
         with nc.Dataset(group.paths[0], "r") as ds:
-            dimensions = {name: len(dim) for name, dim in ds.dimensions.items() if name != "time"}
+            group_time_name = group.time_names[group.paths[0]]
+            dimensions = {
+                name: len(dim)
+                for name, dim in ds.dimensions.items()
+                if name != group_time_name
+            }
             shared = set(reference_dims) & set(dimensions)
             for name in shared:
                 if reference_dims[name] != dimensions[name]:
@@ -299,7 +353,9 @@ def _validate_cross_groups(groups: list[_GroupPlan]) -> None:
                     )
             with nc.Dataset(reference.paths[0], "r") as reference_ds:
                 for name in set(reference.data_variables) & set(group.data_variables):
-                    if _variable_definition(reference_ds.variables[name]) != _variable_definition(ds.variables[name]):
+                    if _variable_definition(
+                        reference_ds.variables[name], reference.time_names[reference.paths[0]]
+                    ) != _variable_definition(ds.variables[name], group.time_names[group.paths[0]]):
                         raise ValueError(
                             tr("tools_merge_definition_mismatch", "变量定义不一致：{variable}").format(
                                 variable=name
@@ -379,20 +435,21 @@ def _copy_attrs(source, target, *, skip: set[str] | None = None) -> None:
             target.setncattr(name, source.getncattr(name))
 
 
-def _create_variable(out, name: str, source_var):
+def _create_variable(out, name: str, source_var, *, time_name: str):
     kwargs = _variable_kwargs(source_var)
-    if "time" in source_var.dimensions and "chunksizes" in kwargs:
-        axis = source_var.dimensions.index("time")
+    dimensions = _normalized_dimensions(source_var, time_name)
+    if time_name in source_var.dimensions and "chunksizes" in kwargs:
+        axis = source_var.dimensions.index(time_name)
         chunks = list(kwargs["chunksizes"])
         chunks[axis] = min(chunks[axis], max(1, len(out.dimensions["time"])))
         kwargs["chunksizes"] = tuple(chunks)
     try:
-        var = out.createVariable(name, source_var.dtype, source_var.dimensions, **kwargs)
+        var = out.createVariable(name, source_var.dtype, dimensions, **kwargs)
     except Exception:
         var = out.createVariable(
             name,
             source_var.dtype,
-            source_var.dimensions,
+            dimensions,
             fill_value=kwargs.get("fill_value"),
         )
     _copy_attrs(source_var, var, skip={"_FillValue", "units", "calendar"} if name == "time" else {"_FillValue"})
@@ -404,13 +461,15 @@ def _write_plan(plan: _MergePlan, output_path: str) -> None:
     first_group = plan.groups[0]
     with nc.Dataset(first_group.paths[0], "r") as first, nc.Dataset(output_path, "w", format="NETCDF4") as out:
         _copy_attrs(first, out)
+        first_time_name = first_group.time_names[first_group.paths[0]]
         dimension_sizes: dict[str, int | None] = {
-            "time": None if first.dimensions["time"].isunlimited() else len(first_group.times)
+            "time": None if first.dimensions[first_time_name].isunlimited() else len(first_group.times)
         }
         for group in plan.groups:
             with nc.Dataset(group.paths[0], "r") as ds:
+                time_name = group.time_names[group.paths[0]]
                 for name, dim in ds.dimensions.items():
-                    if name == "time":
+                    if name == time_name:
                         continue
                     size = None if dim.isunlimited() else len(dim)
                     if name in dimension_sizes and dimension_sizes[name] != size:
@@ -421,7 +480,7 @@ def _write_plan(plan: _MergePlan, output_path: str) -> None:
         for name, size in dimension_sizes.items():
             out.createDimension(name, size)
 
-        time_source = first.variables["time"]
+        time_source = first.variables[first_time_name]
         time_out = out.createVariable("time", "f8", ("time",))
         _copy_attrs(time_source, time_out, skip={"_FillValue", "units", "calendar"})
         time_out.units = _EPOCH_UNITS
@@ -431,10 +490,11 @@ def _write_plan(plan: _MergePlan, output_path: str) -> None:
         created: set[str] = {"time"}
         for group in plan.groups:
             with nc.Dataset(group.paths[0], "r") as ds:
+                time_name = group.time_names[group.paths[0]]
                 for name, source_var in ds.variables.items():
-                    if name in created or name in group.data_variables:
+                    if name == time_name or name in created or name in group.data_variables:
                         continue
-                    target = _create_variable(out, name, source_var)
+                    target = _create_variable(out, name, source_var, time_name=time_name)
                     target[:] = source_var[:]
                     created.add(name)
 
@@ -444,16 +504,19 @@ def _write_plan(plan: _MergePlan, output_path: str) -> None:
                     if name in created:
                         continue
                     source_var = opened[group.paths[0]].variables[name]
-                    target = _create_variable(out, name, source_var)
-                    if "time" not in source_var.dimensions:
+                    first_source_time_name = group.time_names[group.paths[0]]
+                    target = _create_variable(out, name, source_var, time_name=first_source_time_name)
+                    if first_source_time_name not in source_var.dimensions:
                         target[:] = source_var[:]
                         created.add(name)
                         continue
-                    axis = source_var.dimensions.index("time")
                     for target_index, (path, source_index) in enumerate(group.time_sources):
-                        source_data = np.take(opened[path].variables[name][:], source_index, axis=axis)
+                        source_time_name = group.time_names[path]
+                        source_axis = opened[path].variables[name].dimensions.index(source_time_name)
+                        target_axis = target.dimensions.index("time")
+                        source_data = np.take(opened[path].variables[name][:], source_index, axis=source_axis)
                         indexer = [slice(None)] * target.ndim
-                        indexer[axis] = target_index
+                        indexer[target_axis] = target_index
                         target[tuple(indexer)] = source_data
                     created.add(name)
             finally:
