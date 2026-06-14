@@ -1,8 +1,8 @@
 """风场填色图与箭头/风旗可视化 Worker — 从风场 NetCDF 生成 10m 风场空间分布图。
 
 在独立子进程中读取风场 NetCDF（支持 u10/v10、wndewd/wndnwd、uwnd/vwnd 等命名），
-使用 cartopy 投影绘制 RdBu_r 填色等值线图，可选叠加箭头或风旗，并支持 cv2
-上采样以提高背景分辨率。
+使用 cartopy 投影绘制 RdYlBu_r 离散分级填色等值线图（跨帧统一色阶），可选叠加
+箭头或风旗，并支持 cv2 上采样以提高背景分辨率。
 
 结果 PNG 序列输出至 ``{selected_folder}/photo/wind_field/wind_{timestamp}.png``，
 路径列表经 ``result_queue`` 回传。
@@ -228,6 +228,34 @@ def _make_wind_field_worker(
                 q_step = max(1, int(grid_size / 250))
             q_step = max(q_step, 3)
 
+        # ------------------------------------------------------------------
+        # 全局离散颜色分级（RdYlBu_r 配色，跨帧一致，仿 animate_arriving_swell）
+        # [EN] Global discrete color levels (RdYlBu_r), consistent across frames.
+        # ------------------------------------------------------------------
+        speed_all = np.sqrt(
+            np.asarray(u10, dtype=float) ** 2 + np.asarray(v10, dtype=float) ** 2
+        )
+        if np.any(np.isfinite(speed_all)):
+            p_lo = float(np.nanpercentile(speed_all, 2))
+            p_hi = float(np.nanpercentile(speed_all, 98))
+        else:
+            p_lo, p_hi = 0.0, 1.0
+        _rng = max(p_hi - p_lo, 1.0)
+        # 选“整”步长，使填色约 10–14 档 [EN] nice step → ~10-14 bands
+        level_step = next(
+            (s for s in (0.5, 1.0, 2.0, 2.5, 5.0, 10.0) if _rng / s <= 14), 10.0
+        )
+        g_lo = max(0.0, np.floor(p_lo / level_step) * level_step)
+        g_hi = np.ceil(p_hi / level_step) * level_step
+        if g_hi <= g_lo:
+            g_hi = g_lo + level_step
+        fill_levels = np.arange(g_lo, g_hi + level_step / 2.0, level_step)
+        # 等值线用更粗分级，避免标注拥挤 [EN] coarser line levels to avoid clutter
+        line_step = level_step * 2.0
+        line_levels = np.arange(g_lo, g_hi + line_step / 2.0, line_step)
+        line_fmt = "%.1f" if level_step < 1.0 else "%.0f"
+        wind_cmap = cm.get_cmap("RdYlBu_r")
+
         saved_paths = []
         UPSAMPLE_FACTOR = 3
 
@@ -291,32 +319,25 @@ def _make_wind_field_worker(
             ax.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")
             ax.add_feature(cfeature.LAND, facecolor="#e6e6e6")
 
-            # -- Filled contours (RdBu_r) -----------------------------------
-            try:
-                speed_min = float(np.nanmin(speed_plot))
-                speed_max = float(np.nanmax(speed_plot))
-            except Exception:
-                speed_min, speed_max = 0.0, 0.0
-            if speed_max <= speed_min:
-                speed_max = speed_min + 1.0
-            levels = np.linspace(speed_min, speed_max, 10)
+            # -- Filled contours (RdYlBu_r, discrete levels) ----------------
             filled = ax.contourf(
                 lon2d_plot, lat2d_plot, speed_plot,
-                levels=levels,
-                cmap=cm.get_cmap("RdBu_r"),
+                levels=fill_levels,
+                cmap=wind_cmap,
+                extend="both",
                 transform=ccrs.PlateCarree(),
             )
 
-            # Thin contour lines for gradient readability
+            # Coarser contour lines for gradient readability
             contour_lines = ax.contour(
                 lon2d_plot, lat2d_plot, speed_plot,
-                levels=levels,
-                colors="black",
-                linewidths=0.4,
-                alpha=0.5,
+                levels=line_levels,
+                colors="#303030",
+                linewidths=0.5,
+                alpha=0.6,
                 transform=ccrs.PlateCarree(),
             )
-            ax.clabel(contour_lines, inline=True, fontsize=7, fmt="%.1f")
+            ax.clabel(contour_lines, inline=True, fontsize=7, fmt=line_fmt)
 
             # -- Optional arrows / barbs ------------------------------------
             from ...application.plot_wind_field import (
