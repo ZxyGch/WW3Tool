@@ -60,8 +60,6 @@ python3 run.py run params.yml  # 3. 无界面 CLI (一次性子命令)
 ### 1. 图形界面
 
 ![](public/resource/README-media/2026-03-29%2012.28.47.png)
-
-
 ```sh
 python3 run.py
 ```
@@ -73,7 +71,6 @@ python3 run.py
 ### 2. 交互式命令行
 
 ![](public/resource/README-media/截屏2026-06-13%2016.30.04.png)
-
 如果更习惯终端操作，可以用 `run.py shell` 进入交互式 REPL 环境，加载配置后反复执行各步骤：
 
 ```sh
@@ -81,6 +78,10 @@ python3 run.py shell
 python3 run.py shell /path/to/workdir/params.yml
 python3 run.py shell --lang en_US
 ```
+
+注意：你最好已经理解了图形化界面的操作流程再使用这个 shell 模式。
+
+记住要先创建工作目录并修改工作目录的 params.yml，根目录的 params.yml 只是作为模版存在的，用于存储一些通用的数据。
 
 
 
@@ -120,12 +121,91 @@ python3 run.py plot params.yml              # 绘图
 - Slurm 作业调度系统
 
 
+## 整体架构
+
+> 提示：你完全可以不了解下文中的目录、配置与流程细节，只简单地使用图形界面（`python3 run.py`）逐步操作即可；
+GUI 与 Shell / CLI 共用同一套能力，不会缺少任何功能。
+
+WW3Tool 是围绕 WAVEWATCH III 的预处理与运行辅助工具：负责强迫场整理、网格生成、namelist / 脚本生成、（可选）本地或远程提交运行，以及结果绘图与检验。不包含 WW3 数值模式本身，也不替代你在本机或服务器上安装好的 `ww3_grid`、`ww3_prnc`、`ww3_shel` 等可执行程序。
+
+从使用角度看，软件由三层组成：
+
+| 层次 | 作用 | 主要载体 |
+|------|------|----------|
+| 入口 | 统一启动、依赖检查、语言切换 | 仓库根目录 `run.py` |
+| 配置 | 描述一次算例的全部参数 | 工作目录内 `params.yml`；全局偏好见 `public/config.json` |
+| 算例数据 | 存放本次运行产生的网格、强迫场、namelist、日志与结果 | 工作目录（默认在 `workSpace/` 下） |
+
+### 入口方式
+
+三种方式共用同一套业务逻辑，差别只在交互形式：
+
+```text
+python3 run.py              → 图形界面（默认）
+python3 run.py shell        → 交互式终端（可反复执行各步骤）
+python3 run.py <子命令> …   → 无界面 CLI（适合脚本与自动化）
+```
+
+根目录的 `params.yml` 仅为模板；实际运行前须用 `create-workdir` 复制到独立工作目录，再编辑该目录下的 `params.yml`。
+
+### 一次算例的处理流程
+
+从准备到出图，典型链路如下（本地运行与服务器运行可二选一或组合使用）：
+
+```mermaid
+flowchart LR
+  A[强迫场 NetCDF] --> B[Step 1 强迫场准备]
+  B --> C[Step 2 网格生成]
+  C --> D[Step 3 计算模式
+  区域 / 谱点 / 航迹]
+  D --> E[Step 4 WW3 配置 
+  namelist / 脚本]
+  E --> F{运行方式}
+  F -->|本地| G[local.sh]
+  F -->|服务器| H[上传 + server.sh / Slurm]
+  G --> I[WW3 模式输出 ww3.2025.nc 等]
+  H --> I
+  I --> J[后处理绘图
+  波高图 / 谱图 / 检验等]
+```
+
+各步骤与 `params.yml` 中的段落对应关系：
+
+- forcing — 风 / 流 / 水位 / 海冰源文件路径与处理方式  
+- grid — 网格类型、范围、分辨率及 `meshgen` 相关参数  
+- calc — 区域、谱点或航迹计算模式  
+- ww3 / ww3_grid — 时间范围、输出精度、谱离散与时间步等  
+- slurm / server — SSH 与远程作业（仅服务器模式）  
+- plot — 出图与卫星 / 浮标检验开关  
+
+### 仓库顶层组成
+
+与「跑通一次算例」直接相关的目录如下：
+
+```text
+WW3Tool/
+├── run.py              # 唯一程序入口
+├── params.yml          # 算例参数模板（勿直接用于运行）
+├── public/             # 全局资源：多语言、默认配置、示例强迫场、WW3 脚本模板
+├── meshgen/            # 网格生成器（结构化 / 非结构化 / SMC）及 reference_data
+├── workSpace/          # 默认工作目录根；每个子文件夹即一个算例
+└── src/                # 程序实现（图形界面、流水线、网格与 namelist 适配等）
+```
+
+
+### 与外部程序的关系
+
+| 外部组件 | 由谁调用 | 说明 |
+|----------|----------|------|
+| meshgen（`structured_generator` / `unstructured_generator` / `smc_generator`） | WW3Tool | 生成 `mod_def.ww3`、`grid.*` 等网格相关文件；依赖 `meshgen/reference_data` 地形与岸线数据 |
+| WAVEWATCH III（`ww3_grid`、`ww3_prnc`、`ww3_strt`、`ww3_shel` 等） | `local.sh` 或服务器上的 `server.sh` | 需用户自行编译安装；WW3Tool 只生成输入文件并可选触发运行 |
+| Slurm + SSH | 服务器运行流程 | 上传工作目录、提交作业、拉取日志与结果 |
+| Python 科学栈（NetCDF、Matplotlib 等） | 强迫场处理与绘图 | 由 `run.py` 在启动时检查并安装缺失依赖 |
+
+总结：配置写在 `params.yml`，产物落在工作目录，入口统一为 `run.py`；WW3Tool 负责把「数据准备 → 文件生成 → 提交运行 → 结果出图」串成可重复、可脚本化的一条流水线，而数值积分仍由已安装的 WAVEWATCH III 在本地或集群上执行。
 
 
 ## 功能实现细节
-
-### 整体架构 
-
 
 
 ### 创建工作目录

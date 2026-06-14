@@ -46,6 +46,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from ..support.translations import tr
 from ..domain.config_models import (
     CalcConfig,
     ForcingConfig,
@@ -524,7 +525,15 @@ def _server_config(raw: Any, base_dir: Path) -> ServerConfig:
 def _validate_existing_paths(paths: Iterable[Optional[Path]], labels: Iterable[str]) -> None:
     for path, label in zip(paths, labels):
         if path is not None and not path.exists():
-            raise ConfigError(f"{label} 不存在：{path}")
+            raise ConfigError(tr("cfg_path_not_exists", "{label} 不存在：{path}").format(label=label, path=path))
+
+
+def _validate_wind_path(wind: Optional[Path]) -> None:
+    """校验风场源文件路径：必填且指向存在的文件。"""
+    if wind is None:
+        raise ConfigError(tr("cfg_wind_path_required", "风场文件路径不能为空"))
+    if not wind.is_file():
+        raise ConfigError(tr("cfg_wind_path_not_exists", "风场文件不存在：{path}").format(path=wind))
 
 
 def load_pipeline_config(
@@ -923,43 +932,42 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
         ConfigError: When any constraint is not met; also raised when ``stage`` is invalid.
     """
     if stage not in {"forcing", "grid", "full", "plot"}:
-        raise ConfigError("validation_stage 必须是 forcing、grid、full 或 plot")
+        raise ConfigError(tr("cfg_invalid_stage", "validation_stage 必须是 forcing、grid、full 或 plot"))
     if stage == "plot":
         return
     if stage == "grid":
         if config.grid.mesh_type == "structured" and config.grid.gridgen_version.lower() != "python":
-            raise ConfigError("当前无界面流程的 structured 网格仅支持 grid.gridgen_version=Python")
+            raise ConfigError(tr("cfg_structured_python_only", "当前无界面流程的 structured 网格仅支持 grid.gridgen_version=Python"))
         return
+    _validate_wind_path(config.forcing.wind)
     _validate_existing_paths(
-        [config.forcing.wind, config.forcing.current, config.forcing.level, config.forcing.ice],
-        ["forcing.wind", "forcing.current", "forcing.level", "forcing.ice"],
+        [config.forcing.current, config.forcing.level, config.forcing.ice],
+        ["forcing.current", "forcing.level", "forcing.ice"],
     )
-    if config.forcing.wind is None:
-        raise ConfigError("第一版流水线要求提供 forcing.wind")
     if stage == "forcing":
         return
     if config.grid.mesh_type == "structured" and config.grid.gridgen_version.lower() != "python":
-        raise ConfigError("当前无界面流程的 structured 网格仅支持 grid.gridgen_version=Python")
+        raise ConfigError(tr("cfg_structured_python_only", "当前无界面流程的 structured 网格仅支持 grid.gridgen_version=Python"))
     for label, date in (("ww3.start_date", config.ww3.start_date), ("ww3.end_date", config.ww3.end_date)):
         if not (date.isdigit() and len(date) == 8):
-            raise ConfigError(f"{label} 必须是 YYYYMMDD")
+            raise ConfigError(tr("cfg_date_format", "{label} 必须是 YYYYMMDD").format(label=label))
     for label, value in (
         ("ww3.compute_precision", config.ww3.compute_precision),
         ("ww3.output_precision", config.ww3.output_precision),
     ):
         if not str(value).isdigit():
-            raise ConfigError(f"{label} 必须是秒数")
+            raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label=label))
     if config.grid.grid_type == "nested":
         if config.grid.inner is None:
-            raise ConfigError("nested 网格需要 grid.inner")
+            raise ConfigError(tr("cfg_nested_inner_required", "nested 网格需要 grid.inner"))
         if config.ww3.inner_compute_precision is not None and not config.ww3.inner_compute_precision.isdigit():
-            raise ConfigError("ww3.inner_compute_precision 必须是秒数")
+            raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.inner_compute_precision"))
         if config.ww3.inner_output_precision is not None and not config.ww3.inner_output_precision.isdigit():
-            raise ConfigError("ww3.inner_output_precision 必须是秒数")
+            raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.inner_output_precision"))
     if config.calc.mode == "spectral_point" and not config.calc.points:
-        raise ConfigError("calc.mode=spectral_point 时必须提供 calc.points")
+        raise ConfigError(tr("cfg_spectral_points_required", "calc.mode=spectral_point 时必须提供 calc.points"))
     if config.calc.mode == "track" and not config.calc.track_points:
-        raise ConfigError("calc.mode=track 时必须提供 calc.track_points")
+        raise ConfigError(tr("cfg_track_points_required", "calc.mode=track 时必须提供 calc.track_points"))
 
 
 # [EN] Complete params.yml example template: for CLI ``--print-example`` and documentation reference.

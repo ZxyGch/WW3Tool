@@ -26,7 +26,6 @@ Input/Output
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Iterable
 
 from ..domain.forcing_fields import ForcingField, Step1Files
@@ -38,6 +37,27 @@ from ..infrastructure.forcing.variable_detector import VariableDetector
 from ..infrastructure.forcing.wind_normalize_service import WindNormalizeService
 from ..support.logging import CoreLogger
 from ..support.translations import tr
+
+
+def _forcing_import_error_message(result) -> str:
+    """将导入失败结果转为用户可读错误信息。"""
+    if result.error:
+        return str(result.error)
+    reason = str(result.invalid_reason or "")
+    field = getattr(result.field, "value", None) or ""
+    if reason == "missing_variables":
+        if field == "wind":
+            return tr(
+                "wind_file_missing_vars_msg",
+                "文件不包含风场变量（u10/v10），请选择正确的风场文件",
+            )
+        return tr(
+            "step1_field_missing_vars",
+            "{field} 文件缺少所需变量，请检查 NetCDF 内容",
+        ).format(field=field)
+    if reason:
+        return reason
+    return tr("step1_wind_import_failed", "风场导入失败")
 
 
 def prepare_forcing(
@@ -109,7 +129,7 @@ def prepare_forcing(
             config.forcing.process_mode,
         )
         if not result.success:
-            raise RuntimeError(result.error or result.invalid_reason or tr("step1_wind_import_failed", "风场导入失败"))
+            raise RuntimeError(_forcing_import_error_message(result))
         files = _merge(files, result.files_patch)
         logger.log(tr("step1_wind_prepared", "风场已准备：{path}").format(path=result.actual_file_path))
 
@@ -129,11 +149,7 @@ def prepare_forcing(
             config.forcing.process_mode,
         )
         if not result.success:
-            raise RuntimeError(
-                result.error
-                or result.invalid_reason
-                or tr("step1_field_import_failed", "{field} 导入失败").format(field=field.value)
-            )
+            raise RuntimeError(_forcing_import_error_message(result))
         files = _merge(files, result.files_patch)
         logger.log(tr("step1_field_prepared", "{field} 已准备：{path}").format(field=field.value, path=result.actual_file_path))
 

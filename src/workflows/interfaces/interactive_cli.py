@@ -101,6 +101,33 @@ def _bold(text: str) -> str:
     return _color(text, _Colors.BOLD)
 
 
+def _section(text: str) -> str:
+    """配置摘要区块标题（粗体 + 青色）。"""
+    if not sys.stdout.isatty():
+        return text
+    return f"{_Colors.BOLD}{_Colors.CYAN}{text}{_Colors.RESET}"
+
+
+def _config_field(label: str, *values: object, indent: int = 4) -> str:
+    """配置项行：标签部分蓝色，值默认色。"""
+    pad = " " * indent
+    if not values:
+        return f"{pad}{label}"
+    if not sys.stdout.isatty():
+        return pad + label.format(*values)
+    parts = label.split("{}")
+    if len(parts) != len(values) + 1:
+        return pad + label.format(*values)
+    chunks: list[str] = [pad]
+    for index, value in enumerate(values):
+        if parts[index]:
+            chunks.append(_color(parts[index], _Colors.BLUE))
+        chunks.append(str(value))
+    if parts[-1]:
+        chunks.append(_color(parts[-1], _Colors.BLUE))
+    return "".join(chunks)
+
+
 _HISTORY_FILE = Path.home() / ".ww3tool_history"
 _HISTORY_MAX_LINES = 500
 
@@ -398,134 +425,149 @@ class InteractiveCLI(cmd.Cmd):
         not_set = tr("icli_not_set", "(未设置)")
         not_cfg = tr("icli_not_configured", "(未配置)")
 
-        print(_bold("\n" + tr("icli_config_summary", "📋 当前配置摘要")))
-        print(f"  {tr('icli_config_file', '配置文件：{}').format(self._params_path)}")
-        print(f"  {tr('icli_workdir', '工作目录：{}').format(cfg.workdir.path)}")
+        print(_bold(_color("\n" + tr("icli_config_summary", "📋 当前配置摘要"), _Colors.YELLOW)))
+        print(_config_field(tr("icli_config_file", "配置文件：{}"), self._params_path, indent=2))
+        print(_config_field(tr("icli_workdir", "工作目录：{}"), cfg.workdir.path, indent=2))
 
         # 网格
-        print(f"\n  {_bold(tr('icli_config_grid', '网格'))}")
-        print(f"    {tr('icli_grid_type', '类型：{} / {}').format(cfg.grid.mesh_type, cfg.grid.grid_type)}")
+        print(f"\n  {_section(tr('icli_config_grid', '网格'))}")
+        print(_config_field(tr("icli_grid_type", "类型：{} / {}"), cfg.grid.mesh_type, cfg.grid.grid_type))
         outer = cfg.grid.outer
         if outer and outer.lon and outer.lat:
-            print(f"    {tr('icli_grid_range', '范围：经度 {} ~ {}，纬度 {} ~ {}').format(outer.lon[0], outer.lon[1], outer.lat[0], outer.lat[1])}")
+            print(
+                _config_field(
+                    tr("icli_grid_range", "范围：经度 {} ~ {}，纬度 {} ~ {}"),
+                    outer.lon[0],
+                    outer.lon[1],
+                    outer.lat[0],
+                    outer.lat[1],
+                )
+            )
         if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
             s = cfg.grid.structured
             if outer and outer.dx and outer.dy:
-                print(f"    dx={outer.dx}, dy={outer.dy}")
-            print(f"    {tr('icli_bathymetry', '水深：{}').format(s.bathymetry or not_set)}")
-            print(f"    {tr('icli_coastline', '海岸线：{}').format(s.coastline_precision or not_set)}")
+                print(_config_field("dx={}, dy={}", outer.dx, outer.dy))
+            print(_config_field(tr("icli_bathymetry", "水深：{}"), s.bathymetry or not_set))
+            print(_config_field(tr("icli_coastline", "海岸线：{}"), s.coastline_precision or not_set))
         elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
             s = cfg.grid.smc
-            print(f"    {tr('icli_bathymetry', '水深：{}').format(s.bathymetry or not_set)}")
-            print(f"    {tr('icli_smc_levels', '层数：{}').format(s.n_levels or not_set)}")
+            print(_config_field(tr("icli_bathymetry", "水深：{}"), s.bathymetry or not_set))
+            print(_config_field(tr("icli_smc_levels", "层数：{}"), s.n_levels or not_set))
         elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
             u = cfg.grid.unstructured
-            print(f"    {tr('icli_unst_hmax', 'hmax：{}').format(u.hmax or not_set)}")
+            print(_config_field(tr("icli_unst_hmax", "hmax：{}"), u.hmax or not_set))
 
         # 强迫场
-        print(f"\n  {_bold(tr('icli_forcing', '强迫场'))}")
-        print(f"    {tr('icli_wind', '风场：{}').format(cfg.forcing.wind or not_set)}")
-        print(f"    {tr('icli_current', '流场：{}').format(cfg.forcing.current or not_set)}")
-        print(f"    {tr('icli_level', '水位：{}').format(cfg.forcing.level or not_set)}")
-        print(f"    {tr('icli_ice', '海冰：{}').format(cfg.forcing.ice or not_set)}")
-        print(f"    {tr('icli_process_mode', '处理模式：{}').format(cfg.forcing.process_mode)}")
-        print(f"    {tr('icli_auto_associate', '自动关联：{}').format('✓' if cfg.forcing.auto_associate else '✗')}")
+        print(f"\n  {_section(tr('icli_forcing', '强迫场'))}")
+        print(_config_field(tr("icli_wind", "风场：{}"), cfg.forcing.wind or not_set))
+        print(_config_field(tr("icli_current", "流场：{}"), cfg.forcing.current or not_set))
+        print(_config_field(tr("icli_level", "水位：{}"), cfg.forcing.level or not_set))
+        print(_config_field(tr("icli_ice", "海冰：{}"), cfg.forcing.ice or not_set))
+        print(_config_field(tr("icli_process_mode", "处理模式：{}"), cfg.forcing.process_mode))
+        auto_mark = _success("✓") if cfg.forcing.auto_associate else _error("✗")
+        print(_config_field(tr("icli_auto_associate", "自动关联：{}"), auto_mark))
 
         # 计算模式
-        print(f"\n  {_bold(tr('icli_config_calc', '计算模式'))}")
-        print(f"    {tr('icli_calc_mode', '模式：{}').format(cfg.calc.mode or not_set)}")
+        print(f"\n  {_section(tr('icli_config_calc', '计算模式'))}")
+        print(_config_field(tr("icli_calc_mode", "模式：{}"), cfg.calc.mode or not_set))
         if cfg.calc.mode == "point":
-            print(f"    {tr('icli_spectral_points', '谱点数：{}').format(len(cfg.calc.points))}")
+            print(_config_field(tr("icli_spectral_points", "谱点数：{}"), len(cfg.calc.points)))
         elif cfg.calc.mode == "track":
-            print(f"    {tr('icli_track_points', '航迹点数：{}').format(len(cfg.calc.track_points))}")
+            print(_config_field(tr("icli_track_points", "航迹点数：{}"), len(cfg.calc.track_points)))
 
         # WW3 配置
-        print(f"\n  {_bold(tr('icli_config_ww3', 'WW3 配置'))}")
-        print(f"    {tr('icli_ww3_period', '时段：{} ~ {}').format(cfg.ww3.start_date, cfg.ww3.end_date)}")
-        print(f"    {tr('icli_compute_precision', '计算精度：{}s').format(cfg.ww3.compute_precision or not_set)}")
-        print(f"    {tr('icli_output_precision', '输出精度：{}s').format(cfg.ww3.output_precision or not_set)}")
-        print(f"    {tr('icli_output_scheme', '输出方案：{}').format(cfg.ww3.output_scheme or not_set)}")
-        print(f"    {tr('icli_ww3_st', 'ST：{}').format(cfg.ww3.st or not_cfg)}")
+        print(f"\n  {_section(tr('icli_config_ww3', 'WW3 配置'))}")
+        print(
+            _config_field(
+                tr("icli_ww3_period", "时段：{} ~ {}"),
+                cfg.ww3.start_date,
+                cfg.ww3.end_date,
+            )
+        )
+        print(_config_field(tr("icli_compute_precision", "计算精度：{}s"), cfg.ww3.compute_precision or not_set))
+        print(_config_field(tr("icli_output_precision", "输出精度：{}s"), cfg.ww3.output_precision or not_set))
+        print(_config_field(tr("icli_output_scheme", "输出方案：{}"), cfg.ww3.output_scheme or not_set))
+        print(_config_field(tr("icli_ww3_st", "ST：{}"), cfg.ww3.st or not_cfg))
 
         # WW3 Grid 参数
         wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
         if wg:
             spectrum = f"XFR={wg.get('SPECTRUM%XFR', '?')}, FREQ1={wg.get('SPECTRUM%FREQ1', '?')}, NK={wg.get('SPECTRUM%NK', '?')}, NTH={wg.get('SPECTRUM%NTH', '?')}"
             timesteps = f"DTMAX={wg.get('TIMESTEPS%DTMAX', '?')}, DTXY={wg.get('TIMESTEPS%DTXY', '?')}, DTKTH={wg.get('TIMESTEPS%DTKTH', '?')}, DTMIN={wg.get('TIMESTEPS%DTMIN', '?')}"
-            print(f"    {tr('icli_spectrum_params', '频谱：{}').format(spectrum)}")
-            print(f"    {tr('icli_timesteps_params', '时间步：{}').format(timesteps)}")
+            print(_config_field(tr("icli_spectrum_params", "频谱：{}"), spectrum))
+            print(_config_field(tr("icli_timesteps_params", "时间步：{}"), timesteps))
 
         # Slurm
-        print(f"\n  {_bold(tr('icli_config_slurm', 'Slurm'))}")
-        print(f"    {tr('icli_slurm_cpu', 'CPU：{}').format(cfg.slurm.cpu or not_cfg)}")
-        print(f"    {tr('icli_slurm_cores', '核数：{}').format(cfg.slurm.cores)}")
-        print(f"    {tr('icli_slurm_nodes', '节点：{}').format(cfg.slurm.nodes)}")
+        print(f"\n  {_section(tr('icli_config_slurm', 'Slurm'))}")
+        print(_config_field(tr("icli_slurm_cpu", "CPU：{}"), cfg.slurm.cpu or not_cfg))
+        print(_config_field(tr("icli_slurm_cores", "核数：{}"), cfg.slurm.cores))
+        print(_config_field(tr("icli_slurm_nodes", "节点：{}"), cfg.slurm.nodes))
         if cfg.slurm.cpu_group:
-            print(f"    {tr('icli_slurm_cpu_group', 'CPU 组：{}').format(cfg.slurm.cpu_group)}")
+            print(_config_field(tr("icli_slurm_cpu_group", "CPU 组：{}"), cfg.slurm.cpu_group))
 
         # 服务器
-        print(f"\n  {_bold(tr('icli_config_server', '服务器'))}")
-        print(f"    {tr('icli_server', '主机：{}').format(cfg.server.host or not_cfg)}")
+        print(f"\n  {_section(tr('icli_config_server', '服务器'))}")
+        print(_config_field(tr("icli_server", "主机：{}"), cfg.server.host or not_cfg))
         if cfg.server.host:
-            print(f"    {tr('icli_server_user', '用户：{}').format(cfg.server.user or not_cfg)}")
-            print(f"    {tr('icli_remote_dir', '远程目录：{}').format(cfg.server.default_remote_dir or not_cfg)}")
+            print(_config_field(tr("icli_server_user", "用户：{}"), cfg.server.user or not_cfg))
+            print(_config_field(tr("icli_remote_dir", "远程目录：{}"), cfg.server.default_remote_dir or not_cfg))
 
         # 绘图
-        print(f"\n  {_bold(tr('icli_config_plot', '绘图'))}")
+        print(f"\n  {_section(tr('icli_config_plot', '绘图'))}")
         wm = cfg.plot.wave_maps
-        print(f"    {tr('icli_plot_wave_maps', '波高图：{}').format('✓' if wm.enabled else '✗')}")
+        print(_config_field(tr("icli_plot_wave_maps", "波高图：{}"), _success("✓") if wm.enabled else _error("✗")))
         if wm.enabled:
             if wm.time_step_hours is not None:
-                print(f"    {tr('icli_plot_time_step', '时间步长：{}h').format(wm.time_step_hours)}")
+                print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), wm.time_step_hours))
             if wm.generate_video:
-                print(f"    {tr('icli_plot_video', '生成视频：✓')}")
+                print(f"    {_color(tr('icli_plot_video', '生成视频：'), _Colors.BLUE)}{_success('✓')}")
             if wm.dpi is not None:
-                print(f"    DPI：{wm.dpi}")
+                print(_config_field("DPI：{}", wm.dpi))
             if wm.figsize:
-                print(f"    {tr('icli_plot_figsize', '图片尺寸：{}').format(wm.figsize)}")
+                print(_config_field(tr("icli_plot_figsize", "图片尺寸：{}"), wm.figsize))
         sp = cfg.plot.spectrum
-        print(f"    {tr('icli_plot_spectrum', '二维谱：{}').format('✓' if sp.enabled else '✗')}")
+        print(_config_field(tr("icli_plot_spectrum", "二维谱：{}"), _success("✓") if sp.enabled else _error("✗")))
         if sp.enabled:
             if sp.time_step_hours is not None:
-                print(f"    {tr('icli_plot_time_step', '时间步长：{}h').format(sp.time_step_hours)}")
+                print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), sp.time_step_hours))
             if sp.energy_threshold is not None:
-                print(f"    {tr('icli_plot_energy_threshold', '能量阈值：{}').format(sp.energy_threshold)}")
+                print(_config_field(tr("icli_plot_energy_threshold", "能量阈值：{}"), sp.energy_threshold))
             if sp.plot_mode:
-                print(f"    {tr('icli_plot_plot_mode', '绘制方式：{}').format(sp.plot_mode)}")
+                print(_config_field(tr("icli_plot_plot_mode", "绘制方式：{}"), sp.plot_mode))
         j3 = cfg.plot.jason3
-        print(f"    {tr('icli_plot_jason3', 'Jason-3：{}').format('✓' if j3.enabled else '✗')}")
+        print(_config_field(tr("icli_plot_jason3", "Jason-3：{}"), _success("✓") if j3.enabled else _error("✗")))
         if j3.enabled:
             if j3.data_folder:
-                print(f"    {tr('icli_plot_data_folder', '数据目录：{}').format(j3.data_folder)}")
+                print(_config_field(tr("icli_plot_data_folder", "数据目录：{}"), j3.data_folder))
             if j3.time_range:
-                print(f"    {tr('icli_plot_time_range', '时间范围：{}').format(' ~ '.join(j3.time_range))}")
+                print(_config_field(tr("icli_plot_time_range", "时间范围：{}"), " ~ ".join(j3.time_range)))
             if j3.max_dist_deg is not None:
-                print(f"    {tr('icli_plot_max_dist', '最大距离：{}°').format(j3.max_dist_deg)}")
+                print(_config_field(tr("icli_plot_max_dist", "最大距离：{}°"), j3.max_dist_deg))
             if j3.time_window_hours is not None:
-                print(f"    {tr('icli_plot_time_window', '时间窗口：{}h').format(j3.time_window_hours)}")
+                print(_config_field(tr("icli_plot_time_window", "时间窗口：{}h"), j3.time_window_hours))
         nb = cfg.plot.ndbc
-        print(f"    {tr('icli_plot_ndbc', 'NDBC：{}').format('✓' if nb.enabled else '✗')}")
+        print(_config_field(tr("icli_plot_ndbc", "NDBC：{}"), _success("✓") if nb.enabled else _error("✗")))
         if nb.enabled:
             if nb.data_folder:
-                print(f"    {tr('icli_plot_data_folder', '数据目录：{}').format(nb.data_folder)}")
+                print(_config_field(tr("icli_plot_data_folder", "数据目录：{}"), nb.data_folder))
             if nb.time_range:
-                print(f"    {tr('icli_plot_time_range', '时间范围：{}').format(' ~ '.join(nb.time_range))}")
+                print(_config_field(tr("icli_plot_time_range", "时间范围：{}"), " ~ ".join(nb.time_range)))
             if nb.download:
-                print(f"    {tr('icli_plot_download', '自动下载：✓')}")
+                print(f"    {_color(tr('icli_plot_download', '自动下载：'), _Colors.BLUE)}{_success('✓')}")
         wf = cfg.plot.wind_field
         if wf.time_step_hours is not None:
-            print(f"    {tr('icli_plot_wind_field', '风场：✓')}")
-            print(f"    {tr('icli_plot_time_step', '时间步长：{}h').format(wf.time_step_hours)}")
+            print(f"    {_color(tr('icli_plot_wind_field', '风场：'), _Colors.BLUE)}{_success('✓')}")
+            print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), wf.time_step_hours))
             if wf.flag_type:
-                print(f"    {tr('icli_plot_flag_type', '风向标志：{}').format(wf.flag_type)}")
+                print(_config_field(tr("icli_plot_flag_type", "风向标志：{}"), wf.flag_type))
             if wf.flag_density is not None:
-                print(f"    {tr('icli_plot_flag_density', '标志密度：{}').format(wf.flag_density)}")
+                print(_config_field(tr("icli_plot_flag_density", "标志密度：{}"), wf.flag_density))
         elif wf.flag_type or wf.flag_density is not None:
-            print(f"    {tr('icli_plot_wind_field', '风场：✓')}")
+            print(f"    {_color(tr('icli_plot_wind_field', '风场：'), _Colors.BLUE)}{_success('✓')}")
             if wf.flag_type:
-                print(f"    {tr('icli_plot_flag_type', '风向标志：{}').format(wf.flag_type)}")
+                print(_config_field(tr("icli_plot_flag_type", "风向标志：{}"), wf.flag_type))
             if wf.flag_density is not None:
-                print(f"    {tr('icli_plot_flag_density', '标志密度：{}').format(wf.flag_density)}")
+                print(_config_field(tr("icli_plot_flag_density", "标志密度：{}"), wf.flag_density))
         print()
 
     def do_print_params(self, arg: str) -> None:
@@ -592,6 +634,17 @@ class InteractiveCLI(cmd.Cmd):
     def complete_workdir(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return []
 
+    def _reload_config_for_stage(self, stage: str) -> bool:
+        """从磁盘重新加载 params.yml（运行命令前同步最新编辑）。"""
+        if self._params_path is None:
+            return self._require_config()
+        try:
+            self._config = load_pipeline_config(str(self._params_path), validation_stage=stage)
+            return True
+        except ConfigError as exc:
+            print(_error(tr("icli_config_error", "✗ 配置错误：{}").format(exc)))
+            return False
+
     # ── 预处理命令 ─────────────────────────────────────────────────────────
     # [EN] ── Preprocessing commands ───────────────────────────────────────
 
@@ -602,11 +655,9 @@ class InteractiveCLI(cmd.Cmd):
         """
         if not self._require_config():
             return
-        try:
-            load_pipeline_config(str(self._params_path), validation_stage="full")
-            print(_success(tr("icli_validated", "✓ 配置文件校验通过（full）")))
-        except ConfigError as exc:
-            print(_error(tr("icli_validate_failed", "✗ 校验失败：{}").format(exc)))
+        if not self._reload_config_for_stage("full"):
+            return
+        print(_success(tr("icli_validated", "✓ 配置文件校验通过（full）")))
 
     def complete_validate(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return []
@@ -618,8 +669,11 @@ class InteractiveCLI(cmd.Cmd):
         """
         if not self._require_config():
             return
+        if not self._reload_config_for_stage("forcing"):
+            return
         try:
             from ..application.preprocessing_workflow import run_prepare_forcing
+
             print(_info(tr("icli_start_forcing", "▶ 开始准备强迫场...")))
             run_prepare_forcing(self._config, log=self._log_callback)
             print(_success(tr("icli_done_forcing", "✓ 强迫场准备完成")))
@@ -632,6 +686,8 @@ class InteractiveCLI(cmd.Cmd):
         [EN] generate-grid  — Generate grid (Step 2)
         """
         if not self._require_config():
+            return
+        if not self._reload_config_for_stage("grid"):
             return
         try:
             from ..application.grid_preparation import run_generate_grid
@@ -647,6 +703,8 @@ class InteractiveCLI(cmd.Cmd):
         [EN] run-workflow  — Full preprocessing pipeline
         """
         if not self._require_config():
+            return
+        if not self._reload_config_for_stage("full"):
             return
         try:
             from ..application.preprocessing_workflow import run_pipeline

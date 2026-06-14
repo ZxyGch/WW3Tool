@@ -316,7 +316,7 @@ def _generate_structured(config: PipelineConfig, logger: CoreLogger, *, use_cach
             cache_path = _check_structured_cache(cache_key)
             if cache_path:
                 _load_structured_cache(cache_path, out_dir)
-                logger.log(tr("grid_structured_cache_hit", "找到匹配的 structured 网格缓存，已复制到：{path}").format(path=out_dir))
+                logger.log(tr("grid_structured_cache_hit", "✅ 找到匹配的 structured 网格缓存，已复制到：{path}").format(path=out_dir))
                 continue
 
         logger.log(tr("grid_structured_start", "开始生成 structured 网格：{path}").format(path=out_dir))

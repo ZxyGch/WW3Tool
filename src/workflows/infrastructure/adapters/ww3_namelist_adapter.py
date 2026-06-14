@@ -56,6 +56,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
     def __init__(self, config: PipelineConfig, files: Step1Files, logger: CoreLogger, app_config: Dict[str, Any]) -> None:
         self._logger = logger
         self._app_config = app_config
+        self._loaded_config = config
         self.selected_folder = str(config.workdir.path)
 
         self.grid_type_var = "嵌套网格" if config.grid.grid_type == "nested" else "普通网格"
@@ -286,7 +287,7 @@ def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None
                 active_section = None
         if changed:
             path.write_text("".join(new_lines), encoding="utf-8")
-            logger.log(tr("ww3_grid_params_applied", "已将频谱参数与时间步长写入 ww3_grid.nml"))
+            logger.log(tr("ww3_grid_params_applied", "✅ 已将频谱参数与时间步长写入 ww3_grid.nml"))
 
 
 @contextmanager

@@ -152,36 +152,15 @@ def build_parser() -> argparse.ArgumentParser:
     # ── preprocessing ──────────────────────────────────────────────────────
     p_validate = sub.add_parser("validate", help=tr("cli_help_validate", "Validate a YAML parameter file"))
     p_validate.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_validate.add_argument(
-        "--stage",
-        choices=["forcing", "grid", "full"],
-        default="full",
-        help=tr("cli_help_validation_scope", "Validation scope"),
-    )
 
     p_forcing = sub.add_parser("prepare-forcing", help=tr("cli_help_prepare_forcing", "Run only forcing preparation"))
     p_forcing.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "Run only grid generation"))
     p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_grid.add_argument(
-        "--no-cache",
-        action="store_true",
-        help=tr("cli_help_no_cache", "Force grid generation and do not read or write grid cache"),
-    )
 
     p_run = sub.add_parser("run", help=tr("cli_help_run", "Run headless preprocessing"))
     p_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_run.add_argument(
-        "--skip-grid",
-        action="store_true",
-        help=tr("cli_help_skip_grid", "Skip grid generation and use existing grid files in the workdir"),
-    )
-    p_run.add_argument(
-        "--no-cache",
-        action="store_true",
-        help=tr("cli_help_no_cache", "Force grid generation and do not read or write grid cache"),
-    )
 
     # ── post-processing / plotting ─────────────────────────────────────────
     p_wm = sub.add_parser("plot-wave-maps", help=tr("cli_help_plot_wave_maps", "Generate wave height filled-color maps"))
@@ -400,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command in _PLOT_COMMANDS or args.command in _REMOTE_COMMANDS:
             stage = "plot"
         else:
-            stage = getattr(args, "stage", "full")
+            stage = "full"
         if args.command == "prepare-forcing":
             stage = "forcing"
         if args.command == "generate-grid":
@@ -419,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "generate-grid":
             from ..application.grid_preparation import run_generate_grid
-            run_generate_grid(config, log=print, use_cache=not args.no_cache)
+            run_generate_grid(config, log=print, use_cache=True)
             return 0
 
         if args.command == "run":
@@ -427,8 +406,8 @@ def main(argv: list[str] | None = None) -> int:
             run_pipeline(
                 config,
                 log=print,
-                skip_grid=args.skip_grid,
-                use_grid_cache=not args.no_cache,
+                skip_grid=False,
+                use_grid_cache=True,
             )
             return 0
 

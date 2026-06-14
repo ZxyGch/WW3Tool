@@ -645,6 +645,10 @@ class ModifyWW3NML(
             loaded_cfg = getattr(self, '_loaded_config', None)
             if loaded_cfg is not None and hasattr(loaded_cfg, 'presets'):
                 schemes = dict(loaded_cfg.presets.output_scheme)
+                # __params__ 是合成键，实际对应 ww3.output_scheme 指定的预设
+                # [EN] __params__ is a synthetic key; resolve to the actual preset name
+                if scheme_name == "__params__" and loaded_cfg.ww3.output_scheme in schemes:
+                    scheme_name = loaded_cfg.ww3.output_scheme
             else:
                 from ..runtime_config import load_full_config
                 config = load_full_config()

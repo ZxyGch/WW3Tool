@@ -286,7 +286,7 @@ server:
   user: ''
   password: ''
   key_file: null
-  default_remote_dir: ''
+  default_remote_dir: '/public/home//workSpace/'
   remote_dir: ''
 paths:
   matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab

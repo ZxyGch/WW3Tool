@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field as dataclass_field
+from pathlib import Path
 from typing import Callable, Optional
 
 from ...domain.forcing_fields import ForcingField, Step1Files
@@ -183,7 +184,15 @@ class ImportForcingFileUseCase:
         inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
         detected_fields = inspect_result.get("detected", {}) or {}
         if not detected_fields.get(field.value, False):
-            return ForcingImportResult(success=False, field=field, invalid_reason="missing_variables")
+            return ForcingImportResult(
+                success=False,
+                field=field,
+                invalid_reason="missing_variables",
+                error=tr(
+                    "step1_field_missing_vars",
+                    "{field} 文件缺少所需变量，请检查 NetCDF 内容",
+                ).format(field=field.value),
+            )
 
         fields = inspect_result.get("fields", []) or [field.value]
         if auto_associate:
@@ -325,6 +334,14 @@ class ImportWindForcingUseCase:
         [EN] Returns:
             ``ForcingImportResult``; on success ``normalized_wind_path`` points to the standard wind file.
         """
+        src = Path(file_path)
+        if not src.is_file():
+            return ForcingImportResult(
+                success=False,
+                field=ForcingField.WIND,
+                error=tr("cfg_wind_path_not_exists", "风场文件不存在：{path}").format(path=src),
+            )
+
         inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
         detected_fields = inspect_result.get("detected", {}) or {}
         fields = inspect_result.get("fields", []) or []
@@ -333,6 +350,10 @@ class ImportWindForcingUseCase:
                 success=False,
                 field=ForcingField.WIND,
                 invalid_reason="missing_variables",
+                error=tr(
+                    "wind_file_missing_vars_msg",
+                    "文件不包含风场变量（u10/v10），请选择正确的风场文件",
+                ),
             )
 
         if not fields:
