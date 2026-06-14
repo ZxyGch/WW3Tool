@@ -75,7 +75,12 @@ def test_time_concat_sorts_converts_units_and_preserves_metadata(tmp_path: Path)
     analysis = analyze_merge_inputs([str(later), str(earlier)])
     assert analysis.valid
     assert analysis.time_steps == 4
-    merge_forcing_netcdf([str(later), str(earlier)], str(output))
+    progress: list[tuple[int, str]] = []
+    merge_forcing_netcdf(
+        [str(later), str(earlier)],
+        str(output),
+        progress=lambda value, message: progress.append((value, message)),
+    )
 
     with nc.Dataset(output) as ds:
         assert ds.title == "merge test"
@@ -86,6 +91,9 @@ def test_time_concat_sorts_converts_units_and_preserves_metadata(tmp_path: Path)
         assert ds.dimensions["time"].isunlimited()
         assert ds.variables["time"].units == "seconds since 1970-01-01 00:00:00"
         assert np.all(np.diff(ds.variables["time"][:]) > 0)
+    assert progress[0][0] == 0
+    assert progress[-1][0] == 100
+    assert [value for value, _message in progress] == sorted({value for value, _message in progress})
 
 
 def test_duplicate_time_equal_is_deduplicated_and_conflict_is_rejected(tmp_path: Path) -> None:

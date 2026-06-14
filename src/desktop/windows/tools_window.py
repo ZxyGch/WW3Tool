@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QProgressBar,
     QSizePolicy,
     QTableWidgetItem,
     QVBoxLayout,
@@ -40,6 +41,7 @@ class ToolsInterface(QWidget):
     """常用工具页：清理工作目录 + 合并强迫场。"""
 
     _merge_log_received = pyqtSignal(str)
+    _merge_progress_received = pyqtSignal(int, str)
 
     def __init__(
         self,
@@ -56,7 +58,12 @@ class ToolsInterface(QWidget):
         self._get_forcing_dir = get_forcing_dir or (lambda: "")
         self._merge_paths: list[str] = []
         self._merge_analysis: MergeAnalysis | None = None
+        self._last_logged_progress = -10
         self._runner = BackgroundRunner(self)
+        self._merge_progress_received.connect(
+            self._on_merge_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
         if self._log:
             self._merge_log_received.connect(self._log, Qt.ConnectionType.QueuedConnection)
 
@@ -156,6 +163,13 @@ class ToolsInterface(QWidget):
         self._merge_status.setStyleSheet(styles.label_style())
         layout.addWidget(self._merge_status)
 
+        self._merge_progress = QProgressBar()
+        self._merge_progress.setRange(0, 100)
+        self._merge_progress.setValue(0)
+        self._merge_progress.setTextVisible(True)
+        self._merge_progress.hide()
+        layout.addWidget(self._merge_progress)
+
         self._merge_button = self._button(tr("merge_inline_start", "开始合并"), self._start_merge)
         self._merge_button.setEnabled(False)
         layout.addWidget(self._merge_button)
@@ -195,6 +209,8 @@ class ToolsInterface(QWidget):
         self._merge_table.setRowCount(0)
         self._merge_output.clear()
         self._merge_status.setText(tr("merge_inline_empty", "请添加至少两个 NetCDF 文件"))
+        self._merge_progress.hide()
+        self._merge_progress.setValue(0)
         self._merge_button.setEnabled(False)
 
     def _choose_merge_output(self) -> None:
@@ -274,13 +290,30 @@ class ToolsInterface(QWidget):
             return
         paths = tuple(self._merge_paths)
         self._set_merge_busy(True)
+        self._last_logged_progress = -10
+        self._merge_progress.setValue(0)
+        self._merge_progress.show()
         merging_message = tr("merge_inline_merging", "正在合并，请稍候...")
         self._merge_status.setText(merging_message)
         self._merge_log_received.emit(merging_message)
         self._runner.run(
-            lambda: merge_forcing_netcdf(paths, output, log=self._merge_log_received.emit),
+            lambda: merge_forcing_netcdf(
+                paths,
+                output,
+                log=self._merge_log_received.emit,
+                progress=self._merge_progress_received.emit,
+            ),
             self._on_merge_done,
         )
+
+    def _on_merge_progress(self, value: int, message: str) -> None:
+        value = max(0, min(100, int(value)))
+        self._merge_progress.setValue(value)
+        self._merge_status.setText(f"{message}（{value}%）")
+        progress_bucket = value // 10 * 10
+        if progress_bucket > self._last_logged_progress or value == 100:
+            self._last_logged_progress = progress_bucket
+            self._merge_log_received.emit(f"{value}% {message}")
 
     def _on_merge_done(self, result: object) -> None:
         if isinstance(result, dict):

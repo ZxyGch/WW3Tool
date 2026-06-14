@@ -456,8 +456,36 @@ def _create_variable(out, name: str, source_var, *, time_name: str):
     return var
 
 
-def _write_plan(plan: _MergePlan, output_path: str) -> None:
-    nc, np = _imports()
+def _write_plan(
+    plan: _MergePlan,
+    output_path: str,
+    *,
+    progress: Callable[[int, str], None] | None = None,
+) -> None:
+    nc, _ = _imports()
+    last_progress = -1
+
+    def _progress(value: int, message: str) -> None:
+        nonlocal last_progress
+        if progress and value > last_progress:
+            last_progress = value
+            progress(value, message)
+
+    data_work = 0
+    for group in plan.groups:
+        with nc.Dataset(group.paths[0], "r") as ds:
+            time_name = group.time_names[group.paths[0]]
+            for name in group.data_variables:
+                data_work += len(group.time_sources) if time_name in ds.variables[name].dimensions else 1
+    completed_work = 0
+
+    def _advance(message: str) -> None:
+        nonlocal completed_work
+        completed_work += 1
+        value = 15 + round(80 * completed_work / max(1, data_work))
+        _progress(min(value, 95), message)
+
+    _progress(10, tr("tools_merge_progress_create", "正在创建输出文件"))
     first_group = plan.groups[0]
     with nc.Dataset(first_group.paths[0], "r") as first, nc.Dataset(output_path, "w", format="NETCDF4") as out:
         _copy_attrs(first, out)
@@ -509,19 +537,35 @@ def _write_plan(plan: _MergePlan, output_path: str) -> None:
                     if first_source_time_name not in source_var.dimensions:
                         target[:] = source_var[:]
                         created.add(name)
+                        _advance(
+                            tr("tools_merge_progress_variable", "正在写入变量：{variable}").format(variable=name)
+                        )
                         continue
                     for target_index, (path, source_index) in enumerate(group.time_sources):
                         source_time_name = group.time_names[path]
-                        source_axis = opened[path].variables[name].dimensions.index(source_time_name)
+                        source = opened[path].variables[name]
+                        source_axis = source.dimensions.index(source_time_name)
                         target_axis = target.dimensions.index("time")
-                        source_data = np.take(opened[path].variables[name][:], source_index, axis=source_axis)
+                        source_indexer = [slice(None)] * source.ndim
+                        source_indexer[source_axis] = source_index
                         indexer = [slice(None)] * target.ndim
                         indexer[target_axis] = target_index
-                        target[tuple(indexer)] = source_data
+                        target[tuple(indexer)] = source[tuple(source_indexer)]
+                        _advance(
+                            tr(
+                                "tools_merge_progress_variable_step",
+                                "正在写入 {variable}：{current}/{total}",
+                            ).format(
+                                variable=name,
+                                current=target_index + 1,
+                                total=len(group.time_sources),
+                            )
+                        )
                     created.add(name)
             finally:
                 for ds in opened.values():
                     ds.close()
+    _progress(98, tr("tools_merge_progress_finalize", "正在完成输出文件"))
 
 
 def merge_forcing_netcdf(
@@ -529,6 +573,7 @@ def merge_forcing_netcdf(
     output_path: str,
     *,
     log: Callable[[str], None] | None = None,
+    progress: Callable[[int, str], None] | None = None,
 ) -> str:
     """Validate and merge forcing files, atomically replacing the output on success."""
 
@@ -537,6 +582,8 @@ def merge_forcing_netcdf(
     if normalized_output in normalized_inputs:
         raise ValueError(tr("tools_merge_output_is_input", "输出路径不能与输入文件相同"))
 
+    if progress:
+        progress(0, tr("tools_merge_progress_validate", "正在校验输入文件"))
     plan = _build_plan(input_paths)
     if not plan.analysis.valid:
         raise ValueError("\n".join(plan.analysis.errors))
@@ -553,7 +600,7 @@ def merge_forcing_netcdf(
     fd, temp_path = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
     os.close(fd)
     try:
-        _write_plan(plan, temp_path)
+        _write_plan(plan, temp_path, progress=progress)
         os.replace(temp_path, output)
     except Exception:
         try:
@@ -561,6 +608,8 @@ def merge_forcing_netcdf(
         except OSError:
             pass
         raise
+    if progress:
+        progress(100, tr("tools_merge_progress_complete", "合并完成"))
     if log:
         log(
             tr("tools_merge_done", "✅ 合并完成：{n_files} 个文件 → {out}（{n_time} 个时间步）").format(
