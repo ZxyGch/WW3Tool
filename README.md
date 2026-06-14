@@ -4,30 +4,40 @@
 
 ## Overview
 
-![](public/resource/README-media/2026-03-30%2016.01.54.png)
+![](public/resource/README-media/2026-03-29%2012.28.47.png)
 
 Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
 
-WW3Tool is a pre-processing tool for the WAVEWATCH III model. It helps you run a basic WAVEWATCH III workflow in a streamlined way.
+WW3Tool lets you run a basic WAVEWATCH III workflow end to end, including:
 
-This software includes the following features:
+1. Multiple forcing fields:
 
-1. Supports multiple forcing fields: wind (ERA5, CFSR, CCMP), currents (Copernicus), water level (Copernicus), sea ice (Copernicus), with automatic fixes for forcing fields (latitude ordering, time fixes, variable fixes)
+- Wind (ERA5, CFSR, CCMP)
+- Currents (Copernicus)
+- Water level (Copernicus)
+- Sea ice (Copernicus)
 
-2. gridgen/pygridgen structured rectangular grids, JIGSAW triangular unstructured grids, SMCGTools SMC grids, and up to two levels of nested grids for structured rectangular grids
+The program automatically fixes forcing-field issues (latitude ordering, time fixes, variable fixes).
 
-3. Supports regional runs, spectral point runs, and track runs
+2. Three grid types: structured rectangular, triangular unstructured, and SMC grids
 
-4. Supports Slurm script configuration (ssh configuration, slurm cores, nodes, CPU)
+- gridgen structured rectangular grid generation, with up to two levels of nested grids for structured rectangular grids
+- JIGSAW triangular unstructured grid generation
+- SMCGTools SMC grid generation
 
-5. Automatically configures files such as ww3_grid.nml, ww3_prnc.nml, ww3_shel.nml, ww3_ounf.nml, ww3_multi.nml, including grid file config, calculation precision, output precision, time range, spectral point runs, track runs, spectral partition output, and forcing field configuration
+3. Regional runs, spectral point runs, and track runs
+
+4. Slurm script configuration (SSH settings, Slurm cores, nodes, CPU)
+
+5. Automatic configuration of `ww3_grid.nml`, `ww3_prnc.nml`, `ww3_shel.nml`, `ww3_ounf.nml`, `ww3_multi.nml`, and related files, including grid file settings, compute precision, output precision, time range, spectral point runs, track runs, spectral partition output, and forcing field configuration
 
 6. Wave height plots, wave height videos, contour plots, 2D spectrum plots, JASON3 satellite track plots, 2D spectrum plots
 
-This software runs on Win/Linux/Mac and is almost entirely written in Python (the original gridgen Matlab code is retained).
+WW3Tool runs on Win/Linux/Mac and is almost entirely Python (the original gridgen Matlab code is retained). The UI supports Chinese and English; the interactive terminal can switch to English with `--lang en_US` (Chinese is the default).
 
-You need to install WAVEWATCH III yourself on your local machine or server. This software does not provide an installer yet. Please see the tutorial:
-[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
+You need to install WAVEWATCH III yourself on your local machine or server. This software does not provide an installer yet. Please see the tutorial: [https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
+
+---
 
 I was not an ocean science major in undergrad and I am now a first-year graduate student. The WAVEWATCH III usage I know is limited to these parts. If you have more ideas, please contact me at [atomgoto@gmail.com](mailto:atomgoto@gmail.com) or open an issue.
 
@@ -37,46 +47,65 @@ If you find this tool useful, please give it a ⭐️ 🥳
 
 ## Quick Start
 
+`run.py` is the single entry point and exposes three ways to use the tool:
+
 ```sh
-python3 run.py
+python3 run.py                 # 1. GUI (default)
+python3 run.py shell           # 2. Interactive terminal
+python3 run.py run params.yml  # 3. Headless CLI (one-shot subcommands)
 ```
 
 If anything fails to install or some packages are missing, please install them manually.
 
-`run.py` is the single entry point and is responsible for runtime setup (venv, dependencies, import paths). With no arguments it launches the Desktop GUI, an independently implemented preprocessing home page built on `src/desktop`. Its Fluent styling, navigation, step cards, and right-hand log panel are aligned with the established application. Desktop actions call `src/workflows` rather than the old main-window business implementation.
+
+
+### 1. Graphical interface
+
+![](public/resource/README-media/2026-03-29%2012.28.47.png)
 
 ```sh
-python3 run.py shell                 # interactive REPL
-python3 run.py shell params.yml
+python3 run.py
 ```
 
-### Scripted Preprocessing
+Launching with no arguments starts the GUI. This is the most common way to use WW3Tool.
 
-For scripted workflows or server-side preprocessing, pass a subcommand to the same `run.py`:
+
+
+### 2. Interactive command line
+
+![](public/resource/README-media/截屏2026-06-13%2016.30.04.png)
+
+If you prefer the terminal, use `run.py shell` to enter an interactive REPL, load a configuration, and run steps repeatedly:
 
 ```sh
-python3 run.py validate params.yml
-python3 run.py prepare-forcing params.yml
-python3 run.py run params.yml
+python3 run.py shell
+python3 run.py shell /path/to/workdir/params.yml
+python3 run.py shell --lang en_US
 ```
 
-`run.py` checks runtime packages and installs missing ones from `src/requirements.txt` before dispatching (lightweight commands such as `print-example` and `create-workdir` skip this check). The repository-root `params.yml` is a template only and must not be run directly — use `python3 run.py create-workdir --name my_case` first, then edit and run the copy inside the work directory. `python3 run.py print-example` prints a template to stdout.
+Note: it is best to understand the GUI workflow before using shell mode.
 
-`prepare-forcing` runs only Step 1 forcing preparation: copy/move, variable detection, wind normalization, and combined-forcing auto-association.
+Remember to create a working directory first and edit `params.yml` inside it. The repository-root `params.yml` is only a template for shared defaults.
 
-The command entrypoint directly calls `src/workflows`. The desktop preprocessing home page uses the same workflows for forcing preparation, parameter validation, and preprocessing-file generation; remaining desktop actions will move to that logic incrementally.
 
-Running without arguments or explicitly using `run` reads the YAML parameter file and prepares forcing files, grid files, calculation-mode artifacts, and WW3 namelists/scripts. It does not execute WAVEWATCH III, upload to a server, or generate plots. If the work directory already contains grid files, use `--skip-grid`:
+
+### 3. Headless CLI
+
+Each step can be invoked as a one-shot subcommand. The tool reads `params.yml` from the working directory, runs, and exits:
 
 ```sh
-python3 run.py run params.yml --skip-grid
+python3 run.py validate params.yml          # validate configuration
+python3 run.py prepare-forcing params.yml   # prepare forcing fields
+python3 run.py generate-grid params.yml     # generate grid
+python3 run.py run params.yml               # full preprocessing
+python3 run.py plot params.yml              # plotting
 ```
 
-The `grid` section of `params.yml` is grouped by mesh type: `structured` contains bathymetry, coastline precision, and pygridgen thresholds; `smc` contains bathymetry, refinement, physics, and boundary settings; and `unstructured` contains triangular-mesh sizing and regional settings. For `grid_type: nested`, provide `inner` explicitly or omit it to derive the inner region using `nested_contraction_coefficient`.
+This “one command, one step, no manual interaction” style is well suited to scripting and automation, including AI tools (such as Claude Code): an agent can run these commands directly and use stdout and exit codes to tell whether each step succeeded, without operating the GUI.
 
-The `presets` section at the top of `params.yml` stores available choices for script validation and later desktop-interface reuse, including output-field presets, ST executable paths, bathymetry, coastline precision, and file splitting. `presets.st` maps a name to a server executable directory, such as `ST2: /public/home/.../model/exe`, and `ww3.st: ST2` selects that path. Define complete field arrays in `presets.output_scheme`, such as `standard: [HS, DIR, FP, T02, WND]`, then select one for a run with `ww3.output_scheme: standard`.
+See `python3 run.py --help` for the full command list.
 
-The `ww3_grid` section uses `ww3_grid.nml` keys directly, such as `SPECTRUM%XFR`, `TIMESTEPS%DTMAX`, and `GRID%ZLIM`, for spectrum discretization, numerical timesteps, and nearshore depth controls. Nested grids can separately set `ww3.inner_compute_precision` and `ww3.inner_output_precision`; `slurm.server_script_path` selects a custom `server.sh` template when needed.
+
 
 
 
@@ -88,10 +117,88 @@ This software supports Python ≥ 3.8 and has been tested on:
 - Ubuntu 24
 - macOS 15
 
-WAVEWATCH III is not required for local installation. Local runs are optional, as long as the server side has the following environment correctly installed:
+WAVEWATCH III is not required locally. Local runs are optional; you only need the following correctly deployed on the server side:
 
 - WAVEWATCH III
 - Slurm workload manager
+
+
+## Overall Architecture
+
+> Note: you do not need to understand the directories, configuration, and workflow details below. You can simply use the GUI (`python3 run.py`) step by step; the GUI, Shell, and CLI share the same capabilities and none of them is missing features.
+
+WW3Tool is a preprocessing and run-assist tool built around WAVEWATCH III. It handles forcing-field preparation, grid generation, namelist/script generation, optional local or remote job submission, and result plotting and validation. It does not include the WW3 numerical model itself, and it does not replace `ww3_grid`, `ww3_prnc`, `ww3_shel`, and other executables you install locally or on a server.
+
+From a user perspective, the software has three layers:
+
+| Layer | Role | Main location |
+| ----- | ---- | ------------- |
+| Entry | Unified launch, dependency checks, language switching | Repository root `run.py` |
+| Configuration | Describes all parameters for one simulation case | `params.yml` in the working directory |
+| Case data | Grid, forcing, namelists, logs, and results for the current run | Working directory (default under `workSpace/`) |
+
+
+
+### Entry modes
+
+All three modes share the same business logic; only the interaction style differs:
+
+```text
+python3 run.py              → GUI (default)
+python3 run.py shell        → interactive terminal (repeat steps as needed)
+python3 run.py <subcommand> … → headless CLI (scripting and automation)
+```
+
+The repository-root `params.yml` is only a template. Before running, copy it into a separate working directory with `create-workdir`, then edit `params.yml` in that directory.
+
+
+
+### End-to-end workflow
+
+A typical path from preparation to plotting (local run, server run, or a combination):
+
+```mermaid
+flowchart LR
+  A[Forcing NetCDF] --> B[Step 1 Forcing prep]
+  B --> C[Step 2 Grid generation]
+  C --> D[Step 3 Calculation mode
+  regional / spectral point / track]
+  D --> E[Step 4 WW3 configuration
+  namelist / scripts]
+  E --> F{Run mode}
+  F -->|Local| G[local.sh]
+  F -->|Server| H[Upload + server.sh / Slurm]
+  G --> I[WW3 model output ww3.2025.nc etc.]
+  H --> I
+  I --> J[Post-processing plots
+  wave maps / spectra / validation]
+```
+
+Mapping to `params.yml` sections:
+
+- forcing — source paths and processing for wind / currents / water level / sea ice
+- grid — grid type, extent, resolution, and `meshgen` parameters
+- calc — regional, spectral point, or track calculation mode
+- ww3 / ww3_grid — time range, output precision, spectral discretization, timesteps, etc.
+- slurm / server — SSH and remote jobs (server mode only)
+- plot — plotting and satellite / buoy validation switches
+
+### Top-level repository layout
+
+Directories directly involved in running one case:
+
+```text
+WW3Tool/
+├── run.py              # single program entry point
+├── params.yml          # case parameter template (do not run directly)
+├── public/             # global resources: languages, defaults, sample forcing, WW3 script templates
+├── meshgen/            # grid generators (structured / unstructured / SMC) and reference_data
+├── workSpace/          # default working-directory root; each subfolder is one case
+└── src/                # implementation (GUI, pipeline, grid and namelist adapters, etc.)
+```
+
+In practice, both GUI mode and shell mode call into `src/workflows`.
+
 
 
 
@@ -99,7 +206,7 @@ WAVEWATCH III is not required for local installation. Local runs are optional, a
 
 ### Create a working directory
 
-![](public/resource/README-media/2026-03-30%2016.01.22.png)
+![](public/resource/README-media/2026-03-29%2012.46.28.png)
 
 At startup, you must select or create a working directory. This step is mandatory and cannot be skipped.
 
@@ -123,7 +230,7 @@ I have pre-prepared several forcing files in `WW3Tool/public/forcing`, you can s
 
 WAVEWATCH requires latitude to be increasing, but ERA5 wind data latitude is decreasing by default. I added logic to detect and automatically flip if latitude is not increasing.
 
-![](public/resource/README-media/2026-03-30%2016.21.18.png)
+![](public/resource/README-media/2026-03-29%2012.48.29.png)
 
 CFSR wind variables are also automatically renamed to match WW3 requirements.
 
@@ -145,11 +252,11 @@ The `reference_data` package contains gebco, etopo1/2, coastline boundaries, and
 
 If `WW3Tool/meshgen/reference_data` does not contain these files, a download window will appear in step 2.
 
-![](public/resource/README-media/2026-03-30%2016.02.47.png)
+![](public/resource/README-media/2026-03-29%2012.52.20.png)
 
 Click Download: the program will download from [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) (~6.5GB).
 
-![](public/resource/README-media/2026-03-30%2016.03.00.png)
+![](public/resource/README-media/2026-03-29%2013.04.16.png)
 
 If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to `WW3Tool/meshgen/reference_data`.
 
@@ -159,7 +266,7 @@ If GitHub is too slow or fails, you can download from [OneDrive](https://tiangon
 
 ##### Single grid
 
-![](public/resource/README-media/2026-03-30%2016.04.17.png)
+![](public/resource/README-media/2026-03-29%2013.28.40.png)
 
 Click Generate Grid to call `meshgen/structured_generator/pygridgen` and generate grid files into the working directory.
 
@@ -192,15 +299,11 @@ Finally, four files will be created in the working directory: `grid.bot`, `grid.
 
 Generated grids are automatically cached in `WW3Tool/meshgen/cache`.
 
-![](workSpace/2026-03-30_16-06-30/photo/grid/grid_bathymetry.png)
-![](workSpace/2026-03-30_16-06-30/photo/grid/grid_obstruction_x.png)
-![](workSpace/2026-03-30_16-06-30/photo/grid/grid_obstruction_y.png)
-
 
 
 ##### Nested grids
 
-![](public/resource/README-media/2026-03-30%2016.04.46.png)
+![](public/resource/README-media/2026-03-29%2013.49.42.png)
 
 Nested grids use two-way nesting.
 
@@ -262,15 +365,13 @@ Each cache folder also contains `params.json`:
 
 The dashed outline shows the actual map range.
 
-![](public/resource/README-media/2026-03-30%2016.05.34.png)
+![](public/resource/README-media/2026-03-29%2016.59.47.png)
 
 
 
 ### Choose calculation mode
 
-![](public/resource/README-media/2026-03-30%2016.07.37.png)
-
-These three modes have similar computational cost, but the outputs differ. Spectral point mode and track mode look like only a few points are computed, but the whole map is still computed.
+![](public/resource/README-media/2026-03-29%2014.32.55.png) have similar computational cost, but the outputs differ. Spectral point mode and track mode look like only a few points are computed, but the whole map is still computed.
 
 Regional mode is the standard `ww3_ounf` output.
 
@@ -290,15 +391,13 @@ Standard calculation mode.
 
 #### Spectral point mode
 
-![](public/resource/README-media/2026-03-30%2016.07.58.png)
+![](public/resource/README-media/2026-03-29%2014.55.42.png)
 
 Click to select points from the map and a window will open.
 
 Click points on the map; the blue dashed box is the grid range, and you can only select points within it. After selecting, click Finish.
 
-![](public/resource/README-media/2026-03-30%2016.07.37.png)
-
-Then, in step 4, a `points.list` file is created in the working directory:
+![](public/resource/README-media/2026-03-29%2014.56.14.png), a `points.list` file is created in the working directory:
 
 ```swift
 117 18 '0'
@@ -313,6 +412,7 @@ The three columns are longitude, latitude, and point name. If a working director
 
 After WW3 runs, you get `ww3.2025_spec.nc` in the plotting page.
 
+![](public/resource/README-media/2026-03-29%2015.49.57.png)
 
 You can plot 2D spectra:
 
@@ -321,7 +421,7 @@ You can plot 2D spectra:
 
 #### Track mode
 
-![](public/resource/README-media/2026-03-30%2016.08.38.png)
+![](public/resource/README-media/2026-03-29%2015.52.47.png)
 
 Similar to spectral point mode, but with an extra time column. In step 4 a file is generated: `track_i.ww3`, format:
 
@@ -339,7 +439,9 @@ Finally, `ww3_trnc` outputs `ww3.2025_trck.nc`.
 ### Configure run parameters
 
 
-![](public/resource/README-media/2026-03-30%2016.11.17.png)
+![](public/resource/README-media/2026-03-29%2016.37.17.png)
+
+![](public/resource/README-media/2026-03-29%2016.14.29.png)
 
 We added wind, water level, and current as forcing fields. Ice can be added, but our grid region has no ice, so it is not shown here.
 
@@ -447,7 +549,7 @@ Then we modify the spectral partition output scheme:
 
 The spectral partition output scheme can be configured in Settings.
 
-![](public/resource/README-media/2026-03-30%2016.11.49.png)
+![](public/resource/README-media/2026-03-29%2016.26.34.png)
 
 
 ---
@@ -660,7 +762,8 @@ For spectral point mode, we also modify `namelists.nml`:
 
 #### Nested grid
 
-![](public/resource/README-media/2026-03-30%2016.12.11.png)
+![](public/resource/README-media/2026-03-29%2017.02.34.png)
+![](public/resource/README-media/2026-03-29%2017.03.44.png)
 
 We first generate nested grids and create `coarse` and `fine` folders in the working directory, then choose spectral point mode.
 
@@ -789,7 +892,7 @@ In the previous section, these three logs are for spectral point mode, and they 
 
 ### Local run
 
-![](public/resource/README-media/2026-03-30%2016.14.15.png)
+![](public/resource/README-media/2026-03-30%2014.06.33.png)
 
 Local run executes `local.sh`.
 
@@ -810,7 +913,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 ### Connect to server
 
-![](public/resource/README-media/2026-03-30%2016.14.40.png)
+![](public/resource/README-media/2026-03-29%2023.47.34.png)
 
 First, configure your SSH username and password in Settings under server configuration.
 
@@ -820,7 +923,7 @@ Click Connect Server. On success, a CPU usage ranking will show and refresh ever
 
 If you submit a Slurm job in step 6, the job queue will also be shown.
 
-![](public/resource/README-media/2026-03-30%2016.14.56.png)
+![](public/resource/README-media/2026-03-30%2016.39.48.png)
 
 
 
@@ -828,15 +931,15 @@ If you submit a Slurm job in step 6, the job queue will also be shown.
 
 Viewing the job queue runs `squeue -l` on the server.
 
+![](public/resource/README-media/2026-03-30%2016.40.35.png)
+
 Upload working directory uploads the current directory to the server working directory (configured in Settings).
 
-![](public/resource/README-media/2026-03-30%2016.15.39.png)
+![](public/resource/README-media/2026-03-30%2016.41.08.png)
 
 Submit job runs the `server.sh` script on the server. If successful (all commands run normally), it will create `success.log` in the server working directory with all WW3 logs. If it fails, it creates `fail.log` with all logs. If it is still running, the log file is `run.log`.
 
 So to check completion, see if `success.log` or `fail.log` exists. If `run.log` exists, the server is still running.
-
-![](public/resource/README-media/2026-03-30%2015.59.30.png)
 
 Clear folder clears the current server working directory.
 
@@ -891,7 +994,7 @@ WW3 configuration is the default values in step 4 and the Confirm Parameters but
 
 File splitting is `TIMESPLIT` in `ww3_ounf.nml`, `ww3_ounp.nml`, `ww3_trnc.nml`. If your time range is 3 months, monthly or yearly split is suitable; daily split produces one file per day.
 
-![](public/resource/README-media/2026-03-30%2015.50.52.png)
+![](public/resource/README-media/2026-03-30%2016.42.49.png)
 
 Spectrum parameters, numerical integration timestep, and nearshore configuration are in `ww3_grid.nml`. Changing them here updates both WW3Tool and the current working directory `ww3_grid.nml` (if it exists).
 
@@ -927,9 +1030,11 @@ This shows the CPU list (if Slurm is installed).
 
 Then open Settings in the software, find Slurm parameters, click CPU Management, and set it to your server's CPU.
 
-![](public/resource/README-media/2026-03-30%2016.16.02.png)
+![](public/resource/README-media/2026-03-30%2016.42.16.png)
 
 #### Server connection
+
+![](public/resource/README-media/2026-03-29%2023.47.34.png)
 
 Fill in SSH account info and a default login path. All working directories will be uploaded there.
 
@@ -937,7 +1042,7 @@ Fill in SSH account info and a default login path. All working directories will 
 
 #### ST version management
 
-![](public/resource/README-media/2026-03-30%2016.16.17.png)
+![](public/resource/README-media/2026-03-30%2016.42.31.png)
 
 This is the WAVEWATCH builds you compiled; just fill in their paths.
 

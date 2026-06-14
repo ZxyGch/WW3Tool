@@ -209,6 +209,42 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
     ]
 
 
+def print_help() -> None:
+    """打印与 shell 模式 ``help`` 命令一致的分组帮助信息。
+
+    [EN] Print grouped help identical to the shell mode ``help`` command.
+    """
+    print()
+    print(_bold(tr("icli_help_header", "🌊 WW3Tool 交互式命令行")))
+    print(_color(tr("icli_help_hint", "输入命令后按回车执行，Tab 键自动补全，↑↓ 翻阅历史"), _Colors.CYAN))
+    print()
+
+    groups = _help_groups()
+
+    max_cmd_len = max(
+        len(cmd_text)
+        for _, cmds in groups
+        for cmd_text, _ in cmds
+    )
+
+    for group_name, commands in groups:
+        print(f"  {_bold(_color(group_name, _Colors.YELLOW))}")
+        for cmd_text, desc in commands:
+            padding = " " * (max_cmd_len - len(cmd_text) + 2)
+            print(f"    {_color(cmd_text, _Colors.GREEN)}{padding}{desc}")
+        print()
+
+    print(f"  {_bold(_color(tr('icli_global_options', '全局选项'), _Colors.YELLOW))}")
+    print(f"    {_color('--lang <zh_CN|en_US>', _Colors.GREEN)}      {tr('icli_lang_desc', '切换输出语言')}")
+    print()
+
+    g = _color
+    print(f"  {_bold(_color(tr('icli_workflow', '典型流程'), _Colors.YELLOW))}")
+    print(f"    {g('workdir', _Colors.GREEN)} → {g('run-workflow', _Colors.GREEN)} → {g('local-run', _Colors.GREEN)}")
+    print(f"                              └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
+    print()
+
+
 class InteractiveCLI(cmd.Cmd):
     """交互式 WW3Tool CLI，提供 REPL 界面调用 workflows 用例。
 
@@ -318,39 +354,7 @@ class InteractiveCLI(cmd.Cmd):
                 print(tr("icli_unknown_cmd", "未知命令：{}").format(arg))
             return
 
-        print()
-        print(_bold(tr("icli_help_header", "🌊 WW3Tool 交互式命令行")))
-        print(_color(tr("icli_help_hint", "输入命令后按回车执行，Tab 键自动补全，↑↓ 翻阅历史"), _Colors.CYAN))
-        print()
-
-        groups = _help_groups()
-
-        # 计算命令列最大宽度
-        # [EN] Calculate maximum width for the command column
-        max_cmd_len = max(
-            len(cmd_text)
-            for _, cmds in groups
-            for cmd_text, _ in cmds
-        )
-
-        for group_name, commands in groups:
-            print(f"  {_bold(_color(group_name, _Colors.YELLOW))}")
-            for cmd_text, desc in commands:
-                padding = " " * (max_cmd_len - len(cmd_text) + 2)
-                print(f"    {_color(cmd_text, _Colors.GREEN)}{padding}{desc}")
-            print()
-
-        print(f"  {_bold(_color(tr('icli_global_options', '全局选项'), _Colors.YELLOW))}")
-        print(f"    {_color('--lang <zh_CN|en_US>', _Colors.GREEN)}      {tr('icli_lang_desc', '切换输出语言')}")
-        print()
-
-        # 典型流程提示（上下分叉：本地 vs 远程）
-        # [EN] Typical workflow hint (fork: local vs remote)
-        g = _color
-        print(f"  {_bold(_color(tr('icli_workflow', '典型流程'), _Colors.YELLOW))}")
-        print(f"    {g('workdir', _Colors.GREEN)} → {g('run-workflow', _Colors.GREEN)} → {g('local-run', _Colors.GREEN)}")
-        print(f"                              └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
-        print()
+        print_help()
 
     def parseline(self, line: str) -> tuple[str | None, str | None, str]:
         """重写行解析：支持含 '-' 的命令名（如 prepare-forcing → do_prepare_forcing）。

@@ -1,5 +1,7 @@
 # WW3Tool
 
+English version: [README](README.md)
+
 ## 基本介绍
 
 ![](public/resource/README-media/2026-03-29%2012.28.47.png)
@@ -130,11 +132,13 @@ WW3Tool 是围绕 WAVEWATCH III 的预处理与运行辅助工具：负责强迫
 
 从使用角度看，软件由三层组成：
 
-| 层次 | 作用 | 主要载体 |
-|------|------|----------|
-| 入口 | 统一启动、依赖检查、语言切换 | 仓库根目录 `run.py` |
-| 配置 | 描述一次算例的全部参数 | 工作目录内 `params.yml`；全局偏好见 `public/config.json` |
+| 层次   | 作用                             | 主要载体                     |
+| ---- | ------------------------------ | ------------------------ |
+| 入口   | 统一启动、依赖检查、语言切换                 | 仓库根目录 `run.py`           |
+| 配置   | 描述一次算例的全部参数                    | 工作目录内 `params.yml`       |
 | 算例数据 | 存放本次运行产生的网格、强迫场、namelist、日志与结果 | 工作目录（默认在 `workSpace/` 下） |
+
+
 
 ### 入口方式
 
@@ -148,7 +152,9 @@ python3 run.py <子命令> …   → 无界面 CLI（适合脚本与自动化）
 
 根目录的 `params.yml` 仅为模板；实际运行前须用 `create-workdir` 复制到独立工作目录，再编辑该目录下的 `params.yml`。
 
-### 一次算例的处理流程
+
+
+### 一次处理流程
 
 从准备到出图，典型链路如下（本地运行与服务器运行可二选一或组合使用）：
 
@@ -192,17 +198,9 @@ WW3Tool/
 └── src/                # 程序实现（图形界面、流水线、网格与 namelist 适配等）
 ```
 
+实际上 GUI 模式和 Shell 模式其实都是调用的 src/workflows。
 
-### 与外部程序的关系
 
-| 外部组件 | 由谁调用 | 说明 |
-|----------|----------|------|
-| meshgen（`structured_generator` / `unstructured_generator` / `smc_generator`） | WW3Tool | 生成 `mod_def.ww3`、`grid.*` 等网格相关文件；依赖 `meshgen/reference_data` 地形与岸线数据 |
-| WAVEWATCH III（`ww3_grid`、`ww3_prnc`、`ww3_strt`、`ww3_shel` 等） | `local.sh` 或服务器上的 `server.sh` | 需用户自行编译安装；WW3Tool 只生成输入文件并可选触发运行 |
-| Slurm + SSH | 服务器运行流程 | 上传工作目录、提交作业、拉取日志与结果 |
-| Python 科学栈（NetCDF、Matplotlib 等） | 强迫场处理与绘图 | 由 `run.py` 在启动时检查并安装缺失依赖 |
-
-总结：配置写在 `params.yml`，产物落在工作目录，入口统一为 `run.py`；WW3Tool 负责把「数据准备 → 文件生成 → 提交运行 → 结果出图」串成可重复、可脚本化的一条流水线，而数值积分仍由已安装的 WAVEWATCH III 在本地或集群上执行。
 
 
 ## 功能实现细节

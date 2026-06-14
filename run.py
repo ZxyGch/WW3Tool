@@ -298,6 +298,12 @@ def main(argv: list[str] | None = None) -> int:
         params_path = rest[1] if len(rest) > 1 and rest[1] not in {"--help", "-h"} else None
         return run_interactive(params_path)
 
+    if rest and rest[0] in {"--help", "-h"}:
+        from workflows.interfaces.interactive_cli import print_help
+
+        print_help()
+        return 0
+
     from workflows.interfaces.command_line import main as run_commands
 
     return run_commands(rest)
