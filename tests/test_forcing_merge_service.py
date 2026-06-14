@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from workflows.infrastructure.forcing.merge_service import (
+    _contiguous_source_runs,
     analyze_merge_inputs,
     merge_forcing_netcdf,
 )
@@ -186,3 +187,13 @@ def test_recognizes_cf_valid_time_and_normalizes_output_dimension(tmp_path: Path
         assert "time" in ds.dimensions
         assert "valid_time" not in ds.dimensions
         assert ds.variables["u10"].dimensions[0] == "time"
+
+
+def test_contiguous_source_runs_batch_adjacent_time_steps() -> None:
+    assert _contiguous_source_runs(
+        [("a.nc", 0), ("a.nc", 1), ("a.nc", 2), ("b.nc", 0), ("b.nc", 1), ("a.nc", 5)]
+    ) == [
+        (0, 3, "a.nc", 0),
+        (3, 2, "b.nc", 0),
+        (5, 1, "a.nc", 5),
+    ]

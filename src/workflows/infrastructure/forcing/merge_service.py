@@ -16,6 +16,7 @@ from workflows.support.translations import tr
 
 _EPOCH_UNITS = "seconds since 1970-01-01 00:00:00"
 _EPOCH_CALENDAR = "standard"
+_COPY_BLOCK_BYTES = 128 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -456,6 +457,65 @@ def _create_variable(out, name: str, source_var, *, time_name: str):
     return var
 
 
+def _bytes_per_time_step(var, time_axis: int) -> int:
+    itemsize = getattr(var.dtype, "itemsize", 8)
+    if not isinstance(itemsize, int):
+        itemsize = 8
+    size = max(1, itemsize)
+    for axis, length in enumerate(var.shape):
+        if axis != time_axis:
+            size *= max(1, length)
+    return size
+
+
+def _variable_nbytes(var) -> int:
+    itemsize = getattr(var.dtype, "itemsize", 8)
+    if not isinstance(itemsize, int):
+        itemsize = 8
+    return max(1, int(getattr(var, "size", 1)) * itemsize)
+
+
+def _copy_block_steps(var, time_axis: int) -> int:
+    """Choose a block size that aligns with source chunks without exceeding memory target."""
+
+    bytes_per_step = _bytes_per_time_step(var, time_axis)
+    max_steps = max(1, _COPY_BLOCK_BYTES // bytes_per_step)
+    try:
+        chunks = var.chunking()
+        if isinstance(chunks, list):
+            return max(1, min(max_steps, int(chunks[time_axis])))
+    except Exception:
+        pass
+    return min(max_steps, 256)
+
+
+def _contiguous_source_runs(
+    sources: Sequence[tuple[str, int]],
+) -> list[tuple[int, int, str, int]]:
+    """Return ``(target_start, count, path, source_start)`` runs."""
+
+    runs: list[tuple[int, int, str, int]] = []
+    if not sources:
+        return runs
+    target_start = 0
+    path, source_start = sources[0]
+    previous_source = source_start
+    count = 1
+    for target_index, (current_path, source_index) in enumerate(sources[1:], start=1):
+        if current_path == path and source_index == previous_source + 1:
+            count += 1
+            previous_source = source_index
+            continue
+        runs.append((target_start, count, path, source_start))
+        target_start = target_index
+        path = current_path
+        source_start = source_index
+        previous_source = source_index
+        count = 1
+    runs.append((target_start, count, path, source_start))
+    return runs
+
+
 def _write_plan(
     plan: _MergePlan,
     output_path: str,
@@ -476,12 +536,16 @@ def _write_plan(
         with nc.Dataset(group.paths[0], "r") as ds:
             time_name = group.time_names[group.paths[0]]
             for name in group.data_variables:
-                data_work += len(group.time_sources) if time_name in ds.variables[name].dimensions else 1
+                var = ds.variables[name]
+                if time_name in var.dimensions:
+                    data_work += _bytes_per_time_step(var, var.dimensions.index(time_name)) * len(group.time_sources)
+                else:
+                    data_work += _variable_nbytes(var)
     completed_work = 0
 
-    def _advance(message: str) -> None:
+    def _advance(amount: int, message: str) -> None:
         nonlocal completed_work
-        completed_work += 1
+        completed_work += max(1, amount)
         value = 15 + round(80 * completed_work / max(1, data_work))
         _progress(min(value, 95), message)
 
@@ -538,29 +602,43 @@ def _write_plan(
                         target[:] = source_var[:]
                         created.add(name)
                         _advance(
+                            _variable_nbytes(source_var),
                             tr("tools_merge_progress_variable", "正在写入变量：{variable}").format(variable=name)
                         )
                         continue
-                    for target_index, (path, source_index) in enumerate(group.time_sources):
+                    target_axis = target.dimensions.index("time")
+                    total_steps = len(group.time_sources)
+                    copied_steps = 0
+                    for target_start, run_count, path, source_start in _contiguous_source_runs(group.time_sources):
                         source_time_name = group.time_names[path]
                         source = opened[path].variables[name]
                         source_axis = source.dimensions.index(source_time_name)
-                        target_axis = target.dimensions.index("time")
-                        source_indexer = [slice(None)] * source.ndim
-                        source_indexer[source_axis] = source_index
-                        indexer = [slice(None)] * target.ndim
-                        indexer[target_axis] = target_index
-                        target[tuple(indexer)] = source[tuple(source_indexer)]
-                        _advance(
-                            tr(
-                                "tools_merge_progress_variable_step",
-                                "正在写入 {variable}：{current}/{total}",
-                            ).format(
-                                variable=name,
-                                current=target_index + 1,
-                                total=len(group.time_sources),
+                        block_steps = _copy_block_steps(source, source_axis)
+                        for offset in range(0, run_count, block_steps):
+                            count = min(block_steps, run_count - offset)
+                            source_indexer = [slice(None)] * source.ndim
+                            source_indexer[source_axis] = slice(
+                                source_start + offset,
+                                source_start + offset + count,
                             )
-                        )
+                            target_indexer = [slice(None)] * target.ndim
+                            target_indexer[target_axis] = slice(
+                                target_start + offset,
+                                target_start + offset + count,
+                            )
+                            target[tuple(target_indexer)] = source[tuple(source_indexer)]
+                            copied_steps += count
+                            _advance(
+                                _bytes_per_time_step(source, source_axis) * count,
+                                tr(
+                                    "tools_merge_progress_variable_step",
+                                    "正在写入 {variable}：{current}/{total}",
+                                ).format(
+                                    variable=name,
+                                    current=copied_steps,
+                                    total=total_steps,
+                                )
+                            )
                     created.add(name)
             finally:
                 for ds in opened.values():
