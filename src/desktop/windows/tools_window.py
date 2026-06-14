@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import InfoBar, LineEdit, PrimaryPushButton, PushButton, TableWidget
+from qfluentwidgets import LineEdit, PrimaryPushButton, PushButton, TableWidget
 
 from ..background_runner import BackgroundRunner
 from ..components.header_card import create_header_card
@@ -274,7 +274,9 @@ class ToolsInterface(QWidget):
             return
         paths = tuple(self._merge_paths)
         self._set_merge_busy(True)
-        self._merge_status.setText(tr("merge_inline_merging", "正在合并，请稍候..."))
+        merging_message = tr("merge_inline_merging", "正在合并，请稍候...")
+        self._merge_status.setText(merging_message)
+        self._merge_log_received.emit(merging_message)
         self._runner.run(
             lambda: merge_forcing_netcdf(paths, output, log=self._merge_log_received.emit),
             self._on_merge_done,
@@ -284,22 +286,13 @@ class ToolsInterface(QWidget):
         if isinstance(result, dict):
             error = str(result.get("error", tr("tools_merge_failed", "合并失败")))
             self._merge_status.setText(error)
-            InfoBar.error(
-                title=tr("tools_merge_forcing_card_title", "合并强迫场文件"),
-                content=error,
-                duration=4000,
-                parent=self,
+            self._merge_log_received.emit(
+                tr("tools_merge_failed", "合并失败：{error}").format(error=error)
             )
             self._set_merge_busy(False)
             return
         self._merge_status.setText(
             tr("merge_inline_done", "合并完成：{path}").format(path=result)
-        )
-        InfoBar.success(
-            title=tr("tools_merge_forcing_card_title", "合并强迫场文件"),
-            content=tr("tools_merge_success_short", "已合并 {n} 个文件").format(n=len(self._merge_paths)),
-            duration=2500,
-            parent=self,
         )
         self._set_merge_busy(False)
 
