@@ -90,9 +90,9 @@ def run_wind_field(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,
     wind_file: str = "",
-    time_step_hours: float = 24.0,
-    flag_type: str = WIND_FLAG_ARROW,
-    density_step: int = 10,
+    time_step_hours: Optional[float] = None,
+    flag_type: Optional[str] = None,
+    density_step: Optional[int] = None,
 ) -> WindFieldResult:
     """从风场 NetCDF 文件生成 10m 风速填色图序列。
 
@@ -114,19 +114,17 @@ def run_wind_field(
     result_folder = _resolve_result_folder(config)
     cfg = config.plot.wind_field
 
-    # Apply config defaults when caller does not override
-    # [EN] Guard against an unset (None) config value overriding the default
-    if time_step_hours == 24.0 and cfg.time_step_hours is not None and cfg.time_step_hours != 24.0:
-        time_step_hours = cfg.time_step_hours
-    if flag_type == WIND_FLAG_ARROW and cfg.flag_type != WIND_FLAG_ARROW:
+    # Resolve each setting: explicit caller value > config > built-in default.
+    # None means "caller did not provide it" (the form/UI always passes a value),
+    # so an explicit form value is never clobbered by the config.
+    # [EN] Resolution order is caller > config > default; None = not provided.
+    if time_step_hours is None:
+        time_step_hours = cfg.time_step_hours if cfg.time_step_hours is not None else 24.0
+    if flag_type is None:
         flag_type = cfg.flag_type
     flag_type = normalize_wind_flag_type(flag_type)
-    if density_step == 10 and cfg.flag_density != 10:
-        density_step = cfg.flag_density
-    # Worker requires a concrete step (used in timedelta); never pass None.
-    # [EN] Final guard so the subprocess worker never receives a None step.
-    if time_step_hours is None:
-        time_step_hours = 24.0
+    if density_step is None:
+        density_step = cfg.flag_density  # may stay None; worker auto-picks a stride
 
     # Resolve wind file: fall back to auto-discovery in result folder
     if not wind_file:

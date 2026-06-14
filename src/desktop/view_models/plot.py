@@ -101,9 +101,9 @@ class PlotViewModel:
         config: PipelineConfig,
         *,
         wind_file: str = "",
-        time_step_hours: float = 24.0,
-        flag_type: str = "arrow",
-        density_step: int = 10,
+        time_step_hours: Optional[float] = None,
+        flag_type: Optional[str] = None,
+        density_step: Optional[int] = None,
     ):
         from workflows.application.plot_wind_field import run_wind_field
 
