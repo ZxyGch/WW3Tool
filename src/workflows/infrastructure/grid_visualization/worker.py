@@ -676,7 +676,7 @@ def run_smc(grid_dir: str) -> dict:
     if not os.path.isfile(cell_path):
         return {"ok": False, "error": "missing grid_cell.dat", "images": [], "photo_dir": photo_dir}
 
-    emit_log(_viz_tr("step2_grid_viz_worker_read", "   正在读取网格数据…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_read", "🔄 正在读取网格数据…"))
     try:
         cel, depth_file = _load_smc_cell_array(cell_path)
         zlon, zlat, dlon, dlat = _smc_zlonlat_dgrid(ri)
@@ -706,7 +706,7 @@ def run_smc(grid_dir: str) -> dict:
         )
 
     out_bathy = os.path.join(photo_dir, outs[0])
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "   正在绘制水深图…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         fig = plt.figure(figsize=fig_wh)
         ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
@@ -749,7 +749,7 @@ def run_smc(grid_dir: str) -> dict:
         plt.close("all")
         return {"ok": False, "error": f"SMC bathy plot: {e}", "images": [], "photo_dir": photo_dir}
 
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "   正在绘制网格结构图…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     out_struct = os.path.join(photo_dir, outs[1])
     try:
         nrect = int(cel.shape[0])
@@ -1154,7 +1154,7 @@ def run_unst(grid_dir: str) -> dict:
     if fp_now and cache_is_current(grid_dir, "unst"):
         imgs = cached_image_paths(grid_dir, "unst")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
-    emit_log(_viz_tr("step2_grid_viz_worker_read", "   正在读取网格数据…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_read", "🔄 正在读取网格数据…"))
     try:
         xy, depth, ect = read_gmsh_ww3(ww3_path)
     except Exception as e:
@@ -1167,7 +1167,7 @@ def run_unst(grid_dir: str) -> dict:
     fig_wh = unst_figsize_for_extent(extent)
 
     out_bathy = os.path.join(photo_dir, outs[0])
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "   正在绘制水深图…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         fig = plt.figure(figsize=fig_wh)
         ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
@@ -1200,7 +1200,7 @@ def run_unst(grid_dir: str) -> dict:
         return {"ok": False, "error": f"bathy plot: {e}", "images": [], "photo_dir": photo_dir}
 
     out_struct = os.path.join(photo_dir, outs[1])
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "   正在绘制网格结构图…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     try:
         segs, _ = unst_wireframe_segments(xy, ect, tri_mask, STRUCTURE_MAX_EDGES)
         fig = plt.figure(figsize=fig_wh)
@@ -1248,7 +1248,7 @@ def run_structured(grid_dir: str) -> dict:
     if fp_now and cache_is_current(grid_dir, "structured"):
         imgs = cached_image_paths(grid_dir, "structured")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
-    emit_log(_viz_tr("step2_grid_viz_worker_read", "   正在读取网格数据…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_read", "🔄 正在读取网格数据…"))
     mask_p = _structured_mask_path(grid_dir)
     desc_p = _structured_grid_desc_path(grid_dir)
     gf = {
@@ -1274,14 +1274,14 @@ def run_structured(grid_dir: str) -> dict:
         depth = depth.copy()
         depth[loc] = np.nan
     written: list[str] = []
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "   正在绘制水深图…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         p_bathy = os.path.join(photo_dir, "grid_bathymetry.png")
         _plot_pcolormesh_file(lon, lat, depth, "Bathymetry", p_bathy, shading="gouraud")
         written.append("grid_bathymetry.png")
     except Exception as e:
         return {"ok": False, "error": f"bathy: {e}", "images": [], "photo_dir": photo_dir}
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "   正在绘制网格结构图…"))
+    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     try:
         p_struct = os.path.join(photo_dir, "grid_structure.png")
         plot_structured_grid_structure(lon, lat, p_struct)

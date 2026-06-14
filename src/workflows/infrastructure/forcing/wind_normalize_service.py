@@ -173,11 +173,11 @@ class WindNormalizeService:
                 time_name = _pick_var_name(["valid_time", "time", "Time", "TIME", "t", "MT", "mt"])
 
                 if not lon_name:
-                    raise KeyError(tr("log_lon_var_not_found", "未找到经度变量（longitude/lon/Longitude）"))
+                    raise KeyError(tr("log_lon_var_not_found", "❌ 未找到经度变量（longitude/lon/Longitude）"))
                 if not lat_name:
-                    raise KeyError(tr("log_lat_var_not_found", "未找到纬度变量（latitude/lat/Latitude）"))
+                    raise KeyError(tr("log_lat_var_not_found", "❌ 未找到纬度变量（latitude/lat/Latitude）"))
                 if not time_name:
-                    raise KeyError(tr("log_time_var_not_found", "未找到时间变量（valid_time/time/MT）"))
+                    raise KeyError(tr("log_time_var_not_found", "❌ 未找到时间变量（valid_time/time/MT）"))
 
                 longitude = np.asarray(src.variables[lon_name][:])
                 latitude = np.asarray(src.variables[lat_name][:])
@@ -217,9 +217,9 @@ class WindNormalizeService:
                 )
 
                 if not u10_name:
-                    raise KeyError(tr("log_u10_var_not_found", "未找到东向风变量（u10/wndewd/uwnd）"))
+                    raise KeyError(tr("log_u10_var_not_found", "❌ 未找到东向风变量（u10/wndewd/uwnd）"))
                 if not v10_name:
-                    raise KeyError(tr("log_v10_var_not_found", "未找到北向风变量（v10/wndnwd/vwnd）"))
+                    raise KeyError(tr("log_v10_var_not_found", "❌ 未找到北向风变量（v10/wndnwd/vwnd）"))
 
                 src_u10_var = src.variables[u10_name]
                 src_v10_var = src.variables[v10_name]
@@ -233,7 +233,7 @@ class WindNormalizeService:
 
                 if len(u10_shape) != 3:
                     raise ValueError(
-                        tr("log_data_dim_unsupported", "风场数据维度不受支持：{shape}").format(shape=u10_shape)
+                        tr("log_data_dim_unsupported", "❌ 风场数据维度不受支持：{shape}").format(shape=u10_shape)
                     )
 
                 if u10_dims:

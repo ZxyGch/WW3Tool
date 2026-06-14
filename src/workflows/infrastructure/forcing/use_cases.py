@@ -339,7 +339,7 @@ class ImportWindForcingUseCase:
             return ForcingImportResult(
                 success=False,
                 field=ForcingField.WIND,
-                error=tr("cfg_wind_path_not_exists", "风场文件不存在：{path}").format(path=src),
+                error=tr("cfg_wind_path_not_exists", "❌ 风场文件不存在：{path}").format(path=src),
             )
 
         inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
@@ -352,7 +352,7 @@ class ImportWindForcingUseCase:
                 invalid_reason="missing_variables",
                 error=tr(
                     "wind_file_missing_vars_msg",
-                    "文件不包含风场变量（u10/v10），请选择正确的风场文件",
+                    "❌ 文件不包含风场变量（u10/v10），请选择正确的风场文件",
                 ),
             )
 

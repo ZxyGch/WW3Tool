@@ -260,7 +260,7 @@ def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None
     }
     for path in _ww3_grid_paths(config):
         if not path.is_file():
-            logger.log(tr("ww3_grid_nml_not_found", "未找到 ww3_grid.nml，跳过频谱与时间步长参数写入"))
+            logger.log(tr("ww3_grid_nml_not_found", "⚠️ 未找到 ww3_grid.nml，跳过频谱与时间步长参数写入"))
             continue
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         new_lines: List[str] = []

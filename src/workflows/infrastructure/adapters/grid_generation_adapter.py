@@ -319,16 +319,16 @@ def _generate_structured(config: PipelineConfig, logger: CoreLogger, *, use_cach
                 logger.log(tr("grid_structured_cache_hit", "✅ 找到匹配的 structured 网格缓存，已复制到：{path}").format(path=out_dir))
                 continue
 
-        logger.log(tr("grid_structured_start", "开始生成 structured 网格：{path}").format(path=out_dir))
+        logger.log(tr("grid_structured_start", "🔄 开始生成 structured 网格：{path}").format(path=out_dir))
         kwargs = _structured_kwargs(region, config.grid, out_dir)
         _run_pygridgen_subprocess(pygridgen_dir, kwargs, out_dir, logger)
         if use_cache:
             try:
                 _save_structured_cache(cache_key, out_dir, region, config.grid, ref_dir)
-                logger.log(tr("grid_structured_saved", "已保存 structured 网格到缓存（{key}...）").format(key=cache_key[:8]))
+                logger.log(tr("grid_structured_saved", "✅ 已保存 structured 网格到缓存（{key}...）").format(key=cache_key[:8]))
             except Exception as exc:
-                logger.log(tr("grid_structured_save_failed", "保存 structured 网格缓存失败：{error}").format(error=exc))
-        logger.log(tr("grid_structured_done", "structured 网格生成完成：{path}").format(path=out_dir))
+                logger.log(tr("grid_structured_save_failed", "❌ 保存 structured 网格缓存失败：{error}").format(error=exc))
+        logger.log(tr("grid_structured_done", "✅ structured 网格生成完成：{path}").format(path=out_dir))
 
 
 def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -342,7 +342,7 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
 
 def _run_subprocess(cmd: list[str], cwd: Path, logger: CoreLogger, *, log_command: bool = True) -> None:
     if log_command:
-        logger.log(tr("grid_exec_cmd", "执行：{cmd}").format(cmd=" ".join(cmd)))
+        logger.log(tr("grid_exec_cmd", "▶ 执行：{cmd}").format(cmd=" ".join(cmd)))
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
@@ -525,17 +525,17 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
         cache_path = _check_smc_cache(cache_key)
         if cache_path:
             _load_smc_cache(cache_path, config.workdir.path)
-            logger.log(tr("grid_smc_cache_hit", "找到匹配的 SMC 网格缓存，已复制到：{path}").format(path=config.workdir.path))
+            logger.log(tr("grid_smc_cache_hit", "✅ 找到匹配的 SMC 网格缓存，已复制到：{path}").format(path=config.workdir.path))
             return
 
-    logger.log(tr("grid_smc_start", "开始生成 SMC 网格...") if not use_cache else tr("grid_smc_cache_miss", "未找到匹配的 SMC 网格缓存，开始生成新网格..."))
+    logger.log(tr("grid_smc_start", "🔄 开始生成 SMC 网格...") if not use_cache else tr("grid_smc_cache_miss", "ℹ️ 未找到匹配的 SMC 网格缓存，开始生成新网格..."))
     _run_subprocess([sys.executable, "create_grid.py", "--config", str(run_config)], smc_dir, logger)
     if use_cache:
         try:
             _save_smc_cache(cache_key, config.workdir.path)
-            logger.log(tr("grid_smc_saved", "已保存 SMC 网格到缓存（{key}...）").format(key=cache_key[:8]))
+            logger.log(tr("grid_smc_saved", "✅ 已保存 SMC 网格到缓存（{key}...）").format(key=cache_key[:8]))
         except Exception as exc:
-            logger.log(tr("grid_smc_save_failed", "保存 SMC 网格缓存失败：{error}").format(error=exc))
+            logger.log(tr("grid_smc_save_failed", "❌ 保存 SMC 网格缓存失败：{error}").format(error=exc))
 
 
 def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
@@ -620,10 +620,10 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
         cache_path = _check_unstructured_cache(cache_key)
         if cache_path:
             _load_unstructured_cache(cache_path, config.workdir.path)
-            logger.log(tr("grid_unst_cache_hit", "找到匹配的非结构网格缓存，已复制到：{path}").format(path=config.workdir.path))
+            logger.log(tr("grid_unst_cache_hit", "✅ 找到匹配的非结构网格缓存，已复制到：{path}").format(path=config.workdir.path))
             return
 
-    logger.log(tr("grid_unst_start", "开始生成非结构网格...") if not use_cache else tr("grid_unst_cache_miss", "未找到匹配的非结构网格缓存，开始生成新网格..."))
+    logger.log(tr("grid_unst_start", "🔄 开始生成非结构网格...") if not use_cache else tr("grid_unst_cache_miss", "ℹ️ 未找到匹配的非结构网格缓存，开始生成新网格..."))
     _run_subprocess([sys.executable, "create_grid.py", "--grid", str(run_config)], unst_dir, logger)
     produced = config.workdir.path / "grid.ww3"
     fallback = unst_dir / "output" / "grid.ww3"
@@ -632,9 +632,9 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
     if use_cache and produced.is_file() and produced.stat().st_size > 0:
         try:
             _save_unstructured_cache(cache_key, produced, grid_json)
-            logger.log(tr("grid_unst_saved", "已保存非结构网格到缓存（{key}...）").format(key=cache_key[:12]))
+            logger.log(tr("grid_unst_saved", "✅ 已保存非结构网格到缓存（{key}...）").format(key=cache_key[:12]))
         except Exception as exc:
-            logger.log(tr("grid_unst_save_failed", "保存非结构网格缓存失败：{error}").format(error=exc))
+            logger.log(tr("grid_unst_save_failed", "❌ 保存非结构网格缓存失败：{error}").format(error=exc))
 
 
 def generate_grid(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
