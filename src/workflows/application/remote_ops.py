@@ -71,7 +71,7 @@ def _resolve_remote_dir(config: PipelineConfig) -> str:
         base = config.server.default_remote_dir.strip()
         if not base:
             raise ValueError(
-                tr("remote_dir_missing", "server.remote_dir 和 server.default_remote_dir 均未配置。请在 params.yml 的 server: 段填写远程工作目录。")
+                tr("remote_dir_missing", "❌ server.remote_dir 和 server.default_remote_dir 均未配置。请在 params.yml 的 server: 段填写远程工作目录。")
             )
         workdir_name = config.workdir.path.name if config.workdir.path else ""
         if workdir_name:
@@ -146,7 +146,7 @@ def run_upload(
     logger = CoreLogger(callback=log)
     if not confirmed:
         msg = (
-            tr("upload_blocked_confirm_required", "上传被阻止：这是破坏性操作，必须显式传入 confirmed=True（CLI: --confirm）才能执行。")
+            tr("upload_blocked_confirm_required", "⚠️ 上传被阻止：这是破坏性操作，必须显式传入 confirmed=True（CLI: --confirm）才能执行。")
         )
         logger.log(tr("error_prefix", "❌ {message}").format(message=msg))
         return RemoteResult(success=False, error=msg, messages=list(logger.messages))
@@ -156,7 +156,7 @@ def run_upload(
         remote_dir = _resolve_remote_dir(config)
         local_dir = _resolve_local_dir(config)
         if not os.path.isdir(local_dir):
-            raise FileNotFoundError(tr("local_workdir_not_exists", "本地工作目录不存在：{path}").format(path=local_dir))
+            raise FileNotFoundError(tr("local_workdir_not_exists", "❌ 本地工作目录不存在：{path}").format(path=local_dir))
         if owns:
             c.connect(log=logger.log)
         c.upload_folder(local_dir, remote_dir, log=logger.log)
@@ -197,7 +197,7 @@ def run_submit(
         code = c.exec_script(script, remote_dir, log=logger.log)
         return RemoteResult(
             success=(code == 0),
-            error=None if code == 0 else tr("remote_script_exit_code_plain", "脚本退出码 {code}").format(code=code),
+            error=None if code == 0 else tr("remote_script_exit_code_plain", "❌ 脚本退出码 {code}").format(code=code),
             messages=list(logger.messages),
         )
     except Exception as exc:
@@ -541,7 +541,7 @@ def run_clear_remote(
     logger = CoreLogger(callback=log)
     if not confirmed:
         msg = (
-            tr("clear_remote_blocked_confirm_required", "清空远程目录被阻止：这是不可恢复的操作，必须显式传入 confirmed=True（CLI: --confirm）才能执行。")
+            tr("clear_remote_blocked_confirm_required", "⚠️ 清空远程目录被阻止：这是不可恢复的操作，必须显式传入 confirmed=True（CLI: --confirm）才能执行。")
         )
         logger.log(tr("error_prefix", "❌ {message}").format(message=msg))
         return RemoteResult(success=False, error=msg, messages=list(logger.messages))

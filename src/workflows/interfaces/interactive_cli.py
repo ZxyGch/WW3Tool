@@ -351,7 +351,7 @@ class InteractiveCLI(cmd.Cmd):
                 else:
                     print(doc)
             else:
-                print(tr("icli_unknown_cmd", "未知命令：{}").format(arg))
+                print(tr("icli_unknown_cmd", "❌ 未知命令：{}").format(arg))
             return
 
         print_help()
@@ -389,13 +389,13 @@ class InteractiveCLI(cmd.Cmd):
             source = Path(path).expanduser().resolve()
             self._config = load_pipeline_config(str(source), validation_stage="plot")
             self._params_path = source
-            print(_success(tr("icli_loaded_config", "✓ 已加载配置：{}").format(source)))
+            print(_success(tr("icli_loaded_config", "✅ 已加载配置：{}").format(source)))
             return True
         except ConfigError as exc:
-            print(_error(tr("icli_config_error", "✗ 配置错误：{}").format(exc)))
+            print(_error(tr("icli_config_error", "❌ 配置错误：{}").format(exc)))
             return False
         except Exception as exc:
-            print(_error(tr("icli_load_failed", "✗ 加载失败：{}").format(exc)))
+            print(_error(tr("icli_load_failed", "❌ 加载失败：{}").format(exc)))
             return False
 
     def _require_config(self) -> bool:
@@ -404,7 +404,7 @@ class InteractiveCLI(cmd.Cmd):
         [EN] Check if a configuration has been loaded; prompt the user if not.
         """
         if self._config is None:
-            print(_warn(tr("icli_no_config", "⚠ 未加载配置文件，请先使用 'workdir <path>' 设置工作目录")))
+            print(_warn(tr("icli_no_config", "⚠️ 未加载配置文件，请先使用 'workdir <path>' 设置工作目录")))
             return False
         return True
 
@@ -585,7 +585,7 @@ class InteractiveCLI(cmd.Cmd):
             content = self._params_path.read_text(encoding="utf-8")
             print(content)
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_workdir(self, arg: str) -> None:
         """workdir <path>  — 切换或创建工作目录并自动加载
@@ -604,17 +604,17 @@ class InteractiveCLI(cmd.Cmd):
             if params_yml.is_file():
                 # 目录已存在且包含 params.yml，直接加载
                 # [EN] Directory exists with params.yml, auto-load it
-                print(_info(tr("icli_workdir_exists", "ℹ 目录已存在，自动加载：{}").format(workdir)))
+                print(_info(tr("icli_workdir_exists", "ℹ️ 目录已存在，自动加载：{}").format(workdir)))
                 self._load_config(str(params_yml))
             else:
-                print(_error(tr("icli_workdir_no_params", "✗ 目录已存在但缺少 params.yml：{}").format(workdir)))
+                print(_error(tr("icli_workdir_no_params", "❌ 目录已存在但缺少 params.yml：{}").format(workdir)))
         else:
             # 目录不存在，创建并从根模板复制 params.yml
             # [EN] Directory does not exist, create and copy root params.yml template
             root = Path(__file__).resolve().parents[3]
             root_params = root / "params.yml"
             if not root_params.is_file():
-                print(_error(tr("icli_no_template", "✗ 仓库根目录没有 params.yml 模板文件")))
+                print(_error(tr("icli_no_template", "❌ 仓库根目录没有 params.yml 模板文件")))
                 return
 
             workdir.mkdir(parents=True)
@@ -632,7 +632,7 @@ class InteractiveCLI(cmd.Cmd):
                 flags=re.MULTILINE,
             )
             params_yml.write_text(content, encoding="utf-8")
-            print(_success(tr("icli_created_workdir", "✓ 已创建工作目录：{}").format(workdir)))
+            print(_success(tr("icli_created_workdir", "✅ 已创建工作目录：{}").format(workdir)))
             self._load_config(str(params_yml))
 
     def complete_workdir(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
@@ -646,7 +646,7 @@ class InteractiveCLI(cmd.Cmd):
             self._config = load_pipeline_config(str(self._params_path), validation_stage=stage)
             return True
         except ConfigError as exc:
-            print(_error(tr("icli_config_error", "✗ 配置错误：{}").format(exc)))
+            print(_error(tr("icli_config_error", "❌ 配置错误：{}").format(exc)))
             return False
 
     # ── 预处理命令 ─────────────────────────────────────────────────────────
@@ -661,7 +661,7 @@ class InteractiveCLI(cmd.Cmd):
             return
         if not self._reload_config_for_stage("full"):
             return
-        print(_success(tr("icli_validated", "✓ 配置文件校验通过（full）")))
+        print(_success(tr("icli_validated", "✅ 配置文件校验通过（full）")))
 
     def complete_validate(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return []
@@ -680,9 +680,9 @@ class InteractiveCLI(cmd.Cmd):
 
             print(_info(tr("icli_start_forcing", "▶ 开始准备强迫场...")))
             run_prepare_forcing(self._config, log=self._log_callback)
-            print(_success(tr("icli_done_forcing", "✓ 强迫场准备完成")))
+            print(_success(tr("icli_done_forcing", "✅ 强迫场准备完成")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_generate_grid(self, arg: str) -> None:
         """generate-grid  — 生成网格（Step 2）
@@ -697,9 +697,9 @@ class InteractiveCLI(cmd.Cmd):
             from ..application.grid_preparation import run_generate_grid
             print(_info(tr("icli_start_grid", "▶ 开始生成网格...")))
             run_generate_grid(self._config, log=self._log_callback, use_cache=True)
-            print(_success(tr("icli_done_grid", "✓ 网格生成完成")))
+            print(_success(tr("icli_done_grid", "✅ 网格生成完成")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_run_workflow(self, arg: str) -> None:
         """run-workflow  — 完整预处理流程
@@ -719,9 +719,9 @@ class InteractiveCLI(cmd.Cmd):
                 skip_grid=False,
                 use_grid_cache=True,
             )
-            print(_success(tr("icli_done_pipeline", "✓ 预处理完成")))
+            print(_success(tr("icli_done_pipeline", "✅ 预处理完成")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_prepare_ww3(self, arg: str) -> None:
         """prepare-ww3  — 仅生成 WW3 namelist（不重跑强迫场和网格）
@@ -741,9 +741,9 @@ class InteractiveCLI(cmd.Cmd):
             files = ScanWorkdirForcingUseCase(file_service).execute(str(self._config.workdir.path))
             print(_info(tr("icli_start_prepare_ww3", "▶ 正在生成 WW3 namelist...")))
             prepare_ww3_files(self._config, files, logger)
-            print(_success(tr("icli_done_prepare_ww3", "✓ WW3 namelist 生成完成")))
+            print(_success(tr("icli_done_prepare_ww3", "✅ WW3 namelist 生成完成")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_recommend_cfl(self, arg: str) -> None:
         """recommend-cfl  — 按 CFL 公式推荐时间步长，自动写入配置
@@ -759,12 +759,12 @@ class InteractiveCLI(cmd.Cmd):
             grid = cfg.grid
             dx, dy, lat_s, lat_n = _extract_grid_spacing(grid)
             if dx is None:
-                print(_warn(tr("icli_cfl_need_grid", "⚠ 请先在网格配置中填写有效的 DX、DY 与纬度范围")))
+                print(_warn(tr("icli_cfl_need_grid", "⚠️ 请先在网格配置中填写有效的 DX、DY 与纬度范围")))
                 return
 
             freq1 = _extract_freq1(cfg)
             if freq1 is None:
-                print(_warn(tr("icli_cfl_need_freq1", "⚠ 请填写有效的起始频率 FREQ1（Hz）")))
+                print(_warn(tr("icli_cfl_need_freq1", "⚠️ 请填写有效的起始频率 FREQ1（Hz）")))
                 return
 
             lat_mid = (lat_s + lat_n) / 2.0
@@ -786,9 +786,9 @@ class InteractiveCLI(cmd.Cmd):
             print(f"  DTKTH = {rec.dtkth} s")
             print(f"  DTMIN = {rec.dtmin} s")
             print(f"  CFL ratio = {rec.cfl_ratio:.2f}")
-            print(_success(tr("icli_cfl_persisted", "✓ 已写入 {}" ).format(self._params_path)))
+            print(_success(tr("icli_cfl_persisted", "✅ 已写入 {}" ).format(self._params_path)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_local_run(self, arg: str) -> None:
         """local-run  — 执行当前工作目录的 local.sh
@@ -805,11 +805,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_local_run", "▶ 执行 local.sh...")))
             result = run_local(self._config, service, log=self._log_callback)
             if result.success:
-                print(_success(tr("icli_done_local_run", "✓ 本地 WW3 运行完成")))
+                print(_success(tr("icli_done_local_run", "✅ 本地 WW3 运行完成")))
             else:
-                print(_error(tr("icli_failed_local_run", "✗ 本地 WW3 运行失败")))
+                print(_error(tr("icli_failed_local_run", "❌ 本地 WW3 运行失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_plot_wave_maps(self, arg: str) -> None:
         """plot-wave-maps [--contour]  — 生成波高填色图或等值线图
@@ -824,11 +824,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_wave_maps", "▶ 开始生成波高图...")))
             rc = _run_wave_maps(self._config, contour=contour)
             if rc == 0:
-                print(_success(tr("icli_done_wave_maps", "✓ 波高图生成完成")))
+                print(_success(tr("icli_done_wave_maps", "✅ 波高图生成完成")))
             else:
-                print(_error(tr("icli_failed_wave_maps", "✗ 波高图生成失败")))
+                print(_error(tr("icli_failed_wave_maps", "❌ 波高图生成失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_plot_spectrum(self, arg: str) -> None:
         """plot-spectrum [--mode first|all|selected] [--station N]  — 生成方向谱图
@@ -850,11 +850,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_spectrum", "▶ 开始生成方向谱图...")))
             rc = _run_spectrum(self._config, mode=mode, station_index=station)
             if rc == 0:
-                print(_success(tr("icli_done_spectrum", "✓ 方向谱图生成完成")))
+                print(_success(tr("icli_done_spectrum", "✅ 方向谱图生成完成")))
             else:
-                print(_error(tr("icli_failed_spectrum", "✗ 方向谱图生成失败")))
+                print(_error(tr("icli_failed_spectrum", "❌ 方向谱图生成失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_plot_jason3(self, arg: str) -> None:
         """plot-jason3  — WW3 结果与 Jason-3 卫星数据匹配
@@ -868,11 +868,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_jason3", "▶ 开始 Jason-3 匹配...")))
             rc = _run_match_jason3(self._config)
             if rc == 0:
-                print(_success(tr("icli_done_jason3", "✓ Jason-3 匹配完成")))
+                print(_success(tr("icli_done_jason3", "✅ Jason-3 匹配完成")))
             else:
-                print(_error(tr("icli_failed_jason3", "✗ Jason-3 匹配失败")))
+                print(_error(tr("icli_failed_jason3", "❌ Jason-3 匹配失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_plot_jason3_swh(self, arg: str) -> None:
         """plot-jason3-swh  — 绘制 Jason-3 卫星 SWH / 轨迹图
@@ -886,11 +886,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_jason3_swh", "▶ 开始生成 Jason-3 卫星观测图...")))
             rc = _run_jason3_swh(self._config)
             if rc == 0:
-                print(_success(tr("icli_done_jason3_swh", "✓ Jason-3 卫星观测图生成完成")))
+                print(_success(tr("icli_done_jason3_swh", "✅ Jason-3 卫星观测图生成完成")))
             else:
-                print(_error(tr("icli_failed_jason3_swh", "✗ Jason-3 卫星观测图生成失败")))
+                print(_error(tr("icli_failed_jason3_swh", "❌ Jason-3 卫星观测图生成失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_download_jason3(self, arg: str) -> None:
         """download-jason3  — 下载 Jason-3 L2 数据
@@ -904,11 +904,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_download_jason3", "▶ 开始下载 Jason-3 数据...")))
             rc = _run_download_jason3(self._config)
             if rc == 0:
-                print(_success(tr("icli_done_download_jason3", "✓ Jason-3 数据下载完成")))
+                print(_success(tr("icli_done_download_jason3", "✅ Jason-3 数据下载完成")))
             else:
-                print(_error(tr("icli_failed_download_jason3", "✗ Jason-3 数据下载失败")))
+                print(_error(tr("icli_failed_download_jason3", "❌ Jason-3 数据下载失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_plot_ndbc(self, arg: str) -> None:
         """plot-ndbc [--download]  — WW3 结果与 NDBC 浮标匹配或下载数据
@@ -923,11 +923,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_ndbc", "▶ 开始 NDBC 处理...")))
             rc = _run_match_ndbc(self._config, download=download)
             if rc == 0:
-                print(_success(tr("icli_done_ndbc", "✓ NDBC 处理完成")))
+                print(_success(tr("icli_done_ndbc", "✅ NDBC 处理完成")))
             else:
-                print(_error(tr("icli_failed_ndbc", "✗ NDBC 处理失败")))
+                print(_error(tr("icli_failed_ndbc", "❌ NDBC 处理失败")))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     # ── 远程运维命令 ───────────────────────────────────────────────────────
     # [EN] ── Remote operations commands ────────────────────────────────────
@@ -944,11 +944,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_connect", "▶ 测试连接...")))
             result = run_connect_test(self._config, log=self._log_callback)
             if result.success:
-                print(_success(tr("icli_done_connect", "✓ 连接成功")))
+                print(_success(tr("icli_done_connect", "✅ 连接成功")))
             else:
-                print(_error(tr("icli_failed_connect", "✗ 连接失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_connect", "❌ 连接失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_ssh(self, arg: str) -> None:
         """ssh  — 打开交互式 SSH 终端
@@ -959,7 +959,7 @@ class InteractiveCLI(cmd.Cmd):
             return
         server = self._config.server
         if not server.host or not server.user:
-            print(_warn(tr("icli_ssh_not_configured", "⚠ 请先在 params.yml server: 中配置 host 和 user")))
+            print(_warn(tr("icli_ssh_not_configured", "⚠️ 请先在 params.yml server: 中配置 host 和 user")))
             return
 
         # 优先使用系统 ssh 命令（完整交互体验）
@@ -979,7 +979,7 @@ class InteractiveCLI(cmd.Cmd):
             ret = subprocess.call(ssh_cmd)
             if ret != 0:
                 print()
-                print(_warn(tr("icli_ssh_returned", "⚠ SSH 会话已结束，返回码：{}").format(ret)))
+                print(_warn(tr("icli_ssh_returned", "⚠️ SSH 会话已结束，返回码：{}").format(ret)))
                 # 如果系统 ssh 失败且配置了密码，尝试 paramiko 回退
                 # [EN] If system ssh fails and password is configured, try paramiko fallback
                 if server.password and ret != 0:
@@ -988,7 +988,7 @@ class InteractiveCLI(cmd.Cmd):
         except FileNotFoundError:
             # 系统 ssh 命令不存在，回退到 paramiko
             # [EN] System ssh command not found, fall back to paramiko
-            print(_warn(tr("icli_no_ssh_binary", "⚠ 未找到系统 ssh 命令，使用 paramiko 回退")))
+            print(_warn(tr("icli_no_ssh_binary", "⚠️ 未找到系统 ssh 命令，使用 paramiko 回退")))
             self._ssh_via_paramiko()
         except KeyboardInterrupt:
             print()
@@ -1002,14 +1002,14 @@ class InteractiveCLI(cmd.Cmd):
         try:
             from ..infrastructure.remote.ssh_client import SshClient
         except ImportError:
-            print(_error(tr("icli_need_paramiko", "✗ 需要 paramiko 才能使用 SSH 功能")))
+            print(_error(tr("icli_need_paramiko", "❌ 需要 paramiko 才能使用 SSH 功能")))
             return
 
         server = self._config.server
         client = SshClient(server)
         try:
             client.connect(log=self._log_callback)
-            print(_success(tr("icli_ssh_connected", "✓ 已连接，SSH 终端已打开")))
+            print(_success(tr("icli_ssh_connected", "✅ 已连接，SSH 终端已打开")))
             print(_info(tr("icli_ssh_exit_hint", "  输入 exit 或按 Ctrl+D 关闭终端")))
             print()
 
@@ -1042,7 +1042,7 @@ class InteractiveCLI(cmd.Cmd):
                     except Exception:
                         break
         except Exception as exc:
-            print(_error(tr("icli_ssh_failed", "✗ SSH 连接失败：{}").format(exc)))
+            print(_error(tr("icli_ssh_failed", "❌ SSH 连接失败：{}").format(exc)))
         finally:
             client.close()
             print()
@@ -1060,9 +1060,9 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_list_files", "▶ 获取文件列表...")))
             result = run_list_files(self._config, log=self._log_callback)
             if not result.success:
-                print(_error(tr("icli_failed_list_files", "✗ 获取失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_list_files", "❌ 获取失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_upload(self, arg: str) -> None:
         """upload --confirm  — 上传本地工作目录到远程（需 --confirm）
@@ -1072,7 +1072,7 @@ class InteractiveCLI(cmd.Cmd):
         if not self._require_config():
             return
         if "--confirm" not in arg:
-            print(_warn(tr("icli_upload_dangerous", "⚠ upload 是破坏性操作，必须加 --confirm 才能执行")))
+            print(_warn(tr("icli_upload_dangerous", "⚠️ upload 是破坏性操作，必须加 --confirm 才能执行")))
             print(_warn(tr("icli_usage_upload", "  用法：upload --confirm")))
             return
         try:
@@ -1080,11 +1080,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_upload", "▶ 开始上传...")))
             result = run_upload(self._config, log=self._log_callback, confirmed=True)
             if result.success:
-                print(_success(tr("icli_done_upload", "✓ 上传完成")))
+                print(_success(tr("icli_done_upload", "✅ 上传完成")))
             else:
-                print(_error(tr("icli_failed_upload", "✗ 上传失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_upload", "❌ 上传失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_submit(self, arg: str) -> None:
         """submit  — 在远程执行提交脚本
@@ -1099,11 +1099,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_submit", "▶ 执行远程脚本：{}...").format(script)))
             result = run_submit(self._config, log=self._log_callback, script=script)
             if result.success:
-                print(_success(tr("icli_done_submit", "✓ 脚本执行完成")))
+                print(_success(tr("icli_done_submit", "✅ 脚本执行完成")))
             else:
-                print(_error(tr("icli_failed_submit", "✗ 脚本执行失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_submit", "❌ 脚本执行失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_check_status(self, arg: str) -> None:
         """check-status  — 检查远程任务状态
@@ -1117,9 +1117,9 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_check", "▶ 检查状态...")))
             result = run_check_status(self._config, log=self._log_callback)
             if not result.success:
-                print(_error(tr("icli_failed_check", "✗ 检查失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_check", "❌ 检查失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_queue_status(self, arg: str) -> None:
         """queue-status  — 查看 SLURM 队列
@@ -1133,9 +1133,9 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_queue", "▶ 获取队列状态...")))
             result = run_queue_status(self._config, log=self._log_callback)
             if not result.success:
-                print(_error(tr("icli_failed_queue", "✗ 获取失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_queue", "❌ 获取失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_download_results(self, arg: str) -> None:
         """download-results [--nested]  — 下载远程 WW3 结果
@@ -1150,11 +1150,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_download_results", "▶ 下载结果文件...")))
             result = run_download_results(self._config, log=self._log_callback, nested=nested)
             if result.success:
-                print(_success(tr("icli_done_download_results", "✓ 下载完成")))
+                print(_success(tr("icli_done_download_results", "✅ 下载完成")))
             else:
-                print(_error(tr("icli_failed_download_results", "✗ 下载失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_download_results", "❌ 下载失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_download_log(self, arg: str) -> None:
         """download-log  — 下载远程日志文件
@@ -1168,11 +1168,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_download_log", "▶ 下载日志...")))
             result = run_download_log(self._config, log=self._log_callback)
             if result.success:
-                print(_success(tr("icli_done_download_log", "✓ 日志下载完成")))
+                print(_success(tr("icli_done_download_log", "✅ 日志下载完成")))
             else:
-                print(_error(tr("icli_failed_download_log", "✗ 日志下载失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_download_log", "❌ 日志下载失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_clear_remote(self, arg: str) -> None:
         """clear-remote --confirm  — 清空远程工作目录（需 --confirm）
@@ -1182,7 +1182,7 @@ class InteractiveCLI(cmd.Cmd):
         if not self._require_config():
             return
         if "--confirm" not in arg:
-            print(_warn(tr("icli_clear_dangerous", "⚠ clear-remote 是破坏性操作，必须加 --confirm 才能执行")))
+            print(_warn(tr("icli_clear_dangerous", "⚠️ clear-remote 是破坏性操作，必须加 --confirm 才能执行")))
             print(_warn(tr("icli_usage_clear", "  用法：clear-remote --confirm")))
             return
         try:
@@ -1190,11 +1190,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_clear", "▶ 清空远程目录...")))
             result = run_clear_remote(self._config, log=self._log_callback, confirmed=True)
             if result.success:
-                print(_success(tr("icli_done_clear", "✓ 远程目录已清空")))
+                print(_success(tr("icli_done_clear", "✅ 远程目录已清空")))
             else:
-                print(_error(tr("icli_failed_clear", "✗ 清空失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_clear", "❌ 清空失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_cancel_job(self, arg: str) -> None:
         """cancel-job <job_id>  — 取消 SLURM 任务
@@ -1212,11 +1212,11 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_cancel", "▶ 取消任务 {}...").format(job_id)))
             result = run_cancel_job(self._config, job_id, log=self._log_callback)
             if result.success:
-                print(_success(tr("icli_done_cancel", "✓ 任务已取消")))
+                print(_success(tr("icli_done_cancel", "✅ 任务已取消")))
             else:
-                print(_error(tr("icli_failed_cancel", "✗ 取消失败：{}").format(result.error)))
+                print(_error(tr("icli_failed_cancel", "❌ 取消失败：{}").format(result.error)))
         except Exception as exc:
-            print(_error(tr("icli_exec_failed", "✗ 执行失败：{}").format(exc)))
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     # ── 辅助命令 ───────────────────────────────────────────────────────────
     # [EN] ── Auxiliary commands ────────────────────────────────────────────

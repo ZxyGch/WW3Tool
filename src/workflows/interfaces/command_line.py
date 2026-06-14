@@ -308,7 +308,7 @@ def _handle_create_workdir(name: str) -> int:
     root_params = _repo_root_path() / "params.yml"
     if not root_params.is_file():
         print(
-            tr("cli_no_root_params", "错误：仓库根目录没有 params.yml 模板文件。"),
+            tr("cli_no_root_params", "❌ 错误：仓库根目录没有 params.yml 模板文件。"),
             file=sys.stderr,
         )
         return 1
@@ -316,7 +316,7 @@ def _handle_create_workdir(name: str) -> int:
     workdir = Path.cwd() / name
     if workdir.exists():
         print(
-            tr("cli_workdir_exists", "错误：目录已存在：{path}").format(path=workdir),
+            tr("cli_workdir_exists", "❌ 错误：目录已存在：{path}").format(path=workdir),
             file=sys.stderr,
         )
         return 1
@@ -325,7 +325,7 @@ def _handle_create_workdir(name: str) -> int:
     target = workdir / "params.yml"
     shutil.copy2(str(root_params), str(target))
     print(
-        tr("cli_workdir_created", "已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 run.py run {name}")
+        tr("cli_workdir_created", "✅ 已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 run.py run {name}")
         .format(path=workdir, name=name)
     )
     return 0
@@ -366,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "cancel-job":
             if not getattr(args, "job_id", None):
                 print(
-                    tr("cli_cancel_requires_job_id", "错误：cancel-job 需要提供 SLURM job id"),
+                    tr("cli_cancel_requires_job_id", "❌ 错误：cancel-job 需要提供 SLURM job id"),
                     file=sys.stderr,
                 )
                 return 2
@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
         config = load_pipeline_config(params_path, validation_stage=stage)
 
         if args.command == "validate":
-            print(tr("cli_validate_ok", "OK: {path}").format(path=params_path))
+            print(tr("cli_validate_ok", "✅ OK: {path}").format(path=params_path))
             return 0
 
         if args.command == "prepare-forcing":
@@ -488,13 +488,13 @@ def main(argv: list[str] | None = None) -> int:
             ).run_cancel_job(config, args.job_id, log=print))
 
     except ConfigError as exc:
-        print(tr("cli_config_error", "参数错误：{error}").format(error=exc), file=sys.stderr)
+        print(tr("cli_config_error", "❌ 参数错误：{error}").format(error=exc), file=sys.stderr)
         return 2
     except Exception as exc:
-        print(tr("cli_execution_failed", "执行失败：{error}").format(error=exc), file=sys.stderr)
+        print(tr("cli_execution_failed", "❌ 执行失败：{error}").format(error=exc), file=sys.stderr)
         return 1
 
-    parser.error(tr("cli_unknown_command", "未知命令：{command}").format(command=args.command))
+    parser.error(tr("cli_unknown_command", "❌ 未知命令：{command}").format(command=args.command))
     return 2
 
 
@@ -558,7 +558,7 @@ def _run_wave_maps(config, *, contour: bool = False) -> int:
         from ..application.plot_wave_maps import run_wave_maps
         result = run_wave_maps(config, log=print)
     if not result.success:
-        print(tr("cli_generation_failed", "生成失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_generation_failed", "❌ 生成失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -587,7 +587,7 @@ def _run_spectrum(config, *, mode: str = "all", station_index: int = 0) -> int:
     from ..application.plot_spectrum import run_spectrum
     result = run_spectrum(config, log=print, mode=mode, station_index=station_index)
     if not result.success:
-        print(tr("cli_generation_failed", "生成失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_generation_failed", "❌ 生成失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -606,7 +606,7 @@ def _run_match_jason3(config) -> int:
     from ..application.match_jason3 import run_match_jason3
     result = run_match_jason3(config, log=print)
     if not result.success:
-        print(tr("cli_matching_failed", "匹配失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_matching_failed", "❌ 匹配失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -625,7 +625,7 @@ def _run_jason3_swh(config) -> int:
     from ..application.match_jason3 import run_jason3_swh
     result = run_jason3_swh(config, log=print)
     if not result.success:
-        print(tr("cli_generation_failed", "生成失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_generation_failed", "❌ 生成失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -644,7 +644,7 @@ def _run_download_jason3(config) -> int:
     from ..application.download_jason3 import run_download_jason3
     result = run_download_jason3(config, log=print)
     if not result.success:
-        print(tr("cli_generation_failed", "生成失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_generation_failed", "❌ 生成失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -665,7 +665,7 @@ def _run_match_ndbc(config, *, download: bool = False) -> int:
     from ..application.match_ndbc import run_match_ndbc
     result = run_match_ndbc(config, log=print)
     if not result.success:
-        print(tr("cli_matching_failed", "匹配失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_matching_failed", "❌ 匹配失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -689,7 +689,7 @@ def _remote(fn) -> int:
     """
     result = fn()
     if not result.success:
-        print(tr("cli_operation_failed", "操作失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_operation_failed", "❌ 操作失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 
@@ -717,7 +717,7 @@ def _remote_destructive(fn, *, confirmed: bool, name: str) -> int:
     """
     if not confirmed:
         print(
-            tr("cli_destructive_requires_confirm", "错误：{name} 是破坏性操作，必须加 --confirm 才能执行。").format(name=name),
+            tr("cli_destructive_requires_confirm", "❌ 错误：{name} 是破坏性操作，必须加 --confirm 才能执行。").format(name=name),
             file=sys.stderr,
         )
         return 3
@@ -738,7 +738,7 @@ def _run_download_ndbc(config) -> int:
     from ..application.match_ndbc import run_download_ndbc
     result = run_download_ndbc(config, log=print)
     if not result.success:
-        print(tr("cli_download_failed", "下载失败：{error}").format(error=result.error), file=sys.stderr)
+        print(tr("cli_download_failed", "❌ 下载失败：{error}").format(error=result.error), file=sys.stderr)
         return 1
     return 0
 

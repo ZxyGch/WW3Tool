@@ -108,7 +108,7 @@ class ForcingStepViewModel:
                 )
             )
         except Exception as exc:
-            self._handle_log(tr("step1_prepare_failed", "强迫场准备失败：{error}").format(error=exc))
+            self._handle_log(tr("step1_prepare_failed", "❌ 强迫场准备失败：{error}").format(error=exc))
             self._set_state(
                 ForcingStepState(
                     is_running=False,

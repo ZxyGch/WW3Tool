@@ -87,7 +87,7 @@ class PipelineViewModel:
         try:
             config = self.load_config(params_path, validation_stage=stage)
             self.validate(config, stage=stage)
-            self._handle_log(tr("params_validation_ok", "参数校验通过：{path}").format(path=params_path))
+            self._handle_log(tr("params_validation_ok", "✅ 参数校验通过：{path}").format(path=params_path))
             self._set_state(
                 PipelineStepState(
                     is_running=False,
@@ -115,7 +115,7 @@ class PipelineViewModel:
             from workflows.application.preprocessing_workflow import run_pipeline
 
             result = run_pipeline(config, log=self._handle_log, skip_grid=skip_grid)
-            self._handle_log(tr("status_preprocess_done", "预处理流程完成"))
+            self._handle_log(tr("status_preprocess_done", "✅ 预处理流程完成"))
             self._set_state(
                 PipelineStepState(
                     is_running=False,
