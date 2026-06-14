@@ -115,13 +115,18 @@ def run_wind_field(
     cfg = config.plot.wind_field
 
     # Apply config defaults when caller does not override
-    if time_step_hours == 24.0 and cfg.time_step_hours != 24.0:
+    # [EN] Guard against an unset (None) config value overriding the default
+    if time_step_hours == 24.0 and cfg.time_step_hours is not None and cfg.time_step_hours != 24.0:
         time_step_hours = cfg.time_step_hours
     if flag_type == WIND_FLAG_ARROW and cfg.flag_type != WIND_FLAG_ARROW:
         flag_type = cfg.flag_type
     flag_type = normalize_wind_flag_type(flag_type)
     if density_step == 10 and cfg.flag_density != 10:
         density_step = cfg.flag_density
+    # Worker requires a concrete step (used in timedelta); never pass None.
+    # [EN] Final guard so the subprocess worker never receives a None step.
+    if time_step_hours is None:
+        time_step_hours = 24.0
 
     # Resolve wind file: fall back to auto-discovery in result folder
     if not wind_file:
