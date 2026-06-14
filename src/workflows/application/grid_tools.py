@@ -138,15 +138,15 @@ def read_wind_bounds(path: str | Path, log: Optional[LogCallback] = None) -> Gri
     logger = CoreLogger(callback=log)
     source = Path(path).expanduser().resolve()
     if not source.is_file():
-        raise RuntimeError(tr("step2_wind_file_not_found_path", "未找到风场文件：{path}").format(path=source))
+        raise RuntimeError(tr("step2_wind_file_not_found_path", "❌ 未找到风场文件：{path}").format(path=source))
 
     with Dataset(str(source), "r") as dataset:
         lon = _first_variable(dataset, ("longitude", "lon", "Longitude", "LON"))
         lat = _first_variable(dataset, ("latitude", "lat", "Latitude", "LAT"))
         if lon is None:
-            raise RuntimeError(tr("step2_lon_var_not_found_simple", "{file} 中未找到经度变量").format(file=source.name))
+            raise RuntimeError(tr("step2_lon_var_not_found_simple", "❌ {file} 中未找到经度变量").format(file=source.name))
         if lat is None:
-            raise RuntimeError(tr("step2_lat_var_not_found_simple", "{file} 中未找到纬度变量").format(file=source.name))
+            raise RuntimeError(tr("step2_lat_var_not_found_simple", "❌ {file} 中未找到纬度变量").format(file=source.name))
         bounds = GridBounds(
             lon_min=float(np.min(lon[:])),
             lon_max=float(np.max(lon[:])),
@@ -154,7 +154,7 @@ def read_wind_bounds(path: str | Path, log: Optional[LogCallback] = None) -> Gri
             lat_max=float(np.max(lat[:])),
             source_path=str(source),
         )
-    logger.log(tr("step2_auto_load_range", "已从 {filename} 自动加载经纬度范围").format(filename=source.name))
+    logger.log(tr("step2_auto_load_range", "ℹ️ 已从 {filename} 自动加载经纬度范围").format(filename=source.name))
     return bounds
 
 
@@ -189,20 +189,20 @@ def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) ->
     logger = CoreLogger(callback=log)
     source = Path(path).expanduser().resolve()
     if not source.is_file():
-        raise RuntimeError(tr("step2_wind_file_not_found_path", "未找到风场文件：{path}").format(path=source))
+        raise RuntimeError(tr("step2_wind_file_not_found_path", "❌ 未找到风场文件：{path}").format(path=source))
 
     with Dataset(str(source), "r") as dataset:
         time_var = _first_variable(dataset, ("time", "Time", "TIME", "valid_time", "MT", "mt", "t"))
         if time_var is None:
-            raise RuntimeError(tr("step4_time_var_not_found_simple", "{file} 中未找到时间变量").format(file=source.name))
+            raise RuntimeError(tr("step4_time_var_not_found_simple", "❌ {file} 中未找到时间变量").format(file=source.name))
         units = getattr(time_var, "units", None)
         if not units:
-            raise RuntimeError(tr("step4_time_units_missing", "{file} 中的时间变量没有 units 属性，无法转换时间").format(file=source.name))
+            raise RuntimeError(tr("step4_time_units_missing", "❌ {file} 中的时间变量没有 units 属性，无法转换时间").format(file=source.name))
         calendar = getattr(time_var, "calendar", "gregorian")
         try:
             times = num2date(time_var[:], units, calendar=calendar)
         except Exception as exc:
-            raise RuntimeError(tr("step4_time_read_failed", "读取 {file} 时间失败：{error}").format(file=source.name, error=exc)) from exc
+            raise RuntimeError(tr("step4_time_read_failed", "❌ 读取 {file} 时间失败：{error}").format(file=source.name, error=exc)) from exc
         if hasattr(times, "compressed"):
             times = times.compressed()
         if isinstance(times, np.ndarray):
@@ -211,7 +211,7 @@ def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) ->
             times = [times]
         times = [time for time in times if hasattr(time, "strftime")]
         if not times:
-            raise RuntimeError(tr("step4_time_var_empty", "{file} 中的时间变量为空").format(file=source.name))
+            raise RuntimeError(tr("step4_time_var_empty", "❌ {file} 中的时间变量为空").format(file=source.name))
         result = WindTimeRange(
             start_date=times[0].strftime("%Y%m%d"),
             end_date=times[-1].strftime("%Y%m%d"),
@@ -249,7 +249,7 @@ def scale_nested_region(region: GridRegion, factor: float, *, expand: bool) -> G
         ValueError: When ``factor`` is not greater than 0.
     """
     if factor <= 0:
-        raise ValueError(tr("nested_factor_must_positive", "嵌套收缩系数必须大于 0"))
+        raise ValueError(tr("nested_factor_must_positive", "❌ 嵌套收缩系数必须大于 0"))
     multiplier = factor if expand else 1.0 / factor
     lon_center = (region.lon[0] + region.lon[1]) / 2
     lat_center = (region.lat[0] + region.lat[1]) / 2
@@ -295,12 +295,12 @@ def render_region_map(
     output.parent.mkdir(parents=True, exist_ok=True)
     render_region_map_png(config.grid, output)
     if config.grid.grid_type == "nested" and config.grid.inner is not None:
-        logger.log(tr("step2_nested_map_displayed", "已显示嵌套网格地图"))
+        logger.log(tr("step2_nested_map_displayed", "✅ 已显示嵌套网格地图"))
     else:
         logger.log(
             tr(
                 "step2_map_range_displayed",
-                "已显示地图范围: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]",
+                "ℹ️ 已显示地图范围: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]",
             ).format(
                 lon_min=f"{config.grid.outer.lon[0]:.2f}",
                 lon_max=f"{config.grid.outer.lon[1]:.2f}",
@@ -308,7 +308,7 @@ def render_region_map(
                 lat_max=f"{config.grid.outer.lat[1]:.2f}",
             )
         )
-    return GridPreviewResult(images=[str(output)], title=tr("step2_view_map", "查看地图"), messages=list(logger.messages))
+    return GridPreviewResult(images=[str(output)], title=tr("step2_view_map", "ℹ️ 查看地图"), messages=list(logger.messages))
 
 
 def visualize_grid(
@@ -337,8 +337,8 @@ def visualize_grid(
 
     logger = CoreLogger(callback=log)
     images = generate_grid_images(config, logger)
-    logger.log(tr("step2_visualization_done", "网格可视化已生成"))
-    return GridPreviewResult(images=images, title=tr("step2_visualize_grid_results", "网格可视化结果"), messages=list(logger.messages))
+    logger.log(tr("step2_visualization_done", "✅ 网格可视化已生成"))
+    return GridPreviewResult(images=images, title=tr("step2_visualize_grid_results", "ℹ️ 网格可视化结果"), messages=list(logger.messages))
 
 
 def _first_variable(dataset, names: tuple[str, ...]):

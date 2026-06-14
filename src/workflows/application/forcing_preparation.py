@@ -57,7 +57,7 @@ def _forcing_import_error_message(result) -> str:
         ).format(field=field)
     if reason:
         return reason
-    return tr("step1_wind_import_failed", "风场导入失败")
+    return tr("step1_wind_import_failed", "❌ 风场导入失败")
 
 
 def prepare_forcing(

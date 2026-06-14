@@ -85,7 +85,7 @@ def run_generate_grid(
     logger = CoreLogger(callback=log)
     config.workdir.path.mkdir(parents=True, exist_ok=True)
     generate_grid(config, logger, use_cache=use_cache)
-    logger.log(tr("status_grid_done", "网格生成完成"))
+    logger.log(tr("status_grid_done", "✅ 网格生成完成"))
     return GridGenerationResult(
         workdir=str(config.workdir.path),
         messages=list(logger.messages),

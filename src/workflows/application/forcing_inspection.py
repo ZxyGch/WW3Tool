@@ -74,7 +74,7 @@ def report_forcing_file_overviews(
         if (path := files.get(field)) and Path(path).is_file()
     ]
     if not selected:
-        logger.log(tr("no_field_files_msg", "没有已选择的场文件，请先选择场文件"))
+        logger.log(tr("no_field_files_msg", "⚠️ 没有已选择的场文件，请先选择场文件"))
         return list(logger.messages)
 
     for field_name, path in selected:
@@ -94,11 +94,11 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
     logger.log("")
     logger.log("=" * 70)
     logger.log(f"【{field_name}】")
-    logger.log(tr("forcing_info_filename", "文件名：{name}").format(name=path.name))
+    logger.log(tr("forcing_info_filename", "ℹ️ 文件名：{name}").format(name=path.name))
     try:
-        logger.log(tr("forcing_info_filesize", "文件大小：{size}").format(size=_format_size(path.stat().st_size)))
+        logger.log(tr("forcing_info_filesize", "ℹ️ 文件大小：{size}").format(size=_format_size(path.stat().st_size)))
     except OSError as exc:
-        logger.log(tr("forcing_info_filesize_unreadable", "文件大小：无法读取 ({error})").format(error=exc))
+        logger.log(tr("forcing_info_filesize_unreadable", "ℹ️ 文件大小：无法读取 ({error})").format(error=exc))
 
     try:
         with Dataset(str(path), "r") as dataset:
@@ -107,23 +107,23 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
 
             if lon is not None:
                 lon_values = lon[:]
-                logger.log(tr("forcing_info_lon_range", "经度范围：{min:.6f}° ~ {max:.6f}°").format(min=float(np.min(lon_values)), max=float(np.max(lon_values))))
-                _report_resolution(tr("forcing_info_lon_resolution", "经度精度"), lon_values, logger, np)
+                logger.log(tr("forcing_info_lon_range", "ℹ️ 经度范围：{min:.6f}° ~ {max:.6f}°").format(min=float(np.min(lon_values)), max=float(np.max(lon_values))))
+                _report_resolution(tr("forcing_info_lon_resolution", "ℹ️ 经度精度"), lon_values, logger, np)
             if lat is not None:
                 lat_values = lat[:]
-                logger.log(tr("forcing_info_lat_range", "纬度范围：{min:.6f}° ~ {max:.6f}°").format(min=float(np.min(lat_values)), max=float(np.max(lat_values))))
-                _report_resolution(tr("forcing_info_lat_resolution", "纬度精度"), lat_values, logger, np)
+                logger.log(tr("forcing_info_lat_range", "ℹ️ 纬度范围：{min:.6f}° ~ {max:.6f}°").format(min=float(np.min(lat_values)), max=float(np.max(lat_values))))
+                _report_resolution(tr("forcing_info_lat_resolution", "ℹ️ 纬度精度"), lat_values, logger, np)
 
             time_name, time_var = _first_named_variable(
                 dataset,
                 ("time", "Time", "TIME", "valid_time", "MT", "mt", "t"),
             )
             if time_var is None:
-                logger.log(tr("forcing_info_time_var_missing", "时间范围：未找到时间变量"))
+                logger.log(tr("forcing_info_time_var_missing", "⚠️ 时间范围：未找到时间变量"))
                 return
             _report_time(time_name, time_var, logger, np, num2date)
     except Exception as exc:
-        logger.log(tr("forcing_info_read_failed", "读取文件信息失败：{error}").format(error=exc))
+        logger.log(tr("forcing_info_read_failed", "❌ 读取文件信息失败：{error}").format(error=exc))
 
 
 def _report_resolution(label: str, values, logger: CoreLogger, np) -> None:
@@ -148,8 +148,8 @@ def _report_time(name: str, variable, logger: CoreLogger, np, num2date) -> None:
         if not units:
             values = variable[:]
             if len(values) > 0:
-                logger.log(tr("forcing_info_time_range_no_units", "时间范围：{start:.2f} ~ {end:.2f} (无单位)").format(start=float(np.min(values)), end=float(np.max(values))))
-                logger.log(tr("forcing_info_time_steps", "时间步数：{count}").format(count=len(values)))
+                logger.log(tr("forcing_info_time_range_no_units", "ℹ️ 时间范围：{start:.2f} ~ {end:.2f} (无单位)").format(start=float(np.min(values)), end=float(np.max(values))))
+                logger.log(tr("forcing_info_time_steps", "ℹ️ 时间步数：{count}").format(count=len(values)))
             return
 
         calendar = getattr(variable, "calendar", "gregorian")
@@ -165,19 +165,19 @@ def _report_time(name: str, variable, logger: CoreLogger, np, num2date) -> None:
             return
 
         logger.log(
-            tr("forcing_info_time_range", "时间范围：{start} ~ {end}").format(
+            tr("forcing_info_time_range", "ℹ️ 时间范围：{start} ~ {end}").format(
                 start=times[0].strftime("%Y-%m-%d %H:%M:%S"),
                 end=times[-1].strftime("%Y-%m-%d %H:%M:%S"),
             )
         )
-        logger.log(tr("forcing_info_time_steps", "时间步数：{count}").format(count=len(times)))
+        logger.log(tr("forcing_info_time_steps", "ℹ️ 时间步数：{count}").format(count=len(times)))
         if len(times) > 1:
             intervals = [(times[index + 1] - times[index]).total_seconds() for index in range(len(times) - 1)]
-            logger.log(tr("forcing_info_time_resolution", "时间精度：{interval}").format(interval=_format_interval(float(np.mean(intervals)))))
+            logger.log(tr("forcing_info_time_resolution", "ℹ️ 时间精度：{interval}").format(interval=_format_interval(float(np.mean(intervals)))))
         if name != "time":
-            logger.log(tr("forcing_info_time_variable", "使用时间变量：{name}").format(name=name))
+            logger.log(tr("forcing_info_time_variable", "ℹ️ 使用时间变量：{name}").format(name=name))
     except Exception as exc:
-        logger.log(tr("forcing_info_time_unparseable", "时间范围：无法解析 ({error})").format(error=exc))
+        logger.log(tr("forcing_info_time_unparseable", "⚠️ 时间范围：无法解析 ({error})").format(error=exc))
 
 
 def _first_variable(dataset, names: tuple[str, ...]):
@@ -222,9 +222,9 @@ def _format_interval(seconds: float) -> str:
     [EN] Format seconds into a human-readable string of seconds/minutes/hours/days.
     """
     if seconds < 60:
-        return tr("time_seconds", "{value} 秒").format(value=f"{seconds:.0f}")
+        return tr("time_seconds", "ℹ️ {value} 秒").format(value=f"{seconds:.0f}")
     if seconds < 3600:
-        return tr("time_minutes", "{value} 分钟").format(value=f"{seconds / 60:.1f}")
+        return tr("time_minutes", "ℹ️ {value} 分钟").format(value=f"{seconds / 60:.1f}")
     if seconds < 86400:
-        return tr("time_hours", "{value} 小时").format(value=f"{seconds / 3600:.2f}")
-    return tr("time_days", "{value} 天").format(value=f"{seconds / 86400:.2f}")
+        return tr("time_hours", "ℹ️ {value} 小时").format(value=f"{seconds / 3600:.2f}")
+    return tr("time_days", "ℹ️ {value} 天").format(value=f"{seconds / 86400:.2f}")

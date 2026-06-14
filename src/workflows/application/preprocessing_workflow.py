@@ -63,14 +63,14 @@ def run_pipeline(
     logger = CoreLogger(callback=log)
     config.workdir.path.mkdir(parents=True, exist_ok=True)
 
-    logger.log(tr("workdir_current", "工作目录：{folder}").format(folder=config.workdir.path))
+    logger.log(tr("workdir_current", "📂 工作目录：{folder}").format(folder=config.workdir.path))
     files = prepare_forcing(config, logger)
     if skip_grid:
-        logger.log(tr("pipeline_skip_grid", "已跳过网格生成，将使用工作目录中已有网格文件"))
+        logger.log(tr("pipeline_skip_grid", "ℹ️ 已跳过网格生成，将使用工作目录中已有网格文件"))
     else:
         generate_grid(config, logger, use_cache=use_grid_cache)
     prepare_ww3_files(config, files, logger)
-    logger.log(tr("pipeline_headless_done", "无 UI 预处理完成"))
+    logger.log(tr("pipeline_headless_done", "✅ 无 UI 预处理完成"))
 
     return PipelineResult(
         workdir=str(config.workdir.path),
