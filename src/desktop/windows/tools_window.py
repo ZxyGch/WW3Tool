@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QProgressBar,
     QSizePolicy,
     QTableWidgetItem,
@@ -157,9 +158,13 @@ class ToolsInterface(QWidget):
         output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
         layout.addLayout(output_row)
 
-        self._merge_fast = CheckBox(tr("merge_inline_fast", "快速合并（不压缩，文件更大）"))
+        fast_label = QLabel(tr("merge_inline_fast", "快速合并（不压缩，文件更大）"))
+        fast_label.setStyleSheet(styles.label_style())
+        fast_label.mousePressEvent = lambda _event: self._merge_fast.toggle()
+        self._merge_fast = CheckBox("")
         self._merge_fast.setChecked(False)
         fast_row = QHBoxLayout()
+        fast_row.addWidget(fast_label)
         fast_row.addStretch(1)
         fast_row.addWidget(self._merge_fast)
         layout.addLayout(fast_row)
