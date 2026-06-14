@@ -241,9 +241,9 @@ def _make_wind_field_worker(
         else:
             p_lo, p_hi = 0.0, 1.0
         _rng = max(p_hi - p_lo, 1.0)
-        # 选“整”步长，使填色约 25–30 档（更细腻）[EN] nice step → ~25-30 bands
+        # 选“整”步长，使填色约 60 档（很细，接近连续）[EN] nice step → ~60 bands
         level_step = next(
-            (s for s in (0.25, 0.5, 1.0, 2.0, 2.5, 5.0) if _rng / s <= 30), 5.0
+            (s for s in (0.1, 0.2, 0.25, 0.5, 1.0, 2.0) if _rng / s <= 60), 2.0
         )
         g_lo = max(0.0, np.floor(p_lo / level_step) * level_step)
         g_hi = np.ceil(p_hi / level_step) * level_step
