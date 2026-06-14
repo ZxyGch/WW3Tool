@@ -159,7 +159,10 @@ class ToolsInterface(QWidget):
 
         self._merge_fast = CheckBox(tr("merge_inline_fast", "快速合并（不压缩，文件更大）"))
         self._merge_fast.setChecked(False)
-        layout.addWidget(self._merge_fast)
+        fast_row = QHBoxLayout()
+        fast_row.addStretch(1)
+        fast_row.addWidget(self._merge_fast)
+        layout.addLayout(fast_row)
 
         self._merge_progress = QProgressBar()
         self._merge_progress.setRange(0, 100)
