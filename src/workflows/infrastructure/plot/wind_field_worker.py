@@ -241,19 +241,22 @@ def _make_wind_field_worker(
         else:
             p_lo, p_hi = 0.0, 1.0
         _rng = max(p_hi - p_lo, 1.0)
-        # 选“整”步长，使填色约 10–14 档 [EN] nice step → ~10-14 bands
+        # 选“整”步长，使填色约 25–30 档（更细腻）[EN] nice step → ~25-30 bands
         level_step = next(
-            (s for s in (0.5, 1.0, 2.0, 2.5, 5.0, 10.0) if _rng / s <= 14), 10.0
+            (s for s in (0.25, 0.5, 1.0, 2.0, 2.5, 5.0) if _rng / s <= 30), 5.0
         )
         g_lo = max(0.0, np.floor(p_lo / level_step) * level_step)
         g_hi = np.ceil(p_hi / level_step) * level_step
         if g_hi <= g_lo:
             g_hi = g_lo + level_step
         fill_levels = np.arange(g_lo, g_hi + level_step / 2.0, level_step)
-        # 等值线用更粗分级，避免标注拥挤 [EN] coarser line levels to avoid clutter
-        line_step = level_step * 2.0
+        # 等值线分级独立取粗（约 6–8 条），避免细填色下标注拥挤
+        # [EN] coarser, label-friendly line levels (~6-8 lines) independent of fill
+        line_step = max(level_step, next(
+            (s for s in (1.0, 2.0, 2.5, 5.0, 10.0) if _rng / s <= 8), 10.0
+        ))
         line_levels = np.arange(g_lo, g_hi + line_step / 2.0, line_step)
-        line_fmt = "%.1f" if level_step < 1.0 else "%.0f"
+        line_fmt = "%.1f" if line_step < 1.0 else "%.0f"
         wind_cmap = cm.get_cmap("RdYlBu_r")
 
         saved_paths = []
