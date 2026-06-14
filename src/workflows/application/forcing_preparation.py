@@ -131,7 +131,6 @@ def prepare_forcing(
         if not result.success:
             raise RuntimeError(_forcing_import_error_message(result))
         files = _merge(files, result.files_patch)
-        logger.log(tr("step1_wind_prepared", "风场已准备：{path}").format(path=result.actual_file_path))
 
     regular = [
         (ForcingField.CURRENT, config.forcing.current),
@@ -151,7 +150,6 @@ def prepare_forcing(
         if not result.success:
             raise RuntimeError(_forcing_import_error_message(result))
         files = _merge(files, result.files_patch)
-        logger.log(tr("step1_field_prepared", "{field} 已准备：{path}").format(field=field.value, path=result.actual_file_path))
 
     return files
 

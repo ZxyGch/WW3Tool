@@ -98,9 +98,7 @@ def run_prepare_forcing(
     validate_pipeline_config(config, stage="forcing")
     logger = CoreLogger(callback=log)
     config.workdir.path.mkdir(parents=True, exist_ok=True)
-    logger.log(tr("workdir_current", "工作目录：{folder}").format(folder=config.workdir.path))
     files = prepare_forcing(config, logger, fields=fields)
-    logger.log(tr("step1_prepare_done", "强迫场准备完成"))
     return PipelineResult(
         workdir=str(config.workdir.path),
         forcing_files=files,
