@@ -197,3 +197,23 @@ def test_contiguous_source_runs_batch_adjacent_time_steps() -> None:
         (3, 2, "b.nc", 0),
         (5, 1, "a.nc", 5),
     ]
+
+
+def test_fast_mode_writes_uncompressed_variables(tmp_path: Path) -> None:
+    first = tmp_path / "first.nc"
+    second = tmp_path / "second.nc"
+    output = tmp_path / "merged.nc"
+    _write_forcing(first, times=[0, 1])
+    _write_forcing(second, times=[2, 3], value_offset=10)
+
+    logs: list[str] = []
+    merge_forcing_netcdf(
+        [str(first), str(second)],
+        str(output),
+        log=logs.append,
+        compress=False,
+    )
+
+    with nc.Dataset(output) as ds:
+        assert not ds.variables["u10"].filters()["zlib"]
+    assert any("快速" in message or "fast" in message.lower() for message in logs)

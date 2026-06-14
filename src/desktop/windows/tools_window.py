@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import LineEdit, PrimaryPushButton, PushButton, TableWidget
+from qfluentwidgets import CheckBox, LineEdit, PrimaryPushButton, PushButton, TableWidget
 
 from ..background_runner import BackgroundRunner
 from ..components.header_card import create_header_card
@@ -157,6 +157,10 @@ class ToolsInterface(QWidget):
         output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
         layout.addLayout(output_row)
 
+        self._merge_fast = CheckBox(tr("merge_inline_fast", "快速合并（不压缩，文件更大）"))
+        self._merge_fast.setChecked(False)
+        layout.addWidget(self._merge_fast)
+
         self._merge_progress = QProgressBar()
         self._merge_progress.setRange(0, 100)
         self._merge_progress.setValue(0)
@@ -284,6 +288,7 @@ class ToolsInterface(QWidget):
         if not output:
             return
         paths = tuple(self._merge_paths)
+        compress = not self._merge_fast.isChecked()
         self._set_merge_busy(True)
         self._last_logged_progress = -10
         self._merge_progress.setValue(0)
@@ -296,6 +301,7 @@ class ToolsInterface(QWidget):
                 output,
                 log=self._merge_log_received.emit,
                 progress=self._merge_progress_received.emit,
+                compress=compress,
             ),
             self._on_merge_done,
         )

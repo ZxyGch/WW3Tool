@@ -16,7 +16,7 @@ from workflows.support.translations import tr
 
 _EPOCH_UNITS = "seconds since 1970-01-01 00:00:00"
 _EPOCH_CALENDAR = "standard"
-_COPY_BLOCK_BYTES = 128 * 1024 * 1024
+_COPY_BLOCK_BYTES = 512 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -411,11 +411,13 @@ def analyze_merge_inputs(input_paths: Sequence[str]) -> MergeAnalysis:
     return _build_plan(input_paths).analysis
 
 
-def _variable_kwargs(var) -> dict[str, Any]:
+def _variable_kwargs(var, *, compress: bool = True) -> dict[str, Any]:
     attrs = {name: var.getncattr(name) for name in var.ncattrs()}
     kwargs: dict[str, Any] = {}
     if "_FillValue" in attrs:
         kwargs["fill_value"] = attrs["_FillValue"]
+    if not compress:
+        return kwargs
     try:
         filters = var.filters() or {}
         for key in ("zlib", "complevel", "shuffle", "fletcher32"):
@@ -436,8 +438,8 @@ def _copy_attrs(source, target, *, skip: set[str] | None = None) -> None:
             target.setncattr(name, source.getncattr(name))
 
 
-def _create_variable(out, name: str, source_var, *, time_name: str):
-    kwargs = _variable_kwargs(source_var)
+def _create_variable(out, name: str, source_var, *, time_name: str, compress: bool):
+    kwargs = _variable_kwargs(source_var, compress=compress)
     dimensions = _normalized_dimensions(source_var, time_name)
     if time_name in source_var.dimensions and "chunksizes" in kwargs:
         axis = source_var.dimensions.index(time_name)
@@ -483,7 +485,8 @@ def _copy_block_steps(var, time_axis: int) -> int:
     try:
         chunks = var.chunking()
         if isinstance(chunks, list):
-            return max(1, min(max_steps, int(chunks[time_axis])))
+            time_chunk = max(1, int(chunks[time_axis]))
+            return max(time_chunk, max_steps // time_chunk * time_chunk)
     except Exception:
         pass
     return min(max_steps, 256)
@@ -521,6 +524,7 @@ def _write_plan(
     output_path: str,
     *,
     progress: Callable[[int, str], None] | None = None,
+    compress: bool = True,
 ) -> None:
     nc, _ = _imports()
     last_progress = -1
@@ -552,6 +556,8 @@ def _write_plan(
     _progress(10, tr("tools_merge_progress_create", "正在创建输出文件"))
     first_group = plan.groups[0]
     with nc.Dataset(first_group.paths[0], "r") as first, nc.Dataset(output_path, "w", format="NETCDF4") as out:
+        first.set_auto_mask(False)
+        out.set_fill_off()
         _copy_attrs(first, out)
         first_time_name = first_group.time_names[first_group.paths[0]]
         dimension_sizes: dict[str, int | None] = {
@@ -559,6 +565,7 @@ def _write_plan(
         }
         for group in plan.groups:
             with nc.Dataset(group.paths[0], "r") as ds:
+                ds.set_auto_mask(False)
                 time_name = group.time_names[group.paths[0]]
                 for name, dim in ds.dimensions.items():
                     if name == time_name:
@@ -582,22 +589,31 @@ def _write_plan(
         created: set[str] = {"time"}
         for group in plan.groups:
             with nc.Dataset(group.paths[0], "r") as ds:
+                ds.set_auto_mask(False)
                 time_name = group.time_names[group.paths[0]]
                 for name, source_var in ds.variables.items():
                     if name == time_name or name in created or name in group.data_variables:
                         continue
-                    target = _create_variable(out, name, source_var, time_name=time_name)
+                    target = _create_variable(out, name, source_var, time_name=time_name, compress=compress)
                     target[:] = source_var[:]
                     created.add(name)
 
             opened = {path: nc.Dataset(path, "r") for path in group.paths}
             try:
+                for ds in opened.values():
+                    ds.set_auto_mask(False)
                 for name in group.data_variables:
                     if name in created:
                         continue
                     source_var = opened[group.paths[0]].variables[name]
                     first_source_time_name = group.time_names[group.paths[0]]
-                    target = _create_variable(out, name, source_var, time_name=first_source_time_name)
+                    target = _create_variable(
+                        out,
+                        name,
+                        source_var,
+                        time_name=first_source_time_name,
+                        compress=compress,
+                    )
                     if first_source_time_name not in source_var.dimensions:
                         target[:] = source_var[:]
                         created.add(name)
@@ -652,6 +668,7 @@ def merge_forcing_netcdf(
     *,
     log: Callable[[str], None] | None = None,
     progress: Callable[[int, str], None] | None = None,
+    compress: bool = True,
 ) -> str:
     """Validate and merge forcing files, atomically replacing the output on success."""
 
@@ -672,13 +689,15 @@ def merge_forcing_netcdf(
                 steps=plan.analysis.time_steps,
             )
         )
+        if not compress:
+            log(tr("tools_merge_fast_mode_log", "⚡ 已启用快速合并：输出不压缩，文件体积会增大"))
 
     output = Path(normalized_output)
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_path = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
     os.close(fd)
     try:
-        _write_plan(plan, temp_path, progress=progress)
+        _write_plan(plan, temp_path, progress=progress, compress=compress)
         os.replace(temp_path, output)
     except Exception:
         try:
