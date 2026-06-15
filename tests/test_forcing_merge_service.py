@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import shutil
 from pathlib import Path
 
@@ -12,6 +13,9 @@ from workflows.infrastructure.forcing.merge_service import (
     analyze_merge_inputs,
     merge_forcing_netcdf,
 )
+from workflows.application.forcing_merge import run_merge_forcing
+from workflows.interfaces.command_line import main as cli_main
+from workflows.interfaces.interactive_cli import InteractiveCLI
 
 
 def _write_forcing(
@@ -217,3 +221,52 @@ def test_fast_mode_writes_uncompressed_variables(tmp_path: Path) -> None:
     with nc.Dataset(output) as ds:
         assert not ds.variables["u10"].filters()["zlib"]
     assert any("快速" in message or "fast" in message.lower() for message in logs)
+
+
+def test_application_merge_use_case_reports_analysis_and_progress(tmp_path: Path) -> None:
+    first = tmp_path / "first.nc"
+    second = tmp_path / "second.nc"
+    output = tmp_path / "merged.nc"
+    _write_forcing(first, times=[0, 1])
+    _write_forcing(second, times=[2, 3], value_offset=10)
+
+    progress: list[int] = []
+    result = run_merge_forcing(
+        [str(first), str(second)],
+        str(output),
+        progress=lambda value, _message: progress.append(value),
+    )
+
+    assert result.output_path == str(output.resolve())
+    assert result.analysis.valid
+    assert result.analysis.time_steps == 4
+    assert progress[0] == 0
+    assert progress[-1] == 100
+
+
+def test_cli_merge_forcing_runs_without_params_file(tmp_path: Path) -> None:
+    first = tmp_path / "first.nc"
+    second = tmp_path / "second.nc"
+    output = tmp_path / "cli_merged.nc"
+    _write_forcing(first, times=[0, 1])
+    _write_forcing(second, times=[2, 3], value_offset=10)
+
+    rc = cli_main(["merge-forcing", str(first), str(second), "-o", str(output)])
+
+    assert rc == 0
+    assert output.is_file()
+
+
+def test_shell_merge_forcing_supports_quoted_paths(tmp_path: Path) -> None:
+    first = tmp_path / "first file.nc"
+    second = tmp_path / "second file.nc"
+    output = tmp_path / "shell merged.nc"
+    _write_forcing(first, times=[0, 1])
+    _write_forcing(second, times=[2, 3], value_offset=10)
+    shell = InteractiveCLI()
+
+    shell.do_merge_forcing(
+        f"{shlex.quote(str(first))} {shlex.quote(str(second))} -o {shlex.quote(str(output))}"
+    )
+
+    assert output.is_file()

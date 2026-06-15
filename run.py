@@ -21,6 +21,7 @@
 二、预处理
   validate                               校验 params.yml 是否合法
   prepare-forcing                        只做 Step 1：准备强迫场（wind.nc 等）
+  merge-forcing INPUT... -o OUTPUT       校验并合并 NetCDF 强迫场文件
   generate-grid                          只做 Step 2：生成网格
   recommend-grid                         按区域范围推荐网格间距/分辨率并写回 params.yml
   run                                    完整预处理（强迫场 → 网格 → WW3 namelist）
@@ -83,6 +84,7 @@ first. ``<workdir>`` may be omitted, in which case the current directory
 2. Preprocessing
   validate                               Validate whether params.yml is legal
   prepare-forcing                        Step 1 only: prepare forcing fields (wind.nc etc.)
+  merge-forcing INPUT... -o OUTPUT       Validate and merge NetCDF forcing files
   generate-grid                          Step 2 only: generate the grid
   recommend-grid                         Recommend grid spacing/resolution from the domain extent, write to params.yml
   run                                    Full preprocessing (forcing -> grid -> WW3 namelist)

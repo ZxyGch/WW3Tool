@@ -23,10 +23,12 @@ __all__ = [
     "GridGenerationResult",
     "GridBounds",
     "GridPreviewResult",
+    "ForcingMergeResult",
     "load_pipeline_config",
     "parse_pipeline_config",
     "report_forcing_file_overviews",
     "run_generate_grid",
+    "run_merge_forcing",
     "read_wind_bounds",
     "render_region_map",
     "scale_nested_region",
@@ -52,6 +54,13 @@ def __getattr__(name):
         from .forcing_inspection import report_forcing_file_overviews
 
         return report_forcing_file_overviews
+    if name in {"ForcingMergeResult", "run_merge_forcing"}:
+        from .forcing_merge import ForcingMergeResult, run_merge_forcing
+
+        return {
+            "ForcingMergeResult": ForcingMergeResult,
+            "run_merge_forcing": run_merge_forcing,
+        }[name]
     if name in {"GridGenerationResult", "run_generate_grid"}:
         from .grid_preparation import GridGenerationResult, run_generate_grid
 

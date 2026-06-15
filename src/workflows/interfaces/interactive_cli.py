@@ -34,9 +34,11 @@ Main consumers:
 
 from __future__ import annotations
 
+import argparse
 import cmd
 import os
 import readline
+import shlex
 import shutil
 import subprocess
 import sys
@@ -164,6 +166,10 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             tr("icli_grp_preproc", "预处理"),
             [
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
+                (
+                    "merge-forcing INPUT... -o OUTPUT",
+                    tr("icli_help_merge_forcing", "校验并合并 NetCDF 强迫场文件"),
+                ),
                 ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
                 ("recommend-cfl", tr("icli_help_recommend_cfl", "按 CFL 公式推荐时间步长")),
@@ -682,6 +688,41 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_forcing", "▶ 开始准备强迫场...")))
             run_prepare_forcing(self._config, log=self._log_callback)
             print(_success(tr("icli_done_forcing", "✅ 强迫场准备完成")))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_merge_forcing(self, arg: str) -> None:
+        """merge-forcing INPUT... -o OUTPUT  — 校验并合并 NetCDF 强迫场文件
+
+        [EN] merge-forcing INPUT... -o OUTPUT  — Validate and merge NetCDF forcing files
+        """
+        parser = argparse.ArgumentParser(prog="merge-forcing", add_help=False)
+        parser.add_argument("inputs", nargs="+")
+        parser.add_argument("-o", "--output", required=True)
+        try:
+            args = parser.parse_args(shlex.split(arg))
+        except (SystemExit, ValueError):
+            print(
+                _warn(
+                    tr(
+                        "icli_usage_merge_forcing",
+                        "用法：merge-forcing <输入1.nc> <输入2.nc> [...] -o <输出.nc>",
+                    )
+                )
+            )
+            return
+
+        try:
+            from ..application.forcing_merge import run_merge_forcing
+
+            print(_info(tr("icli_start_merge_forcing", "▶ 开始校验并合并强迫场...")))
+            run_merge_forcing(
+                args.inputs,
+                args.output,
+                log=self._log_callback,
+                progress=lambda value, message: self._log_callback(f"{value}% {message}"),
+            )
+            print(_success(tr("icli_done_merge_forcing", "✅ 强迫场合并完成")))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
@@ -1319,6 +1360,9 @@ class InteractiveCLI(cmd.Cmd):
 
     def complete_plot_wave_maps(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return self._complete_options(text, ["--contour"])
+
+    def complete_merge_forcing(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
+        return self._complete_options(text, ["-o", "--output"])
 
     def complete_plot_spectrum(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return self._complete_options(text, ["--mode", "--station"])

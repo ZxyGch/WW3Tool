@@ -165,6 +165,7 @@ CLI 通过 `queue.SimpleQueue` 同步桥接，Desktop 通过多进程 Queue 异�
 |---|---|
 | `validate` | 校验 params.yml 合法性 |
 | `prepare-forcing` | 仅执行场文件准备 |
+| `merge-forcing INPUT... -o OUTPUT` | 校验并合并 NetCDF 强迫场文件 |
 | `generate-grid` | 仅执行网格生成 |
 | `run [--skip-grid]` | 执行完整预处理流水线 |
 | `plot` | 运行 params.yml `plot:` 段中所有 enabled 的绘图任务 |

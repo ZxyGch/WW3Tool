@@ -9,7 +9,7 @@
 
 命令分组：
 - 工作目录：``create-workdir``
-- 预处理：``validate``、``prepare-forcing``、``generate-grid``、``run``
+- 预处理：``validate``、``prepare-forcing``、``merge-forcing``、``generate-grid``、``run``
 - 后处理/绘图：``plot-wave-maps``、``plot-spectrum``、``plot-jason3``、``plot-jason3-swh``、``download-jason3``、``plot-ndbc``
 - 远程运维：``connect-test``、``upload``、``submit`` 等 SLURM/SSH 操作
 - 辅助：``print-example`` 输出示例 YAML
@@ -30,7 +30,7 @@ Use ``create-workdir`` to create a working directory from the template first.
 
 Command groups:
 - Working directory: ``create-workdir``
-- Preprocessing: ``validate``, ``prepare-forcing``, ``generate-grid``, ``run``
+- Preprocessing: ``validate``, ``prepare-forcing``, ``merge-forcing``, ``generate-grid``, ``run``
 - Post-processing/plotting: ``plot-wave-maps``, ``plot-spectrum``, ``plot-jason3``, ``plot-jason3-swh``, ``download-jason3``, ``plot-ndbc``
 - Remote operations: ``connect-test``, ``upload``, ``submit`` and other SLURM/SSH operations
 - Auxiliary: ``print-example`` outputs a sample YAML
@@ -155,6 +155,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_forcing = sub.add_parser("prepare-forcing", help=tr("cli_help_prepare_forcing", "Run only forcing preparation"))
     p_forcing.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_merge = sub.add_parser(
+        "merge-forcing",
+        help=tr("cli_help_merge_forcing", "Validate and merge NetCDF forcing files"),
+    )
+    p_merge.add_argument(
+        "inputs",
+        nargs="+",
+        metavar="INPUT",
+        help=tr("cli_help_merge_forcing_inputs", "Input NetCDF forcing files"),
+    )
+    p_merge.add_argument(
+        "-o",
+        "--output",
+        required=True,
+        metavar="OUTPUT",
+        help=tr("cli_help_merge_forcing_output", "Output NetCDF file"),
+    )
 
     p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "Run only grid generation"))
     p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -367,6 +385,9 @@ def main(argv: list[str] | None = None) -> int:
         return _handle_create_workdir(args.name)
 
     try:
+        if args.command == "merge-forcing":
+            return _run_merge_forcing(args.inputs, args.output)
+
         # cancel-job: job_id 必填
         # [EN] cancel-job: job_id is required
         if args.command == "cancel-job":
@@ -505,6 +526,19 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error(tr("cli_unknown_command", "❌ 未知命令：{command}").format(command=args.command))
     return 2
+
+
+def _run_merge_forcing(input_paths: list[str], output_path: str) -> int:
+    """Validate and merge forcing files while printing progress."""
+    from ..application.forcing_merge import run_merge_forcing
+
+    run_merge_forcing(
+        input_paths,
+        output_path,
+        log=print,
+        progress=lambda value, message: print(f"{value}% {message}"),
+    )
+    return 0
 
 
 def _run_all_plots(config) -> int:
