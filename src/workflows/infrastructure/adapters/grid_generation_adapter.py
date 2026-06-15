@@ -97,6 +97,16 @@ def _grid_cache_dir() -> Path:
     return cache_dir
 
 
+def _unstructured_workspace_dir() -> Path:
+    """返回非结构网格生成器自己的中间文件工作区。"""
+    return (
+        Path(get_project_meshgen_path())
+        / "unstructured_generator"
+        / "unst_msh_gen"
+        / "mesh_workspace"
+    )
+
+
 def _structured_grid_mask_path(folder: Path) -> Path | None:
     primary = folder / "grid.mask_nobound"
     if primary.is_file():
@@ -432,9 +442,14 @@ def _save_smc_cache(cache_key: str, output_dir: Path) -> None:
 
 def _unstructured_cache_key(grid_json: Dict[str, Any]) -> str:
     body = json.loads(json.dumps(grid_json, default=str))
-    output = dict(body.get("Output") or {})
-    output.pop("ww3_publish_dir", None)
-    body["Output"] = output
+    # 输出目录和生成器安装路径不改变网格内容，不能参与缓存键。
+    # [EN] Output locations and generator installation paths do not change
+    # mesh content and therefore must not participate in the cache key.
+    body.pop("Output", None)
+    workflow = dict(body.get("Workflow") or {})
+    for key in ("unst_msh_gen_dir", "resolved_config_name", "jigsaw_python_root"):
+        workflow.pop(key, None)
+    body["Workflow"] = workflow
     data_files = dict(body.get("DataFiles") or {})
     dem_path = Path(str(data_files.get("dem_file") or "")).expanduser()
     dem_abs = dem_path.resolve() if str(dem_path) else Path("")
@@ -541,6 +556,7 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
 def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
     root = Path(get_project_meshgen_path())
     unst_dir = root / "unstructured_generator"
+    mesh_workspace = _unstructured_workspace_dir()
     unst_msh_gen_abs = str(unst_dir / "unst_msh_gen")
     jigsaw_root_abs = str(unst_dir / "jigsaw-python")
     base = json.loads(json.dumps(UNST_MSH_GEN_CONFIG_DEFAULTS))
@@ -600,7 +616,7 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
         "CommandLineArgs": base["command_line_args"],
         "DataFiles": base["data"],
         "Output": {
-            "mesh_workspace_dir": str(config.workdir.path / "mesh_workspace"),
+            "mesh_workspace_dir": str(mesh_workspace),
             "ww3_publish_dir": str(config.workdir.path),
             "ww3_publish_basename": "grid.ww3",
         },
@@ -612,7 +628,6 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
         },
     }
     config.workdir.path.mkdir(parents=True, exist_ok=True)
-    (config.workdir.path / "mesh_workspace").mkdir(parents=True, exist_ok=True)
     run_config = config.workdir.path / "unstructured_grid.json"
     run_config.write_text(json.dumps(grid_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     cache_key = _unstructured_cache_key(grid_json)
@@ -624,6 +639,7 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
             return
 
     logger.log(tr("grid_unst_start", "🔄 开始生成非结构网格...") if not use_cache else tr("grid_unst_cache_miss", "ℹ️ 未找到匹配的非结构网格缓存，开始生成新网格..."))
+    mesh_workspace.mkdir(parents=True, exist_ok=True)
     _run_subprocess([sys.executable, "create_grid.py", "--grid", str(run_config)], unst_dir, logger)
     produced = config.workdir.path / "grid.ww3"
     fallback = unst_dir / "output" / "grid.ww3"
