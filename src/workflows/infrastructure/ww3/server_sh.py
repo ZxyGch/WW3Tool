@@ -11,13 +11,8 @@ from .nml_primitives import NMLPrimitives
 
 
 def _st_executable_dir(path: str) -> str:
-    """兼容 ST 模型基础目录和已经指向 ``exe`` 的可执行目录。"""
-    cleaned = str(path or "").strip().rstrip("/\\")
-    if not cleaned:
-        return ""
-    if cleaned.replace("\\", "/").rsplit("/", 1)[-1].lower() == "exe":
-        return cleaned
-    return f"{cleaned}/exe"
+    """规范化配置中直接指定的 ST 可执行目录，不推断或补充子目录。"""
+    return str(path or "").strip().rstrip("/\\")
 
 
 class ServerSh(NMLPrimitives):

@@ -76,9 +76,9 @@ DEFAULT_OUTPUT_SCHEME_PRESETS = {
     "all_fields": OUTPUT_FIELD_OPTIONS,
 }
 
-# 源项（ST）物理包预设：值可为模型基础目录或可执行目录。
+# 源项（ST）物理包预设：值为可执行文件所在目录，目录名不限。
 # 不内置任何预设，用户通过 params.yml 或设置界面自行配置。
-# [EN] Source-term (ST) physics package presets: values may be model base directories
-# or executable directories.
+# [EN] Source-term (ST) physics package presets: values are executable directories;
+# directory names are unrestricted.
 # No built-in presets; users configure via params.yml or the settings UI.
 DEFAULT_ST_PRESETS: dict[str, str] = {}

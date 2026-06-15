@@ -4,19 +4,19 @@ from workflows.application.configuration import ConfigError, _st_presets
 from workflows.infrastructure.ww3.server_sh import _st_executable_dir
 
 
-def test_st_preset_accepts_model_base_directory_without_exe_suffix() -> None:
-    assert _st_presets({"ST6": "/opt/ww3/ST6/"}) == {"ST6": "/opt/ww3/ST6"}
+def test_st_preset_accepts_executable_directory_with_arbitrary_name() -> None:
+    assert _st_presets({"ST6": "/opt/ww3/ST6/bin/"}) == {"ST6": "/opt/ww3/ST6/bin"}
 
 
 @pytest.mark.parametrize(
     ("configured_path", "expected"),
     [
-        ("/opt/ww3/ST6", "/opt/ww3/ST6/exe"),
+        ("/opt/ww3/ST6", "/opt/ww3/ST6"),
         ("/opt/ww3/ST6/exe", "/opt/ww3/ST6/exe"),
         ("/opt/ww3/ST6/exe/", "/opt/ww3/ST6/exe"),
     ],
 )
-def test_st_executable_dir_accepts_model_or_executable_directory(
+def test_st_executable_dir_uses_configured_directory_directly(
     configured_path: str,
     expected: str,
 ) -> None:

@@ -987,11 +987,11 @@ presets:
       SXY, TWO, BHD, FOC, TUS, USS, P2S, USF, P2L, TWI, FIC, USP, TOC,
       ABR, UBR, BED, FBB, TBB, MSS, MSC, MSD, MCD, QP, QKK, SKW, EMB,
       DTD, FC, CFX, CFD, CFK]
-  # [EN] ST values may be WW3 model base directories or executable directories
+  # [EN] ST values are executable directories on the server; directory names are unrestricted
   # [EN] Configure according to your actual server environment, example:
-  # ST 值可填写服务器上的 WW3 模型基础目录或可执行目录；ww3.st 从这些名称中选择一个
+  # ST 值是服务器上的可执行文件所在目录，目录名不限；ww3.st 从这些名称中选择一个
   # 请根据实际服务器环境自行配置，示例：
-  #   ST4: /path/to/your/ww3/model
+  #   ST4: /path/to/your/ww3/model/exe
   st: {}
   structured_bathymetry: [GEBCO, ETOP1, ETOP2]
   smc_bathymetry: [ETOPO1, ETOPO2, GEBCO]
