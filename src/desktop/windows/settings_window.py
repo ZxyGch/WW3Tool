@@ -10,9 +10,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QDesktopServices, QPainter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -21,6 +22,8 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QSizePolicy,
+    QStyle,
+    QStyleOptionButton,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -35,6 +38,7 @@ from qfluentwidgets import (
     SwitchButton,
     TextEdit,
 )
+from qfluentwidgets.components.widgets.check_box import CheckBoxIcon
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
@@ -149,6 +153,32 @@ _OUTPUT_VAR_LABELS = {
     "CFD": "方向平流最大CFL数 (CFD)",
     "CFK": "波数平流最大CFL数 (CFK)",
 }
+
+
+class _RightAlignedCheckBox(CheckBox):
+    """Fluent checkbox whose right border is painted fully inside the widget."""
+
+    def paintEvent(self, event) -> None:
+        QCheckBox.paintEvent(self, event)
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+
+        option = QStyleOptionButton()
+        option.initFrom(self)
+        rect = self.style().subElementRect(
+            QStyle.SubElement.SE_CheckBoxIndicator, option, self
+        ).adjusted(0, 0, -1, 0)
+
+        painter.setPen(self._borderColor())
+        painter.setBrush(self._backgroundColor())
+        painter.drawRoundedRect(rect, 4.5, 4.5)
+        if not self.isEnabled():
+            painter.setOpacity(0.8)
+        if self.checkState() == Qt.CheckState.Checked:
+            CheckBoxIcon.ACCEPT.render(painter, rect)
+        elif self.checkState() == Qt.CheckState.PartiallyChecked:
+            CheckBoxIcon.PARTIAL_ACCEPT.render(painter, rect)
+
 
 _INTEGER_CONFIG_KEYS = {
     "FREQ_NUM",
@@ -824,13 +854,13 @@ class SettingsInterface(QWidget):
         self._var_checks: dict[str, CheckBox] = {}
         for code in sorted(_OUTPUT_VAR_CODES):
             row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 1, 0)
+            row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(14)
             row.addWidget(
                 self._label(tr(f"var_{code.lower()}", _OUTPUT_VAR_LABELS.get(code, code)), word_wrap=False)
             )
             row.addStretch(1)
-            check = CheckBox("")
+            check = _RightAlignedCheckBox("")
             check.setFixedWidth(29)
             check.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             self._var_checks[code] = check
