@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QSizePolicy,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -665,15 +666,19 @@ class PlotInterface(QWidget):
         layout = self._card(tr("plotting_spectrum_card_title", "海浪二维方向谱绘图"))
 
         self._spectrum_table = EdgeAlignedTableWidget()
+        self._spectrum_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._spectrum_table.setColumnCount(3)
-        self._spectrum_table.setHorizontalHeaderLabels(
-            [tr("plotting_station", "站点"), tr("step3_longitude", "经度"), tr("step3_latitude", "纬度")]
-        )
+        self._spectrum_table.horizontalHeader().setVisible(False)
         self._spectrum_table.verticalHeader().setVisible(False)
         self._spectrum_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._spectrum_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._spectrum_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._spectrum_table.setBorderVisible(False)
+        self._spectrum_table.setWordWrap(False)
+        self._spectrum_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         for col in range(3):
             self._spectrum_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        self._set_spectrum_table_header()
         self._spectrum_table.expand_to_contents(minimum_height=120)
         self._spectrum_table.setVisible(False)  # [EN] Only shown after spectrum file is selected (aligned with src)
         # 选择谱文件后才显示（与 src 一致）
@@ -718,6 +723,21 @@ class PlotInterface(QWidget):
                 SUBDIR_DIRECTIONAL_SPECTRUM,
             ),
         )
+
+    def _set_spectrum_table_header(self) -> None:
+        if self._spectrum_table.rowCount() == 0:
+            self._spectrum_table.insertRow(0)
+        for column, title in enumerate(
+            (
+                tr("plotting_station", "站点"),
+                tr("step3_longitude", "经度"),
+                tr("step3_latitude", "纬度"),
+            )
+        ):
+            item = QTableWidgetItem(title)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            item.setData(Qt.ItemDataRole.UserRole, "header")
+            self._spectrum_table.setItem(0, column, item)
 
     def _on_spectrum_file_picked(self) -> None:
         # [EN] Select 2D spectrum file and auto-load station info into table.
@@ -770,14 +790,14 @@ class PlotInterface(QWidget):
                         station_names = []
 
                 self._spectrum_table.setRowCount(0)
+                self._set_spectrum_table_header()
                 for i in range(min(n_stations, len(lon), len(lat))):
                     row = self._spectrum_table.rowCount()
                     self._spectrum_table.insertRow(row)
-                    from PyQt6.QtWidgets import QTableWidgetItem
-                    self._spectrum_table.setItem(row, 0, QTableWidgetItem(f"{float(lon[i]):.6f}"))
-                    self._spectrum_table.setItem(row, 1, QTableWidgetItem(f"{float(lat[i]):.6f}"))
                     sname = station_names[i] if i < len(station_names) else str(i)
-                    self._spectrum_table.setItem(row, 2, QTableWidgetItem(sname))
+                    self._spectrum_table.setItem(row, 0, QTableWidgetItem(sname))
+                    self._spectrum_table.setItem(row, 1, QTableWidgetItem(f"{float(lon[i]):.6f}"))
+                    self._spectrum_table.setItem(row, 2, QTableWidgetItem(f"{float(lat[i]):.6f}"))
 
                 self._spectrum_table.expand_to_contents(minimum_height=120)
                 self._spectrum_table.setVisible(True)
@@ -834,7 +854,7 @@ class PlotInterface(QWidget):
 
     def spectrum_station(self) -> int:
         row = self._spectrum_table.currentRow()
-        return row if row >= 0 else 0
+        return row - 1 if row >= 1 else 0
 
     def jason3_lon_lat(self) -> list[float] | None:
         return self._collect_lon_lat(self._jason3_fields)
