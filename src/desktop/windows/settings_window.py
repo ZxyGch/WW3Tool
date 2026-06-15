@@ -852,13 +852,19 @@ class SettingsInterface(QWidget):
         layout.setSpacing(5)
         self._schemes = self._vm.output_schemes()
         self._var_checks: dict[str, CheckBox] = {}
+        options_layout = QVBoxLayout()
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        options_layout.setSpacing(3)
         for code in sorted(_OUTPUT_VAR_CODES):
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(14)
-            row.addWidget(
-                self._label(tr(f"var_{code.lower()}", _OUTPUT_VAR_LABELS.get(code, code)), word_wrap=False)
+            label = self._label(
+                tr(f"var_{code.lower()}", _OUTPUT_VAR_LABELS.get(code, code)),
+                word_wrap=False,
             )
+            label.setMinimumHeight(24)
+            row.addWidget(label)
             row.addStretch(1)
             check = _RightAlignedCheckBox("")
             check.setFixedWidth(29)
@@ -867,7 +873,8 @@ class SettingsInterface(QWidget):
             row.addWidget(check)
             row_widget = QWidget()
             row_widget.setLayout(row)
-            layout.addWidget(row_widget)
+            options_layout.addWidget(row_widget)
+        layout.addLayout(options_layout)
 
         form = QGridLayout()
         form.setContentsMargins(0, 0, 0, 0)
