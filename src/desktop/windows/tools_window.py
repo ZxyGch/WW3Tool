@@ -163,6 +163,8 @@ class ToolsInterface(QWidget):
         fast_label.mousePressEvent = lambda _event: self._merge_fast.toggle()
         self._merge_fast = CheckBox("")
         self._merge_fast.setChecked(False)
+        self._merge_fast.setFixedWidth(22)
+        self._merge_fast.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         fast_row = QHBoxLayout()
         fast_row.addWidget(fast_label)
         fast_row.addStretch(1)
