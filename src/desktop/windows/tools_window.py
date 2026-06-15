@@ -316,9 +316,7 @@ class ToolsInterface(QWidget):
             self._merge_table.setItem(0, column, item)
 
     def _resize_merge_table(self) -> None:
-        self._merge_table.resizeRowsToContents()
-        height = sum(self._merge_table.rowHeight(row) for row in range(self._merge_table.rowCount()))
-        self._merge_table.setFixedHeight(height + 2 * self._merge_table.frameWidth() + 2)
+        self._merge_table.expand_to_contents()
 
     def _start_merge(self) -> None:
         if not self._merge_analysis or not self._merge_analysis.valid:

@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import LineEdit, PrimaryPushButton, TableWidget
+from qfluentwidgets import LineEdit, PrimaryPushButton
 
 from ..components.header_card import create_header_card
 from ..components.table_widget import EdgeAlignedTableWidget
@@ -97,7 +97,7 @@ class ServerConnectPanel:
         vhdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self._cpu_table.setContentsMargins(0, 0, 0, 0)
         self._cpu_table.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self._cpu_table.setRowCount(0)
         self._cpu_table.setVisible(False)
@@ -199,12 +199,7 @@ class ServerConnectPanel:
                 item.setTextAlignment(align)
                 self._cpu_table.setItem(i, col, item)
 
-        self._cpu_table.resizeRowsToContents()
-        # [EN] Dynamic height
-        # 动态高度
-        total_h = sum(self._cpu_table.rowHeight(r) for r in range(self._cpu_table.rowCount()))
-        self._cpu_table.setMinimumHeight(max(60, total_h + 6))
-        self._cpu_table.setMaximumHeight(16777215)
+        self._cpu_table.expand_to_contents(minimum_height=60, extra_height=6)
         self._cpu_title.setVisible(True)
         self._cpu_table.setVisible(True)
 
@@ -302,7 +297,7 @@ class ServerConnectPanel:
                 sep.setStyleSheet("background-color: rgba(128,128,128,0.3);")
                 self._queue_layout.addWidget(sep)
 
-    def _create_task_card(self, task: dict) -> TableWidget:
+    def _create_task_card(self, task: dict) -> EdgeAlignedTableWidget:
         fields = [
             (tr("queue_jobid", "JobID:"), task.get("jobid", "")),
             (tr("queue_cpu", "CPU:"), task.get("partition", "")),
@@ -325,7 +320,6 @@ class ServerConnectPanel:
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         hdr.setStretchLastSection(True)
-        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         for row, (label, value) in enumerate(fields):
             lbl_item = QTableWidgetItem(label)
@@ -339,10 +333,7 @@ class ServerConnectPanel:
             table.setItem(row, 0, lbl_item)
             table.setItem(row, 1, val_item)
 
-        table.resizeRowsToContents()
-        total_h = sum(table.rowHeight(r) for r in range(table.rowCount()))
-        table.setMinimumHeight(max(80, total_h + 10))
-        table.setMaximumHeight(16777215)
+        table.expand_to_contents(minimum_height=80, extra_height=10)
         return table
 
     def _update_existing_queue_cards(self, tasks: list[dict]) -> None:
@@ -361,7 +352,7 @@ class ServerConnectPanel:
         for i in range(min(self._queue_layout.count(), len(tasks))):
             item = self._queue_layout.itemAt(i)
             widget = item.widget() if item else None
-            if not isinstance(widget, TableWidget):
+            if not isinstance(widget, EdgeAlignedTableWidget):
                 continue
             task = tasks[i]
             for row, (lbl, key) in enumerate(zip(labels, fields_keys)):
@@ -371,7 +362,7 @@ class ServerConnectPanel:
                 val_item = widget.item(row, 1)
                 if val_item:
                     val_item.setText(str(task.get(key, "")))
-            widget.resizeRowsToContents()
+            widget.expand_to_contents(minimum_height=80, extra_height=10)
 
     def _clear_queue_display(self) -> None:
         while self._queue_layout.count() > 0:

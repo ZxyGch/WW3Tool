@@ -674,7 +674,7 @@ class PlotInterface(QWidget):
         self._spectrum_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         for col in range(3):
             self._spectrum_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-        self._spectrum_table.setMinimumHeight(120)
+        self._spectrum_table.expand_to_contents(minimum_height=120)
         self._spectrum_table.setVisible(False)  # [EN] Only shown after spectrum file is selected (aligned with src)
         # 选择谱文件后才显示（与 src 一致）
         layout.addWidget(self._spectrum_table)
@@ -779,6 +779,7 @@ class PlotInterface(QWidget):
                     sname = station_names[i] if i < len(station_names) else str(i)
                     self._spectrum_table.setItem(row, 2, QTableWidgetItem(sname))
 
+                self._spectrum_table.expand_to_contents(minimum_height=120)
                 self._spectrum_table.setVisible(True)
         except Exception:
             pass

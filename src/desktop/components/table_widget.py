@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QSizePolicy
 from qfluentwidgets import TableWidget
 from qfluentwidgets.components.widgets.table_view import TableItemDelegate
 
@@ -26,3 +28,15 @@ class EdgeAlignedTableWidget(TableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setItemDelegate(_EdgeAlignedTableItemDelegate(self))
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def expand_to_contents(self, *, minimum_height: int = 0, extra_height: int = 2) -> None:
+        """Fix the table height to show every row without vertical scrolling."""
+        self.resizeRowsToContents()
+        rows_height = sum(self.rowHeight(row) for row in range(self.rowCount()))
+        header_height = (
+            self.horizontalHeader().height() if not self.horizontalHeader().isHidden() else 0
+        )
+        content_height = rows_height + header_height + 2 * self.frameWidth() + extra_height
+        self.setFixedHeight(max(minimum_height, content_height))

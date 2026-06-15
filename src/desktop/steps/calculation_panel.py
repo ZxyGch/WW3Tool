@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import ComboBox, TableWidget
+from qfluentwidgets import ComboBox
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
@@ -121,7 +121,7 @@ class CalculationStepPanel:
 
     def _build_points_block(
         self, create_button: Callable[[str, Callable[..., object]], object], kind: str
-    ) -> tuple[QWidget, TableWidget]:
+    ) -> tuple[QWidget, EdgeAlignedTableWidget]:
         block = QWidget()
         block.setContentsMargins(0, 0, 0, 0)
         block_layout = QVBoxLayout(block)
@@ -160,7 +160,7 @@ class CalculationStepPanel:
         block_layout.addWidget(create_button(tr(import_key, import_default), lambda: self._import(kind)))
         return block, table
 
-    def _set_header_row(self, table: TableWidget, kind: str) -> None:
+    def _set_header_row(self, table: EdgeAlignedTableWidget, kind: str) -> None:
         # [EN] Write header cells in row 0 (matching src: hide Qt column headers, use first row as header).
         """在第 0 行写入表头单元格（与 src 一致：隐藏 Qt 列头，用首行作表头）。"""
         if table.rowCount() == 0:
@@ -290,7 +290,7 @@ class CalculationStepPanel:
 
     # ── helpers ─────────────────────────────────────────────────────────────
 
-    def _table(self, kind: str) -> TableWidget:
+    def _table(self, kind: str) -> EdgeAlignedTableWidget:
         return self.track_table if kind == "track" else self.spectral_table
 
     def _selected_data_row(self, kind: str) -> int | None:
@@ -309,12 +309,10 @@ class CalculationStepPanel:
     def _count(self, kind: str) -> int:
         return max(0, self._table(kind).rowCount() - 1)
 
-    def _resize_table_to_content(self, table: TableWidget) -> None:
+    def _resize_table_to_content(self, table: EdgeAlignedTableWidget) -> None:
         # [EN] Fix table height to total row height so it fully expands with no scrollbar.
         """将表格高度固定为所有行的总高，使其完全展开、不出现滚动条。"""
-        table.resizeRowsToContents()
-        total = sum(table.rowHeight(r) for r in range(table.rowCount()))
-        table.setFixedHeight(total + 2 * table.frameWidth() + 2)
+        table.expand_to_contents()
 
     def _write_row(self, kind: str, row: int, point: dict) -> None:
         if kind == "track":
@@ -341,7 +339,7 @@ class CalculationStepPanel:
             }
         return {"lon": _to_float(cell(0)), "lat": _to_float(cell(1)), "name": cell(2)}
 
-    def _read_rows(self, table: TableWidget, *, numeric: tuple[int, ...]) -> list[list]:
+    def _read_rows(self, table: EdgeAlignedTableWidget, *, numeric: tuple[int, ...]) -> list[list]:
         rows: list[list] = []
         for row in range(1, table.rowCount()):  # [EN] Row 0 is the header
             # 第 0 行是表头
@@ -362,7 +360,7 @@ class CalculationStepPanel:
                 rows.append(cells)
         return rows
 
-    def _fill_table(self, table: TableWidget, kind: str, rows: list[list]) -> None:
+    def _fill_table(self, table: EdgeAlignedTableWidget, kind: str, rows: list[list]) -> None:
         table.setRowCount(0)
         self._set_header_row(table, kind)
         for row_values in rows:

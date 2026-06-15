@@ -1134,9 +1134,7 @@ def _make_table(headers: list[str], *, first_column_width: int | None = None) ->
 
 
 def _resize_table(table: EdgeAlignedTableWidget) -> None:
-    table.resizeRowsToContents()
-    total = sum(table.rowHeight(r) for r in range(table.rowCount()))
-    table.setFixedHeight(total + 2 * table.frameWidth() + 2)
+    table.expand_to_contents()
 
 
 def _as_text(value) -> str:
