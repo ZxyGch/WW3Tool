@@ -824,7 +824,7 @@ class SettingsInterface(QWidget):
         self._var_checks: dict[str, CheckBox] = {}
         for code in sorted(_OUTPUT_VAR_CODES):
             row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
+            row.setContentsMargins(0, 0, 1, 0)
             row.setSpacing(14)
             row.addWidget(
                 self._label(tr(f"var_{code.lower()}", _OUTPUT_VAR_LABELS.get(code, code)), word_wrap=False)
