@@ -74,6 +74,20 @@ def _resolve_wave_file(wave_file: Optional[str]) -> Optional[str]:
     return None
 
 
+def _resolve_figsize(cfg: WaveMapsConfig) -> tuple:
+    """figsize 未配置(None)时回退到 worker 默认 (16, 12)，避免 tuple(None) 崩溃。
+
+    [EN] Fall back to the worker default (16, 12) when figsize is unset (None),
+    avoiding a ``tuple(None)`` TypeError.
+    """
+    return tuple(cfg.figsize) if cfg.figsize else (16, 12)
+
+
+def _resolve_dpi(cfg: WaveMapsConfig) -> int:
+    """dpi 未配置(None)时回退到 worker 默认 300。[EN] Default dpi 300 when unset."""
+    return int(cfg.dpi) if cfg.dpi else 300
+
+
 def run_wave_maps(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,
@@ -103,8 +117,8 @@ def run_wave_maps(
         _make_wave_maps_worker,
         (str(result_folder), step_hours),
         kwargs={
-            "FIGSIZE": tuple(cfg.figsize),
-            "DPI": cfg.dpi,
+            "FIGSIZE": _resolve_figsize(cfg),
+            "DPI": _resolve_dpi(cfg),
             "generate_video": cfg.generate_video,
             "show_land_coastline": cfg.show_land_coastline,
             "output_folder": output_folder,
@@ -166,8 +180,8 @@ def run_contour_maps(
         _make_contour_maps_worker,
         (str(result_folder), step_hours),
         kwargs={
-            "FIGSIZE": tuple(cfg.figsize),
-            "DPI": cfg.dpi,
+            "FIGSIZE": _resolve_figsize(cfg),
+            "DPI": _resolve_dpi(cfg),
             "show_land_coastline": cfg.show_land_coastline,
             "output_folder": output_folder,
             "wave_height_file": _resolve_wave_file(wave_file),
@@ -240,8 +254,8 @@ def run_wind_swell_maps(
             _make_wave_maps_worker,
             (str(result_folder), step_hours),
             kwargs={
-                "FIGSIZE": tuple(cfg.figsize),
-                "DPI": cfg.dpi,
+                "FIGSIZE": _resolve_figsize(cfg),
+                "DPI": _resolve_dpi(cfg),
                 "generate_video": False,
                 "show_land_coastline": cfg.show_land_coastline,
                 "output_folder": output_folder,
@@ -318,8 +332,8 @@ def run_wave_video(
         _make_wave_maps_worker,
         (str(result_folder), step_hours),
         kwargs={
-            "FIGSIZE": tuple(cfg.figsize),
-            "DPI": cfg.dpi,
+            "FIGSIZE": _resolve_figsize(cfg),
+            "DPI": _resolve_dpi(cfg),
             "generate_video": True,
             "show_land_coastline": cfg.show_land_coastline,
             "output_folder": output_folder,
