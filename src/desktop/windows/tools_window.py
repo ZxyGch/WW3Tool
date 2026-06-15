@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from qfluentwidgets import CheckBox, LineEdit, PrimaryPushButton, TableWidget
+from qfluentwidgets.components.widgets.table_view import TableItemDelegate
 
 from ..background_runner import BackgroundRunner
 from ..components.header_card import create_header_card
@@ -35,6 +36,20 @@ from workflows.infrastructure.forcing.merge_service import (
     merge_forcing_netcdf,
 )
 from workflows.support.translations import tr
+
+
+class _EdgeAlignedTableItemDelegate(TableItemDelegate):
+    """Keep Fluent table styling while removing its four-pixel outer row inset."""
+
+    def _drawBackground(self, painter, option, index) -> None:
+        radius = 5
+        last_column = index.model().columnCount(index.parent()) - 1
+        if index.column() == 0:
+            painter.drawRoundedRect(option.rect.adjusted(0, 0, radius + 1, 0), radius, radius)
+        elif index.column() == last_column:
+            painter.drawRoundedRect(option.rect.adjusted(-radius - 1, 0, 0, 0), radius, radius)
+        else:
+            painter.drawRect(option.rect.adjusted(-1, 0, 1, 0))
 
 
 class ToolsInterface(QWidget):
@@ -119,6 +134,7 @@ class ToolsInterface(QWidget):
     def _build_merge_form(self, layout: QVBoxLayout) -> None:
         layout.setSpacing(5)
         self._merge_table = TableWidget()
+        self._merge_table.setItemDelegate(_EdgeAlignedTableItemDelegate(self._merge_table))
         self._merge_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._merge_table.setColumnCount(3)
         self._merge_table.horizontalHeader().setVisible(False)
