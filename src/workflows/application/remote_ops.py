@@ -281,38 +281,129 @@ def run_queue_status(
             c.close()
 
 
+def _parse_sacct_cpu_data(out: str) -> list:
+    """解析 sacct -a -s RUNNING 输出，按用户聚合 CPU / 节点 / 最长运行时间。
+
+    Returns:
+        ``[[user, cpus, nodes, elapsed], ...]`` 按 CPU 数降序。
+    """
+    user_data: dict = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("|")
+        if len(parts) < 5:
+            continue
+        jobid, user, cpus_str, elapsed, nodelist = (
+            parts[0].strip(),
+            parts[1].strip(),
+            parts[2].strip(),
+            parts[3].strip(),
+            parts[4].strip(),
+        )
+        # [EN] Skip sub-job entries (.batch, .ext+, .0, etc.)
+        # 跳过子作业条目
+        if "." in jobid:
+            continue
+        try:
+            cpus = int(cpus_str)
+        except ValueError:
+            continue
+        # [EN] Count nodes from compressed notation (e.g. node[1-4] → 4)
+        # 从压缩记号计算节点数
+        node_count = _count_nodes(nodelist)
+        if user not in user_data:
+            user_data[user] = {
+                "cpus": 0,
+                "nodes": 0,
+                "elapsed": elapsed,
+                "elapsed_sec": _elapsed_to_seconds(elapsed),
+            }
+        user_data[user]["cpus"] += cpus
+        user_data[user]["nodes"] += node_count
+        sec = _elapsed_to_seconds(elapsed)
+        if sec > user_data[user]["elapsed_sec"]:
+            user_data[user]["elapsed"] = elapsed
+            user_data[user]["elapsed_sec"] = sec
+    result = []
+    for user, data in sorted(
+        user_data.items(), key=lambda x: x[1]["cpus"], reverse=True
+    ):
+        result.append([user, str(data["cpus"]), str(data["nodes"]), data["elapsed"]])
+    return result
+
+
+def _count_nodes(nodelist: str) -> int:
+    """从 Slurm 压缩节点列表计算节点数。如 ``node[1-4,7]`` → 5。"""
+    import re
+
+    if not nodelist or nodelist == "None":
+        return 0
+    total = 0
+    # [EN] Split by comma outside brackets
+    # 按括号外的逗号拆分
+    parts = re.split(r",(?![^\[]*\])", nodelist)
+    for part in parts:
+        m = re.search(r"\[([^\]]+)\]", part)
+        if m:
+            ranges = m.group(1).split(",")
+            for r in ranges:
+                if "-" in r:
+                    lo, hi = r.split("-", 1)
+                    try:
+                        total += int(hi) - int(lo) + 1
+                    except ValueError:
+                        total += 1
+                else:
+                    total += 1
+        else:
+            total += 1
+    return total
+
+
+def _elapsed_to_seconds(elapsed: str) -> int:
+    """将 Slurm elapsed 字符串 (D-HH:MM:SS 或 HH:MM:SS) 转换为秒数。"""
+    try:
+        days = 0
+        if "-" in elapsed:
+            d_str, elapsed = elapsed.split("-", 1)
+            days = int(d_str)
+        parts = elapsed.split(":")
+        if len(parts) == 3:
+            return days * 86400 + int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        elif len(parts) == 2:
+            return days * 86400 + int(parts[0]) * 60 + int(parts[1])
+        return days * 86400
+    except (ValueError, IndexError):
+        return 0
+
+
 def run_cpu_ranking(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,
     *,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """获取远程服务器 CPU 占用排行（top 5 进程）。
+    """获取集群运行中作业的 CPU 占用情况（sacct -a -s RUNNING），按用户聚合。
 
     Returns:
-        ``data`` 字段为 ``[[pid, user, cpu%], ...]`` 列表。
+        ``data`` 字段为 ``[[user, cpus, nodes, elapsed], ...]`` 列表，按 CPU 数降序。
     """
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
     try:
         if owns:
             c.connect(log=logger.log)
-        out, err, _ = c.exec_command(
-            "ps -eo pid,user,pcpu --sort=-pcpu | head -n 6", timeout=10
-        )
+        cmd = "sacct -a -s RUNNING -P -n --format=JobID,User,AllocCPUS,Elapsed,NodeList"
+        out, err, _ = c.exec_command(cmd, timeout=10)
         if err:
-            logger.log(tr("cpu_cmd_error", "⚠️ CPU 命令错误: {error}").format(error=err))
+            logger.log(tr("cpu_cmd_error", "⚠️ sacct 命令错误: {error}").format(error=err))
             return RemoteResult(success=False, error=err, data=[], messages=list(logger.messages))
-        lines = [ln for ln in out.splitlines() if ln.strip()]
-        # 去掉表头
-        data = []
-        for line in lines[1:]:
-            parts = line.split()
-            if len(parts) >= 3:
-                data.append([parts[0], parts[1], parts[2]])
+        data = _parse_sacct_cpu_data(out)
         return RemoteResult(success=True, data=data, messages=list(logger.messages))
     except Exception as exc:
-        logger.log(tr("cpu_fetch_failed", "❌ 获取 CPU 排行失败：{error}").format(error=exc))
+        logger.log(tr("cpu_fetch_failed", "❌ 获取集群作业信息失败：{error}").format(error=exc))
         return RemoteResult(success=False, error=str(exc), data=[], messages=list(logger.messages))
     finally:
         if owns:
@@ -357,10 +448,10 @@ def run_server_status(
     *,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """单次 SSH 连接同时获取 CPU 排行和任务队列，减少连接开销。
+    """单次 SSH 连接同时获取集群作业和任务队列，减少连接开销。
 
     Returns:
-        ``data`` 为 ``{"cpu": [[pid, user, cpu%], ...], "queue": [line, ...]}``。
+        ``data`` 为 ``{"cpu": [[user, cpus, nodes, elapsed], ...], "queue": [line, ...]}``。
     """
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
@@ -368,16 +459,15 @@ def run_server_status(
         if owns:
             c.connect(log=logger.log)
 
-        # CPU 排行
-        cpu_out, cpu_err, _ = c.exec_command(
-            "ps -eo pid,user,pcpu --sort=-pcpu | head -n 6", timeout=10
+        # [EN] Cluster running jobs (sacct, per-user aggregation)
+        # 集群运行中作业（sacct，按用户聚合）
+        sacct_out, sacct_err, _ = c.exec_command(
+            "sacct -a -s RUNNING -P -n --format=JobID,User,AllocCPUS,Elapsed,NodeList",
+            timeout=10,
         )
         cpu_data: list = []
-        if not cpu_err:
-            for line in cpu_out.splitlines()[1:]:
-                parts = line.split()
-                if len(parts) >= 3:
-                    cpu_data.append([parts[0], parts[1], parts[2]])
+        if not sacct_err:
+            cpu_data = _parse_sacct_cpu_data(sacct_out)
 
         # 任务队列
         q_out, q_err, _ = c.exec_command(

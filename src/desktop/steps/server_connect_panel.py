@@ -1,9 +1,9 @@
 """第五步：连接服务器 面板（主页步骤区）。
 
-连接后内嵌显示 CPU 占用排行和任务队列，仿照 src 旧版实现。
+连接后内嵌显示集群作业运行情况和任务队列，仿照 src 旧版实现。
 
 [EN] Step 5: Connect to server panel (home step area).
-After connecting, embedded CPU usage ranking and task queue are displayed, following the src legacy implementation.
+After connecting, embedded cluster job overview and task queue are displayed, following the src legacy implementation.
 """
 
 from __future__ import annotations
@@ -44,8 +44,8 @@ _ACTIVE_STATES = {"RUNNING", "PENDING", "COMPLETING", "CONFIGURING", "SUSPENDED"
 
 
 class ServerConnectPanel:
-    # [EN] Connect to server + CPU ranking + task queue + cancel task.
-    """连接服务器 + CPU 排行 + 任务队列 + 取消任务。"""
+    # [EN] Connect to server + cluster jobs + task queue + cancel task.
+    """连接服务器 + 集群作业 + 任务队列 + 取消任务。"""
 
     def __init__(
         self,
@@ -69,19 +69,22 @@ class ServerConnectPanel:
         self.connect_button = create_button(tr("step6_connect", "连接服务器"), connect)
         layout.addWidget(self.connect_button)
 
-        # [EN] ── CPU usage ranking title ────────────────────────────────────────────
-        # ── CPU 占用排行标题 ────────────────────────────────────────────
+        # [EN] ── Cluster jobs title ────────────────────────────────────────────
+        # ── 集群作业标题 ────────────────────────────────────────────
         self._cpu_title = self._build_section_title(
-            tr("step6_cpu_ranking", "CPU 占用排行")
+            tr("step6_cluster_jobs", "集群作业")
         )
         layout.addWidget(self._cpu_title)
 
-        # [EN] ── CPU usage ranking table ────────────────────────────────────────────
-        # ── CPU 占用排行表格 ────────────────────────────────────────────
+        # [EN] ── Cluster jobs table ────────────────────────────────────────────
+        # ── 集群作业表格 ────────────────────────────────────────────
         self._cpu_table = EdgeAlignedTableWidget()
-        self._cpu_table.setColumnCount(3)
-        self._cpu_table.setHorizontalHeaderLabels(["PID", "USER", "CPU%"])
-        self._cpu_table.horizontalHeader().setVisible(False)
+        self._cpu_table.setColumnCount(4)
+        self._cpu_table.setHorizontalHeaderLabels(
+            [tr("cluster_col_user", "用户"), tr("cluster_col_cpus", "CPU数"),
+             tr("cluster_col_nodes", "节点"), tr("cluster_col_elapsed", "已运行")]
+        )
+        self._cpu_table.horizontalHeader().setVisible(True)
         self._cpu_table.verticalHeader().setVisible(False)
         self._cpu_table.setBorderVisible(False)
         self._cpu_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -90,8 +93,9 @@ class ServerConnectPanel:
         hdr = self._cpu_table.horizontalHeader()
         hdr.setStretchLastSection(True)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         vhdr = self._cpu_table.verticalHeader()
         vhdr.setVisible(False)
         vhdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
@@ -163,37 +167,29 @@ class ServerConnectPanel:
             self._hide_cpu_and_queue()
 
     def update_cpu_table(self, rows: list) -> None:
-        # [EN] Update CPU ranking table. rows: [[pid, user, cpu%], ...]
-        """更新 CPU 排行表格。rows: [[pid, user, cpu%], ...]"""
+        # [EN] Update cluster jobs table. rows: [[user, cpus, nodes, elapsed], ...]
+        """更新集群作业表格。rows: [[user, cpus, nodes, elapsed], ...]"""
         valid = []
         for row in rows:
             parts = [str(p) for p in row] if isinstance(row, (list, tuple)) else str(row).split()
-            if len(parts) >= 3:
-                try:
-                    int(parts[0])
-                    valid.append(parts[:3])
-                except ValueError:
-                    continue
+            if len(parts) >= 4:
+                valid.append(parts[:4])
         if not valid:
             self._cpu_table.setRowCount(0)
             self._cpu_title.setVisible(False)
             self._cpu_table.setVisible(False)
             return
 
-        # [EN] Header + data rows
-        # 表头 + 数据行
-        self._cpu_table.setRowCount(len(valid) + 1)
-        for col, text in enumerate(["PID", "USER", "CPU%"]):
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-            self._cpu_table.setItem(0, col, item)
-
-        for i, parts in enumerate(valid, start=1):
-            aligns = [
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            ]
+        self._cpu_table.setRowCount(len(valid))
+        # [EN] Column alignment: User(left), CPUs(right), Nodes(center), Elapsed(right)
+        # 列对齐：用户(左), CPU数(右), 节点(居中), 已运行(右)
+        aligns = [
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        ]
+        for i, parts in enumerate(valid):
             for col, (text, align) in enumerate(zip(parts, aligns)):
                 item = QTableWidgetItem(str(text))
                 item.setTextAlignment(align)
