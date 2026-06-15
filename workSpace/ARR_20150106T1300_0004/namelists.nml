@@ -92,7 +92,7 @@
   USSP = 0,
   IUSSP = 1,
   STK_WN(1) = 0.0628318531,
-  E3D = 0,
+  E3D = 1,
   I1E3D = 1,
   I2E3D = 32,
   TH1MF = 0,
