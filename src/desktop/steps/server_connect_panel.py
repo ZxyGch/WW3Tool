@@ -84,7 +84,7 @@ class ServerConnectPanel:
             [tr("cluster_col_user", "用户"), tr("cluster_col_cpus", "CPU数"),
              tr("cluster_col_nodes", "节点"), tr("cluster_col_elapsed", "已运行")]
         )
-        self._cpu_table.horizontalHeader().setVisible(True)
+        self._cpu_table.horizontalHeader().setVisible(False)
         self._cpu_table.verticalHeader().setVisible(False)
         self._cpu_table.setBorderVisible(False)
         self._cpu_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -180,7 +180,22 @@ class ServerConnectPanel:
             self._cpu_table.setVisible(False)
             return
 
-        self._cpu_table.setRowCount(len(valid))
+        # [EN] Manual header row (row 0) + data rows, matching original style
+        # 手动表头行（第 0 行）+ 数据行，与原有风格一致
+        header_labels = [
+            tr("cluster_col_user", "用户"),
+            tr("cluster_col_cpus", "CPU数"),
+            tr("cluster_col_nodes", "节点"),
+            tr("cluster_col_elapsed", "已运行"),
+        ]
+        self._cpu_table.setRowCount(len(valid) + 1)
+        for col, text in enumerate(header_labels):
+            item = QTableWidgetItem(text)
+            item.setTextAlignment(
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+            )
+            self._cpu_table.setItem(0, col, item)
+
         # [EN] Column alignment: User(left), CPUs(right), Nodes(center), Elapsed(right)
         # 列对齐：用户(左), CPU数(右), 节点(居中), 已运行(右)
         aligns = [
@@ -189,7 +204,7 @@ class ServerConnectPanel:
             Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         ]
-        for i, parts in enumerate(valid):
+        for i, parts in enumerate(valid, start=1):
             for col, (text, align) in enumerate(zip(parts, aligns)):
                 item = QTableWidgetItem(str(text))
                 item.setTextAlignment(align)
