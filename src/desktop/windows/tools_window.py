@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import CheckBox, LineEdit, PrimaryPushButton, PushButton, TableWidget
+from qfluentwidgets import CheckBox, LineEdit, PrimaryPushButton, TableWidget
 
 from ..background_runner import BackgroundRunner
 from ..components.header_card import create_header_card
@@ -110,33 +110,33 @@ class ToolsInterface(QWidget):
         return button
 
     @staticmethod
-    def _small_button(text: str, handler: Callable[[], None]) -> PushButton:
-        button = PushButton(text)
+    def _small_button(text: str, handler: Callable[[], None]) -> PrimaryPushButton:
+        button = PrimaryPushButton(text)
+        button.setStyleSheet(styles.button_style())
         button.clicked.connect(handler)
         return button
 
     def _build_merge_form(self, layout: QVBoxLayout) -> None:
+        layout.setSpacing(5)
         self._merge_table = TableWidget()
+        self._merge_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._merge_table.setColumnCount(3)
-        self._merge_table.setHorizontalHeaderLabels(
-            [
-                tr("merge_inline_col_filename", "文件"),
-                tr("merge_inline_col_fields", "强迫场"),
-                tr("merge_inline_col_time", "时间范围"),
-            ]
-        )
+        self._merge_table.horizontalHeader().setVisible(False)
+        self._merge_table.verticalHeader().setVisible(False)
         self._merge_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._merge_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._merge_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self._merge_table.setBorderVisible(True)
+        self._merge_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._merge_table.setBorderVisible(False)
         self._merge_table.setWordWrap(False)
-        self._merge_table.verticalHeader().setVisible(False)
+        self._merge_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._merge_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         header = self._merge_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self._merge_table.setColumnWidth(0, 160)
-        self._merge_table.setMinimumHeight(150)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._set_merge_table_header()
+        self._resize_merge_table()
         layout.addWidget(self._merge_table)
 
         file_buttons = QHBoxLayout()
@@ -202,15 +202,18 @@ class ToolsInterface(QWidget):
 
     def _remove_merge_files(self) -> None:
         rows = {index.row() for index in self._merge_table.selectedIndexes()}
-        if not rows:
+        data_rows = {row - 1 for row in rows if row >= 1}
+        if not data_rows:
             return
-        self._merge_paths = [path for index, path in enumerate(self._merge_paths) if index not in rows]
+        self._merge_paths = [path for index, path in enumerate(self._merge_paths) if index not in data_rows]
         self._analyze_merge_files()
 
     def _clear_merge_files(self) -> None:
         self._merge_paths.clear()
         self._merge_analysis = None
-        self._merge_table.setRowCount(0)
+        self._merge_table.setRowCount(1)
+        self._set_merge_table_header()
+        self._resize_merge_table()
         self._merge_output.clear()
         self._merge_progress.hide()
         self._merge_progress.setValue(0)
@@ -244,7 +247,9 @@ class ToolsInterface(QWidget):
 
     def _analyze_merge_files(self) -> None:
         self._merge_analysis = None
-        self._merge_table.setRowCount(0)
+        self._merge_table.setRowCount(1)
+        self._set_merge_table_header()
+        self._resize_merge_table()
         if not self._merge_paths:
             self._clear_merge_files()
             return
@@ -265,7 +270,8 @@ class ToolsInterface(QWidget):
         if not isinstance(analysis, MergeAnalysis):
             return
         self._merge_analysis = analysis
-        self._merge_table.setRowCount(0)
+        self._merge_table.setRowCount(1)
+        self._set_merge_table_header()
         for info in analysis.files:
             row = self._merge_table.rowCount()
             self._merge_table.insertRow(row)
@@ -274,6 +280,7 @@ class ToolsInterface(QWidget):
                 item = QTableWidgetItem(value)
                 item.setToolTip(info.error or info.path)
                 self._merge_table.setItem(row, column, item)
+        self._resize_merge_table()
         if not analysis.valid:
             self._merge_log_received.emit(
                 tr("tools_merge_failed", "合并失败：{error}").format(
@@ -288,6 +295,26 @@ class ToolsInterface(QWidget):
                 )
             )
         self._set_merge_busy(False)
+
+    def _set_merge_table_header(self) -> None:
+        if self._merge_table.rowCount() == 0:
+            self._merge_table.insertRow(0)
+        for column, title in enumerate(
+            (
+                tr("merge_inline_col_filename", "文件"),
+                tr("merge_inline_col_fields", "强迫场"),
+                tr("merge_inline_col_time", "时间范围"),
+            )
+        ):
+            item = QTableWidgetItem(title)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            item.setData(Qt.ItemDataRole.UserRole, "header")
+            self._merge_table.setItem(0, column, item)
+
+    def _resize_merge_table(self) -> None:
+        self._merge_table.resizeRowsToContents()
+        height = sum(self._merge_table.rowHeight(row) for row in range(self._merge_table.rowCount()))
+        self._merge_table.setFixedHeight(height + 2 * self._merge_table.frameWidth() + 2)
 
     def _start_merge(self) -> None:
         if not self._merge_analysis or not self._merge_analysis.valid:
