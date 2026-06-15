@@ -356,9 +356,8 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
             )
             if is_smc:
                 log(tr("plotting_smc_cell_render", "🧩 检测到 SMC 网格，绘图将按 grid_cell.dat 格块直接填色"))
-            if generate_video:
-                log(tr("plotting_smc_video_skip", "⚠️ SMC 网格暂不支持视频生成，将仅输出图片"))
-                generate_video = False
+            if generate_video and not is_smc:
+                log(tr("plotting_unst_video_slow", "🎬 非结构网格视频需逐帧重绘三角网，耗时较长，请耐心等待"))
 
         # ------------------------
         # 数据维度整理
@@ -720,14 +719,17 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                 continue
 
             if is_pointwise:
-                if is_smc and pc is not None:
-                    pc.set_array(np.ma.masked_invalid(Hs_now))
-                else:
-                    # 移除上一帧的 tricontourf（兼容无 .collections 的 matplotlib）
-                    remove_tricontourf_artist(smc_tcf)
-                    Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
-                    smc_tcf = ax.tricontourf(tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
-                                             cmap=cm.turbo, vmin=vmin, vmax=vmax)
+                # 生成视频时不在此处绘制（由下方视频块逐帧重绘），避免重复且昂贵的三角网渲染
+                # [EN] Skip drawing here for video; the video block redraws per frame.
+                if not generate_video:
+                    if is_smc and pc is not None:
+                        pc.set_array(np.ma.masked_invalid(Hs_now))
+                    else:
+                        # 移除上一帧的 tricontourf（兼容无 .collections 的 matplotlib）
+                        remove_tricontourf_artist(smc_tcf)
+                        Hs_plot = np.where(np.isfinite(Hs_now), Hs_now, vmin)
+                        smc_tcf = ax.tricontourf(tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
+                                                 cmap=cm.turbo, vmin=vmin, vmax=vmax)
             else:
                 # 超快速上采样（cv2 比 scipy 快 5～20 倍）
                 if UPSAMPLE_FACTOR > 1:
@@ -784,6 +786,24 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                     video_path = os.path.join(photo_folder, f"{prefix}_anim.mp4")
                     writer = animation.FFMpegWriter(fps=5, metadata={"artist": "WW3Tool"})
                     steps_per_interval = 5  # 每两个时间步之间插值帧数（不含下一关键帧）
+
+                    # 逐帧更新填色对象：结构化更新 pcolormesh；SMC 更新 PolyCollection；
+                    # 非结构重绘 tricontourf。[EN] per-frame field update by grid type.
+                    _tcf_holder = [smc_tcf]
+
+                    def _set_video_frame(arr):
+                        if is_pointwise:
+                            if is_smc and pc is not None:
+                                pc.set_array(np.ma.masked_invalid(arr))
+                            else:
+                                remove_tricontourf_artist(_tcf_holder[0])
+                                Hs_plot = np.where(np.isfinite(arr), arr, vmin)
+                                _tcf_holder[0] = ax.tricontourf(
+                                    tri, Hs_plot, levels=20, transform=ccrs.PlateCarree(),
+                                    cmap=cm.turbo, vmin=vmin, vmax=vmax)
+                        else:
+                            pcm.set_array(arr.ravel())
+
                     with writer.saving(fig, video_path, DPI):
                         for i in range(len(hs_frames) - 1):
                             frame_a = hs_frames[i]
@@ -792,19 +812,19 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
                             t_b = frame_times[i + 1]
                             wind_info_a = wind_infos[i] if i < len(wind_infos) else ""
                             # 当前关键帧
-                            pcm.set_array(frame_a.ravel())
+                            _set_video_frame(frame_a)
                             ax.set_title(f"{varlabel}  {t_a.strftime('%H:%M UTC')}{wind_info_a}", fontsize=14)
                             writer.grab_frame()
                             # 插值帧
                             for s in range(1, steps_per_interval):
                                 alpha = s / steps_per_interval
                                 interp = frame_a * (1 - alpha) + frame_b * alpha
-                                pcm.set_array(interp.ravel())
+                                _set_video_frame(interp)
                                 t_interp = t_a + (t_b - t_a) * alpha
                                 ax.set_title(f"{varlabel}  {t_interp.strftime('%H:%M UTC')}{wind_info_a}", fontsize=14)
                                 writer.grab_frame()
                         # 最后一帧
-                        pcm.set_array(hs_frames[-1].ravel())
+                        _set_video_frame(hs_frames[-1])
                         wind_last = wind_infos[-1] if len(wind_infos) > 0 else ""
                         ax.set_title(f"{varlabel}  {frame_times[-1].strftime('%H:%M UTC')}{wind_last}", fontsize=14)
                         writer.grab_frame()
