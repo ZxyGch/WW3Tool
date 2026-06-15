@@ -259,8 +259,6 @@ def _st_presets(value: Any) -> Dict[str, str]:
         executable_dir = str(path).strip()
         if not st_name or not executable_dir:
             raise ConfigError("presets.st 的名称和路径均不能为空")
-        if Path(executable_dir.rstrip("/")).name.lower() != "exe":
-            raise ConfigError(f"presets.st.{st_name} 必须填写以 /exe 结尾的可执行目录路径")
         result[st_name] = executable_dir.rstrip("/")
     return result
 
@@ -989,11 +987,11 @@ presets:
       SXY, TWO, BHD, FOC, TUS, USS, P2S, USF, P2L, TWI, FIC, USP, TOC,
       ABR, UBR, BED, FBB, TBB, MSS, MSC, MSD, MCD, QP, QKK, SKW, EMB,
       DTD, FC, CFX, CFD, CFK]
-  # [EN] ST values are executable directories on the server (ending with /exe); ww3.st selects one of these names
+  # [EN] ST values may be WW3 model base directories or executable directories
   # [EN] Configure according to your actual server environment, example:
-  # ST 值是服务器上的可执行文件目录（以 /exe 结尾）；ww3.st 从这些名称中选择一个
+  # ST 值可填写服务器上的 WW3 模型基础目录或可执行目录；ww3.st 从这些名称中选择一个
   # 请根据实际服务器环境自行配置，示例：
-  #   ST4: /path/to/your/ww3/model/exe
+  #   ST4: /path/to/your/ww3/model
   st: {}
   structured_bathymetry: [GEBCO, ETOP1, ETOP2]
   smc_bathymetry: [ETOPO1, ETOPO2, GEBCO]

@@ -10,6 +10,16 @@ from ..runtime_config import PUBLIC_DIR, load_full_config
 from .nml_primitives import NMLPrimitives
 
 
+def _st_executable_dir(path: str) -> str:
+    """兼容 ST 模型基础目录和已经指向 ``exe`` 的可执行目录。"""
+    cleaned = str(path or "").strip().rstrip("/\\")
+    if not cleaned:
+        return ""
+    if cleaned.replace("\\", "/").rsplit("/", 1)[-1].lower() == "exe":
+        return cleaned
+    return f"{cleaned}/exe"
+
+
 class ServerSh(NMLPrimitives):
     """Mixin: server.sh and SLURM parameter operations."""
 
@@ -444,7 +454,7 @@ class ServerSh(NMLPrimitives):
 
             # [EN] Build ST version path line
             # 构建 ST 版本路径行
-            st_path_line = f"{st_path}/exe"
+            st_path_line = _st_executable_dir(st_path)
             st_comment = f"#wavewatch3--{st_name}\n"
             st_export = f"export PATH={st_path_line}:$PATH\n"
 
@@ -638,8 +648,9 @@ class ServerSh(NMLPrimitives):
             # [EN] Update executable file paths
             # 更新可执行文件路径
             if base_dir:
-                exe_grid = f"{base_dir}/exe/ww3_grid\n"
-                exe_prnc = f"{base_dir}/exe/ww3_prnc\n"
+                executable_dir = _st_executable_dir(base_dir)
+                exe_grid = f"{executable_dir}/ww3_grid\n"
+                exe_prnc = f"{executable_dir}/ww3_prnc\n"
                 for i, s in enumerate(lines):
                     st = s.strip()
                     if not st or st.startswith("#"):
