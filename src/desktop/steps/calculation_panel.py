@@ -43,6 +43,7 @@ from qfluentwidgets import ComboBox, TableWidget
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.point_edit_dialog import PointEditDialog
+from ..components.table_widget import EdgeAlignedTableWidget
 from . import point_io
 from workflows.domain.config_models import CalcConfig
 from workflows.support.translations import tr
@@ -128,7 +129,7 @@ class CalculationStepPanel:
         block_layout.setSpacing(10)
 
         headers = self._headers(kind)
-        table = TableWidget()
+        table = EdgeAlignedTableWidget()
         table.setContentsMargins(0, 0, 0, 0)
         table.setColumnCount(len(headers))
         table.horizontalHeader().setVisible(False)

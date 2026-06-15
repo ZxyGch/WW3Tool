@@ -32,10 +32,11 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton, TableWidget
+from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
+from ..components.table_widget import EdgeAlignedTableWidget
 from ..components import styles
 from ..components.styles import is_dark
 from ..components.scroll_area import NoHScrollArea
@@ -663,7 +664,7 @@ class PlotInterface(QWidget):
     def _build_spectrum_card(self, run_spectrum_all, run_spectrum_selected, run_spectrum_map) -> None:
         layout = self._card(tr("plotting_spectrum_card_title", "海浪二维方向谱绘图"))
 
-        self._spectrum_table = TableWidget()
+        self._spectrum_table = EdgeAlignedTableWidget()
         self._spectrum_table.setColumnCount(3)
         self._spectrum_table.setHorizontalHeaderLabels(
             [tr("plotting_station", "站点"), tr("step3_longitude", "经度"), tr("step3_latitude", "纬度")]

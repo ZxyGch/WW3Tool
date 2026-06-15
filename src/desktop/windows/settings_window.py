@@ -33,12 +33,12 @@ from qfluentwidgets import (
     MessageBoxBase,
     PrimaryPushButton,
     SwitchButton,
-    TableWidget,
     TextEdit,
 )
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
+from ..components.table_widget import EdgeAlignedTableWidget
 from ..components import styles
 from ..components.validators import double_validator, int_validator
 from ..view_models.settings import SettingsViewModel
@@ -1102,8 +1102,8 @@ class _CpuGroupDialog(MessageBoxBase):
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _make_table(headers: list[str], *, first_column_width: int | None = None) -> TableWidget:
-    table = TableWidget()
+def _make_table(headers: list[str], *, first_column_width: int | None = None) -> EdgeAlignedTableWidget:
+    table = EdgeAlignedTableWidget()
     table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     table.setColumnCount(len(headers))
     table.horizontalHeader().setVisible(False)
@@ -1133,7 +1133,7 @@ def _make_table(headers: list[str], *, first_column_width: int | None = None) ->
     return table
 
 
-def _resize_table(table: TableWidget) -> None:
+def _resize_table(table: EdgeAlignedTableWidget) -> None:
     table.resizeRowsToContents()
     total = sum(table.rowHeight(r) for r in range(table.rowCount()))
     table.setFixedHeight(total + 2 * table.frameWidth() + 2)

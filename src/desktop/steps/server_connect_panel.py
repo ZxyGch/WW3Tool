@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 from qfluentwidgets import LineEdit, PrimaryPushButton, TableWidget
 
 from ..components.header_card import create_header_card
+from ..components.table_widget import EdgeAlignedTableWidget
 from workflows.support.translations import tr
 
 _TITLE_KEY = "step6_title"
@@ -77,7 +78,7 @@ class ServerConnectPanel:
 
         # [EN] ── CPU usage ranking table ────────────────────────────────────────────
         # ── CPU 占用排行表格 ────────────────────────────────────────────
-        self._cpu_table = TableWidget()
+        self._cpu_table = EdgeAlignedTableWidget()
         self._cpu_table.setColumnCount(3)
         self._cpu_table.setHorizontalHeaderLabels(["PID", "USER", "CPU%"])
         self._cpu_table.horizontalHeader().setVisible(False)
@@ -311,7 +312,7 @@ class ServerConnectPanel:
             (tr("queue_node_num", "节点数:"), task.get("nodes", "")),
             (tr("queue_node_list", "节点列表:"), task.get("nodelist", "")),
         ]
-        table = TableWidget()
+        table = EdgeAlignedTableWidget()
         table.setColumnCount(2)
         table.setRowCount(len(fields))
         table.horizontalHeader().setVisible(False)
