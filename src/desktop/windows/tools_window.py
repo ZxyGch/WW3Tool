@@ -166,6 +166,7 @@ class ToolsInterface(QWidget):
         self._merge_fast.setFixedWidth(22)
         self._merge_fast.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         fast_row = QHBoxLayout()
+        fast_row.setContentsMargins(0, 0, 7, 0)
         fast_row.addWidget(fast_label)
         fast_row.addStretch(1)
         fast_row.addWidget(self._merge_fast)
