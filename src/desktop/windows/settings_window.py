@@ -831,7 +831,7 @@ class SettingsInterface(QWidget):
             )
             row.addStretch(1)
             check = CheckBox("")
-            check.setFixedWidth(22)
+            check.setFixedWidth(29)
             check.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             self._var_checks[code] = check
             row.addWidget(check)
