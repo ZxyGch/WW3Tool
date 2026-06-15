@@ -25,6 +25,7 @@ _TIMESTEP_SPECS = [
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
+from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
 from ..components.validators import date_yyyymmdd_validator, int_validator
 from workflows.domain.config_models import PipelineConfig
@@ -77,11 +78,8 @@ class WW3StepPanel:
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.setSpacing(8)
             label = QLabel(field_name)
-            cb = CheckBox("")
+            cb = create_right_aligned_check_box()
             cb.setChecked(False)
-            # [EN] Compress CheckBox to keep only the checkbox part, let addStretch push it to the right
-            # 压缩 CheckBox 只保留勾选框部分，让 addStretch 将其推到最右
-            cb.setFixedWidth(22)
             cb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             row_layout.addWidget(label)
             row_layout.addStretch()

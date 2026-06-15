@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
-from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
+from ..components.right_aligned_controls import create_right_aligned_check_box
 from workflows.support.translations import tr
 
 
@@ -42,7 +43,7 @@ class ForcingStepPanel:
         self.mode.addItems([tr("copy", "复制"), tr("move", "移动")])
         left_align_combo_text(self.mode)
         self.mode.hide()
-        self.auto_associate = CheckBox("", parent)
+        self.auto_associate = create_right_aligned_check_box(parent)
         self.auto_associate.setChecked(True)
         self.auto_associate.hide()
         self.status = QLabel(tr("status_waiting", "等待执行"))

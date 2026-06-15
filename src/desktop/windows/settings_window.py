@@ -10,10 +10,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices, QPainter
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -22,8 +21,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QSizePolicy,
-    QStyle,
-    QStyleOptionButton,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -38,10 +35,13 @@ from qfluentwidgets import (
     SwitchButton,
     TextEdit,
 )
-from qfluentwidgets.components.widgets.check_box import CheckBoxIcon
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
+from ..components.right_aligned_controls import (
+    RightAlignedSwitchButton,
+    create_right_aligned_check_box,
+)
 from ..components.table_widget import EdgeAlignedTableWidget
 from ..components import styles
 from ..components.validators import double_validator, int_validator
@@ -153,31 +153,6 @@ _OUTPUT_VAR_LABELS = {
     "CFD": "方向平流最大CFL数 (CFD)",
     "CFK": "波数平流最大CFL数 (CFK)",
 }
-
-
-class _RightAlignedCheckBox(CheckBox):
-    """Fluent checkbox whose right border is painted fully inside the widget."""
-
-    def paintEvent(self, event) -> None:
-        QCheckBox.paintEvent(self, event)
-        painter = QPainter(self)
-        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
-
-        option = QStyleOptionButton()
-        option.initFrom(self)
-        rect = self.style().subElementRect(
-            QStyle.SubElement.SE_CheckBoxIndicator, option, self
-        ).adjusted(0, 0, -1, 0)
-
-        painter.setPen(self._borderColor())
-        painter.setBrush(self._backgroundColor())
-        painter.drawRoundedRect(rect, 4.5, 4.5)
-        if not self.isEnabled():
-            painter.setOpacity(0.8)
-        if self.checkState() == Qt.CheckState.Checked:
-            CheckBoxIcon.ACCEPT.render(painter, rect)
-        elif self.checkState() == Qt.CheckState.PartiallyChecked:
-            CheckBoxIcon.PARTIAL_ACCEPT.render(painter, rect)
 
 
 _INTEGER_CONFIG_KEYS = {
@@ -382,12 +357,7 @@ class SettingsInterface(QWidget):
         self._checks[key] = check
 
     def _make_switch(self) -> SwitchButton:
-        switch = SwitchButton()
-        switch.setSpacing(0)
-        switch.setOnText("")
-        switch.setOffText("")
-        switch.setStyleSheet("SwitchButton { margin: 0px; padding: 0px; }")
-        return switch
+        return RightAlignedSwitchButton()
 
     def _switch_row(self, grid: QGridLayout, row: int, label: str) -> SwitchButton:
         """标签居左、开关靠右，占满整行。"""
@@ -866,9 +836,7 @@ class SettingsInterface(QWidget):
             label.setMinimumHeight(24)
             row.addWidget(label)
             row.addStretch(1)
-            check = _RightAlignedCheckBox("")
-            check.setFixedWidth(29)
-            check.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            check = create_right_aligned_check_box()
             self._var_checks[code] = check
             row.addWidget(check)
             row_widget = QWidget()
