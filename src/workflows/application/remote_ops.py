@@ -169,6 +169,157 @@ def run_upload(
             c.close()
 
 
+def run_upload_nml(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    confirmed: bool = False,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """Upload only top-level ``*.nml`` files from the local workdir to remote workdir."""
+    logger = CoreLogger(callback=log)
+    if not confirmed:
+        msg = tr("upload_nml_blocked_confirm_required", "⚠️ 上传 NML 被阻止：必须显式确认后才能执行。")
+        logger.log(tr("error_prefix", "❌ {message}").format(message=msg))
+        return RemoteResult(success=False, error=msg, messages=list(logger.messages))
+
+    c, owns = _acquire(config, client)
+    try:
+        remote_dir = _resolve_remote_dir(config)
+        local_dir = _resolve_local_dir(config)
+        if not os.path.isdir(local_dir):
+            raise FileNotFoundError(tr("local_workdir_not_exists", "❌ 本地工作目录不存在：{path}").format(path=local_dir))
+        if owns:
+            c.connect(log=logger.log)
+        logger.log(tr("upload_nml_start", "📤 开始上传 NML 文件到 {path} ...").format(path=remote_dir))
+        count = c.upload_matching_files(
+            local_dir,
+            remote_dir,
+            lambda name: name.lower().endswith(".nml"),
+            recursive=False,
+            log=logger.log,
+        )
+        if count == 0:
+            logger.log(tr("upload_nml_none", "⚠️ 本地工作目录未找到 .nml 文件"))
+        else:
+            logger.log(tr("upload_nml_done", "✅ 已上传 {count} 个 NML 文件 → {path}").format(count=count, path=remote_dir))
+        return RemoteResult(success=True, data=count, messages=list(logger.messages))
+    except Exception as exc:
+        logger.log(tr("upload_nml_failed", "❌ 上传 NML 失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
+
+def _parse_sinfo_idle_resources(out: str) -> dict:
+    """Parse ``sinfo -N`` output into idle/mixed node and CPU counts."""
+    idle_nodes: list[dict] = []
+    mixed_nodes: list[dict] = []
+    total_idle_cpus = 0
+    total_idle_nodes = 0
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("|")
+        if len(parts) < 5:
+            continue
+        node, state, cpus_text, cpu_state, partition = [part.strip() for part in parts[:5]]
+        state_l = state.lower().strip("*")
+        try:
+            cpus = int(cpus_text)
+        except ValueError:
+            cpus = 0
+        alloc = idle = other = total = 0
+        cpu_parts = cpu_state.split("/")
+        if len(cpu_parts) == 4:
+            try:
+                alloc, idle, other, total = [int(value) for value in cpu_parts]
+            except ValueError:
+                idle = 0
+                total = cpus
+        else:
+            total = cpus
+            idle = cpus if "idle" in state_l else 0
+        if total == 0:
+            total = cpus
+        record = {
+            "node": node,
+            "state": state,
+            "partition": partition.rstrip("*"),
+            "cpus": cpus,
+            "alloc_cpus": alloc,
+            "idle_cpus": idle,
+            "other_cpus": other,
+            "total_cpus": total,
+        }
+        if "idle" in state_l:
+            total_idle_nodes += 1
+            total_idle_cpus += idle or total or cpus
+            idle_nodes.append(record)
+        elif idle > 0 and any(token in state_l for token in ("mix", "alloc")):
+            total_idle_cpus += idle
+            mixed_nodes.append(record)
+    return {
+        "idle_nodes": total_idle_nodes,
+        "idle_cpus": total_idle_cpus,
+        "idle_node_details": idle_nodes,
+        "mixed_node_details": mixed_nodes,
+    }
+
+
+def run_slurm_idle_resources(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """Query Slurm idle nodes and idle CPU count using ``sinfo``."""
+    logger = CoreLogger(callback=log)
+    c, owns = _acquire(config, client)
+    try:
+        if owns:
+            c.connect(log=logger.log)
+        cmd = "sinfo -h -N -o '%N|%T|%c|%C|%P'"
+        out, err, code = c.exec_command(cmd, timeout=10)
+        if code != 0:
+            raise RuntimeError(err or out or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code))
+        if err:
+            logger.log(tr("sinfo_cmd_warning", "⚠️ sinfo 警告: {error}").format(error=err))
+        data = _parse_sinfo_idle_resources(out)
+        logger.log(
+            tr(
+                "slurm_idle_summary",
+                "🧮 Slurm 空闲资源：空闲节点 {nodes} 个，可用空闲 CPU {cpus} 个",
+            ).format(nodes=data["idle_nodes"], cpus=data["idle_cpus"])
+        )
+        details = [*data["idle_node_details"], *data["mixed_node_details"]]
+        if details:
+            logger.log(tr("slurm_idle_nodes_header", "📍 空闲 CPU 所在节点："))
+            for item in details[:80]:
+                logger.log(
+                    "  {partition} {node}: {idle}/{total} CPU idle ({state})".format(
+                        partition=item["partition"],
+                        node=item["node"],
+                        idle=item["idle_cpus"],
+                        total=item["total_cpus"] or item["cpus"],
+                        state=item["state"],
+                    )
+                )
+            if len(details) > 80:
+                logger.log(tr("slurm_idle_nodes_more", "  ... 还有 {count} 个节点未显示").format(count=len(details) - 80))
+        else:
+            logger.log(tr("slurm_no_idle_resources", "⚠️ 当前未发现空闲 Node/CPU"))
+        return RemoteResult(success=True, data=data, messages=list(logger.messages))
+    except Exception as exc:
+        logger.log(tr("slurm_idle_failed", "❌ 检查 Slurm 空闲资源失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), data=None, messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
+
 # ── 提交作业 ────────────────────────────────────────────────────────────
 
 def run_submit(

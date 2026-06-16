@@ -285,7 +285,50 @@ class SshClient:
                         log(f"❌ 上传 {fname} 失败: {exc}")
         finally:
             sftp.close()
-        log(f"✅ 上传完成，共 {uploaded} 个文件 → {remote_dir}")
+        log(tr("upload_complete", "✅ 上传完成，共 {count} 个文件 → {path}").format(count=uploaded, path=remote_dir))
+
+    def upload_matching_files(
+        self,
+        local_dir: str,
+        remote_dir: str,
+        pattern_fn: Callable[[str], bool],
+        *,
+        recursive: bool = False,
+        log: LogFn = _noop,
+    ) -> int:
+        """Upload files matching ``pattern_fn`` from ``local_dir`` to ``remote_dir``."""
+        self.ensure_connected(log=log)
+        if remote_dir.startswith("~"):
+            remote_dir = remote_dir.replace("~", f"/home/{self._config.user}", 1)
+
+        sftp = self._sftp()
+        uploaded = 0
+        try:
+            self._ensure_remote_dir(sftp, remote_dir)
+            walker: Iterator[tuple[str, list[str], list[str]]]
+            if recursive:
+                walker = os.walk(local_dir)
+            else:
+                names = os.listdir(local_dir)
+                files = [name for name in names if os.path.isfile(os.path.join(local_dir, name))]
+                walker = iter([(local_dir, [], files)])
+
+            for root, _dirs, files in walker:
+                rel = os.path.relpath(root, local_dir)
+                remote_path = remote_dir if rel == "." else os.path.join(remote_dir, rel).replace("\\", "/")
+                self._ensure_remote_dir(sftp, remote_path)
+                for fname in files:
+                    if not pattern_fn(fname):
+                        continue
+                    local_file = os.path.join(root, fname)
+                    remote_file = os.path.join(remote_path, fname).replace("\\", "/")
+                    sftp.put(local_file, remote_file)
+                    uploaded += 1
+                    shown = fname if rel == "." else os.path.join(rel, fname).replace(os.sep, "/")
+                    log(f"  ↑ {shown}")
+        finally:
+            sftp.close()
+        return uploaded
 
     # ── download ──────────────────────────────────────────────────────────────
 

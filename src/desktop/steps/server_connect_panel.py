@@ -82,7 +82,7 @@ class ServerConnectPanel:
         self._cpu_table.setColumnCount(4)
         self._cpu_table.setHorizontalHeaderLabels(
             [tr("cluster_col_user", "用户"), tr("cluster_col_cpus", "CPU数"),
-             tr("cluster_col_nodes", "节点"), tr("cluster_col_elapsed", "已运行")]
+             tr("cluster_col_nodes", "节点"), tr("cluster_col_elapsed", "时间")]
         )
         self._cpu_table.horizontalHeader().setVisible(False)
         self._cpu_table.verticalHeader().setVisible(False)
@@ -91,11 +91,12 @@ class ServerConnectPanel:
         self._cpu_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._cpu_table.setWordWrap(False)
         hdr = self._cpu_table.horizontalHeader()
-        hdr.setStretchLastSection(True)
+        hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setMinimumSectionSize(42)
         vhdr = self._cpu_table.verticalHeader()
         vhdr.setVisible(False)
         vhdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
@@ -186,21 +187,28 @@ class ServerConnectPanel:
             tr("cluster_col_user", "用户"),
             tr("cluster_col_cpus", "CPU数"),
             tr("cluster_col_nodes", "节点"),
-            tr("cluster_col_elapsed", "已运行"),
+            tr("cluster_col_elapsed", "时间"),
         ]
         self._cpu_table.setRowCount(len(valid) + 1)
         for col, text in enumerate(header_labels):
             item = QTableWidgetItem(text)
-            item.setTextAlignment(
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
-            )
+            # [EN] User header left-aligned, others centered
+            # User 表头靠左，其余居中
+            if col == 0:
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                )
+            else:
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+                )
             self._cpu_table.setItem(0, col, item)
 
-        # [EN] Column alignment: User(left), CPUs(right), Nodes(center), Elapsed(right)
-        # 列对齐：用户(左), CPU数(右), 节点(居中), 已运行(右)
+        # [EN] Column alignment: User(left), CPUs(center), Nodes(center), Time(right)
+        # 列对齐：用户(左), CPU数(居中), 节点(居中), 时间(右)
         aligns = [
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
             Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         ]
@@ -211,6 +219,8 @@ class ServerConnectPanel:
                 self._cpu_table.setItem(i, col, item)
 
         self._cpu_table.expand_to_contents(minimum_height=60, extra_height=6)
+        self._cpu_table.resizeColumnToContents(3)
+        self._cpu_table.setColumnWidth(3, max(self._cpu_table.columnWidth(3), 112))
         self._cpu_title.setVisible(True)
         self._cpu_table.setVisible(True)
 

@@ -591,6 +591,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             list_files=self._server_list_files,
             queue=self._server_queue,
             upload=self._server_upload,
+            check_idle_resources=self._server_check_idle_resources,
+            upload_nml=self._server_upload_nml,
             submit=self._server_submit,
             check=self._server_check,
             clear=self._server_clear,
@@ -1946,6 +1948,16 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._persist_server_remote_dir():
             return
         self._run_job(lambda c: self._remote_vm.upload(c, confirmed=True))
+
+    def _server_check_idle_resources(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(self._remote_vm.slurm_idle_resources)
+
+    def _server_upload_nml(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(lambda c: self._remote_vm.upload_nml(c, confirmed=True))
 
     def _server_submit(self) -> None:
         if not self._persist_server_remote_dir():

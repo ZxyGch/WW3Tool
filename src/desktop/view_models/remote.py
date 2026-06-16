@@ -116,6 +116,16 @@ class RemoteViewModel:
 
         return run_upload(config, log=self._log, confirmed=confirmed, client=self._ensure_client(config))
 
+    def upload_nml(self, config: PipelineConfig, *, confirmed: bool = True):
+        from workflows.application.remote_ops import run_upload_nml
+
+        return run_upload_nml(config, log=self._log, confirmed=confirmed, client=self._ensure_client(config))
+
+    def slurm_idle_resources(self, config: PipelineConfig):
+        from workflows.application.remote_ops import run_slurm_idle_resources
+
+        return run_slurm_idle_resources(config, log=self._log, client=self._ensure_client(config))
+
     def submit(self, config: PipelineConfig, *, script: str = "server.sh"):
         from workflows.application.remote_ops import run_submit
 
@@ -140,3 +150,25 @@ class RemoteViewModel:
         from workflows.application.remote_ops import run_download_log
 
         return run_download_log(config, log=self._log, client=self._ensure_client(config))
+
+    def exec_command(self, config: PipelineConfig, command: str):
+        # [EN] Execute arbitrary command on remote server and log output.
+        """在远程服务器执行任意命令并将输出记录到日志。"""
+        from workflows.application.remote_ops import RemoteResult
+
+        client = self._ensure_client(config)
+        self._log(f"$ {command}")
+        try:
+            out, err, code = client.exec_command(command, log=self._log, timeout=60)
+            if out:
+                for line in out.splitlines():
+                    self._log(line)
+            if err:
+                for line in err.splitlines():
+                    self._log(f"[stderr] {line}")
+            if code != 0:
+                self._log(f"[exit code: {code}]")
+            return RemoteResult(success=(code == 0), messages=[])
+        except Exception as exc:
+            self._log(f"❌ {exc}")
+            return RemoteResult(success=False, error=str(exc), messages=[])
