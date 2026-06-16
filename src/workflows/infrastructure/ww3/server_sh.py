@@ -511,6 +511,16 @@ class ServerSh(NMLPrimitives):
                 # [EN] If ST version path already inserted, skip subsequent old version paths
                 # 如果已经插入了 ST 版本路径，跳过后续可能存在的旧版本路径
                 elif st_path_inserted:
+                    # [EN] Keep replacing runtime fields after the ST block is inserted.
+                    # 保证插入 ST 路径后仍继续替换运行参数。
+                    if line_stripped.startswith("MPI_NPROCS="):
+                        new_lines.append(f"MPI_NPROCS={num_n}\n")
+                        i += 1
+                        continue
+                    if line_stripped.startswith("CASENAME="):
+                        new_lines.append(f"CASENAME={start_year_month}\n")
+                        i += 1
+                        continue
                     # [EN] Skip existing ST version comments (if not in correct position)
                     # 跳过已存在的 ST 版本注释（如果不在正确位置）
                     if line_stripped.startswith("#wavewatch3--"):
