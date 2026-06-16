@@ -122,6 +122,19 @@ def _file_signature(path: Path) -> list[int]:
     return [0, 0]
 
 
+def _data_file_cache_identity(path_value: str) -> Dict[str, Any]:
+    """Return a stable, location-independent identity for optional mesh data files."""
+    if not path_value:
+        return {"name": "", "size": 0}
+    path = Path(str(path_value)).expanduser()
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    size = resolved.stat().st_size if resolved.is_file() else 0
+    return {"name": resolved.name, "size": int(size)}
+
+
 def _stable_hash(payload: Dict[str, Any]) -> str:
     params_str = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(params_str.encode("utf-8")).hexdigest()
@@ -451,24 +464,74 @@ def _unstructured_cache_key(grid_json: Dict[str, Any]) -> str:
         workflow.pop(key, None)
     body["Workflow"] = workflow
     data_files = dict(body.get("DataFiles") or {})
-    dem_path = Path(str(data_files.get("dem_file") or "")).expanduser()
-    dem_abs = dem_path.resolve() if str(dem_path) else Path("")
-    data_files["dem_file"] = str(dem_abs).replace("\\", "/") if str(dem_path) else ""
+    data_file_identity = {
+        "dem_file": _data_file_cache_identity(str(data_files.get("dem_file") or "")),
+        "mask_file": _data_file_cache_identity(str(data_files.get("mask_file") or "")),
+    }
+    for key, identity in data_file_identity.items():
+        data_files[key] = identity["name"]
     body["DataFiles"] = data_files
     return _stable_hash(
         {
             "grid": body,
-            "dem_sig": _file_signature(dem_abs) if str(dem_path) else [0, 0],
+            "data_files": data_file_identity,
         }
     )
 
 
-def _check_unstructured_cache(cache_key: str) -> Path | None:
-    cache_path = _grid_cache_dir() / "unst" / cache_key
+def _valid_unstructured_cache_path(cache_path: Path) -> Path | None:
     grid_file = cache_path / "grid.ww3"
     if grid_file.is_file() and grid_file.stat().st_size > 0:
         return cache_path
     return None
+
+
+def _legacy_unstructured_cache(cache_key: str) -> Path | None:
+    cache_root = _grid_cache_dir() / "unst"
+    if not cache_root.is_dir():
+        return None
+    for params_path in cache_root.glob("*/params.json"):
+        legacy_path = params_path.parent
+        if legacy_path.name == cache_key:
+            continue
+        try:
+            metadata = json.loads(params_path.read_text(encoding="utf-8"))
+            grid = metadata.get("grid")
+            if not isinstance(grid, dict):
+                continue
+            if _unstructured_cache_key(grid) != cache_key:
+                continue
+        except Exception:
+            continue
+        if _valid_unstructured_cache_path(legacy_path):
+            return legacy_path
+    return None
+
+
+def _check_unstructured_cache(cache_key: str) -> Path | None:
+    cache_path = _grid_cache_dir() / "unst" / cache_key
+    if _valid_unstructured_cache_path(cache_path):
+        return cache_path
+
+    legacy_path = _legacy_unstructured_cache(cache_key)
+    if not legacy_path:
+        return None
+
+    cache_path.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy_path / "grid.ww3", cache_path / "grid.ww3")
+    legacy_params = legacy_path / "params.json"
+    if legacy_params.is_file():
+        try:
+            metadata = json.loads(legacy_params.read_text(encoding="utf-8"))
+            metadata["cache_key"] = cache_key
+            metadata["migrated_from"] = legacy_path.name
+            (cache_path / "params.json").write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            shutil.copy2(legacy_params, cache_path / "params.json")
+    return cache_path
 
 
 def _load_unstructured_cache(cache_path: Path, output_dir: Path) -> None:

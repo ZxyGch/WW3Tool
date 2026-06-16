@@ -1,10 +1,15 @@
 from copy import deepcopy
+import json
+import os
 from pathlib import Path
 
 from workflows.infrastructure.adapters.grid_generation_adapter import (
+    _check_unstructured_cache,
+    _data_file_cache_identity,
     _unstructured_cache_key,
     _unstructured_workspace_dir,
 )
+import workflows.infrastructure.adapters.grid_generation_adapter as grid_adapter
 from workflows.infrastructure.runtime_config import get_project_meshgen_path
 
 
@@ -38,6 +43,15 @@ def test_unstructured_cache_key_ignores_runtime_and_output_paths() -> None:
     assert _unstructured_cache_key(first) == _unstructured_cache_key(second)
 
 
+def test_unstructured_cache_key_ignores_data_file_location_with_same_identity() -> None:
+    first = _grid_json()
+    second = deepcopy(first)
+    first["DataFiles"]["dem_file"] = "/install-a/reference/RTopo.nc"
+    second["DataFiles"]["dem_file"] = "/install-b/reference/RTopo.nc"
+
+    assert _unstructured_cache_key(first) == _unstructured_cache_key(second)
+
+
 def test_unstructured_cache_key_changes_with_mesh_parameters() -> None:
     first = _grid_json()
     second = deepcopy(first)
@@ -55,3 +69,33 @@ def test_unstructured_workspace_stays_inside_mesh_generator() -> None:
     )
 
     assert _unstructured_workspace_dir() == expected
+
+
+def test_data_file_cache_identity_ignores_mtime(tmp_path: Path) -> None:
+    data_file = tmp_path / "RTopo.nc"
+    data_file.write_bytes(b"abc")
+    first = _data_file_cache_identity(str(data_file))
+
+    os.utime(data_file, (data_file.stat().st_atime + 100, data_file.stat().st_mtime + 100))
+    second = _data_file_cache_identity(str(data_file))
+
+    assert first == second == {"name": "RTopo.nc", "size": 3}
+
+
+def test_unstructured_cache_check_migrates_legacy_key(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(grid_adapter, "get_project_meshgen_path", lambda: tmp_path)
+
+    grid = _grid_json()
+    cache_key = _unstructured_cache_key(grid)
+    legacy_dir = tmp_path / "cache" / "unst" / "legacy-key"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "grid.ww3").write_text("grid", encoding="utf-8")
+    (legacy_dir / "params.json").write_text(
+        json.dumps({"cache_key": "legacy-key", "grid": grid}) + "\n",
+        encoding="utf-8",
+    )
+
+    cache_path = _check_unstructured_cache(cache_key)
+
+    assert cache_path == tmp_path / "cache" / "unst" / cache_key
+    assert (cache_path / "grid.ww3").read_text(encoding="utf-8") == "grid"
