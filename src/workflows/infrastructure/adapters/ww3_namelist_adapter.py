@@ -318,7 +318,13 @@ def _patched_load_config(config: Dict[str, Any]):
             step4_service_module.load_config = originals["step4"]
 
 
-def prepare_ww3_files(config: PipelineConfig, files: Step1Files, logger: CoreLogger) -> None:
+def prepare_ww3_files(
+    config: PipelineConfig,
+    files: Step1Files,
+    logger: CoreLogger,
+    *,
+    update_server_script: bool = True,
+) -> None:
     """根据流水线配置与 Step 1 强迫场路径生成 WW3 namelist 与辅助脚本。
 
     参数:
@@ -345,6 +351,16 @@ def prepare_ww3_files(config: PipelineConfig, files: Step1Files, logger: CoreLog
     """
     app_config = _merged_runtime_config(config)
     adapter = _WW3Adapter(config, files, logger, app_config)
+    if not update_server_script:
+        adapter.modify_server_sh_file = lambda: None
     with _patched_load_config(app_config):
         adapter.modify_ww3_file()
     _apply_ww3_grid_settings(config, logger)
+
+
+def update_server_script(config: PipelineConfig, logger: CoreLogger) -> None:
+    """只按当前 Slurm/ST 表单参数更新工作目录中的 ``server.sh``。"""
+    app_config = _merged_runtime_config(config)
+    adapter = _WW3Adapter(config, Step1Files(), logger, app_config)
+    with _patched_load_config(app_config):
+        adapter.modify_server_sh_file()

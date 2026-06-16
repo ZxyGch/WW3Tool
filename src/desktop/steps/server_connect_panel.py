@@ -13,6 +13,7 @@ from collections.abc import Callable
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -22,10 +23,14 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import LineEdit, PrimaryPushButton
+from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
+from ..components import styles
+from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.table_widget import EdgeAlignedTableWidget
+from ..components.validators import int_validator
+from workflows.domain.config_models import PipelineConfig
 from workflows.support.translations import tr
 
 _TITLE_KEY = "step6_title"
@@ -53,11 +58,18 @@ class ServerConnectPanel:
         *,
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         input_style: Callable[[], str],
+        combo_style: Callable[[], str],
         connect: Callable[[], None],
         use_idle_full: Callable[[], None],
         use_idle_half: Callable[[], None],
+        confirm_slurm: Callable[[], None],
         cancel: Callable[[], None],
     ) -> None:
+        self._input_style = input_style
+        self._combo_style = combo_style
+        self.fields: dict[str, LineEdit] = {}
+        self.field_labels: dict[str, QLabel] = {}
+
         self._group, layout = create_header_card(
             parent,
             f"{tr(_TITLE_KEY, _TITLE_DEFAULT)}  {tr('step6_not_connected', '[未连接]')}",
@@ -167,10 +179,37 @@ class ServerConnectPanel:
         idle_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         idle_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         idle_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        idle_hdr.setMinimumSectionSize(36)
         self._idle_table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(self._idle_table)
+
+        self._slurm_title = self._build_section_title(
+            tr("step4_slurm_config", "Slurm 配置")
+        )
+        layout.addWidget(self._slurm_title)
+        self._slurm_form = QWidget()
+        slurm_grid = QGridLayout(self._slurm_form)
+        slurm_grid.setContentsMargins(0, 0, 0, 0)
+        slurm_grid.setSpacing(10)
+        slurm_grid.setColumnStretch(0, 0)
+        slurm_grid.setColumnStretch(1, 1)
+        self.st_combo = ComboBox()
+        self.st_combo.setStyleSheet(combo_style())
+        left_align_combo_text(self.st_combo)
+        self.st_label = self._field_label(tr("step4_st_version", "ST 版本："))
+        slurm_grid.addWidget(self.st_label, 0, 0)
+        slurm_grid.addWidget(self.st_combo, 0, 1)
+        self.cpu_combo = ComboBox()
+        self.cpu_combo.setStyleSheet(combo_style())
+        left_align_combo_text(self.cpu_combo)
+        self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
+        slurm_grid.addWidget(self.cpu_label, 1, 0)
+        slurm_grid.addWidget(self.cpu_combo, 1, 1)
+        self._display_line(slurm_grid, 2, tr("step4_total_cores", "总核数:"), "slurm_cores")
+        self._display_line(slurm_grid, 3, tr("step4_node_num", "节点数:"), "slurm_nodes")
+        layout.addWidget(self._slurm_form)
 
         self._idle_actions_widget = QWidget()
         idle_actions = QHBoxLayout(self._idle_actions_widget)
@@ -179,6 +218,17 @@ class ServerConnectPanel:
         idle_actions.addWidget(create_button(tr("step6_use_idle_full", "最大化使用"), use_idle_full))
         idle_actions.addWidget(create_button(tr("step6_use_idle_half", "半数使用"), use_idle_half))
         layout.addWidget(self._idle_actions_widget)
+
+        self._confirm_slurm_widget = QWidget()
+        confirm_slurm_layout = QVBoxLayout(self._confirm_slurm_widget)
+        confirm_slurm_layout.setContentsMargins(0, 8, 0, 0)
+        confirm_slurm_layout.setSpacing(0)
+        self.confirm_slurm_button = create_button(
+            tr("step6_confirm_slurm", "确认 Slurm 配置"),
+            confirm_slurm,
+        )
+        confirm_slurm_layout.addWidget(self.confirm_slurm_button)
+        layout.addWidget(self._confirm_slurm_widget)
 
         self._group.viewLayout.addLayout(layout)
         self.widget = self._group
@@ -206,7 +256,10 @@ class ServerConnectPanel:
         # 由 update_queue_table 控制显隐
         self._idle_title.setVisible(connected)
         self._idle_table.setVisible(connected)
+        self._slurm_title.setVisible(connected)
+        self._slurm_form.setVisible(connected)
         self._idle_actions_widget.setVisible(connected)
+        self._confirm_slurm_widget.setVisible(connected)
         if connected and self._idle_table.rowCount() == 0:
             self.update_idle_resources([])
         if not connected:
@@ -325,6 +378,45 @@ class ServerConnectPanel:
     def idle_resources(self) -> list[dict]:
         return list(getattr(self, "_idle_rows", []))
 
+    def render_slurm(self, config: PipelineConfig) -> None:
+        self.fields["slurm_cores"].setText(str(config.slurm.cores))
+        self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
+        self._replace_combo_items(self.st_combo, list(config.presets.st), config.ww3.st)
+        self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
+
+    def ww3_overrides(self) -> dict[str, str]:
+        return {"st": self.st_combo.currentText().strip()}
+
+    def slurm_overrides(self) -> dict[str, str]:
+        return {
+            "cpu": self.cpu_combo.currentText().strip(),
+            "cores": self.fields["slurm_cores"].text().strip(),
+            "nodes": self.fields["slurm_nodes"].text().strip(),
+        }
+
+    def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:
+        cpu = str(cpu).strip()
+        if cpu:
+            items = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
+            if cpu not in items:
+                self.cpu_combo.addItem(cpu)
+            self.cpu_combo.setCurrentText(cpu)
+        self.fields["slurm_cores"].setText(str(max(1, int(cores))))
+        self.fields["slurm_nodes"].setText(str(max(1, int(nodes))))
+
+    def replace_cpu_options_if_changed(self, values: list[str]) -> None:
+        server_values = [str(value).strip() for value in values if str(value).strip()]
+        if not server_values:
+            return
+        deduped = list(dict.fromkeys(server_values))
+        current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
+        if current == deduped:
+            return
+        selected = self.cpu_combo.currentText().strip()
+        self.cpu_combo.clear()
+        self.cpu_combo.addItems(deduped)
+        self.cpu_combo.setCurrentText(selected if selected in deduped else deduped[0])
+
     def update_queue_table(self, lines: list) -> None:
         # [EN] Update task queue display. lines: squeue output lines.
         """更新任务队列显示。lines: squeue 输出行列表。"""
@@ -380,9 +472,48 @@ class ServerConnectPanel:
         self._clear_queue_display()
         self._idle_title.setVisible(False)
         self._idle_table.setVisible(False)
+        self._slurm_title.setVisible(False)
+        self._slurm_form.setVisible(False)
         self._idle_actions_widget.setVisible(False)
+        self._confirm_slurm_widget.setVisible(False)
         self._idle_table.setRowCount(0)
         self._idle_rows = []
+
+    def _field_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet(styles.label_style())
+        label.setWordWrap(True)
+        label.setMinimumHeight(28)
+        label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        return label
+
+    @staticmethod
+    def _expand_field(widget: QWidget) -> None:
+        widget.setMinimumWidth(0)
+        widget.setMaximumWidth(16777215)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def _display_line(self, grid: QGridLayout, row: int, label: str, key: str) -> None:
+        field = LineEdit()
+        field.setProperty("transparent", False)
+        field.setStyleSheet(self._input_style())
+        field.setMinimumHeight(33)
+        field.setValidator(int_validator(1))
+        self._expand_field(field)
+        field_label = self._field_label(label)
+        grid.addWidget(field_label, row, 0)
+        grid.addWidget(field, row, 1)
+        self.fields[key] = field
+        self.field_labels[key] = field_label
+
+    @staticmethod
+    def _replace_combo_items(combo: ComboBox, values: list[str], selected: str) -> None:
+        next_values = [str(value) for value in values if str(value)]
+        if selected and selected not in next_values:
+            next_values = [*next_values, selected]
+        combo.clear()
+        combo.addItems(next_values)
+        combo.setCurrentText(selected)
 
     def _parse_squeue_lines(self, lines: list) -> list[dict]:
         # [EN] Parse squeue lines, return list of task dicts.

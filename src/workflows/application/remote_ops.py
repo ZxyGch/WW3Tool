@@ -262,6 +262,7 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
     idle_nodes: list[dict] = []
     mixed_nodes: list[dict] = []
     summary_by_cpu: dict[str, dict] = {}
+    all_partitions: set[str] = set()
     total_idle_cpus = 0
     total_idle_nodes = 0
 
@@ -304,6 +305,7 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
             cpus = int(cpus_text)
         except ValueError:
             cpus = 0
+        all_partitions.update(partitions(partition))
         alloc = idle = other = total = 0
         cpu_parts = cpu_state.split("/")
         if len(cpu_parts) == 4:
@@ -345,6 +347,7 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
         "idle_nodes": total_idle_nodes,
         "idle_cpus": total_idle_cpus,
         "idle_summary": idle_summary,
+        "partitions": sorted(all_partitions),
         "idle_node_details": idle_nodes,
         "mixed_node_details": mixed_nodes,
     }
@@ -702,12 +705,15 @@ def run_server_status(
             cpu_data = _parse_sacct_cpu_data(sacct_out)
 
         idle_data: list = []
+        partitions: list[str] = []
         sinfo_out, sinfo_err, _ = c.exec_command(
             "sinfo -h -N -o '%N|%T|%c|%C|%P'",
             timeout=10,
         )
         if not sinfo_err:
-            idle_data = _parse_sinfo_idle_resources(sinfo_out).get("idle_summary", [])
+            sinfo_data = _parse_sinfo_idle_resources(sinfo_out)
+            idle_data = sinfo_data.get("idle_summary", [])
+            partitions = sinfo_data.get("partitions", [])
 
         # 任务队列
         q_out, q_err, _ = c.exec_command(
@@ -717,13 +723,13 @@ def run_server_status(
 
         return RemoteResult(
             success=True,
-            data={"cpu": cpu_data, "idle": idle_data, "queue": queue_lines},
+            data={"cpu": cpu_data, "idle": idle_data, "partitions": partitions, "queue": queue_lines},
             messages=list(logger.messages),
         )
     except Exception as exc:
         logger.log(tr("server_status_failed", "❌ 获取服务器状态失败：{error}").format(error=exc))
         return RemoteResult(
-            success=False, error=str(exc), data={"cpu": [], "idle": [], "queue": []}, messages=list(logger.messages)
+            success=False, error=str(exc), data={"cpu": [], "idle": [], "partitions": [], "queue": []}, messages=list(logger.messages)
         )
     finally:
         if owns:

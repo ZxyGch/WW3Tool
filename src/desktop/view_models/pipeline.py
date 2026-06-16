@@ -148,7 +148,7 @@ class PipelineViewModel:
             logger = CoreLogger(callback=self._handle_log)
             file_service = FileService(logger=logger)
             files = ScanWorkdirForcingUseCase(file_service).execute(str(config.workdir.path))
-            prepare_ww3_files(config, files, logger)
+            prepare_ww3_files(config, files, logger, update_server_script=False)
             self._handle_log(tr("ww3_params_applied", "✅ WW3 参数已应用"))
             self._set_state(
                 PipelineStepState(
@@ -160,6 +160,35 @@ class PipelineViewModel:
             )
         except Exception as exc:
             self._fail("ww3", str(exc))
+        return self.state
+
+    def apply_server_script(self, config: PipelineConfig) -> PipelineStepState:
+        """Update only the workdir ``server.sh`` from Slurm/ST settings."""
+        self._set_state(
+            PipelineStepState(
+                is_running=True,
+                action="server_sh",
+                workdir=str(config.workdir.path),
+                messages=list(self.state.messages),
+            )
+        )
+        try:
+            from workflows.infrastructure.adapters.ww3_namelist_adapter import update_server_script
+            from workflows.support.logging import CoreLogger
+
+            logger = CoreLogger(callback=self._handle_log)
+            update_server_script(config, logger)
+            self._handle_log(tr("server_script_applied", "✅ server.sh 已应用 Slurm 配置"))
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="server_sh",
+                    workdir=str(config.workdir.path),
+                    messages=list(self.state.messages),
+                )
+            )
+        except Exception as exc:
+            self._fail("server_sh", str(exc))
         return self.state
 
     def generate_grid(self, config: PipelineConfig) -> PipelineStepState:

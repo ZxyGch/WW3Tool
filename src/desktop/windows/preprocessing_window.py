@@ -476,7 +476,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         show_local = run_mode in {"local", "both"}
         show_server = run_mode in {"server", "both"}
-        show_slurm = run_mode in {"server", "both"}
 
         if hasattr(self, "_local_run_panel"):
             self._local_run_panel.widget.setVisible(show_local)
@@ -485,7 +484,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if hasattr(self, "_server_ops_panel"):
             self._server_ops_panel.widget.setVisible(show_server)
         if hasattr(self, "_ww3_panel"):
-            self._ww3_panel.set_slurm_visible(show_slurm)
+            self._ww3_panel.set_slurm_visible(False)
 
     def _build_step_panels(self, parent: QWidget, layout: QVBoxLayout) -> None:
         self._forcing_panel = ForcingStepPanel(
@@ -559,6 +558,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._cpu_combo = self._ww3_panel.cpu_combo
         self._output_scheme_combo = self._ww3_panel.output_scheme_combo
         self._pipeline_status = self._ww3_panel.status
+        self._ww3_panel.set_slurm_visible(False)
         self._action_buttons = [
             *self._step2_action_buttons,
             self._ww3_panel.load_time_button,
@@ -579,11 +579,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             parent,
             create_button=self._primary_button,
             input_style=self._input_style,
+            combo_style=self._combo_style,
             connect=self._server_connect,
             use_idle_full=self._server_use_idle_full,
             use_idle_half=self._server_use_idle_half,
+            confirm_slurm=self._server_confirm_slurm,
             cancel=self._server_cancel,
         )
+        self._st_combo = self._server_connect_panel.st_combo
+        self._cpu_combo = self._server_connect_panel.cpu_combo
         layout.addWidget(self._server_connect_panel.widget)
 
         self._server_ops_panel = ServerOpsPanel(
@@ -887,6 +891,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._grid_panel.render(config.grid)
         self._calculation_panel.render(config.calc)
         self._ww3_panel.render(config)
+        if hasattr(self, "_server_connect_panel"):
+            self._server_connect_panel.render_slurm(config)
         if hasattr(self, "_server_ops_panel"):
             self._server_ops_panel.set_server_path(self._effective_server_path(config))
 
@@ -995,9 +1001,20 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             calc_mode=self._calculation_panel.mode,
             calc_points=self._calculation_panel.points(),
             calc_track_points=self._calculation_panel.track_points(),
-            ww3_overrides=self._ww3_panel.ww3_overrides(),
+            ww3_overrides={
+                **self._ww3_panel.ww3_overrides(),
+                **(
+                    self._server_connect_panel.ww3_overrides()
+                    if hasattr(self, "_server_connect_panel")
+                    else {}
+                ),
+            },
             ww3_grid_overrides=self._ww3_panel.ww3_grid_overrides(),
-            slurm_overrides=self._ww3_panel.slurm_overrides(),
+            slurm_overrides=(
+                self._server_connect_panel.slurm_overrides()
+                if hasattr(self, "_server_connect_panel")
+                else self._ww3_panel.slurm_overrides()
+            ),
             server_overrides=self._server_overrides(),
         )
 
@@ -1934,9 +1951,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if isinstance(data, dict):
             cpu_data = data.get("cpu", []) or []
             idle_data = data.get("idle", []) or []
+            partition_data = data.get("partitions", []) or []
             queue_lines = data.get("queue", []) or []
             self._server_connect_panel.update_cpu_table(cpu_data)
             self._server_connect_panel.update_idle_resources(idle_data)
+            self._server_connect_panel.replace_cpu_options_if_changed(partition_data)
             self._server_connect_panel.update_queue_table(queue_lines)
         # [EN] Stop polling when connection fails
         # 连接失败时停止轮询
@@ -1982,14 +2001,31 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             nodes = total_nodes
             action = tr("step6_use_idle_full", "最大化使用")
         cpu = str(best.get("cpu") or "").strip()
-        self._ww3_panel.apply_slurm_resources(cpu=cpu, cores=cores, nodes=nodes)
+        self._server_connect_panel.apply_slurm_resources(cpu=cpu, cores=cores, nodes=nodes)
         self._append_log(
             tr(
                 "step6_idle_resources_applied",
                 "✅ 已按{mode}选择空闲资源：CPU={cpu}, 核数={cores}, 节点数={nodes}",
             ).format(mode=action, cpu=cpu, cores=cores, nodes=nodes)
         )
-        self._apply_ww3_params_only()
+
+    def _server_confirm_slurm(self) -> None:
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None:
+            return
+        try:
+            config = self._pipeline_vm.load_config(params_path, validation_stage="plot")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        if self._busy:
+            return
+        self._set_busy(True)
+
+        def task():
+            return self._pipeline_vm.apply_server_script(config)
+
+        self._runner.run(task, self._on_pipeline_done)
 
     def _server_upload_without_forcing(self) -> None:
         if not self._persist_server_remote_dir():
