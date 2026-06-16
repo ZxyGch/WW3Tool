@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib import cm
-from netCDF4 import Dataset, num2date
+from netCDF4 import num2date
 import netCDF4 as nc
-from datetime import datetime, timedelta
+from datetime import datetime
 from ...support.translations import tr
 try:
     import wavespectra
@@ -25,6 +25,53 @@ except ImportError:
     HAS_WAVESPECTRA = False
 
 from .workers_utils import _pick_station_lon_lat, _decode_station_names
+
+
+def _find_spectrum_files(selected_folder, spec_file=None):
+    """Return the selected spectrum file, or all WW3 spectrum files in stable order."""
+    if spec_file and os.path.exists(spec_file):
+        return [spec_file]
+    return sorted(glob.glob(os.path.join(selected_folder, "ww3*spec*nc")))
+
+
+def _as_python_datetime(value):
+    """Convert netCDF4/cftime datetime-like values to ``datetime`` for formatting."""
+    if isinstance(value, datetime):
+        return value
+    return datetime(
+        value.year, value.month, value.day,
+        getattr(value, "hour", 0),
+        getattr(value, "minute", 0),
+        getattr(value, "second", 0),
+        getattr(value, "microsecond", 0),
+    )
+
+
+def _decode_time_values(time_values, time_var):
+    """Decode a WW3 time variable using its NetCDF units/calendar metadata."""
+    units = getattr(time_var, "units", None)
+    calendar = getattr(time_var, "calendar", "standard")
+    if not units:
+        raise ValueError("二维谱 time 变量缺少 units 属性，无法解析时间")
+
+    decoded = num2date(
+        time_values,
+        units=units,
+        calendar=calendar,
+        only_use_cftime_datetimes=False,
+        only_use_python_datetimes=False,
+    )
+    return [_as_python_datetime(item) for item in decoded]
+
+
+def _ww3_direction_to_radians(direction_deg):
+    """WW3 spectrum direction is 'to direction', origin East, trigonometric order."""
+    return np.deg2rad(direction_deg)
+
+
+def _direction_label_position(angle_deg, radius):
+    theta_rad = _ww3_direction_to_radians(angle_deg)
+    return radius * np.cos(theta_rad), radius * np.sin(theta_rad)
 
 
 def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None):
@@ -283,7 +330,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
 
             th = np.linspace(0, 2 * np.pi, 360)
             for i, rr in enumerate(freq_plot):
-                ax.plot(rr * np.cos(th), rr * np.sin(th), 'k:', linewidth=0.5, linestyle='--', alpha=0.5)
+                ax.plot(rr * np.cos(th), rr * np.sin(th), 'k', linewidth=0.5, linestyle=':', alpha=0.5)
                 ax.text(0, rr * 1.03, f'{rr:.2f}',
                         ha='center', va='bottom', fontsize=6, color='black', alpha=0.5)
 
@@ -293,12 +340,10 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             # 在文字位置绘制白色圆形背景和文字
             for x_pos, y_pos, label in angle_labels:
                 circle_radius = 0.02 * freq_max
-                circle = plt.Circle((x_pos, y_pos), circle_radius, color='white',
+                circle = plt.Circle((x_pos, y_pos), circle_radius, facecolor='white',
                                    edgecolor='none', zorder=2)
                 ax.add_patch(circle)
                 ax.text(x_pos, y_pos, label, fontsize=10, ha='center', va='center', zorder=3)
-
-            plt.tight_layout()
 
             # 调整颜色条高度
             ax_pos = ax.get_position()
@@ -753,7 +798,10 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                             pass
 
                     # 保存图片
-                    plt.tight_layout()
+                    try:
+                        plt.tight_layout()
+                    except Exception:
+                        pass
                     plt.savefig(output_file, dpi=400, bbox_inches='tight',
                                 facecolor='white', edgecolor='none', pad_inches=0.1)
                     plt.close(fig)
@@ -859,7 +907,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
                     th = np.linspace(0, 2 * np.pi, 360)
                     for i, rr in enumerate(freq_plot):
-                        ax.plot(rr * np.cos(th), rr * np.sin(th), 'k:', linewidth=0.5, linestyle='--', alpha=0.5)
+                        ax.plot(rr * np.cos(th), rr * np.sin(th), 'k', linewidth=0.5, linestyle=':', alpha=0.5)
                         ax.text(0, rr * 1.03, f'{rr:.2f}',
                                 ha='center', va='bottom', fontsize=6, color='black', alpha=0.5)
 
@@ -869,12 +917,10 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     # 在文字位置绘制白色圆形背景和文字
                     for x_pos, y_pos, label in angle_labels:
                         circle_radius = 0.02 * freq_max
-                        circle = plt.Circle((x_pos, y_pos), circle_radius, color='white',
+                        circle = plt.Circle((x_pos, y_pos), circle_radius, facecolor='white',
                                            edgecolor='none', zorder=2)
                         ax.add_patch(circle)
                         ax.text(x_pos, y_pos, label, fontsize=10, ha='center', va='center', zorder=3)
-
-                    plt.tight_layout()
 
                     # 调整颜色条高度
                     ax_pos = ax.get_position()
@@ -1442,7 +1488,10 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                             pass
 
                     # 保存图片
-                    plt.tight_layout()
+                    try:
+                        plt.tight_layout()
+                    except Exception:
+                        pass
                     plt.savefig(output_file, dpi=400, bbox_inches='tight',
                                 facecolor='white', edgecolor='none', pad_inches=0.1)
                     plt.close(fig)
@@ -1537,7 +1586,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
                     th = np.linspace(0, 2 * np.pi, 360)
                     for i, rr in enumerate(freq_plot):
-                        ax.plot(rr * np.cos(th), rr * np.sin(th), 'k:', linewidth=0.5, linestyle='--', alpha=0.5)
+                        ax.plot(rr * np.cos(th), rr * np.sin(th), 'k', linewidth=0.5, linestyle=':', alpha=0.5)
                         ax.text(0, rr * 1.03, f'{rr:.2f}',
                                 ha='center', va='bottom', fontsize=6, color='black', alpha=0.5)
 
@@ -1545,12 +1594,10 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
                     for x_pos, y_pos, label in angle_labels:
                         circle_radius = 0.02 * freq_max
-                        circle = plt.Circle((x_pos, y_pos), circle_radius, color='white',
+                        circle = plt.Circle((x_pos, y_pos), circle_radius, facecolor='white',
                                            edgecolor='none', zorder=2)
                         ax.add_patch(circle)
                         ax.text(x_pos, y_pos, label, fontsize=10, ha='center', va='center', zorder=3)
-
-                    plt.tight_layout()
 
                     ax_pos = ax.get_position()
                     cbar_pos = cb.ax.get_position()
