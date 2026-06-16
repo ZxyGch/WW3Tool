@@ -143,6 +143,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
+        self.titleBar.raise_()
         self.sync_image_gallery_geometry()
 
     def _is_dark_theme(self) -> bool:
@@ -437,6 +438,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             run_wind_field=self._plot_wind_field,
             view_photo_subdir=self._plot_view_photo_subdir,
             open_photo_folder=self._plot_open_photo_folder,
+            log=self._append_log,
         )
         self.left_stacked.addWidget(self._plot_interface)  # [EN] index 2: plot page (shares right-side log)
         # index 2：绘图页（共享右侧日志）
@@ -512,6 +514,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             view_map=self._view_region_map,
             generate_grid=self._generate_grid,
             visualize_grid=self._visualize_grid,
+            recommend_params=self._recommend_grid_params,
         )
         self._display_fields.update(self._grid_panel.fields)
         self._outer_grid_title = self._grid_panel.outer_grid_title
@@ -593,6 +596,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             clear=self._server_clear,
             download_results=self._server_download_results,
             download_log=self._server_download_log,
+            exec_command=self._server_exec_command,
         )
         layout.addWidget(self._server_ops_panel.widget)
 
@@ -730,6 +734,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         dialog = WorkFolderDialog(parent=self, current_folder=current)
         if dialog.exec() == dialog.DialogCode.Accepted and dialog.selected_folder:
             self.set_work_directory(dialog.selected_folder)
+        self.titleBar.raise_()
 
     def _browse_params(self) -> None:
         start = str(self._params_path or Path.cwd())
@@ -1209,20 +1214,23 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._ww3_panel.set_value("ww3_end", time_range.end_date)
 
     def _auto_configure_timesteps(self) -> None:
-        from workflows.domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps
+        from workflows.domain.timestep_recommendation import (
+            as_ww3_grid_parameters,
+            recommend_timesteps_from_spacing,
+        )
 
-        try:
-            dx = float(self._grid_panel.fields["grid_dx"].text().strip())
-            dy = float(self._grid_panel.fields["grid_dy"].text().strip())
-            lat_s = float(self._grid_panel.fields["grid_lat_south"].text().strip())
-            lat_n = float(self._grid_panel.fields["grid_lat_north"].text().strip())
-        except ValueError:
-            self._show_error(
-                tr(
-                    "step4_auto_timesteps_need_grid",
-                    "请先在第二步填写有效的 DX、DY 与纬度范围",
+        # 按网格类型取最小尺度：非结构化用 hmin，结构化/SMC 用 DX/DY+纬度
+        # [EN] Min spacing by mesh type: unstructured→hmin, structured/SMC→DX/DY+lat
+        dxy_m, reason = self._grid_panel.cfl_spacing_m()
+        if dxy_m is None:
+            if reason == "need_hmin":
+                self._show_error(
+                    tr("step4_auto_timesteps_need_hmin", "请先在第二步填写有效的非结构网格最小尺度 hmin（km）")
                 )
-            )
+            else:
+                self._show_error(
+                    tr("step4_auto_timesteps_need_grid", "请先在第二步填写有效的 DX、DY 与纬度范围")
+                )
             return
 
         freq1_text = self._ww3_panel.spectrum_freq1_text()
@@ -1239,9 +1247,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             )
             return
 
-        lat_mid = (lat_s + lat_n) / 2.0
         try:
-            rec = recommend_timesteps(dx_deg=dx, dy_deg=dy, freq1=freq1, lat_deg=lat_mid)
+            rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1)
         except ValueError as exc:
             self._show_error(str(exc))
             return
@@ -1281,6 +1288,25 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._grid_panel.set_region_bounds("grid_inner", inner)
         self._append_log(tr("step2_inner_grid_set_short", "已根据嵌套收缩系数 N={n} 设置内网格范围").format(n=f"{factor:g}"))
 
+    def _recommend_grid_params(self) -> None:
+        ok, summary = self._grid_panel.apply_recommendations()
+        if not ok:
+            InfoBar.warning(
+                title=tr("step2_recommend_params", "推荐参数"),
+                content=tr("step2_recommend_need_bounds", "请先设置有效的经纬度范围"),
+                duration=3000,
+                parent=self,
+            )
+            self.titleBar.raise_()
+            return
+        InfoBar.success(
+            title=tr("step2_recommend_done", "已根据范围推荐参数"),
+            content=summary,
+            duration=4000,
+            parent=self,
+        )
+        self.titleBar.raise_()
+
     def _setup_outer_grid(self) -> None:
         if not self._grid_panel.is_nested:
             self._show_error(tr("step2_not_nested_mode", "当前不是嵌套网格模式"))
@@ -1297,7 +1323,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._append_log(tr("step2_outer_grid_set_short", "已根据嵌套收缩系数 N={n} 设置外网格范围").format(n=f"{factor:g}"))
 
     def _view_region_map(self) -> None:
-        config = self._config_from_current_workdir_params(validation_stage="grid")
+        config = self._config_from_current_workdir_params(validation_stage="grid", log=False)
         if config is None or self._busy:
             return
 
@@ -1347,6 +1373,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._map_dialog.exec()
         finally:
             self._map_dialog = None
+            self.titleBar.raise_()
             if self._map_preview_path is not None:
                 try:
                     self._map_preview_path.unlink(missing_ok=True)
@@ -1357,6 +1384,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _generate_grid(self) -> None:
         config = self._config_from_current_workdir_params(
             validation_stage="grid",
+            log=False,
         )
         if config is None or self._busy:
             return
@@ -1654,6 +1682,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 duration=3000,
                 parent=self,
             )
+            self.titleBar.raise_()
             self._append_log(
                 tr("plotting_ndbc_no_station_in_range", "⚠️ 当前经纬度范围内没有找到 NDBC 活跃站点。")
             )
@@ -1671,6 +1700,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 )
             )
             return
+        self.titleBar.raise_()
 
         self._append_log(
             tr("plotting_ndbc_station_selected", "✅ 范围内找到 {count} 个 NDBC 站点").format(count=len(stations))
@@ -1689,6 +1719,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             dialog.exec()
         except ImportError:
             self._append_log(tr("plotting_cartopy_not_available", "缺少 cartopy 库，无法显示站点地图"))
+        self.titleBar.raise_()
 
     def _plot_wind_swell(self) -> None:
         params = self._plot_interface.wave_maps_params()
@@ -1930,7 +1961,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self,
         )
         if not box.exec():
+            self.titleBar.raise_()
             return
+        self.titleBar.raise_()
         if not self._persist_server_remote_dir():
             return
         self._run_job(lambda c: self._remote_vm.clear_remote(c, confirmed=True))
@@ -1944,6 +1977,16 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._persist_server_remote_dir():
             return
         self._run_job(self._remote_vm.download_log)
+
+    def _server_exec_command(self) -> None:
+        # [EN] Execute arbitrary command on remote server.
+        """在远程服务器执行任意命令。"""
+        cmd = self._server_ops_panel.cmd_edit.text().strip()
+        if not cmd:
+            return
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(lambda config: self._remote_vm.exec_command(config, cmd))
 
     # [EN] ── Tools: clean workdir ────────────────────────────────────────────────────
     # ── 工具：清理工作目录 ────────────────────────────────────────────────────
@@ -1964,7 +2007,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         box = MessageBox(title, content.format(path=workdir), self)
         if not box.exec():
+            self.titleBar.raise_()
             return
+        self.titleBar.raise_()
         try:
             removed, errors = deleter(workdir)
         except Exception as exc:
@@ -1981,6 +2026,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             duration=2500,
             parent=self,
         )
+        self.titleBar.raise_()
 
     def _tools_clean_all(self) -> None:
         self._tools_clean(
@@ -2088,6 +2134,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._forcing_progress.close()
             self._forcing_progress.deleteLater()
             self._forcing_progress = None
+        self.titleBar.raise_()
 
     def _create_log_block_format(self) -> QTextBlockFormat:
         """返回统一的日志段落格式，让中英文行距一致。"""
@@ -2167,6 +2214,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             duration=5000,
             parent=self,
         )
+        self.titleBar.raise_()
 
 
 def create_preprocessing_window() -> PreprocessingWindow:

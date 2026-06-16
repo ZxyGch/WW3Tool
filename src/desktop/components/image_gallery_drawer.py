@@ -330,8 +330,7 @@ class ImageGalleryDrawer(QWidget):
         self._click_guard_timer.start(_CLICK_GUARD_MS)
 
     def _end_click_guard(self) -> None:
-        if self._is_open:
-            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
     def _cancel_panel_animation(self) -> None:
         self._animation_token += 1
