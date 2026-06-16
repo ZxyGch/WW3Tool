@@ -470,8 +470,6 @@ paths:
 #   default_workdir    – default parent folder for new work directories.
 #   recent_workdirs    – recently opened work directories (MRU list).
 #   forcing_field_dir  – last-used forcing file browse directory.
-#   forcing_process_mode / forcing_auto_associate – forcing page defaults.
-#   show_land_coastline – default map overlay preference.
 # ════════════════════════════════════════════════════════════════════
 desktop:
   language: en_US
@@ -482,6 +480,3 @@ desktop:
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ARR_20150709T0900_0094
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ARR_20150106T1300_0004
   forcing_field_dir: ''
-  forcing_process_mode: Copy
-  forcing_auto_associate: true
-  show_land_coastline: true

@@ -35,9 +35,6 @@ _DESKTOP_YAML_TO_LEGACY = {
     "default_workdir": "DEFAULT_WORKDIR",
     "recent_workdirs": "RECENT_WORKDIRS",
     "forcing_field_dir": "FORCING_FIELD_DIR_PATH",
-    "forcing_process_mode": "FORCING_FIELD_FILE_PROCESS_MODE",
-    "forcing_auto_associate": "FORCING_FIELD_AUTO_ASSOCIATE",
-    "show_land_coastline": "SHOW_LAND_COASTLINE",
 }
 _DESKTOP_LEGACY_TO_YAML = {v: k for k, v in _DESKTOP_YAML_TO_LEGACY.items()}
 
@@ -848,8 +845,6 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   default_workdir    – default parent folder for new work directories.\n"
      "#   recent_workdirs    – recently opened work directories (MRU list).\n"
      "#   forcing_field_dir  – last-used forcing file browse directory.\n"
-     "#   forcing_process_mode / forcing_auto_associate – forcing page defaults.\n"
-     "#   show_land_coastline – default map overlay preference.\n"
      "# ════════════════════════════════════════════════════════════════════"),
 ]
 

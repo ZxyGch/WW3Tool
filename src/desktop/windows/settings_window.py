@@ -268,7 +268,6 @@ class SettingsInterface(QWidget):
         outer.addWidget(scroll)
 
         self._build_interface_card()
-        self._build_forcing_card()
         self._build_paths_card()
         self._build_gridgen_card()
         self._build_unst_card()
@@ -492,35 +491,6 @@ class SettingsInterface(QWidget):
         if 0 <= index < len(RUN_MODE_VALUES):
             return RUN_MODE_VALUES[index]
         return None
-
-    def _build_forcing_card(self) -> None:
-        _group, layout = self._card_layout(tr("forcing_field_settings", "强迫场选择"))
-        auto_row = QHBoxLayout()
-        auto_row.setContentsMargins(0, 0, 0, 0)
-        auto_row.setSpacing(8)
-        auto_row.addWidget(self._label(tr("set_auto_associate", "自动关联场：")))
-        auto_row.addStretch(1)
-        auto_switch = self._make_switch()
-        auto_switch.setChecked(bool(self._config.get("FORCING_FIELD_AUTO_ASSOCIATE", True)))
-        auto_row.addWidget(auto_switch)
-        layout.addLayout(auto_row)
-        self._checks["FORCING_FIELD_AUTO_ASSOCIATE"] = auto_switch
-
-        process_row = QHBoxLayout()
-        process_row.setContentsMargins(0, 0, 0, 0)
-        process_row.setSpacing(8)
-        process_row.addWidget(self._label(tr("set_process_mode_label", "文件处理方式：")))
-        process_combo = ComboBox()
-        process_combo.addItem(tr("copy", "复制"), "copy")
-        process_combo.addItem(tr("move", "剪切"), "move")
-        process_combo.setStyleSheet(styles.combo_style())
-        left_align_combo_text(process_combo)
-        self._expand_field(process_combo)
-        mode = _as_text(self._config.get("FORCING_FIELD_FILE_PROCESS_MODE")) or "copy"
-        process_combo.setCurrentIndex(1 if mode == "move" else 0)
-        process_row.addWidget(process_combo, 1)
-        layout.addLayout(process_row)
-        self._combos["FORCING_FIELD_FILE_PROCESS_MODE"] = process_combo
 
     def _build_paths_card(self) -> None:
         _group, layout = self._card_layout(tr("path_settings", "路径设置"))
