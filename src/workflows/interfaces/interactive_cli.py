@@ -699,6 +699,9 @@ class InteractiveCLI(cmd.Cmd):
         parser = argparse.ArgumentParser(prog="merge-forcing", add_help=False)
         parser.add_argument("inputs", nargs="+")
         parser.add_argument("-o", "--output", required=True)
+        parser.add_argument("--time-range", nargs=2, metavar=("START", "END"), default=None)
+        parser.add_argument("--bbox", nargs=4, type=float,
+                            metavar=("WEST", "EAST", "SOUTH", "NORTH"), default=None)
         try:
             args = parser.parse_args(shlex.split(arg))
         except (SystemExit, ValueError):
@@ -706,7 +709,8 @@ class InteractiveCLI(cmd.Cmd):
                 _warn(
                     tr(
                         "icli_usage_merge_forcing",
-                        "用法：merge-forcing <输入1.nc> <输入2.nc> [...] -o <输出.nc>",
+                        "用法：merge-forcing <输入1.nc> <输入2.nc> [...] -o <输出.nc> "
+                        "[--time-range START END] [--bbox W E S N]",
                     )
                 )
             )
@@ -721,6 +725,8 @@ class InteractiveCLI(cmd.Cmd):
                 args.output,
                 log=self._log_callback,
                 progress=lambda value, message: self._log_callback(f"{value}% {message}"),
+                time_range=args.time_range,
+                bbox=args.bbox,
             )
             print(_success(tr("icli_done_merge_forcing", "✅ 强迫场合并完成")))
         except Exception as exc:

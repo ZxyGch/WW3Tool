@@ -224,6 +224,23 @@ class SshClient:
     # Files that must have \r stripped before upload (Windows-edited shell scripts)
     _UNIX_EOL_FILES = frozenset({"server.sh", "local.sh", "export.sh", "ww3.slurm"})
 
+    def _put_file(self, sftp, local_file: str, remote_file: str) -> None:
+        fname = os.path.basename(local_file)
+        if fname in self._UNIX_EOL_FILES:
+            with open(local_file, "rb") as fh:
+                content = fh.read()
+            if b"\r" in content:
+                content = content.replace(b"\r", b"")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=fname) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                try:
+                    sftp.put(tmp_path, remote_file)
+                finally:
+                    os.unlink(tmp_path)
+                return
+        sftp.put(local_file, remote_file)
+
     def upload_folder(
         self,
         local_dir: str,
@@ -263,22 +280,7 @@ class SshClient:
                     local_file = os.path.join(root, fname)
                     remote_file = os.path.join(remote_path, fname).replace("\\", "/")
                     try:
-                        if fname in self._UNIX_EOL_FILES:
-                            with open(local_file, "rb") as fh:
-                                content = fh.read()
-                            if b"\r" in content:
-                                content = content.replace(b"\r", b"")
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=fname) as tmp:
-                                    tmp.write(content)
-                                    tmp_path = tmp.name
-                                try:
-                                    sftp.put(tmp_path, remote_file)
-                                finally:
-                                    os.unlink(tmp_path)
-                            else:
-                                sftp.put(local_file, remote_file)
-                        else:
-                            sftp.put(local_file, remote_file)
+                        self._put_file(sftp, local_file, remote_file)
                         uploaded += 1
                         log(f"  ↑ {os.path.join(rel, fname).replace(os.sep, '/')}  [{uploaded}/{total_files}]")
                     except Exception as exc:
@@ -318,14 +320,14 @@ class SshClient:
                 remote_path = remote_dir if rel == "." else os.path.join(remote_dir, rel).replace("\\", "/")
                 self._ensure_remote_dir(sftp, remote_path)
                 for fname in files:
-                    if not pattern_fn(fname):
+                    rel_file = fname if rel == "." else os.path.join(rel, fname).replace(os.sep, "/")
+                    if not pattern_fn(rel_file):
                         continue
                     local_file = os.path.join(root, fname)
                     remote_file = os.path.join(remote_path, fname).replace("\\", "/")
-                    sftp.put(local_file, remote_file)
+                    self._put_file(sftp, local_file, remote_file)
                     uploaded += 1
-                    shown = fname if rel == "." else os.path.join(rel, fname).replace(os.sep, "/")
-                    log(f"  ↑ {shown}")
+                    log(f"  ↑ {rel_file}")
         finally:
             sftp.close()
         return uploaded

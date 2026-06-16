@@ -28,8 +28,15 @@ def run_merge_forcing(
     *,
     log: Optional[LogCallback] = None,
     progress: Optional[ProgressCallback] = None,
+    time_range: Optional[Sequence[str]] = None,
+    bbox: Optional[Sequence[float]] = None,
 ) -> ForcingMergeResult:
-    """Validate and merge forcing files for CLI, shell, and other interfaces."""
+    """Validate and merge forcing files for CLI, shell, and other interfaces.
+
+    ``time_range``（START, END）与 ``bbox``（west, east, south, north）为可选裁剪：
+    默认时间取所有输入的并集（最大时间范围）、空间取公共网格（最小经纬度范围）；
+    给定后把输出裁剪到指定时间/经纬度范围。
+    """
     logger = CoreLogger(callback=log)
     analysis = analyze_merge_inputs(input_paths)
     if not analysis.valid:
@@ -46,5 +53,7 @@ def run_merge_forcing(
         output_path,
         log=logger,
         progress=progress,
+        time_range=time_range,
+        bbox=bbox,
     )
     return ForcingMergeResult(output, analysis, tuple(logger.messages))

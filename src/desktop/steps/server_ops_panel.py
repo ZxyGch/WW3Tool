@@ -27,8 +27,7 @@ class ServerOpsPanel:
         list_files: Callable[[], None],
         queue: Callable[[], None],
         upload: Callable[[], None],
-        check_idle_resources: Callable[[], None],
-        upload_nml: Callable[[], None],
+        upload_without_forcing: Callable[[], None],
         submit: Callable[[], None],
         check: Callable[[], None],
         clear: Callable[[], None],
@@ -63,32 +62,31 @@ class ServerOpsPanel:
         row2.addWidget(create_button(tr("step7_submit", "提交计算任务"), submit))
         layout.addLayout(row2)
 
-        # [EN] Row 3: Slurm idle resources + upload NML files
-        # 第三行：检查 Slurm 空闲资源 + 上传 NML 文件
-        row3_extra = QHBoxLayout()
-        row3_extra.setSpacing(8)
-        row3_extra.addWidget(create_button(tr("step7_check_idle_resources", "检查空闲 Node/CPU"), check_idle_resources))
-        row3_extra.addWidget(create_button(tr("step7_upload_nml", "上传 NML 到服务器"), upload_nml))
-        layout.addLayout(row3_extra)
+        layout.addWidget(
+            create_button(
+                tr("step7_upload_without_forcing", "上传非强迫场文件到服务器"),
+                upload_without_forcing,
+            )
+        )
 
-        # [EN] Row 4: View queue + Check task
-        # 第四行：查看任务队列 + 检查任务
+        # [EN] Row 3: View queue + Check task
+        # 第三行：查看任务队列 + 检查任务
         row3 = QHBoxLayout()
         row3.setSpacing(8)
         row3.addWidget(create_button(tr("step7_view_queue", "查看任务队列"), queue))
         row3.addWidget(create_button(tr("step7_check", "检查是否已完成"), check))
         layout.addLayout(row3)
 
-        # [EN] Row 5: Download results + Download log
-        # 第五行：下载结果 + 下载日志
+        # [EN] Row 4: Download results + Download log
+        # 第四行：下载结果 + 下载日志
         row4 = QHBoxLayout()
         row4.setSpacing(8)
         row4.addWidget(create_button(tr("step7_download", "下载结果文件到本地"), download_results))
         row4.addWidget(create_button(tr("step7_download_log", "下载 log 文件"), download_log))
         layout.addLayout(row4)
 
-        # [EN] Row 6: Execute remote command
-        # 第六行：执行远程命令
+        # [EN] Row 5: Execute remote command
+        # 第五行：执行远程命令
         cmd_row = QHBoxLayout()
         cmd_row.setSpacing(8)
         self.cmd_edit = LineEdit()

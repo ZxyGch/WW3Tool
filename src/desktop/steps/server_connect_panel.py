@@ -54,6 +54,7 @@ class ServerConnectPanel:
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         input_style: Callable[[], str],
         connect: Callable[[], None],
+        check_idle_resources: Callable[[], None],
         cancel: Callable[[], None],
     ) -> None:
         self._group, layout = create_header_card(
@@ -141,6 +142,12 @@ class ServerConnectPanel:
         cancel_row.addWidget(create_button(tr("cancel_task", "取消任务"), cancel))
         layout.addWidget(self._cancel_widget)
 
+        self._idle_resources_button = create_button(
+            tr("step6_check_idle_resources", "检查空闲 Node/CPU"),
+            check_idle_resources,
+        )
+        layout.addWidget(self._idle_resources_button)
+
         self._group.viewLayout.addLayout(layout)
         self.widget = self._group
         self.set_connected(False)
@@ -164,6 +171,7 @@ class ServerConnectPanel:
         self.connect_button.setVisible(not connected)
         self._cancel_widget.setVisible(False)  # [EN] Visibility controlled by update_queue_table
         # 由 update_queue_table 控制显隐
+        self._idle_resources_button.setVisible(connected)
         if not connected:
             self._hide_cpu_and_queue()
 

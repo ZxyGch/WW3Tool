@@ -116,10 +116,10 @@ class RemoteViewModel:
 
         return run_upload(config, log=self._log, confirmed=confirmed, client=self._ensure_client(config))
 
-    def upload_nml(self, config: PipelineConfig, *, confirmed: bool = True):
-        from workflows.application.remote_ops import run_upload_nml
+    def upload_without_forcing(self, config: PipelineConfig, *, confirmed: bool = True):
+        from workflows.application.remote_ops import run_upload_without_forcing
 
-        return run_upload_nml(config, log=self._log, confirmed=confirmed, client=self._ensure_client(config))
+        return run_upload_without_forcing(config, log=self._log, confirmed=confirmed, client=self._ensure_client(config))
 
     def slurm_idle_resources(self, config: PipelineConfig):
         from workflows.application.remote_ops import run_slurm_idle_resources

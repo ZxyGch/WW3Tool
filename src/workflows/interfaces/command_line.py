@@ -173,6 +173,27 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="OUTPUT",
         help=tr("cli_help_merge_forcing_output", "Output NetCDF file"),
     )
+    p_merge.add_argument(
+        "--time-range",
+        nargs=2,
+        metavar=("START", "END"),
+        default=None,
+        help=tr(
+            "cli_help_merge_forcing_time_range",
+            "裁剪输出到 [START, END]（YYYYMMDD 或 ISO 时间）；默认取所有输入的并集（最大时间范围）",
+        ),
+    )
+    p_merge.add_argument(
+        "--bbox",
+        nargs=4,
+        type=float,
+        metavar=("WEST", "EAST", "SOUTH", "NORTH"),
+        default=None,
+        help=tr(
+            "cli_help_merge_forcing_bbox",
+            "裁剪输出到经纬度范围 west east south north；默认取公共网格（最小经纬度范围）",
+        ),
+    )
 
     p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "Run only grid generation"))
     p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -386,7 +407,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "merge-forcing":
-            return _run_merge_forcing(args.inputs, args.output)
+            return _run_merge_forcing(
+                args.inputs, args.output, time_range=args.time_range, bbox=args.bbox
+            )
 
         # cancel-job: job_id 必填
         # [EN] cancel-job: job_id is required
@@ -528,7 +551,13 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
-def _run_merge_forcing(input_paths: list[str], output_path: str) -> int:
+def _run_merge_forcing(
+    input_paths: list[str],
+    output_path: str,
+    *,
+    time_range: list[str] | None = None,
+    bbox: list[float] | None = None,
+) -> int:
     """Validate and merge forcing files while printing progress."""
     from ..application.forcing_merge import run_merge_forcing
 
@@ -537,12 +566,14 @@ def _run_merge_forcing(input_paths: list[str], output_path: str) -> int:
         output_path,
         log=print,
         progress=lambda value, message: print(f"{value}% {message}"),
+        time_range=time_range,
+        bbox=bbox,
     )
     return 0
 
 
 def _run_all_plots(config) -> int:
-    """按 ``plot:`` 段各子任务 ``enabled`` 标志依次执行绘图/匹配。
+    """依次执行所有绘图/匹配子任务。
 
     Args:
         config: 已解析的 ``PipelineConfig``。
@@ -550,8 +581,7 @@ def _run_all_plots(config) -> int:
     Returns:
         各子任务退出码的最大值（任一失败则非零）。
 
-    [EN] Execute plotting/matching in sequence according to the ``enabled`` flags
-    of each sub-task in the ``plot:`` section.
+    [EN] Execute all plotting/matching sub-tasks in sequence.
 
     Args:
         config: Resolved ``PipelineConfig``.
@@ -561,17 +591,13 @@ def _run_all_plots(config) -> int:
     """
     rc = 0
     cfg = config.plot
-    if cfg.wave_maps.enabled:
-        rc = max(rc, _run_wave_maps(config, contour=False))
-    if cfg.spectrum.enabled:
-        rc = max(rc, _run_spectrum(config))
-    if cfg.jason3.enabled:
-        rc = max(rc, _run_match_jason3(config))
-    if cfg.ndbc.enabled:
-        if cfg.ndbc.download:
-            rc = max(rc, _run_download_ndbc(config))
-        else:
-            rc = max(rc, _run_match_ndbc(config))
+    rc = max(rc, _run_wave_maps(config, contour=False))
+    rc = max(rc, _run_spectrum(config))
+    rc = max(rc, _run_match_jason3(config))
+    if cfg.ndbc.download:
+        rc = max(rc, _run_download_ndbc(config))
+    else:
+        rc = max(rc, _run_match_ndbc(config))
     return rc
 
 

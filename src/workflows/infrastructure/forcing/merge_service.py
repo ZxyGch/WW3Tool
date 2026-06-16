@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import os
 import tempfile
 from collections import defaultdict
@@ -441,10 +442,11 @@ def _copy_attrs(source, target, *, skip: set[str] | None = None) -> None:
 def _create_variable(out, name: str, source_var, *, time_name: str, compress: bool):
     kwargs = _variable_kwargs(source_var, compress=compress)
     dimensions = _normalized_dimensions(source_var, time_name)
-    if time_name in source_var.dimensions and "chunksizes" in kwargs:
-        axis = source_var.dimensions.index(time_name)
+    if "chunksizes" in kwargs:
         chunks = list(kwargs["chunksizes"])
-        chunks[axis] = min(chunks[axis], max(1, len(out.dimensions["time"])))
+        for axis, dim_name in enumerate(dimensions):
+            if dim_name in out.dimensions:
+                chunks[axis] = min(chunks[axis], max(1, len(out.dimensions[dim_name])))
         kwargs["chunksizes"] = tuple(chunks)
     try:
         var = out.createVariable(name, source_var.dtype, dimensions, **kwargs)
@@ -525,8 +527,10 @@ def _write_plan(
     *,
     progress: Callable[[int, str], None] | None = None,
     compress: bool = True,
+    dim_slices: dict[str, slice] | None = None,
 ) -> None:
     nc, _ = _imports()
+    dim_slices = dim_slices or {}
     last_progress = -1
 
     def _progress(value: int, message: str) -> None:
@@ -571,6 +575,8 @@ def _write_plan(
                     if name == time_name:
                         continue
                     size = None if dim.isunlimited() else len(dim)
+                    if name in dim_slices and size is not None:
+                        size = len(range(*dim_slices[name].indices(size)))
                     if name in dimension_sizes and dimension_sizes[name] != size:
                         raise ValueError(
                             tr("tools_merge_dimension_mismatch", "维度不一致：{dimension}").format(dimension=name)
@@ -595,7 +601,7 @@ def _write_plan(
                     if name == time_name or name in created or name in group.data_variables:
                         continue
                     target = _create_variable(out, name, source_var, time_name=time_name, compress=compress)
-                    target[:] = source_var[:]
+                    target[:] = source_var[_crop_indexer(source_var, dim_slices)]
                     created.add(name)
 
             opened = {path: nc.Dataset(path, "r") for path in group.paths}
@@ -615,7 +621,7 @@ def _write_plan(
                         compress=compress,
                     )
                     if first_source_time_name not in source_var.dimensions:
-                        target[:] = source_var[:]
+                        target[:] = source_var[_crop_indexer(source_var, dim_slices)]
                         created.add(name)
                         _advance(
                             _variable_nbytes(source_var),
@@ -632,7 +638,7 @@ def _write_plan(
                         block_steps = _copy_block_steps(source, source_axis)
                         for offset in range(0, run_count, block_steps):
                             count = min(block_steps, run_count - offset)
-                            source_indexer = [slice(None)] * source.ndim
+                            source_indexer = list(_crop_indexer(source, dim_slices))
                             source_indexer[source_axis] = slice(
                                 source_start + offset,
                                 source_start + offset + count,
@@ -662,6 +668,86 @@ def _write_plan(
     _progress(98, tr("tools_merge_progress_finalize", "正在完成输出文件"))
 
 
+def _parse_epoch(token: str, *, end: bool = False) -> float:
+    """把日期/时间字符串解析为 epoch 秒（UTC）。
+
+    接受 ``YYYYMMDD``、``YYYY-MM-DD`` 或 ISO 日期时间；当作为范围**终点**且只给
+    到日期时，返回当日 23:59:59（终点含当天）。
+    """
+    s = str(token).strip().replace("/", "-")
+    date_only = False
+    parsed: _dt.datetime | None = None
+    for fmt in ("%Y%m%d", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            parsed = _dt.datetime.strptime(s, fmt)
+            date_only = fmt in ("%Y%m%d", "%Y-%m-%d")
+            break
+        except ValueError:
+            continue
+    if parsed is None:
+        raise ValueError(tr("tools_merge_bad_time", "无法解析时间：{t}").format(t=token))
+    if end and date_only:
+        parsed = parsed + _dt.timedelta(days=1) - _dt.timedelta(seconds=1)
+    return parsed.replace(tzinfo=_dt.timezone.utc).timestamp()
+
+
+def _coord_slice(values, lo: float, hi: float):
+    """返回坐标数组中落在 ``[lo, hi]`` 的连续切片（坐标单调，升降序均可）。"""
+    _, np = _imports()
+    arr = np.asarray(values, dtype="float64")
+    idx = np.where((arr >= lo) & (arr <= hi))[0]
+    if idx.size == 0:
+        raise ValueError(
+            tr("tools_merge_bbox_empty", "指定范围内无格点：[{lo}, {hi}]").format(lo=lo, hi=hi)
+        )
+    return slice(int(idx.min()), int(idx.max()) + 1)
+
+
+def _spatial_dim_slices(first_path: str, bbox: Sequence[float]) -> dict[str, slice]:
+    """由 bbox=(west, east, south, north) 算出经/纬维度名 → 裁剪切片。"""
+    nc, _ = _imports()
+    west, east, south, north = (float(v) for v in bbox)
+    slices: dict[str, slice] = {}
+    with nc.Dataset(first_path, "r") as ds:
+        lat = _find_coord(ds, ("latitude", "lat", "y"))
+        lon = _find_coord(ds, ("longitude", "lon", "x"))
+        if lat is None or lon is None:
+            raise ValueError(
+                tr("tools_merge_no_lonlat", "文件缺少经纬度坐标，无法按范围裁剪")
+            )
+        slices[lat.dimensions[0]] = _coord_slice(lat[:], south, north)
+        slices[lon.dimensions[0]] = _coord_slice(lon[:], west, east)
+    return slices
+
+
+def _apply_time_range(plan: _MergePlan, t0: float, t1: float) -> _MergePlan:
+    """把合并计划的时间轴裁剪到 epoch 秒区间 ``[t0, t1]``（含端点）。"""
+    _, np = _imports()
+    new_groups: list[_GroupPlan] = []
+    for group in plan.groups:
+        keep = [i for i, value in enumerate(group.times) if t0 <= float(value) <= t1]
+        if not keep:
+            raise ValueError(tr("tools_merge_time_empty", "指定时间范围内无数据"))
+        new_groups.append(
+            _GroupPlan(
+                group.paths,
+                group.data_variables,
+                np.asarray([group.times[i] for i in keep], dtype="float64"),
+                [group.time_sources[i] for i in keep],
+                group.time_names,
+            )
+        )
+    a = plan.analysis
+    steps = len(new_groups[0].times) if new_groups else 0
+    return _MergePlan(new_groups, MergeAnalysis(a.files, a.strategy, a.errors, steps))
+
+
+def _crop_indexer(var, dim_slices: dict[str, slice]) -> tuple:
+    """按维度名取裁剪切片，未裁剪的维度取整段。"""
+    return tuple(dim_slices.get(name, slice(None)) for name in var.dimensions)
+
+
 def merge_forcing_netcdf(
     input_paths: Sequence[str],
     output_path: str,
@@ -669,6 +755,8 @@ def merge_forcing_netcdf(
     log: Callable[[str], None] | None = None,
     progress: Callable[[int, str], None] | None = None,
     compress: bool = True,
+    time_range: Sequence[str] | None = None,
+    bbox: Sequence[float] | None = None,
 ) -> str:
     """Validate and merge forcing files, atomically replacing the output on success."""
 
@@ -682,6 +770,13 @@ def merge_forcing_netcdf(
     plan = _build_plan(input_paths)
     if not plan.analysis.valid:
         raise ValueError("\n".join(plan.analysis.errors))
+    if time_range is not None:
+        t0 = _parse_epoch(time_range[0])
+        t1 = _parse_epoch(time_range[1], end=True)
+        if t1 < t0:
+            raise ValueError(tr("tools_merge_time_order", "时间范围终点早于起点"))
+        plan = _apply_time_range(plan, t0, t1)
+    dim_slices = _spatial_dim_slices(plan.groups[0].paths[0], bbox) if bbox is not None else {}
     if log:
         log(
             tr("tools_merge_plan", "合并方式：{strategy}，共 {steps} 个时间步").format(
@@ -697,7 +792,7 @@ def merge_forcing_netcdf(
     fd, temp_path = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
     os.close(fd)
     try:
-        _write_plan(plan, temp_path, progress=progress, compress=compress)
+        _write_plan(plan, temp_path, progress=progress, compress=compress, dim_slices=dim_slices)
         os.replace(temp_path, output)
     except Exception:
         try:

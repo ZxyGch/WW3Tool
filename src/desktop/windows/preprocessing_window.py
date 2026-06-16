@@ -580,6 +580,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             create_button=self._primary_button,
             input_style=self._input_style,
             connect=self._server_connect,
+            check_idle_resources=self._server_check_idle_resources,
             cancel=self._server_cancel,
         )
         layout.addWidget(self._server_connect_panel.widget)
@@ -591,8 +592,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             list_files=self._server_list_files,
             queue=self._server_queue,
             upload=self._server_upload,
-            check_idle_resources=self._server_check_idle_resources,
-            upload_nml=self._server_upload_nml,
+            upload_without_forcing=self._server_upload_without_forcing,
             submit=self._server_submit,
             check=self._server_check,
             clear=self._server_clear,
@@ -1954,10 +1954,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         self._run_job(self._remote_vm.slurm_idle_resources)
 
-    def _server_upload_nml(self) -> None:
+    def _server_upload_without_forcing(self) -> None:
         if not self._persist_server_remote_dir():
             return
-        self._run_job(lambda c: self._remote_vm.upload_nml(c, confirmed=True))
+        self._run_job(lambda c: self._remote_vm.upload_without_forcing(c, confirmed=True))
 
     def _server_submit(self) -> None:
         if not self._persist_server_remote_dir():

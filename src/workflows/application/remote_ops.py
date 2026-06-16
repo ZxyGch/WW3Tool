@@ -169,17 +169,54 @@ def run_upload(
             c.close()
 
 
-def run_upload_nml(
+def _forcing_excluded_relpaths(config: PipelineConfig, local_dir: str) -> set[str]:
+    local_root = os.path.realpath(local_dir)
+    excluded: set[str] = set()
+
+    def add_path(path: object) -> None:
+        if not path:
+            return
+        real = os.path.realpath(os.fspath(path))
+        if not os.path.isfile(real):
+            return
+        try:
+            common = os.path.commonpath([local_root, real])
+        except ValueError:
+            return
+        if common != local_root:
+            return
+        excluded.add(os.path.relpath(real, local_root).replace(os.sep, "/"))
+
+    for path in (
+        config.forcing.wind,
+        config.forcing.current,
+        config.forcing.level,
+        config.forcing.ice,
+    ):
+        add_path(path)
+
+    try:
+        from ..infrastructure.forcing.file_service import FileService
+
+        scanned = FileService().scan_forcing_files(local_dir)
+        for _field, path in scanned.existing_items():
+            add_path(path)
+    except Exception:
+        pass
+    return excluded
+
+
+def run_upload_without_forcing(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,
     *,
     confirmed: bool = False,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """Upload only top-level ``*.nml`` files from the local workdir to remote workdir."""
+    """Upload local workdir files except configured/detected forcing files."""
     logger = CoreLogger(callback=log)
     if not confirmed:
-        msg = tr("upload_nml_blocked_confirm_required", "⚠️ 上传 NML 被阻止：必须显式确认后才能执行。")
+        msg = tr("upload_without_forcing_blocked_confirm_required", "上传非强迫场文件被阻止：必须显式确认后才能执行。")
         logger.log(tr("error_prefix", "❌ {message}").format(message=msg))
         return RemoteResult(success=False, error=msg, messages=list(logger.messages))
 
@@ -191,21 +228,29 @@ def run_upload_nml(
             raise FileNotFoundError(tr("local_workdir_not_exists", "❌ 本地工作目录不存在：{path}").format(path=local_dir))
         if owns:
             c.connect(log=logger.log)
-        logger.log(tr("upload_nml_start", "📤 开始上传 NML 文件到 {path} ...").format(path=remote_dir))
+        excluded = _forcing_excluded_relpaths(config, local_dir)
+        if excluded:
+            logger.log(
+                tr(
+                    "upload_without_forcing_excluding",
+                    "ℹ️ 将跳过 {count} 个强迫场文件",
+                ).format(count=len(excluded))
+            )
+        logger.log(tr("upload_without_forcing_start", "📤 开始上传非强迫场文件到 {path} ...").format(path=remote_dir))
         count = c.upload_matching_files(
             local_dir,
             remote_dir,
-            lambda name: name.lower().endswith(".nml"),
-            recursive=False,
+            lambda relpath: relpath.replace("\\", "/") not in excluded,
+            recursive=True,
             log=logger.log,
         )
         if count == 0:
-            logger.log(tr("upload_nml_none", "⚠️ 本地工作目录未找到 .nml 文件"))
+            logger.log(tr("upload_without_forcing_none", "⚠️ 没有可上传的非强迫场文件"))
         else:
-            logger.log(tr("upload_nml_done", "✅ 已上传 {count} 个 NML 文件 → {path}").format(count=count, path=remote_dir))
+            logger.log(tr("upload_without_forcing_done", "✅ 已上传 {count} 个非强迫场文件 → {path}").format(count=count, path=remote_dir))
         return RemoteResult(success=True, data=count, messages=list(logger.messages))
     except Exception as exc:
-        logger.log(tr("upload_nml_failed", "❌ 上传 NML 失败：{error}").format(error=exc))
+        logger.log(tr("upload_without_forcing_failed", "❌ 上传非强迫场文件失败：{error}").format(error=exc))
         return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
     finally:
         if owns:
