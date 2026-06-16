@@ -580,7 +580,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             create_button=self._primary_button,
             input_style=self._input_style,
             connect=self._server_connect,
-            check_idle_resources=self._server_check_idle_resources,
             use_idle_full=self._server_use_idle_full,
             use_idle_half=self._server_use_idle_half,
             cancel=self._server_cancel,
@@ -1874,8 +1873,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         self._run_job(lambda c: self._remote_vm.cancel_job(c, job_id))
 
-    # [EN] ── Server status auto-polling (CPU ranking + task queue)────────────────────────────
-    # ── 服务器状态自动轮询（CPU 排行 + 任务队列）────────────────────────────
+    # [EN] ── Server status auto-polling (cluster jobs + idle resources + task queue) ──
+    # ── 服务器状态自动轮询（集群作业 + 空闲资源 + 任务队列）────────────────────────────
 
     def _build_poll_config(self):
         # [EN] Try to build PipelineConfig for polling; returns None on failure.
@@ -1889,19 +1888,21 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _start_server_polling(self) -> None:
-        # [EN] Start timer after successful connection, polling CPU ranking and task queue every 15 seconds.
-        """连接成功后启动定时器，每 15 秒拉取 CPU 排行和任务队列。"""
+        # [EN] Start timer after successful connection, polling all three server lists every second.
+        """连接成功后启动定时器，每 1 秒拉取集群作业、空闲资源和任务队列。"""
         self._stop_server_polling()
         self._server_polling_active = True
+        self._server_poll_in_flight = False
         # [EN] Pull once immediately
         # 立即拉取一次
         self._poll_server_status()
         self._server_poll_timer = QTimer(self)
         self._server_poll_timer.timeout.connect(self._poll_server_status)
-        self._server_poll_timer.start(15_000)
+        self._server_poll_timer.start(1_000)
 
     def _stop_server_polling(self) -> None:
         self._server_polling_active = False
+        self._server_poll_in_flight = False
         timer = getattr(self, "_server_poll_timer", None)
         if timer is not None:
             timer.stop()
@@ -1913,6 +1914,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         cfg = getattr(self, "_server_poll_config", None)
         if cfg is None or not getattr(self, "_server_polling_active", False):
             return
+        if getattr(self, "_server_poll_in_flight", False):
+            return
+        self._server_poll_in_flight = True
         # [EN] Reuse ViewModel's persistent client, skip log callback
         # 复用 ViewModel 的持久化 client，跳过 log 回调
         from workflows.application.remote_ops import run_server_status
@@ -1923,6 +1927,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
 
     def _on_server_status_done(self, result: object) -> None:
+        self._server_poll_in_flight = False
         if result is None:
             return
         data = getattr(result, "data", None)
@@ -1952,17 +1957,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._persist_server_remote_dir():
             return
         self._run_job(lambda c: self._remote_vm.upload(c, confirmed=True))
-
-    def _server_check_idle_resources(self) -> None:
-        if not self._persist_server_remote_dir():
-            return
-        self._run_job(self._remote_vm.slurm_idle_resources, on_done=self._on_idle_resources_done)
-
-    def _on_idle_resources_done(self, result: object) -> None:
-        self._on_job_done(result)
-        data = getattr(result, "data", None) if result is not None else None
-        if isinstance(data, dict):
-            self._server_connect_panel.update_idle_resources(data.get("idle_summary", []) or [])
 
     def _server_use_idle_full(self) -> None:
         self._server_apply_idle_resources("full")

@@ -54,7 +54,6 @@ class ServerConnectPanel:
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         input_style: Callable[[], str],
         connect: Callable[[], None],
-        check_idle_resources: Callable[[], None],
         use_idle_full: Callable[[], None],
         use_idle_half: Callable[[], None],
         cancel: Callable[[], None],
@@ -181,17 +180,6 @@ class ServerConnectPanel:
         idle_actions.addWidget(create_button(tr("step6_use_idle_half", "半数使用"), use_idle_half))
         layout.addWidget(self._idle_actions_widget)
 
-        self._idle_check_widget = QWidget()
-        idle_check = QHBoxLayout(self._idle_check_widget)
-        idle_check.setContentsMargins(0, 12, 0, 0)
-        idle_check.setSpacing(8)
-        self._idle_resources_button = create_button(
-            tr("step6_check_idle_resources", "检查空闲 Node/CPU"),
-            check_idle_resources,
-        )
-        idle_check.addWidget(self._idle_resources_button)
-        layout.addWidget(self._idle_check_widget)
-
         self._group.viewLayout.addLayout(layout)
         self.widget = self._group
         self.set_connected(False)
@@ -219,7 +207,6 @@ class ServerConnectPanel:
         self._idle_title.setVisible(connected)
         self._idle_table.setVisible(connected)
         self._idle_actions_widget.setVisible(connected)
-        self._idle_check_widget.setVisible(connected)
         if connected and self._idle_table.rowCount() == 0:
             self.update_idle_resources([])
         if not connected:
@@ -394,7 +381,6 @@ class ServerConnectPanel:
         self._idle_title.setVisible(False)
         self._idle_table.setVisible(False)
         self._idle_actions_widget.setVisible(False)
-        self._idle_check_widget.setVisible(False)
         self._idle_table.setRowCount(0)
         self._idle_rows = []
 
