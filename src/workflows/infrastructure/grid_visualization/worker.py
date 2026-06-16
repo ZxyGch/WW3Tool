@@ -1181,14 +1181,17 @@ def run_unst(grid_dir: str) -> dict:
         if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin == vmax:
             vmax = vmin + 1.0 if np.isfinite(vmin) else 1.0
             vmin = vmin if np.isfinite(vmin) else 0.0
+        # gouraud 着色的 TriMesh 不会被 cartopy 按 transform 重投影（中央经线≠0 时会整体错位到画面外、
+        # 导致水深图空白）。先把三角网节点投影到该轴的投影坐标，再以默认 transData 绘制。
+        _pts = ax.projection.transform_points(ccrs.PlateCarree(), xy[:, 0], xy[:, 1])
+        triang_proj = mtri.Triangulation(_pts[:, 0], _pts[:, 1], triangles=ect, mask=tri_mask)
         tpc = ax.tripcolor(
-            triang,
+            triang_proj,
             d,
             shading="gouraud",
             cmap="jet",
             vmin=vmin,
             vmax=vmax,
-            transform=ccrs.PlateCarree(),
         )
         plt.colorbar(tpc, ax=ax, shrink=0.7).set_label("Depth (m)", fontsize=10)
         ax.set_title("Unstructured mesh — bathymetry", fontsize=13)
