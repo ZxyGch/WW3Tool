@@ -86,11 +86,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
 
         log(tr("plotting_start_first_spectrum", "🔄 开始生成第一张二维谱图（在子进程中执行）..."))
 
-        # 如果指定了文件，使用指定的文件；否则查找 ww3*spec*nc 格式的文件
-        if spec_file and os.path.exists(spec_file):
-            spec_files = [spec_file]
-        else:
-            spec_files = glob.glob(os.path.join(selected_folder, "ww3*spec*nc"))
+        spec_files = _find_spectrum_files(selected_folder, spec_file)
 
         if not spec_files:
             log(tr("plotting_spectrum_file_not_found", "❌ 未找到二维谱文件，请先选择文件"))
@@ -111,7 +107,9 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
                 dir_orig = ds.variables['direction'][:].data  # degree
                 # WW3 efth units: m²·s·rad⁻¹ == m²/Hz/rad -> convert to m²/Hz/deg for plotting
                 efth = ds.variables['efth'][:] * (np.pi / 180.0)
-                time = ds.variables['time'][:].data
+                time_var = ds.variables['time']
+                time = time_var[:].data
+                time_dt = _decode_time_values(time, time_var)
 
                 # 读取站点信息
                 lon = ds.variables['longitude'][:].data
@@ -119,10 +117,6 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
                 nStation = len(ds.dimensions['station'])
 
             # 精简日志：不输出读取统计
-
-            # 转换时间
-            t0 = datetime(1990, 1, 1, 0, 0, 0)
-            time_dt = [t0 + timedelta(days=float(t)) for t in time]
 
             # 选择第一个时间步和第一个站点
             itime = 0
@@ -158,7 +152,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
                 E_interp[:, i] = interp_func(theta_deg_full)
 
             # 极坐标 → 笛卡尔坐标
-            theta_deg_full_rad = np.deg2rad(90 - theta_deg_full)
+            theta_deg_full_rad = _ww3_direction_to_radians(theta_deg_full)
             Theta, R = np.meshgrid(theta_deg_full_rad, freq)
             X = R * np.cos(Theta)
             Y = R * np.sin(Theta)
@@ -310,7 +304,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
 
             # 绘制径向轴
             for ang in dirs:
-                theta_rad = np.deg2rad(90 - ang)
+                theta_rad = _ww3_direction_to_radians(ang)
                 ax.plot([0, rmax * np.cos(theta_rad)],
                        [0, rmax * np.sin(theta_rad)],
                        color='black', linewidth=0.5, alpha=0.5, linestyle='--')
@@ -318,8 +312,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             # 角度标签
             angle_labels = []
             for ang in dirs:
-                x_pos = rmax * 1.12 * np.cos(np.deg2rad(90 - ang))
-                y_pos = rmax * 1.12 * np.sin(np.deg2rad(90 - ang))
+                x_pos, y_pos = _direction_label_position(ang, rmax * 1.12)
                 label = f'{int(ang)}°'
                 angle_labels.append((x_pos, y_pos, label))
 
@@ -405,11 +398,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
         # 精简日志：不输出开始提示
 
-        # 如果指定了文件，使用指定的文件；否则查找 ww3*spec*nc 格式的文件
-        if spec_file and os.path.exists(spec_file):
-            spec_files = [spec_file]
-        else:
-            spec_files = glob.glob(os.path.join(selected_folder, "ww3*spec*nc"))
+        spec_files = _find_spectrum_files(selected_folder, spec_file)
 
         if not spec_files:
             log(tr("plotting_spectrum_file_not_found", "❌ 未找到二维谱文件，请先选择文件"))
@@ -430,7 +419,9 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                 dir_orig = ds.variables['direction'][:].data  # degree
                 # WW3 efth units: m²·s·rad⁻¹ == m²/Hz/rad -> convert to m²/Hz/deg for plotting
                 efth = ds.variables['efth'][:] * (np.pi / 180.0)
-                time = ds.variables['time'][:].data
+                time_var = ds.variables['time']
+                time = time_var[:].data
+                time_dt = _decode_time_values(time, time_var)
 
                 # 读取站点信息
                 lon = ds.variables['longitude'][:].data
@@ -438,10 +429,6 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                 nStation = len(ds.dimensions['station'])
                 nTime = len(time)
                 station_name_var = ds.variables['station_name'][:] if 'station_name' in ds.variables else None
-
-            # 转换时间
-            t0 = datetime(1990, 1, 1, 0, 0, 0)
-            time_dt = [t0 + timedelta(days=float(t)) for t in time]
 
             # 根据时间步长筛选时间步
             time_step_hours_float = float(time_step_hours)
@@ -658,7 +645,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     E_interp[:, i] = interp_func(theta_deg_full)
 
                 # 极坐标 → 笛卡尔坐标
-                theta_deg_full_rad = np.deg2rad(90 - theta_deg_full)
+                theta_deg_full_rad = _ww3_direction_to_radians(theta_deg_full)
                 Theta, R = np.meshgrid(theta_deg_full_rad, freq)
                 X = R * np.cos(Theta)
                 Y = R * np.sin(Theta)
@@ -737,18 +724,11 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     fig = plt.gcf()
                     ax = plt.gca()
 
-                    # 保持图像不变：0度在底部（南），顺时针方向（参考文件）
-                    ax.set_theta_zero_location('S')
-                    ax.set_theta_direction(-1)
+                    ax.set_theta_zero_location('E')
+                    ax.set_theta_direction(1)
 
-                    # 只修改标签文本，让0度标签显示在顶部位置（参考文件）
                     angles_deg = np.arange(0, 360, 30)
-                    label_texts = []
-                    for angle in angles_deg:
-                        label_angle = (angle + 180) % 360
-                        label_texts.append(f'{int(label_angle)}°')
-
-                    # 设置标签，保持网格位置不变（角度位置不变）
+                    label_texts = [f'{int(angle)}°' for angle in angles_deg]
                     ax.set_thetagrids(angles_deg, labels=label_texts)
 
                     # 设置标题，显示站点信息
@@ -887,7 +867,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
                     # 绘制径向轴
                     for ang in dirs:
-                        theta_rad = np.deg2rad(90 - ang)
+                        theta_rad = _ww3_direction_to_radians(ang)
                         ax.plot([0, rmax * np.cos(theta_rad)],
                                [0, rmax * np.sin(theta_rad)],
                                color='black', linewidth=0.5, alpha=0.5, linestyle='--')
@@ -895,8 +875,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     # 角度标签
                     angle_labels = []
                     for ang in dirs:
-                        x_pos = rmax * 1.12 * np.cos(np.deg2rad(90 - ang))
-                        y_pos = rmax * 1.12 * np.sin(np.deg2rad(90 - ang))
+                        x_pos, y_pos = _direction_label_position(ang, rmax * 1.12)
                         label = f'{int(ang)}°'
                         angle_labels.append((x_pos, y_pos, label))
 
@@ -1014,11 +993,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
         log(tr("plotting_start_selected_spectrum", "🔄 开始生成选中站点的二维谱图（站点索引：{index}，时间步长：{hours}小时，在子进程中执行）...").format(index=station_index, hours=time_step_hours))
 
-        # 如果指定了文件，使用指定的文件；否则查找 ww3*spec*nc 格式的文件
-        if spec_file and os.path.exists(spec_file):
-            spec_files = [spec_file]
-        else:
-            spec_files = glob.glob(os.path.join(selected_folder, "ww3*spec*nc"))
+        spec_files = _find_spectrum_files(selected_folder, spec_file)
 
         if not spec_files:
             log(tr("plotting_spectrum_file_not_found", "❌ 未找到二维谱文件，请先选择文件"))
@@ -1039,7 +1014,9 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                 dir_orig = ds.variables['direction'][:].data  # degree
                 # WW3 efth units: m²·s·rad⁻¹ == m²/Hz/rad -> convert to m²/Hz/deg for plotting
                 efth = ds.variables['efth'][:] * (np.pi / 180.0)
-                time = ds.variables['time'][:].data
+                time_var = ds.variables['time']
+                time = time_var[:].data
+                time_dt = _decode_time_values(time, time_var)
 
                 # 读取站点信息
                 lon = ds.variables['longitude'][:].data
@@ -1054,10 +1031,6 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                 log_queue.put("__DONE__")
                 result_queue.put(None)
                 return
-
-            # 转换时间
-            t0 = datetime(1990, 1, 1, 0, 0, 0)
-            time_dt = [t0 + timedelta(days=float(t)) for t in time]
 
             # 根据时间步长筛选时间步
             time_step_hours_float = float(time_step_hours)
@@ -1276,7 +1249,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     E_interp[:, i] = interp_func(theta_deg_full)
 
                 # 极坐标 → 笛卡尔坐标
-                theta_deg_full_rad = np.deg2rad(90 - theta_deg_full)
+                theta_deg_full_rad = _ww3_direction_to_radians(theta_deg_full)
                 Theta, R = np.meshgrid(theta_deg_full_rad, freq)
                 X = R * np.cos(Theta)
                 Y = R * np.sin(Theta)
@@ -1427,18 +1400,11 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     fig = plt.gcf()
                     ax = plt.gca()
 
-                    # 保持图像不变：0度在底部（南），顺时针方向（参考文件）
-                    ax.set_theta_zero_location('S')
-                    ax.set_theta_direction(-1)
+                    ax.set_theta_zero_location('E')
+                    ax.set_theta_direction(1)
 
-                    # 只修改标签文本，让0度标签显示在顶部位置（参考文件）
                     angles_deg = np.arange(0, 360, 30)
-                    label_texts = []
-                    for angle in angles_deg:
-                        label_angle = (angle + 180) % 360
-                        label_texts.append(f'{int(label_angle)}°')
-
-                    # 设置标签，保持网格位置不变（角度位置不变）
+                    label_texts = [f'{int(angle)}°' for angle in angles_deg]
                     ax.set_thetagrids(angles_deg, labels=label_texts)
 
                     # 设置标题，显示站点信息
@@ -1568,15 +1534,14 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     rmax = np.max(freq)
 
                     for ang in dirs:
-                        theta_rad = np.deg2rad(90 - ang)
+                        theta_rad = _ww3_direction_to_radians(ang)
                         ax.plot([0, rmax * np.cos(theta_rad)],
                                [0, rmax * np.sin(theta_rad)],
                                color='black', linewidth=0.5, alpha=0.5, linestyle='--')
 
                     angle_labels = []
                     for ang in dirs:
-                        x_pos = rmax * 1.12 * np.cos(np.deg2rad(90 - ang))
-                        y_pos = rmax * 1.12 * np.sin(np.deg2rad(90 - ang))
+                        x_pos, y_pos = _direction_label_position(ang, rmax * 1.12)
                         label = f'{int(ang)}°'
                         angle_labels.append((x_pos, y_pos, label))
 
