@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QProgressBar,
     QSizePolicy,
     QTableWidgetItem,
@@ -153,14 +152,13 @@ class ToolsInterface(QWidget):
 
         # 裁剪范围（可选）：留空则时间取并集（最大）、经纬度取公共网格（最小）
         # 顺序：经纬度 → 时间 → 输出路径
-        # —— 经纬度：经度一行、纬度一行、按钮单独一行 ——
+        # —— 经纬度：经度一行、纬度一行、按钮单独一行（全宽）——
         lon_row = QHBoxLayout()
         lon_row.setSpacing(8)
-        lon_row.addWidget(QLabel(tr("merge_inline_lon", "经度")))
         self._merge_lon_w = LineEdit()
-        self._merge_lon_w.setPlaceholderText(tr("merge_inline_w", "西 W"))
+        self._merge_lon_w.setPlaceholderText(tr("merge_inline_w", "西经 W"))
         self._merge_lon_e = LineEdit()
-        self._merge_lon_e.setPlaceholderText(tr("merge_inline_e", "东 E"))
+        self._merge_lon_e.setPlaceholderText(tr("merge_inline_e", "东经 E"))
         for edit in (self._merge_lon_w, self._merge_lon_e):
             edit.setStyleSheet(styles.input_style())
             lon_row.addWidget(edit, 1)
@@ -168,11 +166,10 @@ class ToolsInterface(QWidget):
 
         lat_row = QHBoxLayout()
         lat_row.setSpacing(8)
-        lat_row.addWidget(QLabel(tr("merge_inline_lat", "纬度")))
         self._merge_lat_s = LineEdit()
-        self._merge_lat_s.setPlaceholderText(tr("merge_inline_s", "南 S"))
+        self._merge_lat_s.setPlaceholderText(tr("merge_inline_s", "南纬 S"))
         self._merge_lat_n = LineEdit()
-        self._merge_lat_n.setPlaceholderText(tr("merge_inline_n", "北 N"))
+        self._merge_lat_n.setPlaceholderText(tr("merge_inline_n", "北纬 N"))
         for edit in (self._merge_lat_s, self._merge_lat_n):
             edit.setStyleSheet(styles.input_style())
             lat_row.addWidget(edit, 1)
@@ -181,18 +178,13 @@ class ToolsInterface(QWidget):
         # bbox 始终按 [西, 东, 南, 北] 顺序提供给合并逻辑
         self._merge_bbox = [self._merge_lon_w, self._merge_lon_e, self._merge_lat_s, self._merge_lat_n]
 
-        minbox_row = QHBoxLayout()
-        minbox_row.setSpacing(8)
-        minbox_row.addWidget(
-            self._small_button(tr("merge_inline_fill_minbox", "最小经纬度范围"), self._fill_min_box)
+        layout.addWidget(
+            self._button(tr("merge_inline_fill_minbox", "最小经纬度范围"), self._fill_min_box)
         )
-        minbox_row.addStretch(1)
-        layout.addLayout(minbox_row)
 
-        # —— 时间范围：输入框一行、按钮单独放下面一行 ——
+        # —— 时间范围：输入框一行、按钮单独放下面一行（全宽）——
         time_row = QHBoxLayout()
         time_row.setSpacing(8)
-        time_row.addWidget(QLabel(tr("merge_inline_time_range", "时间范围")))
         self._merge_time_start = LineEdit()
         self._merge_time_start.setPlaceholderText(tr("merge_inline_time_start_ph", "起 YYYYMMDD"))
         self._merge_time_end = LineEdit()
@@ -202,13 +194,9 @@ class ToolsInterface(QWidget):
             time_row.addWidget(edit, 1)
         layout.addLayout(time_row)
 
-        union_row = QHBoxLayout()
-        union_row.setSpacing(8)
-        union_row.addWidget(
-            self._small_button(tr("merge_inline_fill_union", "读取并集"), self._fill_union_time)
+        layout.addWidget(
+            self._button(tr("merge_inline_fill_union", "读取最大时间范围"), self._fill_union_time)
         )
-        union_row.addStretch(1)
-        layout.addLayout(union_row)
 
         # —— 输出路径（位于合并按钮上方）——
         output_row = QHBoxLayout()
