@@ -151,17 +151,45 @@ class ToolsInterface(QWidget):
         file_buttons.addWidget(self._small_button(tr("merge_inline_clear", "清空"), self._clear_merge_files), 1)
         layout.addLayout(file_buttons)
 
-        output_row = QHBoxLayout()
-        output_row.setSpacing(8)
-        self._merge_output = LineEdit()
-        self._merge_output.setReadOnly(True)
-        self._merge_output.setPlaceholderText(tr("merge_inline_output_placeholder", "请选择输出文件"))
-        self._merge_output.setStyleSheet(styles.input_style())
-        output_row.addWidget(self._merge_output, 1)
-        output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
-        layout.addLayout(output_row)
-
         # 裁剪范围（可选）：留空则时间取并集（最大）、经纬度取公共网格（最小）
+        # 顺序：经纬度 → 时间 → 输出路径
+        # —— 经纬度：经度一行、纬度一行、按钮单独一行 ——
+        lon_row = QHBoxLayout()
+        lon_row.setSpacing(8)
+        lon_row.addWidget(QLabel(tr("merge_inline_lon", "经度")))
+        self._merge_lon_w = LineEdit()
+        self._merge_lon_w.setPlaceholderText(tr("merge_inline_w", "西 W"))
+        self._merge_lon_e = LineEdit()
+        self._merge_lon_e.setPlaceholderText(tr("merge_inline_e", "东 E"))
+        for edit in (self._merge_lon_w, self._merge_lon_e):
+            edit.setStyleSheet(styles.input_style())
+            lon_row.addWidget(edit, 1)
+        layout.addLayout(lon_row)
+
+        lat_row = QHBoxLayout()
+        lat_row.setSpacing(8)
+        lat_row.addWidget(QLabel(tr("merge_inline_lat", "纬度")))
+        self._merge_lat_s = LineEdit()
+        self._merge_lat_s.setPlaceholderText(tr("merge_inline_s", "南 S"))
+        self._merge_lat_n = LineEdit()
+        self._merge_lat_n.setPlaceholderText(tr("merge_inline_n", "北 N"))
+        for edit in (self._merge_lat_s, self._merge_lat_n):
+            edit.setStyleSheet(styles.input_style())
+            lat_row.addWidget(edit, 1)
+        layout.addLayout(lat_row)
+
+        # bbox 始终按 [西, 东, 南, 北] 顺序提供给合并逻辑
+        self._merge_bbox = [self._merge_lon_w, self._merge_lon_e, self._merge_lat_s, self._merge_lat_n]
+
+        minbox_row = QHBoxLayout()
+        minbox_row.setSpacing(8)
+        minbox_row.addWidget(
+            self._small_button(tr("merge_inline_fill_minbox", "最小经纬度范围"), self._fill_min_box)
+        )
+        minbox_row.addStretch(1)
+        layout.addLayout(minbox_row)
+
+        # —— 时间范围：输入框一行、按钮单独放下面一行 ——
         time_row = QHBoxLayout()
         time_row.setSpacing(8)
         time_row.addWidget(QLabel(tr("merge_inline_time_range", "时间范围")))
@@ -172,25 +200,26 @@ class ToolsInterface(QWidget):
         for edit in (self._merge_time_start, self._merge_time_end):
             edit.setStyleSheet(styles.input_style())
             time_row.addWidget(edit, 1)
-        time_row.addWidget(self._small_button(tr("merge_inline_fill_union", "读取并集"), self._fill_union_time))
         layout.addLayout(time_row)
 
-        bbox_row = QHBoxLayout()
-        bbox_row.setSpacing(8)
-        bbox_row.addWidget(QLabel(tr("merge_inline_lonlat_range", "经纬度")))
-        self._merge_bbox = [LineEdit() for _ in range(4)]
-        for edit, placeholder in zip(
-            self._merge_bbox,
-            (tr("merge_inline_w", "西 W"), tr("merge_inline_e", "东 E"),
-             tr("merge_inline_s", "南 S"), tr("merge_inline_n", "北 N")),
-        ):
-            edit.setPlaceholderText(placeholder)
-            edit.setStyleSheet(styles.input_style())
-            bbox_row.addWidget(edit, 1)
-        bbox_row.addWidget(
-            self._small_button(tr("merge_inline_fill_minbox", "最小经纬度范围"), self._fill_min_box)
+        union_row = QHBoxLayout()
+        union_row.setSpacing(8)
+        union_row.addWidget(
+            self._small_button(tr("merge_inline_fill_union", "读取并集"), self._fill_union_time)
         )
-        layout.addLayout(bbox_row)
+        union_row.addStretch(1)
+        layout.addLayout(union_row)
+
+        # —— 输出路径（位于合并按钮上方）——
+        output_row = QHBoxLayout()
+        output_row.setSpacing(8)
+        self._merge_output = LineEdit()
+        self._merge_output.setReadOnly(True)
+        self._merge_output.setPlaceholderText(tr("merge_inline_output_placeholder", "请选择输出文件"))
+        self._merge_output.setStyleSheet(styles.input_style())
+        output_row.addWidget(self._merge_output, 1)
+        output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
+        layout.addLayout(output_row)
 
         self._merge_progress = QProgressBar()
         self._merge_progress.setRange(0, 100)
