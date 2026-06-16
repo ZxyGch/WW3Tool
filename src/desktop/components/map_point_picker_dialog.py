@@ -95,7 +95,7 @@ class MapPointPickerDialog(MessageBoxBase):
         self._fig = Figure(figsize=(10, 8), dpi=100)
         self._canvas = FigureCanvas(self._fig)
         self._canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._ax = self._fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        self._ax = self._fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (self._ext[0] + self._ext[1])))
         self._ax.set_extent(self._ext, crs=ccrs.PlateCarree())
         try:
             self._ax.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")

@@ -709,7 +709,7 @@ def run_smc(grid_dir: str) -> dict:
     emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         fig = plt.figure(figsize=fig_wh)
-        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (extent[0] + extent[1])))
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         try:
             ax.add_feature(cfeature.COASTLINE, linewidth=0.4, zorder=5)
@@ -765,7 +765,7 @@ def run_smc(grid_dir: str) -> dict:
             )
         segs_arr = _smc_unique_rect_outline_segments(cel_plot, zlon, zlat, dlon, dlat)
         fig = plt.figure(figsize=fig_wh)
-        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (extent[0] + extent[1])))
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         try:
             ax.add_feature(cfeature.COASTLINE, linewidth=0.4, zorder=5)
@@ -1170,7 +1170,7 @@ def run_unst(grid_dir: str) -> dict:
     emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         fig = plt.figure(figsize=fig_wh)
-        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (extent[0] + extent[1])))
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         try:
             ax.add_feature(cfeature.COASTLINE, linewidth=0.4, zorder=5)
@@ -1204,7 +1204,7 @@ def run_unst(grid_dir: str) -> dict:
     try:
         segs, _ = unst_wireframe_segments(xy, ect, tri_mask, STRUCTURE_MAX_EDGES)
         fig = plt.figure(figsize=fig_wh)
-        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (extent[0] + extent[1])))
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         try:
             ax.add_feature(cfeature.COASTLINE, linewidth=0.4, zorder=5)

@@ -499,7 +499,9 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         fig = plt.figure(figsize=FIGSIZE)
         # 整体稍微增加内边距，留出一点空白框
         fig.subplots_adjust(left=0.04, right=0.96, top=0.92, bottom=0.12)
-        ax = plt.axes(projection=ccrs.PlateCarree())
+        # 投影中央经线取域中心，使 ±180° 接缝远离绘图域，避免跨/抵 180°E 时的回绕条纹
+        central_lon = 0.5 * (float(lon_min) + float(lon_max))
+        ax = plt.axes(projection=ccrs.PlateCarree(central_longitude=central_lon))
         # 收紧轴区域，尽量贴近边框
         ax.set_position([0.05, 0.18, 0.90, 0.70])
         ax.margins(0)
@@ -580,8 +582,9 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
         lat_ticks, lat_step = generate_ticks_with_overlap_check(lat_min, lat_max, lat_step)
 
         # 直接设置刻度和标签，保证边界刻度显示
-        ax.set_xticks(lon_ticks)
-        ax.set_yticks(lat_ticks)
+        # 带 crs=PlateCarree() 让刻度按绝对经纬度放置（投影中央经线非 0 时必需）
+        ax.set_xticks(lon_ticks, crs=ccrs.PlateCarree())
+        ax.set_yticks(lat_ticks, crs=ccrs.PlateCarree())
         ax.tick_params(axis='both', which='both', bottom=True, top=False, left=True, right=False,
                        labelbottom=True, labelleft=True, labelsize=10)
 

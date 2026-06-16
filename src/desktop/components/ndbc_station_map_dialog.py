@@ -116,7 +116,7 @@ class NDBCStationMapDialog(MessageBoxBase):
         lat_pad = max(1.0, abs(lat_max - lat_min) * 0.1)
 
         fig = plt.figure(figsize=(10, 6))
-        ax = plt.axes(projection=ccrs.PlateCarree())
+        ax = plt.axes(projection=ccrs.PlateCarree(central_longitude=0.5 * (lon_min + lon_max)))
         ax.set_extent(
             [
                 min(lon_min, lon_max) - lon_pad,

@@ -152,7 +152,7 @@ class SpectrumStationMapDialog(MessageBoxBase):
             float(lat.max()) + margin,
         ]
 
-        ax = self._fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        ax = self._fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (ext[0] + ext[1])))
         ax.set_extent(ext, crs=ccrs.PlateCarree())
         try:
             ax.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")

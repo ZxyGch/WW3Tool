@@ -36,7 +36,12 @@ def render_region_map_png(grid: GridConfig, output_path: Path) -> None:
     inner = grid.inner if grid.grid_type == "nested" else None
     all_lon = list(outer.lon) + (list(inner.lon) if inner else [])
     all_lat = list(outer.lat) + (list(inner.lat) if inner else [])
-    extent = [min(all_lon) - 2, max(all_lon) + 2, min(all_lat) - 2, max(all_lat) + 2]
+    # 以域中心为投影中央经线、并把经度钳制到 [-180,180]，避免贴/跨 180°E 时的回绕
+    central_lon = 0.5 * (min(all_lon) + max(all_lon))
+    extent = [
+        max(-180.0, min(all_lon) - 2), min(180.0, max(all_lon) + 2),
+        min(all_lat) - 2, max(all_lat) + 2,
+    ]
 
     # Calculate figure size to match the map's geographic aspect ratio so the
     # rendered PNG fills the dialog without extra white margins.
@@ -57,7 +62,7 @@ def render_region_map_png(grid: GridConfig, output_path: Path) -> None:
     # 240 DPI covers Retina / HiDPI displays (2× logical-to-physical ratio)
     render_dpi = 240
     figure = plt.figure(figsize=(fig_w, fig_h), dpi=render_dpi)
-    axis = figure.add_subplot(1, 1, 1, projection=ccrs.Mercator())
+    axis = figure.add_subplot(1, 1, 1, projection=ccrs.Mercator(central_longitude=central_lon))
     axis.set_extent(extent, crs=ccrs.PlateCarree())
     axis.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")
     axis.add_feature(cfeature.LAND, facecolor="#e6e6e6")

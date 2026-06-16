@@ -314,7 +314,9 @@ def _make_wind_field_worker(
 
             # -- Build figure -----------------------------------------------
             fig = plt.figure(figsize=(10, 8), dpi=150, facecolor="white")
-            ax = plt.axes(projection=ccrs.PlateCarree())
+            # 投影中央经线取域中心，使 ±180° 接缝远离绘图域，避免跨/抵 180°E 时的回绕条纹
+            central_lon = 0.5 * (float(extent[0]) + float(extent[1]))
+            ax = plt.axes(projection=ccrs.PlateCarree(central_longitude=central_lon))
             ax.set_extent(extent, crs=ccrs.PlateCarree())
             ax.set_facecolor("white")
             ax.set_axis_off()
