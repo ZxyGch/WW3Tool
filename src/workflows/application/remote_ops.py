@@ -261,8 +261,36 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
     """Parse ``sinfo -N`` output into idle/mixed node and CPU counts."""
     idle_nodes: list[dict] = []
     mixed_nodes: list[dict] = []
+    summary_by_cpu: dict[str, dict] = {}
     total_idle_cpus = 0
     total_idle_nodes = 0
+
+    def partitions(value: str) -> list[str]:
+        parts = []
+        for part in value.replace(",", " ").split():
+            name = part.strip().rstrip("*")
+            if name:
+                parts.append(name)
+        return parts or [tr("unknown_cpu_partition", "未知")]
+
+    def add_summary(record: dict) -> None:
+        idle_cpus = int(record.get("idle_cpus") or 0)
+        if idle_cpus <= 0:
+            return
+        for cpu_name in partitions(str(record.get("partition") or "")):
+            item = summary_by_cpu.setdefault(
+                cpu_name,
+                {
+                    "cpu": cpu_name,
+                    "nodes": 0,
+                    "cores": 0,
+                    "max_cores_per_node": 0,
+                },
+            )
+            item["nodes"] += 1
+            item["cores"] += idle_cpus
+            item["max_cores_per_node"] = max(item["max_cores_per_node"], idle_cpus)
+
     for line in out.splitlines():
         line = line.strip()
         if not line:
@@ -303,12 +331,20 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
             total_idle_nodes += 1
             total_idle_cpus += idle or total or cpus
             idle_nodes.append(record)
+            add_summary(record)
         elif idle > 0 and any(token in state_l for token in ("mix", "alloc")):
             total_idle_cpus += idle
             mixed_nodes.append(record)
+            add_summary(record)
+    idle_summary = sorted(
+        summary_by_cpu.values(),
+        key=lambda item: (item["cores"], item["nodes"], item["cpu"]),
+        reverse=True,
+    )
     return {
         "idle_nodes": total_idle_nodes,
         "idle_cpus": total_idle_cpus,
+        "idle_summary": idle_summary,
         "idle_node_details": idle_nodes,
         "mixed_node_details": mixed_nodes,
     }
@@ -644,10 +680,10 @@ def run_server_status(
     *,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """单次 SSH 连接同时获取集群作业和任务队列，减少连接开销。
+    """单次 SSH 连接同时获取集群作业、空闲资源和任务队列，减少连接开销。
 
     Returns:
-        ``data`` 为 ``{"cpu": [[user, cpus, nodes, elapsed], ...], "queue": [line, ...]}``。
+        ``data`` 为 ``{"cpu": [[user, cpus, nodes, elapsed], ...], "idle": [...], "queue": [line, ...]}``。
     """
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
@@ -665,6 +701,14 @@ def run_server_status(
         if not sacct_err:
             cpu_data = _parse_sacct_cpu_data(sacct_out)
 
+        idle_data: list = []
+        sinfo_out, sinfo_err, _ = c.exec_command(
+            "sinfo -h -N -o '%N|%T|%c|%C|%P'",
+            timeout=10,
+        )
+        if not sinfo_err:
+            idle_data = _parse_sinfo_idle_resources(sinfo_out).get("idle_summary", [])
+
         # 任务队列
         q_out, q_err, _ = c.exec_command(
             "squeue -o '%i %P %j %T %M %D %R' -h", timeout=10
@@ -673,13 +717,13 @@ def run_server_status(
 
         return RemoteResult(
             success=True,
-            data={"cpu": cpu_data, "queue": queue_lines},
+            data={"cpu": cpu_data, "idle": idle_data, "queue": queue_lines},
             messages=list(logger.messages),
         )
     except Exception as exc:
         logger.log(tr("server_status_failed", "❌ 获取服务器状态失败：{error}").format(error=exc))
         return RemoteResult(
-            success=False, error=str(exc), data={"cpu": [], "queue": []}, messages=list(logger.messages)
+            success=False, error=str(exc), data={"cpu": [], "idle": [], "queue": []}, messages=list(logger.messages)
         )
     finally:
         if owns:

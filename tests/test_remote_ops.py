@@ -18,6 +18,26 @@ def test_parse_sinfo_idle_resources_counts_idle_and_mixed_cpus() -> None:
     assert data["idle_cpus"] == 88
     assert data["idle_node_details"][0]["node"] == "node001"
     assert data["mixed_node_details"][0]["idle_cpus"] == 24
+    assert data["idle_summary"][0]["cpu"] == "cpu"
+    assert data["idle_summary"][0]["nodes"] == 2
+    assert data["idle_summary"][0]["cores"] == 88
+
+
+def test_parse_sinfo_idle_resources_merges_same_cpu_partition() -> None:
+    output = "\n".join(
+        [
+            "node001|idle|64|0/64/0/64|CPU6240R",
+            "node002|mixed|64|48/16/0/64|CPU6240R",
+            "node003|idle|32|0/32/0/32|CPU6336Y",
+        ]
+    )
+
+    data = _parse_sinfo_idle_resources(output)
+
+    assert data["idle_summary"][0]["cpu"] == "CPU6240R"
+    assert data["idle_summary"][0]["nodes"] == 2
+    assert data["idle_summary"][0]["cores"] == 80
+    assert data["idle_summary"][0]["max_cores_per_node"] == 64
 
 
 def test_forcing_excluded_relpaths_uses_relative_workdir_paths(tmp_path) -> None:

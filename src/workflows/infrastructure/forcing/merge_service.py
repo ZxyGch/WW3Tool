@@ -748,6 +748,51 @@ def _crop_indexer(var, dim_slices: dict[str, slice]) -> tuple:
     return tuple(dim_slices.get(name, slice(None)) for name in var.dimensions)
 
 
+def union_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
+    """所有输入文件时间轴的**并集**（最早, 最晚），返回 ``"%Y-%m-%d %H:%M"`` 字符串对。"""
+    nc, _ = _imports()
+    lo: float | None = None
+    hi: float | None = None
+    for path in input_paths:
+        with nc.Dataset(path, "r") as ds:
+            time_name = _time_name(ds)
+            if time_name is None:
+                continue
+            values = _canonical_times(ds.variables[time_name])
+            if values.size == 0:
+                continue
+            a, b = float(values.min()), float(values.max())
+            lo = a if lo is None else min(lo, a)
+            hi = b if hi is None else max(hi, b)
+    if lo is None or hi is None:
+        raise ValueError(tr("tools_merge_no_time_any", "所选文件均无时间轴"))
+    fmt = lambda epoch: _dt.datetime.fromtimestamp(epoch, _dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return fmt(lo), fmt(hi)
+
+
+def common_lonlat_box(input_paths: Sequence[str]) -> tuple[float, float, float, float]:
+    """所有输入文件经纬度范围的**交集**（最小公共范围），返回 (west, east, south, north)。"""
+    nc, np = _imports()
+    west = east = south = north = None
+    for path in input_paths:
+        with nc.Dataset(path, "r") as ds:
+            lat = _find_coord(ds, ("latitude", "lat", "y"))
+            lon = _find_coord(ds, ("longitude", "lon", "x"))
+            if lat is None or lon is None:
+                continue
+            la = np.asarray(lat[:], dtype="float64")
+            lo = np.asarray(lon[:], dtype="float64")
+            lamin, lamax = float(la.min()), float(la.max())
+            lomin, lomax = float(lo.min()), float(lo.max())
+            west = lomin if west is None else max(west, lomin)
+            east = lomax if east is None else min(east, lomax)
+            south = lamin if south is None else max(south, lamin)
+            north = lamax if north is None else min(north, lamax)
+    if west is None:
+        raise ValueError(tr("tools_merge_no_lonlat_any", "所选文件均无经纬度坐标"))
+    return west, east, south, north
+
+
 def merge_forcing_netcdf(
     input_paths: Sequence[str],
     output_path: str,

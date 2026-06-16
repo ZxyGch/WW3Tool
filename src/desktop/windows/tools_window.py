@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QProgressBar,
     QSizePolicy,
     QTableWidgetItem,
@@ -32,7 +33,9 @@ from ..components import styles
 from workflows.infrastructure.forcing.merge_service import (
     MergeAnalysis,
     analyze_merge_inputs,
+    common_lonlat_box,
     merge_forcing_netcdf,
+    union_time_range,
 )
 from workflows.support.translations import tr
 
@@ -158,6 +161,37 @@ class ToolsInterface(QWidget):
         output_row.addWidget(self._small_button(tr("merge_inline_browse", "输出路径"), self._choose_merge_output))
         layout.addLayout(output_row)
 
+        # 裁剪范围（可选）：留空则时间取并集（最大）、经纬度取公共网格（最小）
+        time_row = QHBoxLayout()
+        time_row.setSpacing(8)
+        time_row.addWidget(QLabel(tr("merge_inline_time_range", "时间范围")))
+        self._merge_time_start = LineEdit()
+        self._merge_time_start.setPlaceholderText(tr("merge_inline_time_start_ph", "起 YYYYMMDD"))
+        self._merge_time_end = LineEdit()
+        self._merge_time_end.setPlaceholderText(tr("merge_inline_time_end_ph", "止 YYYYMMDD"))
+        for edit in (self._merge_time_start, self._merge_time_end):
+            edit.setStyleSheet(styles.input_style())
+            time_row.addWidget(edit, 1)
+        time_row.addWidget(self._small_button(tr("merge_inline_fill_union", "读取并集"), self._fill_union_time))
+        layout.addLayout(time_row)
+
+        bbox_row = QHBoxLayout()
+        bbox_row.setSpacing(8)
+        bbox_row.addWidget(QLabel(tr("merge_inline_lonlat_range", "经纬度")))
+        self._merge_bbox = [LineEdit() for _ in range(4)]
+        for edit, placeholder in zip(
+            self._merge_bbox,
+            (tr("merge_inline_w", "西 W"), tr("merge_inline_e", "东 E"),
+             tr("merge_inline_s", "南 S"), tr("merge_inline_n", "北 N")),
+        ):
+            edit.setPlaceholderText(placeholder)
+            edit.setStyleSheet(styles.input_style())
+            bbox_row.addWidget(edit, 1)
+        bbox_row.addWidget(
+            self._small_button(tr("merge_inline_fill_minbox", "最小经纬度范围"), self._fill_min_box)
+        )
+        layout.addLayout(bbox_row)
+
         self._merge_progress = QProgressBar()
         self._merge_progress.setRange(0, 100)
         self._merge_progress.setValue(0)
@@ -173,6 +207,32 @@ class ToolsInterface(QWidget):
         self._merge_button.setEnabled(
             not busy and bool(self._merge_analysis and self._merge_analysis.valid and self._merge_output.text())
         )
+
+    def _fill_union_time(self) -> None:
+        """把时间范围输入框填为所选文件的并集（最大时间范围）。"""
+        if not self._merge_paths:
+            self._merge_log_received.emit(tr("merge_inline_need_files", "请先添加文件"))
+            return
+        try:
+            start, end = union_time_range(self._merge_paths)
+        except Exception as exc:
+            self._merge_log_received.emit(str(exc))
+            return
+        self._merge_time_start.setText(start)
+        self._merge_time_end.setText(end)
+
+    def _fill_min_box(self) -> None:
+        """把经纬度输入框填为所选文件的公共网格（最小经纬度范围）。"""
+        if not self._merge_paths:
+            self._merge_log_received.emit(tr("merge_inline_need_files", "请先添加文件"))
+            return
+        try:
+            west, east, south, north = common_lonlat_box(self._merge_paths)
+        except Exception as exc:
+            self._merge_log_received.emit(str(exc))
+            return
+        for field, value in zip(self._merge_bbox, (west, east, south, north)):
+            field.setText(f"{value:g}")
 
     def _add_merge_files(self) -> None:
         start = str(Path(self._merge_paths[0]).parent) if self._merge_paths else self._get_forcing_dir()
@@ -310,6 +370,31 @@ class ToolsInterface(QWidget):
         if not output:
             return
         paths = tuple(self._merge_paths)
+
+        # 可选裁剪：两个时间框都填才生效；四个经纬度框都填才生效
+        time_range = None
+        start_text = self._merge_time_start.text().strip()
+        end_text = self._merge_time_end.text().strip()
+        if start_text and end_text:
+            time_range = (start_text, end_text)
+        elif start_text or end_text:
+            self._merge_log_received.emit(
+                tr("merge_inline_time_partial", "时间范围需同时填写起止，已忽略")
+            )
+        bbox = None
+        bbox_text = [field.text().strip() for field in self._merge_bbox]
+        if all(bbox_text):
+            try:
+                bbox = [float(value) for value in bbox_text]
+            except ValueError:
+                self._merge_log_received.emit(
+                    tr("merge_inline_bbox_invalid", "经纬度范围需为数字，已忽略")
+                )
+        elif any(bbox_text):
+            self._merge_log_received.emit(
+                tr("merge_inline_bbox_partial", "经纬度范围需填满 西/东/南/北 四项，已忽略")
+            )
+
         self._set_merge_busy(True)
         self._last_logged_progress = -10
         self._merge_progress.setValue(0)
@@ -322,6 +407,8 @@ class ToolsInterface(QWidget):
                 output,
                 log=self._merge_log_received.emit,
                 progress=self._merge_progress_received.emit,
+                time_range=time_range,
+                bbox=bbox,
             ),
             self._on_merge_done,
         )

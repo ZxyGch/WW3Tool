@@ -330,6 +330,16 @@ class WW3StepPanel:
             "nodes": self.fields["slurm_nodes"].text().strip(),
         }
 
+    def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:
+        cpu = str(cpu).strip()
+        if cpu:
+            items = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
+            if cpu not in items:
+                self.cpu_combo.addItem(cpu)
+            self.cpu_combo.setCurrentText(cpu)
+        self.fields["slurm_cores"].setText(str(max(1, int(cores))))
+        self.fields["slurm_nodes"].setText(str(max(1, int(nodes))))
+
     def set_value(self, key: str, value: object) -> None:
         self.fields[key].setText(str(value))
 

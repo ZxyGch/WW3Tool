@@ -581,6 +581,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             input_style=self._input_style,
             connect=self._server_connect,
             check_idle_resources=self._server_check_idle_resources,
+            use_idle_full=self._server_use_idle_full,
+            use_idle_half=self._server_use_idle_half,
             cancel=self._server_cancel,
         )
         layout.addWidget(self._server_connect_panel.widget)
@@ -1926,8 +1928,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         data = getattr(result, "data", None)
         if isinstance(data, dict):
             cpu_data = data.get("cpu", []) or []
+            idle_data = data.get("idle", []) or []
             queue_lines = data.get("queue", []) or []
             self._server_connect_panel.update_cpu_table(cpu_data)
+            self._server_connect_panel.update_idle_resources(idle_data)
             self._server_connect_panel.update_queue_table(queue_lines)
         # [EN] Stop polling when connection fails
         # 连接失败时停止轮询
@@ -1952,7 +1956,46 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _server_check_idle_resources(self) -> None:
         if not self._persist_server_remote_dir():
             return
-        self._run_job(self._remote_vm.slurm_idle_resources)
+        self._run_job(self._remote_vm.slurm_idle_resources, on_done=self._on_idle_resources_done)
+
+    def _on_idle_resources_done(self, result: object) -> None:
+        self._on_job_done(result)
+        data = getattr(result, "data", None) if result is not None else None
+        if isinstance(data, dict):
+            self._server_connect_panel.update_idle_resources(data.get("idle_summary", []) or [])
+
+    def _server_use_idle_full(self) -> None:
+        self._server_apply_idle_resources("full")
+
+    def _server_use_idle_half(self) -> None:
+        self._server_apply_idle_resources("half")
+
+    def _server_apply_idle_resources(self, mode: str) -> None:
+        rows = self._server_connect_panel.idle_resources()
+        if not rows:
+            self._show_error(tr("step6_idle_resources_empty", "当前没有可用的空闲 CPU 数据，请先连接服务器或检查空闲资源"))
+            return
+        best = max(rows, key=lambda item: int(item.get("cores") or 0))
+        total_cores = max(1, int(best.get("cores") or 1))
+        total_nodes = max(1, int(best.get("nodes") or 1))
+        max_per_node = max(1, int(best.get("max_cores_per_node") or 0) or ((total_cores + total_nodes - 1) // total_nodes))
+        if mode == "half":
+            cores = max(1, (total_cores + 1) // 2)
+            nodes = min(total_nodes, max(1, (cores + max_per_node - 1) // max_per_node))
+            action = tr("step6_use_idle_half", "半数使用")
+        else:
+            cores = total_cores
+            nodes = total_nodes
+            action = tr("step6_use_idle_full", "最大化使用")
+        cpu = str(best.get("cpu") or "").strip()
+        self._ww3_panel.apply_slurm_resources(cpu=cpu, cores=cores, nodes=nodes)
+        self._append_log(
+            tr(
+                "step6_idle_resources_applied",
+                "✅ 已按{mode}选择空闲资源：CPU={cpu}, 核数={cores}, 节点数={nodes}",
+            ).format(mode=action, cpu=cpu, cores=cores, nodes=nodes)
+        )
+        self._apply_ww3_params_only()
 
     def _server_upload_without_forcing(self) -> None:
         if not self._persist_server_remote_dir():

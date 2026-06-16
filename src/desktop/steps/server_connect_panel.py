@@ -55,6 +55,8 @@ class ServerConnectPanel:
         input_style: Callable[[], str],
         connect: Callable[[], None],
         check_idle_resources: Callable[[], None],
+        use_idle_full: Callable[[], None],
+        use_idle_half: Callable[[], None],
         cancel: Callable[[], None],
     ) -> None:
         self._group, layout = create_header_card(
@@ -142,15 +144,58 @@ class ServerConnectPanel:
         cancel_row.addWidget(create_button(tr("cancel_task", "取消任务"), cancel))
         layout.addWidget(self._cancel_widget)
 
+        self._idle_title = self._build_section_title(
+            tr("step6_idle_resources", "空闲资源")
+        )
+        layout.addWidget(self._idle_title)
+        self._idle_table = EdgeAlignedTableWidget()
+        self._idle_table.setColumnCount(3)
+        self._idle_table.setHorizontalHeaderLabels(
+            [
+                tr("idle_col_cpu", "CPU"),
+                tr("idle_col_nodes", "节点数"),
+                tr("idle_col_cores", "核数"),
+            ]
+        )
+        self._idle_table.horizontalHeader().setVisible(False)
+        self._idle_table.verticalHeader().setVisible(False)
+        self._idle_table.setBorderVisible(False)
+        self._idle_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._idle_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._idle_table.setWordWrap(False)
+        idle_hdr = self._idle_table.horizontalHeader()
+        idle_hdr.setStretchLastSection(False)
+        idle_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        idle_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        idle_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._idle_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        layout.addWidget(self._idle_table)
+
+        self._idle_actions_widget = QWidget()
+        idle_actions = QHBoxLayout(self._idle_actions_widget)
+        idle_actions.setContentsMargins(0, 6, 0, 0)
+        idle_actions.setSpacing(8)
+        idle_actions.addWidget(create_button(tr("step6_use_idle_full", "最大化使用"), use_idle_full))
+        idle_actions.addWidget(create_button(tr("step6_use_idle_half", "半数使用"), use_idle_half))
+        layout.addWidget(self._idle_actions_widget)
+
+        self._idle_check_widget = QWidget()
+        idle_check = QHBoxLayout(self._idle_check_widget)
+        idle_check.setContentsMargins(0, 12, 0, 0)
+        idle_check.setSpacing(8)
         self._idle_resources_button = create_button(
             tr("step6_check_idle_resources", "检查空闲 Node/CPU"),
             check_idle_resources,
         )
-        layout.addWidget(self._idle_resources_button)
+        idle_check.addWidget(self._idle_resources_button)
+        layout.addWidget(self._idle_check_widget)
 
         self._group.viewLayout.addLayout(layout)
         self.widget = self._group
         self.set_connected(False)
+        self.update_idle_resources([])
 
     # [EN] ── Public API ──────────────────────────────────────────────────────────
     # ── 公共接口 ──────────────────────────────────────────────────────────
@@ -171,7 +216,12 @@ class ServerConnectPanel:
         self.connect_button.setVisible(not connected)
         self._cancel_widget.setVisible(False)  # [EN] Visibility controlled by update_queue_table
         # 由 update_queue_table 控制显隐
-        self._idle_resources_button.setVisible(connected)
+        self._idle_title.setVisible(connected)
+        self._idle_table.setVisible(connected)
+        self._idle_actions_widget.setVisible(connected)
+        self._idle_check_widget.setVisible(connected)
+        if connected and self._idle_table.rowCount() == 0:
+            self.update_idle_resources([])
         if not connected:
             self._hide_cpu_and_queue()
 
@@ -232,6 +282,62 @@ class ServerConnectPanel:
         self._cpu_title.setVisible(True)
         self._cpu_table.setVisible(True)
 
+    def update_idle_resources(self, rows: list) -> None:
+        """Update idle resource table. rows: [{cpu, nodes, cores, max_cores_per_node}, ...]."""
+        valid = []
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            cpu = str(row.get("cpu") or row.get("partition") or "").strip()
+            if not cpu:
+                continue
+            try:
+                nodes = int(row.get("nodes") or row.get("idle_nodes") or 0)
+                cores = int(row.get("cores") or row.get("idle_cores") or row.get("idle_cpus") or 0)
+                max_per_node = int(row.get("max_cores_per_node") or 0)
+            except (TypeError, ValueError):
+                continue
+            if nodes <= 0 or cores <= 0:
+                continue
+            valid.append(
+                {
+                    "cpu": cpu,
+                    "nodes": nodes,
+                    "cores": cores,
+                    "max_cores_per_node": max_per_node,
+                }
+            )
+        valid.sort(key=lambda item: item["cores"], reverse=True)
+        self._idle_rows = valid
+
+        header_labels = [
+            tr("idle_col_cpu", "CPU"),
+            tr("idle_col_nodes", "节点数"),
+            tr("idle_col_cores", "核数"),
+        ]
+        self._idle_table.setRowCount(len(valid) + 1)
+        for col, text in enumerate(header_labels):
+            item = QTableWidgetItem(text)
+            align = Qt.AlignmentFlag.AlignLeft if col == 0 else Qt.AlignmentFlag.AlignCenter
+            item.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+            self._idle_table.setItem(0, col, item)
+
+        aligns = [
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        ]
+        for row_index, row in enumerate(valid, start=1):
+            values = [row["cpu"], row["nodes"], row["cores"]]
+            for col, (value, align) in enumerate(zip(values, aligns)):
+                item = QTableWidgetItem(str(value))
+                item.setTextAlignment(align)
+                self._idle_table.setItem(row_index, col, item)
+        self._idle_table.expand_to_contents(minimum_height=52, extra_height=6)
+
+    def idle_resources(self) -> list[dict]:
+        return list(getattr(self, "_idle_rows", []))
+
     def update_queue_table(self, lines: list) -> None:
         # [EN] Update task queue display. lines: squeue output lines.
         """更新任务队列显示。lines: squeue 输出行列表。"""
@@ -285,6 +391,12 @@ class ServerConnectPanel:
         self._queue_title.setVisible(False)
         self._queue_container.setVisible(False)
         self._clear_queue_display()
+        self._idle_title.setVisible(False)
+        self._idle_table.setVisible(False)
+        self._idle_actions_widget.setVisible(False)
+        self._idle_check_widget.setVisible(False)
+        self._idle_table.setRowCount(0)
+        self._idle_rows = []
 
     def _parse_squeue_lines(self, lines: list) -> list[dict]:
         # [EN] Parse squeue lines, return list of task dicts.
