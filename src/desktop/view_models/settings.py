@@ -72,6 +72,32 @@ class SettingsViewModel:
             }
         )
 
+    # [EN] ── Local ST versions ─────────────────────────────────────────────────────────
+    # ── 本地 ST 版本 ─────────────────────────────────────────────────────────
+
+    def local_st_versions(self) -> list[dict[str, str]]:
+        config = runtime_config.load_full_config()
+        versions = config.get("LOCAL_ST_VERSIONS")
+        out: list[dict[str, str]] = []
+        if isinstance(versions, list):
+            for item in versions:
+                if isinstance(item, dict) and item.get("name"):
+                    out.append({"name": str(item["name"]), "path": str(item.get("path", ""))})
+        return out
+
+    def default_local_st(self) -> str:
+        return str(runtime_config.load_full_config().get("DEFAULT_LOCAL_ST", "") or "")
+
+    def save_local_st_versions(self, versions: list[dict[str, str]], default_name: str) -> bool:
+        names = [v["name"] for v in versions]
+        return self.save(
+            {
+                "LOCAL_ST_VERSIONS": versions,
+                "LOCAL_ST_OPTIONS": names,
+                "DEFAULT_LOCAL_ST": default_name if default_name in names else (names[0] if names else ""),
+            }
+        )
+
     # [EN] ── Unstructured / SMC grid JSON ────────────────────────────────────────────────
     # ── 非结构 / SMC 网格 JSON ────────────────────────────────────────────────
 

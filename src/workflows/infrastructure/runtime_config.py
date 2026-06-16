@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import re
+import shutil
 
 
 # ==================== 配置文件路径设置 ====================
@@ -37,8 +38,6 @@ _DESKTOP_YAML_TO_LEGACY = {
     "forcing_process_mode": "FORCING_FIELD_FILE_PROCESS_MODE",
     "forcing_auto_associate": "FORCING_FIELD_AUTO_ASSOCIATE",
     "show_land_coastline": "SHOW_LAND_COASTLINE",
-    "step4_show_spectrum": "STEP4_SHOW_SPECTRUM",
-    "step4_show_timesteps": "STEP4_SHOW_TIMESTEPS",
 }
 _DESKTOP_LEGACY_TO_YAML = {v: k for k, v in _DESKTOP_YAML_TO_LEGACY.items()}
 
@@ -60,6 +59,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "LIM_VAL": "grid.structured.lim_val",
     "SPLIT_LIM": "grid.structured.split_lim",
     "LAKE_TOL": "grid.structured.lake_tol",
+    "WW3_VERSION": "ww3.version",
     "COMPUTE_PRECISION": "ww3.compute_precision",
     "OUTPUT_PRECISION": "ww3.output_precision",
     "FILE_SPLIT": "ww3.file_split",
@@ -125,7 +125,7 @@ UNST_MSH_GEN_CONFIG_DEFAULTS = {
     "spacing": {
         "hmax": 100.0,
         "hshr": 20.0,
-        "hmin": 20.0,
+        "hmin": 2.0,
         "nwav": 400,
         "dhdx": 0.05,
         "deep_ocean_threshold_m": 4000.0,
@@ -491,6 +491,79 @@ DEFAULT_CONFIG = {
 }
 
 
+WW3_VERSION_VALUES = ("6.07", "7.14")
+
+# WW3 version → directory name prefix under public/
+# Active version always uses "ww3", inactive versions use "{prefix}_ww3"
+_WW3_VERSION_DIR_PREFIX = {
+    "6.07": "6",
+    "7.14": "7",
+}
+
+
+def get_ww3_version() -> str:
+    """从 params.yml 读取当前 WW3 版本，默认 '6.07'。"""
+    root = _read_root_params()
+    ww3 = root.get("ww3") or {}
+    return str(ww3.get("version", "6.07"))
+
+
+def swap_ww3_version(new_version: str) -> bool:
+    """切换 WW3 版本：重命名 public/ 下的模板目录。
+
+    激活版本的目录始终命名为 ``ww3``，非激活版本命名为 ``{prefix}_ww3``。
+    例如从 6.07 切换到 7.14：
+        public/ww3     → public/6_ww3
+        public/7_ww3   → public/ww3
+    """
+    if new_version not in WW3_VERSION_VALUES:
+        return False
+
+    old_version = get_ww3_version()
+    if old_version == new_version:
+        return True
+
+    old_prefix = _WW3_VERSION_DIR_PREFIX.get(old_version)
+    new_prefix = _WW3_VERSION_DIR_PREFIX.get(new_version)
+    if not old_prefix or not new_prefix:
+        return False
+
+    active_dir = os.path.join(PUBLIC_DIR, "ww3")
+    old_backup = os.path.join(PUBLIC_DIR, f"{old_prefix}_ww3")
+    new_source = os.path.join(PUBLIC_DIR, f"{new_prefix}_ww3")
+
+    # Safety: new source must exist
+    if not os.path.isdir(new_source):
+        print(f"切换 WW3 版本失败：目录 {new_source} 不存在")
+        return False
+
+    try:
+        # Step 1: rename current active → old backup
+        if os.path.isdir(active_dir):
+            if os.path.isdir(old_backup):
+                shutil.rmtree(old_backup)
+            os.rename(active_dir, old_backup)
+
+        # Step 2: rename new source → active
+        os.rename(new_source, active_dir)
+    except Exception as e:
+        print(f"切换 WW3 版本失败: {e}")
+        # Attempt rollback
+        if not os.path.isdir(active_dir) and os.path.isdir(old_backup):
+            try:
+                os.rename(old_backup, active_dir)
+            except Exception:
+                pass
+        return False
+
+    # Step 3: update params.yml
+    root = _read_root_params()
+    ww3 = root.get("ww3") or {}
+    ww3["version"] = new_version
+    root["ww3"] = ww3
+    return _write_root_params(root)
+
+
 RUN_MODE_VALUES = ("local", "server", "both")
 
 # Legacy RUN_MODE strings (display labels or old saves) → canonical codes.
@@ -571,6 +644,256 @@ def _load_yaml():
     return yaml
 
 
+# ── YAML comment injection ─────────────────────────────────────────────────
+# PyYAML's safe_dump strips comments; this table maps YAML line prefixes
+# (top-level or indented section headers) to inline documentation that will
+# be re-injected after every dump so user annotations survive round-trips.
+
+_YAML_COMMENTS: list[tuple[str, str]] = [
+    # ── top-level sections ──────────────────────────────────────────────
+    ("presets:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Preset definitions: reusable named lists that are referenced by name\n"
+     "# in other sections. Avoids duplicating long lists across configs.\n"
+     "#\n"
+     "#   output_scheme  – named lists of WW3 output field abbreviations.\n"
+     "#     'standard'      : essential wave parameters (HS, DIR, FP, T02 …).\n"
+     "#     'with_spectrum'  : standard + 2-D energy density (EF).\n"
+     "#     'all_fields'     : every available WW3 output variable.\n"
+     "#   st                  – source-term package paths keyed by scheme name\n"
+     "#                          (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
+     "#   local_st           – local WW3 binary paths keyed by scheme name\n"
+     "#                          (used by local run panel).\n"
+     "#   structured_bathymetry – bathymetry datasets available for structured grids\n"
+     "#                          (GEBCO / ETOPO1 / ETOPO2).\n"
+     "#   smc_bathymetry      – bathymetry datasets for SMC grids.\n"
+     "#   coastline_precision – GSHHG coastline resolution levels\n"
+     "#                          (full > high > inter > low > coarse).\n"
+     "#   file_split          – output file splitting strategies\n"
+     "#                          (none / hour / day / month / year).\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("workdir:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Working directory: all intermediate files, WW3 namelists, forcing\n"
+     "# inputs, model output and post-processing results are stored here.\n"
+     "#   path – absolute or relative path to the work directory.\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("forcing:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Forcing fields: NetCDF file paths for external driving fields.\n"
+     "#   wind    – 10-m wind speed / direction (U10, V10).\n"
+     "#   current – ocean surface current (UCUR, VCUR).\n"
+     "#   level   – sea-surface elevation anomaly (LEV).\n"
+     "#   ice     – sea-ice concentration (IC1 / IC5).\n"
+     "#   process_mode     – 'copy' duplicates files into workdir;\n"
+     "#                      'move' relocates the originals.\n"
+     "#   auto_associate   – when true, automatically match dropped / selected\n"
+     "#                      files to forcing variables by filename keyword.\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("grid:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Grid generation settings (structured / SMC / unstructured).\n"
+     "#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.\n"
+     "#   grid_type – 'normal' (single domain) or 'nested' (two-level\n"
+     "#               refinement with inner high-resolution patch).\n"
+     "#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').\n"
+     "#   reference_data_path – path to bathymetry / coastline data bundle;\n"
+     "#                          null = auto-detect from project defaults.\n"
+     "#   nested_contraction_coefficient – size ratio between outer and\n"
+     "#                          inner grid cells for nested grids (≥ 1).\n"
+     "#   outer     – outer (or only) grid domain definition:\n"
+     "#     dx / dy – cell size in degrees (structured) or base spacing.\n"
+     "#     lon     – [west, east] longitude bounds in degrees.\n"
+     "#     lat     – [south, north] latitude bounds in degrees.\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("  structured:",
+     "  # Structured grid options:\n"
+     "  #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).\n"
+     "  #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).\n"
+     "  #   min_dist         – minimum distance filter between adjacent grid points (km).\n"
+     "  #   cut_off          – land-sea mask cut-off: 0 = keep all sea points.\n"
+     "  #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).\n"
+     "  #   lim_val          – masking threshold for cell classification (0–1).\n"
+     "  #   split_lim        – split-cell limit: 0 = disabled.\n"
+     "  #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled."),
+    ("  smc:",
+     "  # SMC (Spherical Multi-Cell) grid options:\n"
+     "  #   bathymetry       – dataset name (see presets.smc_bathymetry).\n"
+     "  #   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).\n"
+     "  #   n_levels         – number of cell-size refinement levels.\n"
+     "  #   wlevel           – water-level reference index.\n"
+     "  #   depmin           – minimum depth below which cells are excluded (m).\n"
+     "  #   dshalw           – shallow-water depth threshold for extra refinement (m).\n"
+     "  #   generate_boundary_cells – whether to create open-boundary ghost cells.\n"
+     "  #   msea             – minimum cell count across straits.\n"
+     "  #   options.input    – low-level input pre-processing (auto-flip, tolerances).\n"
+     "  #   options.grid     – grid identity & projection (global, arctic, origin).\n"
+     "  #   options.output   – output file naming and formatting."),
+    ("  unstructured:",
+     "  # Unstructured (triangular) grid spacing parameters:\n"
+     "  #   hmax  – maximum element spacing in deep water (km).\n"
+     "  #   hmin  – minimum allowed spacing everywhere (km).\n"
+     "  #   hshr  – target spacing near shorelines (km).\n"
+     "  #   nwav  – number of wavelengths per element for resolution.\n"
+     "  #   dhdx  – rate of spacing change with depth gradient.\n"
+     "  #   deep_ocean_threshold_m – depth (m) above which hmax applies.\n"
+     "  #   margin_deg       – buffer margin around domain boundary (degrees).\n"
+     "  #   edge_segments    – number of segments along coastlines.\n"
+     "  #   options.data     – optional mask / exclusion file.\n"
+     "  #   options.command_line_args – extra JIGSAW CLI flags.\n"
+     "  #   options.regional – stereographic projection centre (stereo_lon/lat)."),
+    ("calc:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Calculation mode:\n"
+     "#   mode – 'region' (gridded output over the full domain) or\n"
+     "#          'points' (output at specific locations only).\n"
+     "#   points      – list of [name, lon, lat] triples for point output.\n"
+     "#   track_points – optional moving-point tracks for Lagrangian output\n"
+     "#                  (each entry: list of [time, lon, lat] waypoints).\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("ww3:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# WW3 model run settings.\n"
+     "#   version           – WW3 version: '6.07' or '7.14'\n"
+     "#                          (switches public/ww3 template directory).\n"
+     "#   start_date / end_date – simulation period (YYYYMMDD).\n"
+     "#   compute_precision – main propagation time-step DTMAX (seconds).\n"
+     "#   output_precision  – output writing interval (seconds).\n"
+     "#   file_split        – output file splitting: none | hour | day | month | year.\n"
+     "#   output_scheme     – named preset from presets.output_scheme.\n"
+     "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("ww3_grid:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# WW3 grid namelist overrides (written into ww3_grid.nml at runtime).\n"
+     "# Keys follow the Fortran namelist syntax with '%' as sub-key separator.\n"
+     "#\n"
+     "# SPECTRUM%XFR   – logarithmic frequency increment ratio (default 1.1).\n"
+     "# SPECTRUM%FREQ1 – lowest discrete frequency in Hz.\n"
+     "# SPECTRUM%NK    – number of frequency bins.\n"
+     "# SPECTRUM%NTH   – number of directional bins.\n"
+     "# TIMESTEPS%DTMAX – maximum overall time-step (s).\n"
+     "# TIMESTEPS%DTXY  – spatial propagation time-step (s).\n"
+     "# TIMESTEPS%DTKTH – directional propagation time-step (s).\n"
+     "# TIMESTEPS%DTMIN – minimum (source-term) time-step (s).\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("slurm:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# SLURM job-scheduler settings for HPC cluster submissions.\n"
+     "#   cpu       – default CPU model identifier.\n"
+     "#   cpu_group – list of acceptable CPU models for job placement.\n"
+     "#   nodes     – number of compute nodes to request.\n"
+     "#   cores     – CPU cores per node.\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("plot:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Post-processing and validation plot settings.\n"
+     "# Each sub-section is invoked individually via CLI commands:\n"
+     "#   plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc / plot-wind\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("  wave_maps:",
+     "  # Wave-height filled-colour maps, contour maps, and video.\n"
+     "  #   time_step_hours – temporal sampling interval (hours).\n"
+     "  #   generate_video  – whether to create an MP4 animation.\n"
+     "  #   show_land_coastline – overlay coastline on maps.\n"
+     "  #   dpi / figsize   – image resolution and dimensions (null = auto).\n"
+     "  #   output_folder   – custom output directory (null = workdir default)."),
+    ("  spectrum:",
+     "  # 2-D directional spectrum plots at specified station locations.\n"
+     "  #   time_step_hours  – temporal sampling interval (hours).\n"
+     "  #   energy_threshold – minimum energy density to display.\n"
+     "  #   plot_mode        – 'normalized' or 'actual' (null = actual)."),
+    ("  jason3:",
+     "  # Jason-3 satellite altimeter track matching / validation.\n"
+     "  #   data_folder       – local folder containing downloaded Jason-3 files.\n"
+     "  #   lon_lat           – [lon_w, lon_e, lat_s, lat_n] matching region.\n"
+     "  #   time_range        – [start, end] date strings (YYYYMMDD).\n"
+     "  #   max_dist_deg      – maximum spatial mismatch for track matching (degrees).\n"
+     "  #   time_window_hours – maximum temporal mismatch window (hours)."),
+    ("  ndbc:",
+     "  # NDBC buoy observation matching or data download.\n"
+     "  #   data_folder – local folder containing NDBC station data files.\n"
+     "  #   download    – if true, download station data automatically from NDBC.\n"
+     "  #   time_range  – [start, end] date strings (YYYYMMDD)."),
+    ("  wind_field:",
+     "  # Wind-field filled-colour maps with optional arrow / barb overlays.\n"
+     "  #   time_step_hours – temporal sampling interval (null = auto from file).\n"
+     "  #   flag_type       – overlay style: 'arrow' / 'barb' / 'none'.\n"
+     "  #   flag_density    – spacing between flag glyphs (stride steps)."),
+    ("server:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Remote server connection settings (SSH / SFTP).\n"
+     "#   host / port        – hostname or IP and SSH port number.\n"
+     "#   user               – login username.\n"
+     "#   password / key_file – password string or path to private key.\n"
+     "#   default_remote_dir – base directory on the remote side; workdir name\n"
+     "#                        is appended automatically during submission.\n"
+     "#   remote_dir         – full resolved remote path (read-only, auto-set).\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("paths:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# External tool and data directory paths.\n"
+     "#   matlab_path       – MATLAB executable for grid generators that require it.\n"
+     "#   ww3bin_path       – directory containing compiled WW3 binaries.\n"
+     "#   jason_path        – local storage directory for Jason-3 satellite data.\n"
+     "#   ndbc_path         – local storage directory for NDBC buoy data.\n"
+     "#   jason3_download_url – base URL for Jason-3 data downloads from NCEI.\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("desktop:",
+     "# ════════════════════════════════════════════════════════════════════\n"
+     "# Desktop-only settings (managed by the Settings page; CLI ignores).\n"
+     "#   language           – UI locale: 'en_US' or 'zh_CN'.\n"
+     "#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.\n"
+     "#   run_mode           – 'local' / 'server' / 'both'.\n"
+     "#   default_workdir    – default parent folder for new work directories.\n"
+     "#   recent_workdirs    – recently opened work directories (MRU list).\n"
+     "#   forcing_field_dir  – last-used forcing file browse directory.\n"
+     "#   forcing_process_mode / forcing_auto_associate – forcing page defaults.\n"
+     "#   show_land_coastline – default map overlay preference.\n"
+     "# ════════════════════════════════════════════════════════════════════"),
+]
+
+
+def _dump_yaml_with_comments(data: dict, yaml_mod=None) -> str:
+    """Dump *data* to a YAML string and re-inject documentation comments.
+
+    Uses ``yaml.safe_dump`` for correct serialisation, then walks the output
+    line by line, inserting block comments from ``_YAML_COMMENTS`` before the
+    first matching line for each entry.
+
+    Args:
+        data: The dictionary to serialise.
+        yaml_mod: Optional pre-imported yaml module; imported lazily if None.
+    """
+    if yaml_mod is None:
+        yaml_mod = _load_yaml()
+    raw_text: str = yaml_mod.safe_dump(
+        data, allow_unicode=True, sort_keys=False, default_flow_style=False,
+    )
+    # Track which comment groups have already been injected (inject once).
+    used: set[int] = set()
+    out_lines: list[str] = []
+    for line in raw_text.splitlines(keepends=True):
+        stripped = line.rstrip("\n\r")
+        for idx, (prefix, comment) in enumerate(_YAML_COMMENTS):
+            if idx in used:
+                continue
+            # Top-level keys start at column 0; nested keys are indented.
+            if prefix.startswith("  "):
+                # Indented key: match only when line starts with same indent
+                if stripped.startswith(prefix):
+                    out_lines.append(comment + "\n")
+                    used.add(idx)
+                    break
+            else:
+                if stripped.startswith(prefix):
+                    out_lines.append(comment + "\n")
+                    used.add(idx)
+                    break
+        out_lines.append(line)
+    return "".join(out_lines)
+
+
 def _read_root_params() -> dict:
     """读取根目录 params.yml，返回完整字典；文件不存在或解析失败返回空字典。"""
     if not os.path.isfile(PARAMS_FILE):
@@ -585,18 +908,11 @@ def _read_root_params() -> dict:
 
 
 def _write_root_params(data: dict) -> bool:
-    """将完整字典写回根目录 params.yml；desktop 段带分隔线注释。"""
+    """将完整字典写回根目录 params.yml，自动注入文档注释。"""
     try:
-        yaml = _load_yaml()
-        desktop = data.pop("desktop", None)
+        text = _dump_yaml_with_comments(data)
         with open(PARAMS_FILE, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            if desktop is not None:
-                f.write("\n")
-                f.write("# ══════════════════════════════════════════════════════════════\n")
-                f.write("# Desktop 专用配置（以下由设置页面管理，CLI 忽略）\n")
-                f.write("# ══════════════════════════════════════════════════════════════\n")
-                yaml.dump({"desktop": desktop}, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            f.write(text)
         return True
     except Exception as e:
         print(f"保存 params.yml 失败: {e}")
@@ -719,6 +1035,11 @@ def load_full_config() -> dict:
         merged["ST_VERSIONS"] = [{"name": k, "path": v} for k, v in st_dict.items()]
         merged["ST_OPTIONS"] = list(st_dict.keys())
         merged["DEFAULT_ST"] = list(st_dict.keys())[0] if st_dict else ""
+    if isinstance(presets.get("local_st"), dict):
+        lst_dict = presets["local_st"]
+        merged["LOCAL_ST_VERSIONS"] = [{"name": k, "path": v} for k, v in lst_dict.items()]
+        merged["LOCAL_ST_OPTIONS"] = list(lst_dict.keys())
+        merged["DEFAULT_LOCAL_ST"] = list(lst_dict.keys())[0] if lst_dict else ""
     return merged
 
 
@@ -751,6 +1072,14 @@ def save_full_config(config: dict) -> bool:
                 if isinstance(item, dict) and item.get("name"):
                     st_dict[item["name"]] = item.get("path", "")
             root.setdefault("presets", {})["st"] = st_dict
+    if "LOCAL_ST_VERSIONS" in config:
+        versions = config["LOCAL_ST_VERSIONS"]
+        if isinstance(versions, list):
+            lst_dict = {}
+            for item in versions:
+                if isinstance(item, dict) and item.get("name"):
+                    lst_dict[item["name"]] = item.get("path", "")
+            root.setdefault("presets", {})["local_st"] = lst_dict
     return _write_root_params(root)
 
 

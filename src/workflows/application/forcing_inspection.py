@@ -96,7 +96,7 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
     logger.log(f"【{field_name}】")
     logger.log(tr("forcing_info_filename", "ℹ️ 文件名：{name}").format(name=path.name))
     try:
-        logger.log(tr("forcing_info_filesize", "ℹ️ 文件大小：{size}").format(size=_format_size(path.stat().st_size)))
+        logger.log(tr("forcing_info_filesize", "ℹ️ 文件大小：{size}").format(size=format_file_size(path.stat().st_size)))
     except OSError as exc:
         logger.log(tr("forcing_info_filesize_unreadable", "ℹ️ 文件大小：无法读取 ({error})").format(error=exc))
 
@@ -202,21 +202,7 @@ def _first_named_variable(dataset, names: tuple[str, ...]):
     return None, None
 
 
-def _format_size(size: int) -> str:
-    """将字节数格式化为人类可读的文件大小字符串。
-
-    [EN] Format byte count into a human-readable file size string.
-    """
-    if size < 1024:
-        return f"{size} B"
-    if size < 1024 * 1024:
-        return f"{size / 1024:.2f} KB"
-    if size < 1024 * 1024 * 1024:
-        return f"{size / (1024 * 1024):.2f} MB"
-    return f"{size / (1024 * 1024 * 1024):.2f} GB"
-
-
-def _format_interval(seconds: float) -> str:
+from ..support.formatting import format_file_size
     """将秒数格式化为秒/分钟/小时/天的可读字符串。
 
     [EN] Format seconds into a human-readable string of seconds/minutes/hours/days.

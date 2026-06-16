@@ -31,8 +31,7 @@
 !     FORCING%FIELD%CURRENTS       = F           ! Current                            (2-components)
 !     FORCING%FIELD%WINDS          = F           ! Wind                               (2-components)
 !     FORCING%FIELD%WIND_AST       = F           ! Wind and air-sea temp. dif.        (3-components)
-!     INPUT%FORCING%ATM_MOMENTUM   = f           ! Atmospheric momentum               (2-components)
-!     INPUT%FORCING%AIR_DENSITY    = f           ! Air density                        (1-component)
+
 !     FORCING%FIELD%ICE_CONC       = F           ! Ice concentration                  (1-component)
 !     FORCING%FIELD%ICE_BERG       = F           ! Icebergs and sea ice concentration (2-components)
 !     FORCING%FIELD%DATA_ASSIM     = F           ! Data for assimilation              (1-component)
@@ -67,8 +66,7 @@
 !     FORCING%FIELD%CURRENTS       = F           ! 流场                        (2分量)
 !     FORCING%FIELD%WINDS          = F           ! 风场                        (2分量)
 !     FORCING%FIELD%WIND_AST       = F           ! 风和海气温差                  (3分量)
-!     INPUT%FORCING%ATM_MOMENTUM   = f           ! 大气动量                    (2分量)
-!     INPUT%FORCING%AIR_DENSITY    = f           ! 空气密度                    (1分量)
+
 !     FORCING%FIELD%ICE_CONC       = F           ! 冰浓度                      (1分量)
 !     FORCING%FIELD%ICE_BERG       = F           ! 冰山和海冰浓度               (2分量)
 !     FORCING%FIELD%DATA_ASSIM     = F           ! 同化数据                    (1分量)

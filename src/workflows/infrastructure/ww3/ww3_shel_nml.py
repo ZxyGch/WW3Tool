@@ -159,8 +159,30 @@ class WW3ShelNML(NMLPrimitives):
 
                 # OUTPUT_DATE_NML
                 # 只替换非注释行
+                # 模板中 DATE%FIELD%START/STRIDE/STOP 是三行，只替换 START 为合并格式，跳过 STRIDE 和 STOP
                 if not is_comment and re.search(r"DATE%FIELD", line) and "=" in line:
-                    new_lines.append(f"  DATE%FIELD          = '{start_date} 000000' '{main_step}' '{end_date} 235959'\n")
+                    if re.search(r"DATE%FIELD%START", line, re.IGNORECASE):
+                        # 将 DATE%FIELD%START 替换为合并的 DATE%FIELD
+                        new_lines.append(f"  DATE%FIELD          = '{start_date} 000000' '{main_step}' '{end_date} 235959'\n")
+                        continue
+                    elif re.search(r"DATE%FIELD%(STRIDE|STOP)", line, re.IGNORECASE):
+                        # 跳过 STRIDE 和 STOP（已合并到上面一行）
+                        continue
+                    else:
+                        # 已经是合并格式的 DATE%FIELD，直接替换
+                        new_lines.append(f"  DATE%FIELD          = '{start_date} 000000' '{main_step}' '{end_date} 235959'\n")
+                        continue
+
+                # DATE%RESTART%START/STRIDE/STOP：更新为正确的模拟日期（保留 restart 输出配置）
+                if not is_comment and re.search(r"DATE%RESTART%START", line, re.IGNORECASE) and "=" in line:
+                    new_lines.append(f"  DATE%RESTART%START       = '{start_date} 000000'\n")
+                    continue
+                if not is_comment and re.search(r"DATE%RESTART%STOP", line, re.IGNORECASE) and "=" in line:
+                    new_lines.append(f"  DATE%RESTART%STOP        = '{end_date} 235959'\n")
+                    continue
+
+                # DATE%POINT%START/STRIDE/STOP：跳过（删除），后续由 _modify_ww3_shel_date_point_in_dir 添加正确的 DATE%POINT
+                if not is_comment and re.search(r"DATE%POINT%(START|STRIDE|STOP)", line, re.IGNORECASE) and "=" in line:
                     continue
 
                 new_lines.append(line)
@@ -521,6 +543,7 @@ class WW3ShelNML(NMLPrimitives):
             new_lines = []
             modified = False
             i = 0
+            date_point_added = False  # 只在第一个 DATE%FIELD 后添加一次
             while i < len(lines):
                 line = lines[i]
 
@@ -528,11 +551,18 @@ class WW3ShelNML(NMLPrimitives):
                 line_stripped = line.lstrip()
                 is_comment = line_stripped.startswith('!')
 
+                # 跳过（删除）模板中已有的 DATE%POINT%START/STRIDE/STOP
+                # 这些是模板默认值，会与我们添加的 DATE%POINT 冲突（Fortran namelist 最后值生效）
+                # 注意：不删除 DATE%RESTART%START/STRIDE/STOP，那些是 restart 输出配置，需要保留
+                if not is_comment and re.search(r'DATE%POINT%(START|STRIDE|STOP)', line, re.IGNORECASE):
+                    i += 1
+                    continue
+
                 new_lines.append(line)
 
                 # 查找 DATE%FIELD 所在行（不区分大小写）
-                # 只处理非注释行
-                if not is_comment and re.search(r'DATE%FIELD', line, re.IGNORECASE):
+                # 只处理非注释行，且只在第一次出现时添加 DATE%POINT
+                if not date_point_added and not is_comment and re.search(r'DATE%FIELD', line, re.IGNORECASE):
                     # 检查下一行是否已经有 DATE%POINT（也需要检查是否为注释行）
                     if i + 1 < len(lines):
                         next_line = lines[i + 1]
@@ -540,7 +570,8 @@ class WW3ShelNML(NMLPrimitives):
                         next_is_comment = next_line_stripped.startswith('!')
                         # 如果下一行是注释行，或者下一行已经有 DATE%POINT（非注释），则跳过
                         if not next_is_comment and re.search(r'DATE%POINT', next_line, re.IGNORECASE):
-                            # 已经存在，跳过
+                            # 已经存在，标记已添加，继续处理
+                            date_point_added = True
                             i += 1
                             continue
 
@@ -548,6 +579,7 @@ class WW3ShelNML(NMLPrimitives):
                     new_lines.append(f"  DATE%POINT          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
                     new_lines.append(f"  DATE%BOUNDARY       = '{start_date} 000000' '86400' '{end_date} 235959'\n")
                     modified = True
+                    date_point_added = True
 
                 i += 1
 

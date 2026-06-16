@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 
 from ...domain.config_models import ServerConfig
+from ...support.formatting import format_file_size
 from ...support.translations import tr
 
 LogFn = Callable[[str], None]
@@ -366,7 +367,7 @@ class SshClient:
                 lpath = os.path.join(local_dir, fname)
                 try:
                     size = sftp.stat(rpath).st_size or 0
-                    log(f"⬇ {fname}  ({size / 1024:.1f} KB)")
+                    log(f"⬇ {fname}  ({format_file_size(size)})")
                     last_pct = [0]
 
                     def _progress(transferred: int, total: int = size, name: str = fname) -> None:
@@ -377,7 +378,7 @@ class SshClient:
 
                     sftp.get(rpath, lpath, callback=_progress)
                     downloaded.append(lpath)
-                    log(f"  ✅ {fname} 下载完成")
+                    log(tr("download_file_complete", "✅ {name} 下载完成").format(name=fname))
                 except Exception as exc:
                     log(f"❌ 下载 {fname} 失败: {exc}")
         finally:
@@ -423,9 +424,9 @@ class SshClient:
     def clear_remote_dir(self, remote_dir: str, *, log: LogFn = _noop) -> None:
         """清空 ``remote_dir`` 内所有文件与子目录（保留目录本身）。"""
         cmd = f"cd '{remote_dir}' && sh -c 'rm -rf * .[!.]*' 2>&1 || true"
-        log(f"🗑 清空远程目录: {remote_dir}")
+        log(tr("clear_remote_dir_start", "🗑 清空远程目录: {path}").format(path=remote_dir))
         out, err, code = self.exec_command(cmd, log=log, timeout=60)
         if code == 0 or "No such file" not in err:
-            log(f"✅ 已清空 {remote_dir}")
+            log(tr("clear_remote_dir_done", "✅ 已清空 {path}").format(path=remote_dir))
         else:
-            log(f"⚠️ 清空时有警告: {err}")
+            log(tr("clear_remote_dir_warning", "⚠️ 清空时有警告: {error}").format(error=err))

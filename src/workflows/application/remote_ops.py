@@ -565,7 +565,7 @@ def _parse_sacct_cpu_data(out: str) -> list:
     for user, data in sorted(
         user_data.items(), key=lambda x: x[1]["cpus"], reverse=True
     ):
-        result.append([user, str(data["cpus"]), str(data["nodes"]), data["elapsed"]])
+        result.append([user, str(data["cpus"]), str(data["nodes"]), _normalize_elapsed(data["elapsed"])])
     return result
 
 
@@ -612,6 +612,32 @@ def _elapsed_to_seconds(elapsed: str) -> int:
         return days * 86400
     except (ValueError, IndexError):
         return 0
+
+
+def _normalize_elapsed(elapsed: str) -> str:
+    """将 Slurm elapsed 字符串统一为 DD-HH:MM:SS 格式，确保位数对齐。
+
+    Examples:
+        '6-10:26:27'  → '06-10:26:27'
+        '03:28:20'    → '00-03:28:20'
+        '45:12'       → '00-00:45:12'
+    """
+    try:
+        days = 0
+        rest = elapsed
+        if "-" in rest:
+            d_str, rest = rest.split("-", 1)
+            days = int(d_str)
+        parts = rest.split(":")
+        if len(parts) == 3:
+            h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
+        elif len(parts) == 2:
+            h, m, s = 0, int(parts[0]), int(parts[1])
+        else:
+            h, m, s = 0, 0, int(parts[0]) if parts[0] else 0
+        return f"{days:02d}-{h:02d}:{m:02d}:{s:02d}"
+    except (ValueError, IndexError):
+        return elapsed
 
 
 def run_cpu_ranking(
@@ -762,7 +788,10 @@ def run_list_files(
         if code != 0:
             raise RuntimeError(err or output or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code))
         if output:
-            logger.log(tr("remote_file_list", "📁 {path} 下的文件列表：\n{output}\n{line}").format(path=remote_dir, output=output, line="=" * 46))
+            # [EN] Normalize line endings to avoid blank lines in log display.
+            # 规范化行尾，避免日志中出现空行
+            clean = output.replace("\r\n", "\n").replace("\r", "")
+            logger.log(tr("remote_file_list", "📁 {path} 下的文件列表：\n{output}\n{line}").format(path=remote_dir, output=clean, line="=" * 46))
         else:
             logger.log(tr("server_directory_empty", "📂 目录为空：{path}").format(path=remote_dir))
         return RemoteResult(success=True, data=output, messages=list(logger.messages))

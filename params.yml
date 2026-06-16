@@ -1,3 +1,23 @@
+# ────────────────────────────────────────────────────────────────────
+# Preset definitions: reusable named lists that are referenced by name
+# in other sections. Avoids duplicating long lists across configs.
+#
+#   output_scheme  – named lists of WW3 output field abbreviations.
+#     'standard'      : essential wave parameters (HS, DIR, FP, T02 …).
+#     'with_spectrum'  : standard + 2-D energy density (EF).
+#     'all_fields'     : every available WW3 output variable.
+#   st                  – source-term package paths keyed by scheme name
+#                          (ST2 / ST4 / ST6 / ST6A / ST6B).
+#   local_st           – local WW3 binary paths keyed by scheme name
+#                          (used by local run panel).
+#   structured_bathymetry – bathymetry datasets available for structured grids
+#                          (GEBCO / ETOPO1 / ETOPO2).
+#   smc_bathymetry      – bathymetry datasets for SMC grids.
+#   coastline_precision – GSHHG coastline resolution levels
+#                          (full > high > inter > low > coarse).
+#   file_split          – output file splitting strategies
+#                          (none / hour / day / month / year).
+# ────────────────────────────────────────────────────────────────────
 presets:
   output_scheme:
     standard:
@@ -112,11 +132,14 @@ presets:
     - CFD
     - CFK
   st:
-    ST2: /public/home//software/wavewatch3/model/exe
-    ST4: /public/home//software2/ww4/model/exe
-    ST6: /public/home//software2/ww6/model/exe
-    ST6A: /public/home//software2/ww6a/model/exe
-    ST6B: /public/home//software2/ww6b/model/exe
+    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
+    ST6: /public/home/weiyl001/software2/ww6/model/exe
+    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
+    ST6B: /public/home/weiyl001/software2/ww6b/model/exe
+  local_st:
+    ST2: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
+    ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin/
   structured_bathymetry:
   - GEBCO
   - ETOP1
@@ -137,8 +160,24 @@ presets:
   - day
   - month
   - year
+# ────────────────────────────────────────────────────────────────────
+# Working directory: all intermediate files, WW3 namelists, forcing
+# inputs, model output and post-processing results are stored here.
+#   path – absolute or relative path to the work directory.
+# ────────────────────────────────────────────────────────────────────
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
+# ────────────────────────────────────────────────────────────────────
+# Forcing fields: NetCDF file paths for external driving fields.
+#   wind    – 10-m wind speed / direction (U10, V10).
+#   current – ocean surface current (UCUR, VCUR).
+#   level   – sea-surface elevation anomaly (LEV).
+#   ice     – sea-ice concentration (IC1 / IC5).
+#   process_mode     – 'copy' duplicates files into workdir;
+#                      'move' relocates the originals.
+#   auto_associate   – when true, automatically match dropped / selected
+#                      files to forcing variables by filename keyword.
+# ────────────────────────────────────────────────────────────────────
 forcing:
   wind: null
   current: null
@@ -146,6 +185,21 @@ forcing:
   ice: null
   process_mode: copy
   auto_associate: true
+# ────────────────────────────────────────────────────────────────────
+# Grid generation settings (structured / SMC / unstructured).
+#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
+#   grid_type – 'normal' (single domain) or 'nested' (two-level
+#               refinement with inner high-resolution patch).
+#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').
+#   reference_data_path – path to bathymetry / coastline data bundle;
+#                          null = auto-detect from project defaults.
+#   nested_contraction_coefficient – size ratio between outer and
+#                          inner grid cells for nested grids (≥ 1).
+#   outer     – outer (or only) grid domain definition:
+#     dx / dy – cell size in degrees (structured) or base spacing.
+#     lon     – [west, east] longitude bounds in degrees.
+#     lat     – [south, north] latitude bounds in degrees.
+# ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
   grid_type: normal
@@ -161,6 +215,15 @@ grid:
     lat:
     - 10.0
     - 30.0
+  # Structured grid options:
+  #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
+  #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).
+  #   min_dist         – minimum distance filter between adjacent grid points (km).
+  #   cut_off          – land-sea mask cut-off: 0 = keep all sea points.
+  #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).
+  #   lim_val          – masking threshold for cell classification (0–1).
+  #   split_lim        – split-cell limit: 0 = disabled.
+  #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.
   structured:
     bathymetry: GEBCO
     coastline_precision: full
@@ -170,6 +233,18 @@ grid:
     lim_val: 0.5
     split_lim: 0
     lake_tol: 50
+  # SMC (Spherical Multi-Cell) grid options:
+  #   bathymetry       – dataset name (see presets.smc_bathymetry).
+  #   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).
+  #   n_levels         – number of cell-size refinement levels.
+  #   wlevel           – water-level reference index.
+  #   depmin           – minimum depth below which cells are excluded (m).
+  #   dshalw           – shallow-water depth threshold for extra refinement (m).
+  #   generate_boundary_cells – whether to create open-boundary ghost cells.
+  #   msea             – minimum cell count across straits.
+  #   options.input    – low-level input pre-processing (auto-flip, tolerances).
+  #   options.grid     – grid identity & projection (global, arctic, origin).
+  #   options.output   – output file naming and formatting.
   smc:
     bathymetry: ETOPO2
     bathy_convention: elevation
@@ -196,8 +271,21 @@ grid:
           lat0: -90.0
       output:
         file_prefix: ''
+  # Unstructured (triangular) grid spacing parameters:
+  #   hmax  – maximum element spacing in deep water (km).
+  #   hmin  – minimum allowed spacing everywhere (km).
+  #   hshr  – target spacing near shorelines (km).
+  #   nwav  – number of wavelengths per element for resolution.
+  #   dhdx  – rate of spacing change with depth gradient.
+  #   deep_ocean_threshold_m – depth (m) above which hmax applies.
+  #   margin_deg       – buffer margin around domain boundary (degrees).
+  #   edge_segments    – number of segments along coastlines.
+  #   options.data     – optional mask / exclusion file.
+  #   options.command_line_args – extra JIGSAW CLI flags.
+  #   options.regional – stereographic projection centre (stereo_lon/lat).
   unstructured:
     hmax: 100
+    hmin: 2
     hshr: 20
     nwav: 400
     dhdx: 0.05
@@ -205,8 +293,6 @@ grid:
     margin_deg: 1
     edge_segments: 64
     options:
-      spacing:
-        hmin: 20
       data:
         mask_file: ''
       command_line_args:
@@ -214,11 +300,31 @@ grid:
       regional:
         stereo_lon: 120.0
         stereo_lat: 20.0
+# ────────────────────────────────────────────────────────────────────
+# Calculation mode:
+#   mode – 'region' (gridded output over the full domain) or
+#          'points' (output at specific locations only).
+#   points      – list of [name, lon, lat] triples for point output.
+#   track_points – optional moving-point tracks for Lagrangian output
+#                  (each entry: list of [time, lon, lat] waypoints).
+# ────────────────────────────────────────────────────────────────────
 calc:
   mode: region
   points: []
   track_points: []
+# ────────────────────────────────────────────────────────────────────
+# WW3 model run settings.
+#   version           – WW3 version: '6.07' or '7.14'
+#                          (switches public/ww3 template directory).
+#   start_date / end_date – simulation period (YYYYMMDD).
+#   compute_precision – main propagation time-step DTMAX (seconds).
+#   output_precision  – output writing interval (seconds).
+#   file_split        – output file splitting: none | hour | day | month | year.
+#   output_scheme     – named preset from presets.output_scheme.
+#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
+# ────────────────────────────────────────────────────────────────────
 ww3:
+  version: 6.07
   start_date: '20250101'
   end_date: '20250103'
   compute_precision: 1800
@@ -226,6 +332,19 @@ ww3:
   file_split: None
   output_scheme: standard
   st: ST2
+# ────────────────────────────────────────────────────────────────────
+# WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
+# Keys follow the Fortran namelist syntax with '%' as sub-key separator.
+#
+# SPECTRUM%XFR   – logarithmic frequency increment ratio (default 1.1).
+# SPECTRUM%FREQ1 – lowest discrete frequency in Hz.
+# SPECTRUM%NK    – number of frequency bins.
+# SPECTRUM%NTH   – number of directional bins.
+# TIMESTEPS%DTMAX – maximum overall time-step (s).
+# TIMESTEPS%DTXY  – spatial propagation time-step (s).
+# TIMESTEPS%DTKTH – directional propagation time-step (s).
+# TIMESTEPS%DTMIN – minimum (source-term) time-step (s).
+# ────────────────────────────────────────────────────────────────────
 ww3_grid:
   SPECTRUM%XFR: 1.1
   SPECTRUM%FREQ1: 0.04118
@@ -235,6 +354,13 @@ ww3_grid:
   TIMESTEPS%DTXY: 320
   TIMESTEPS%DTKTH: 300
   TIMESTEPS%DTMIN: 15
+# ────────────────────────────────────────────────────────────────────
+# SLURM job-scheduler settings for HPC cluster submissions.
+#   cpu       – default CPU model identifier.
+#   cpu_group – list of acceptable CPU models for job placement.
+#   nodes     – number of compute nodes to request.
+#   cores     – CPU cores per node.
+# ────────────────────────────────────────────────────────────────────
 slurm:
   cpu: CPU6240R
   cpu_group:
@@ -242,22 +368,40 @@ slurm:
   - CPU6336Y
   nodes: 1
   cores: 48
+# ────────────────────────────────────────────────────────────────────
+# Post-processing and validation plot settings.
+# Each sub-section is invoked individually via CLI commands:
+#   plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc / plot-wind
+# ────────────────────────────────────────────────────────────────────
 plot:
+  # Wave-height filled-colour maps, contour maps, and video.
+  #   time_step_hours – temporal sampling interval (hours).
+  #   generate_video  – whether to create an MP4 animation.
+  #   show_land_coastline – overlay coastline on maps.
+  #   dpi / figsize   – image resolution and dimensions (null = auto).
+  #   output_folder   – custom output directory (null = workdir default).
   wave_maps:
-    enabled: true
     time_step_hours: 6
     generate_video: false
     show_land_coastline: true
     dpi: null
     figsize: null
     output_folder: null
+  # 2-D directional spectrum plots at specified station locations.
+  #   time_step_hours  – temporal sampling interval (hours).
+  #   energy_threshold – minimum energy density to display.
+  #   plot_mode        – 'normalized' or 'actual' (null = actual).
   spectrum:
-    enabled: false
     time_step_hours: 6
     energy_threshold: 0.01
     plot_mode: null
+  # Jason-3 satellite altimeter track matching / validation.
+  #   data_folder       – local folder containing downloaded Jason-3 files.
+  #   lon_lat           – [lon_w, lon_e, lat_s, lat_n] matching region.
+  #   time_range        – [start, end] date strings (YYYYMMDD).
+  #   max_dist_deg      – maximum spatial mismatch for track matching (degrees).
+  #   time_window_hours – maximum temporal mismatch window (hours).
   jason3:
-    enabled: false
     data_folder: null
     lon_lat:
     - 110.0
@@ -269,46 +413,75 @@ plot:
     - '20250103'
     max_dist_deg: 0.125
     time_window_hours: 0.5
+  # NDBC buoy observation matching or data download.
+  #   data_folder – local folder containing NDBC station data files.
+  #   download    – if true, download station data automatically from NDBC.
+  #   time_range  – [start, end] date strings (YYYYMMDD).
   ndbc:
-    enabled: false
     data_folder: null
     download: false
     time_range:
     - '20250101'
     - '20250103'
+  # Wind-field filled-colour maps with optional arrow / barb overlays.
+  #   time_step_hours – temporal sampling interval (null = auto from file).
+  #   flag_type       – overlay style: 'arrow' / 'barb' / 'none'.
+  #   flag_density    – spacing between flag glyphs (stride steps).
   wind_field:
     time_step_hours: null
     flag_type: null
     flag_density: null
+# ────────────────────────────────────────────────────────────────────
+# Remote server connection settings (SSH / SFTP).
+#   host / port        – hostname or IP and SSH port number.
+#   user               – login username.
+#   password / key_file – password string or path to private key.
+#   default_remote_dir – base directory on the remote side; workdir name
+#                        is appended automatically during submission.
+#   remote_dir         – full resolved remote path (read-only, auto-set).
+# ────────────────────────────────────────────────────────────────────
 server:
-  host: ''
+  host: 
   port: 22
-  user: ''
-  password: ''
+  user: 
+  password: 
   key_file: null
-  default_remote_dir: '/public/home//workSpace/'
+  default_remote_dir: /public/home/weiyl001/workSpace/
   remote_dir: ''
+# ────────────────────────────────────────────────────────────────────
+# External tool and data directory paths.
+#   matlab_path       – MATLAB executable for grid generators that require it.
+#   ww3bin_path       – directory containing compiled WW3 binaries.
+#   jason_path        – local storage directory for Jason-3 satellite data.
+#   ndbc_path         – local storage directory for NDBC buoy data.
+#   jason3_download_url – base URL for Jason-3 data downloads from NCEI.
+# ────────────────────────────────────────────────────────────────────
 paths:
   matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
-  ww3bin_path: /Users/zxy/ocean/WW3/build/ST2/bin
+  ww3bin_path: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
   jason_path: /Users/zxy/ocean/Paper/WW3Tool/jason3
   ndbc_path: /Users/zxy/ocean/Paper/WW3Tool/ndbc
   jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
-
-# ══════════════════════════════════════════════════════════════
-# Desktop 专用配置（以下由设置页面管理，CLI 忽略）
-# ══════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════
+# Desktop-only settings (managed by the Settings page; CLI ignores).
+#   language           – UI locale: 'en_US' or 'zh_CN'.
+#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.
+#   run_mode           – 'local' / 'server' / 'both'.
+#   default_workdir    – default parent folder for new work directories.
+#   recent_workdirs    – recently opened work directories (MRU list).
+#   forcing_field_dir  – last-used forcing file browse directory.
+#   forcing_process_mode / forcing_auto_associate – forcing page defaults.
+#   show_land_coastline – default map overlay preference.
+# ════════════════════════════════════════════════════════════════════
 desktop:
   language: en_US
   theme: AUTO
   run_mode: both
   default_workdir: /Users/zxy/ocean/Paper/WW3Tool/workSpace
   recent_workdirs:
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-13_17-17-19
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-12_20-18-24
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ARR_20150709T0900_0094
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ARR_20150106T1300_0004
   forcing_field_dir: ''
   forcing_process_mode: Copy
   forcing_auto_associate: true
   show_land_coastline: true
-  step4_show_spectrum: true
-  step4_show_timesteps: true

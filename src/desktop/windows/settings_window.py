@@ -48,8 +48,10 @@ from ..components.validators import double_validator, int_validator
 from ..view_models.settings import SettingsViewModel
 from workflows.infrastructure.runtime_config import (
     RUN_MODE_VALUES,
+    WW3_VERSION_VALUES,
     normalize_run_mode,
     smc_bathymetry_relpath_for_combo_index,
+    swap_ww3_version,
 )
 from workflows.support.translations import tr
 
@@ -278,6 +280,7 @@ class SettingsInterface(QWidget):
         self._build_scheme_card()
         self._build_server_card()
         self._build_st_card()
+        self._build_local_st_card()
 
         self._vbox.addStretch(1)
         self._wire_autosave()
@@ -371,12 +374,6 @@ class SettingsInterface(QWidget):
         row_layout.addWidget(switch)
         grid.addWidget(row_widget, row, 0, 1, 4)
         return switch
-
-    def _step4_toggle(self, grid: QGridLayout, row: int, key: str) -> None:
-        """“是否在第四步显示该分组”开关；与其它设置一样即时落盘。"""
-        switch = self._switch_row(grid, row, tr("set_show_in_step4", "在第四步显示："))
-        switch.setChecked(bool(self._config.get(key, False)))
-        self._checks[key] = switch
 
     def _browse(self, grid: QGridLayout, row: int, label: str, key: str, *, directory: bool, readonly: bool = False, button_text: str | None = None) -> None:
         button_text = button_text or tr("select", "选择")
@@ -592,8 +589,7 @@ class SettingsInterface(QWidget):
         self._text(grid, 1, 0, tr("set_freq_start", "起始频率："), "FREQ_START")
         self._text(grid, 2, 0, tr("set_freq_num", "频率数量："), "FREQ_NUM")
         self._text(grid, 3, 0, tr("set_dir_num", "方向离散数："), "DIR_NUM")
-        self._step4_toggle(grid, 4, "STEP4_SHOW_SPECTRUM")
-        self._reset_button(grid, 5, self._reset_spectrum_defaults)
+        self._reset_button(grid, 4, self._reset_spectrum_defaults)
 
     def _build_timesteps_card(self) -> None:
         grid = self._card(tr("timesteps_params", "数值积分时间步长参数"))
@@ -601,8 +597,7 @@ class SettingsInterface(QWidget):
         self._text(grid, 1, 0, tr("set_dtxy", "空间时间步长："), "DTXY")
         self._text(grid, 2, 0, tr("set_dtkth", "谱空间时间步长："), "DTKTH")
         self._text(grid, 3, 0, tr("set_dtmin", "最小源项时间步长："), "DTMIN")
-        self._step4_toggle(grid, 4, "STEP4_SHOW_TIMESTEPS")
-        self._reset_button(grid, 5, self._reset_timesteps_defaults)
+        self._reset_button(grid, 4, self._reset_timesteps_defaults)
 
     def _reset_button(self, grid: QGridLayout, row: int, handler: Callable[[], None]) -> None:
         button = PrimaryPushButton(tr("reset_defaults", "恢复默认值"))
@@ -623,9 +618,25 @@ class SettingsInterface(QWidget):
 
     def _build_ww3_card(self) -> None:
         grid = self._card(tr("ww3_config_card", "WW3 配置"))
-        self._text(grid, 0, 0, tr("set_compute_precision", "计算精度："), "COMPUTE_PRECISION")
-        self._text(grid, 1, 0, tr("set_output_precision", "输出精度："), "OUTPUT_PRECISION")
-        self._combo(grid, 2, 0, tr("set_file_split", "文件分割："), "FILE_SPLIT", _file_split_items())
+        self._combo(grid, 0, 0, tr("set_ww3_version", "WW3 版本："), "WW3_VERSION", list(WW3_VERSION_VALUES))
+        self._combos["WW3_VERSION"].currentIndexChanged.connect(self._on_ww3_version_changed)
+        self._text(grid, 1, 0, tr("set_compute_precision", "计算精度："), "COMPUTE_PRECISION")
+        self._text(grid, 2, 0, tr("set_output_precision", "输出精度："), "OUTPUT_PRECISION")
+        self._combo(grid, 3, 0, tr("set_file_split", "文件分割："), "FILE_SPLIT", _file_split_items())
+
+    def _on_ww3_version_changed(self, _index: int) -> None:
+        combo = self._combos.get("WW3_VERSION")
+        if combo is None:
+            return
+        new_version = combo.currentText().strip()
+        if not new_version or new_version not in WW3_VERSION_VALUES:
+            return
+        ok = swap_ww3_version(new_version)
+        if ok:
+            self._config = self._vm.load()
+            self._toast(tr("ww3_version_swapped", "已切换 WW3 版本为 {version}").format(version=new_version))
+        else:
+            self._toast(tr("ww3_version_swap_failed", "切换 WW3 版本失败"))
 
     def _build_server_card(self) -> None:
         grid = self._card(tr("server_connection", "服务器连接"))
@@ -815,6 +826,77 @@ class SettingsInterface(QWidget):
         self._vm.save_st_versions(versions, self._vm.default_st())
         self._reload_st_table()
 
+    # ── 本地 ST 版本管理 ─────────────────────────────────────────────────────────
+
+    def _build_local_st_card(self) -> None:
+        group, layout = create_header_card(self._content, tr("local_st_version_config", "本地 ST 版本管理"))
+        layout.setSpacing(5)
+        self._local_st_table = _make_table([tr("set_st_name", "名称"), tr("set_local_st_path", "本地 bin 路径")], first_column_width=96)
+        layout.addWidget(self._local_st_table)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        for text, handler in (
+            (tr("new", "新增"), self._local_st_add),
+            (tr("edit", "修改"), self._local_st_edit),
+            (tr("delete", "删除"), self._local_st_delete),
+        ):
+            button = PrimaryPushButton(text)
+            button.setStyleSheet(styles.button_style())
+            button.clicked.connect(handler)
+            row.addWidget(button, 1)
+        layout.addLayout(row)
+        group.viewLayout.setContentsMargins(11, 10, 11, 12)
+        group.viewLayout.addLayout(layout)
+        self._vbox.addWidget(group)
+        self._reload_local_st_table()
+
+    def _reload_local_st_table(self) -> None:
+        versions = self._vm.local_st_versions()
+        self._local_st_table.setRowCount(1)
+        for version in versions:
+            r = self._local_st_table.rowCount()
+            self._local_st_table.insertRow(r)
+            self._local_st_table.setItem(r, 0, QTableWidgetItem(version["name"]))
+            self._local_st_table.setItem(r, 1, QTableWidgetItem(version.get("path", "")))
+        _resize_table(self._local_st_table)
+
+    def _local_st_rows(self) -> list[dict]:
+        rows = []
+        for r in range(1, self._local_st_table.rowCount()):
+            name = self._local_st_table.item(r, 0)
+            path = self._local_st_table.item(r, 1)
+            if name and name.text().strip():
+                rows.append({"name": name.text().strip(), "path": path.text().strip() if path else ""})
+        return rows
+
+    def _local_st_add(self) -> None:
+        dlg = _NamePathDialog(self.window(), directory=True)
+        if dlg.exec() and dlg.value:
+            versions = self._local_st_rows() + [dlg.value]
+            self._vm.save_local_st_versions(versions, self._vm.default_local_st())
+            self._reload_local_st_table()
+
+    def _local_st_edit(self) -> None:
+        r = self._local_st_table.currentRow()
+        if r < 1:
+            return
+        initial = {"name": self._local_st_table.item(r, 0).text(), "path": self._local_st_table.item(r, 1).text()}
+        dlg = _NamePathDialog(self.window(), initial=initial, directory=True)
+        if dlg.exec() and dlg.value:
+            versions = self._local_st_rows()
+            versions[r - 1] = dlg.value
+            self._vm.save_local_st_versions(versions, self._vm.default_local_st())
+            self._reload_local_st_table()
+
+    def _local_st_delete(self) -> None:
+        r = self._local_st_table.currentRow()
+        if r < 1:
+            return
+        versions = self._local_st_rows()
+        del versions[r - 1]
+        self._vm.save_local_st_versions(versions, self._vm.default_local_st())
+        self._reload_local_st_table()
+
     # ── 谱分区输出方案 ────────────────────────────────────────────────────────
 
     def _build_scheme_card(self) -> None:
@@ -971,7 +1053,9 @@ class SettingsInterface(QWidget):
         """
         for widget in self._fields.values():
             self._connect_autosave(widget, self._save_config_now)
-        for widget in self._combos.values():
+        for key, widget in self._combos.items():
+            if key == "WW3_VERSION":
+                continue  # handled by _on_ww3_version_changed (manages directory swap)
             self._connect_autosave(widget, self._save_config_now)
         for widget in self._checks.values():
             self._connect_autosave(widget, self._save_config_now)
@@ -1030,11 +1114,12 @@ class SettingsInterface(QWidget):
 
 
 class _NamePathDialog(MessageBoxBase):
-    """录入名称（可选可执行路径）。"""
+    """录入名称（可选可执行路径或目录）。"""
 
-    def __init__(self, parent=None, *, initial: dict | None = None, name_only: bool = False, title: str = "") -> None:
+    def __init__(self, parent=None, *, initial: dict | None = None, name_only: bool = False, title: str = "", directory: bool = False) -> None:
         super().__init__(parent)
         self.value: dict | None = None
+        self._directory = directory
         initial = initial or {}
         if getattr(self, "yesButton", None):
             self.yesButton.setText(tr("confirm", "确定"))
@@ -1056,8 +1141,24 @@ class _NamePathDialog(MessageBoxBase):
             self._path.setText(str(initial.get("path", "")))
             grid.addWidget(QLabel(tr("set_path_label","路径:")), 1, 0)
             grid.addWidget(self._path, 1, 1)
+            if directory:
+                browse_btn = PrimaryPushButton(tr("select", "选择"))
+                browse_btn.setStyleSheet(styles.button_style())
+                browse_btn.clicked.connect(self._browse_directory)
+                grid.addWidget(browse_btn, 1, 2)
         self.viewLayout.addLayout(grid)
         self.widget.setMinimumWidth(360)
+
+    def _browse_directory(self) -> None:
+        if not self._path:
+            return
+        start = self._path.text().strip()
+        if not start:
+            from pathlib import Path
+            start = str(Path.home())
+        picked = QFileDialog.getExistingDirectory(self, tr("select_dir_dialog", "选择目录"), start)
+        if picked:
+            self._path.setText(picked)
 
     def validate(self) -> bool:
         name = self._name.text().strip()

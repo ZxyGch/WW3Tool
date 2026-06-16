@@ -628,7 +628,7 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
         {
             "hmax": settings.hmax,
             "hshr": settings.hshr,
-            "hmin": settings.hshr,
+            "hmin": settings.hmin if settings.hmin is not None else UNST_MSH_GEN_CONFIG_DEFAULTS["spacing"]["hmin"],
             "nwav": settings.nwav,
             "dhdx": settings.dhdx,
             "deep_ocean_threshold_m": settings.deep_ocean_threshold_m,
@@ -643,6 +643,19 @@ def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_ca
     )
     _deep_merge(base, settings.options)
     _deep_merge(base, config.grid.options or {})
+    # 确保一级字段优先于 options.spacing 中的同名键（向后兼容旧 params.yml）
+    # [EN] Ensure top-level fields take priority over options.spacing duplicates (backward compat)
+    base["spacing"].update(
+        {
+            "hmax": settings.hmax,
+            "hshr": settings.hshr,
+            "hmin": settings.hmin if settings.hmin is not None else UNST_MSH_GEN_CONFIG_DEFAULTS["spacing"]["hmin"],
+            "nwav": settings.nwav,
+            "dhdx": settings.dhdx,
+            "deep_ocean_threshold_m": settings.deep_ocean_threshold_m,
+        }
+    )
+    base["mesh_settings"]["hfun_hmax"] = settings.hmax
     dem = str(base.get("data", {}).get("dem_file") or "")
     mask = str(base.get("data", {}).get("mask_file") or "")
     if config.grid.reference_data_path and dem == UNST_MSH_GEN_CONFIG_DEFAULTS["data"]["dem_file"]:

@@ -358,13 +358,16 @@ class ServerConnectPanel:
         self._idle_table.setRowCount(len(valid) + 1)
         for col, text in enumerate(header_labels):
             item = QTableWidgetItem(text)
-            align = Qt.AlignmentFlag.AlignLeft if col == 0 else Qt.AlignmentFlag.AlignCenter
-            item.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+            if col == 0:
+                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            else:
+                align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+            item.setTextAlignment(align)
             self._idle_table.setItem(0, col, item)
 
         aligns = [
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         ]
         for row_index, row in enumerate(valid, start=1):
@@ -423,6 +426,7 @@ class ServerConnectPanel:
         tasks = self._parse_squeue_lines(lines)
         if not tasks:
             self._clear_queue_display()
+            self._queue_title.setVisible(False)
             self._cancel_widget.setVisible(False)
             return
 

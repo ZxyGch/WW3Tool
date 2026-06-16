@@ -868,19 +868,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         return self._server_path_with_workdir(config.server.default_remote_dir)
 
     def _show_home(self) -> None:
-        # [EN] Switch back to home step page and refresh step 6 server path and step 4 optional group visibility per current config.json.
-        """切回主页步骤页，并按当前 config.json 刷新第六步服务器路径与第四步可选分组显隐。"""
+        # [EN] Switch back to home step page and refresh step 6 server path.
+        """切回主页步骤页，并刷新第六步服务器路径。"""
         self.left_stacked.setCurrentIndex(0)
         self._refresh_server_path()
-        if hasattr(self, "_ww3_panel"):
-            try:
-                cfg = _load_runtime_config()
-            except Exception:
-                cfg = {}
-            self._ww3_panel.set_step4_sections_visible(
-                bool(cfg.get("STEP4_SHOW_SPECTRUM", False)),
-                bool(cfg.get("STEP4_SHOW_TIMESTEPS", False)),
-            )
 
     def _render_summary(self, config: PipelineConfig) -> None:
         # [EN] Override config with current UI form forcing paths (ensure Step 4 shows latest selection)
@@ -1104,19 +1095,29 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _calc_grid_bounds(self) -> dict | None:
-        # [EN] Read current workdir grid lon/lat bounding box for step 3 point validation.
-        """读取当前工作目录网格的经纬度包围盒，供第三步点位校验。"""
-        from ..steps.point_io import grid_bounds
+        # [EN] Read grid lon/lat bounding box from params.yml (config.grid) for step 3 point validation.
+        # [EN] No longer depends on generated grid files; nested grids take the union of outer + inner.
+        """从 params.yml 的 config.grid 读取经纬度包围盒，供第三步点位校验。
 
-        workdir = self._paths["workdir"].text().strip()
-        if not workdir:
+        不再依赖第二步已生成的网格文件；嵌套网格取外、内网格范围的并集。
+        """
+        config = self._config_from_current_workdir_params(validation_stage="grid", log=False)
+        if config is None:
             return None
-        mesh_type = ["structured", "smc", "unstructured"][self._mesh_type_combo.currentIndex()]
-        grid_type = "nested" if self._grid_panel.is_nested else "normal"
-        try:
-            return grid_bounds(workdir, mesh_type, grid_type)
-        except Exception:
+        outer = config.grid.outer
+        if not outer or not outer.lon or not outer.lat:
             return None
+        inner = config.grid.inner if config.grid.grid_type == "nested" else None
+        all_lon = list(outer.lon) + (list(inner.lon) if inner and inner.lon else [])
+        all_lat = list(outer.lat) + (list(inner.lat) if inner and inner.lat else [])
+        if len(all_lon) < 2 or len(all_lat) < 2:
+            return None
+        return {
+            "lon_min": min(all_lon),
+            "lon_max": max(all_lon),
+            "lat_min": min(all_lat),
+            "lat_max": max(all_lat),
+        }
 
     def _persist_params(self) -> bool:
         # [EN] Write current form (including step 3 points) back to params.yml; report error and return False if points are incomplete.

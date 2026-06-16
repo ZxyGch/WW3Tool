@@ -318,8 +318,6 @@ class WW3OunpNML(NMLPrimitives):
             modified_start = False
             modified_stride = False
             modified_split = False
-            modified_spectra_type = False
-            in_spectra_nml = False
             for line in lines:
                 # [EN] Check if comment line (starts with !, after stripping leading whitespace)
                 # 检查是否为注释行（以 ! 开头，去除前导空格后）
@@ -329,24 +327,6 @@ class WW3OunpNML(NMLPrimitives):
                 # [EN] Only replace non-comment lines
                 # 只替换非注释行
                 if not is_comment:
-                    # [EN] Handle SPECTRA_NML block
-                    # 处理 SPECTRA_NML 块
-                    if "&SPECTRA_NML" in line.upper():
-                        in_spectra_nml = True
-                        new_lines.append(line)
-                        continue
-                    if in_spectra_nml:
-                        if re.search(r'SPECTRA%TYPE', line, re.IGNORECASE) and "=" in line:
-                            new_lines.append("  SPECTRA%TYPE          =  4\n")
-                            modified_spectra_type = True
-                            continue
-                        if re.match(r'^\s*/\s*$', line) and not line.strip().startswith("!"):
-                            if not modified_spectra_type:
-                                new_lines.append("  SPECTRA%TYPE          =  4\n")
-                                modified_spectra_type = True
-                            in_spectra_nml = False
-                            new_lines.append(line)
-                            continue
                     # [EN] Modify POINT%TIMESTART
                     # 修改 POINT%TIMESTART
                     if re.search(r'POINT%TIMESTART', line, re.IGNORECASE):
@@ -379,7 +359,7 @@ class WW3OunpNML(NMLPrimitives):
                 if insert_index > 0:
                     new_lines.insert(insert_index, f"  POINT%TIMESPLIT        =  {timesplit_value}\n")
 
-            if modified_start or modified_stride or modified_split or modified_spectra_type:
+            if modified_start or modified_stride or modified_split:
                 with open(ww3_ounp_path, "w", encoding="utf-8") as f:
                     f.writelines(new_lines)
                 if modified_start and modified_stride:

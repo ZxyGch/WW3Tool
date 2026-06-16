@@ -207,7 +207,10 @@ class CalculationStepPanel:
             default_name=str(self._count(kind)),
         )
         if dialog.exec() and dialog.value is not None:
-            self._append_point(kind, dialog.value)
+            if self._is_duplicate(kind, dialog.value):
+                self._notify(tr("step3_duplicate_point", "⚠️ 点位重复（名称或坐标已存在），已跳过"))
+            else:
+                self._append_point(kind, dialog.value)
 
     def _edit(self, kind: str) -> None:
         row = self._selected_data_row(kind)
@@ -223,7 +226,10 @@ class CalculationStepPanel:
             input_style=self._input_style(),
         )
         if dialog.exec() and dialog.value is not None:
-            self._write_row(kind, row, dialog.value)
+            if self._is_duplicate(kind, dialog.value, exclude_row=row):
+                self._notify(tr("step3_duplicate_point", "⚠️ 点位重复（名称或坐标已存在），已跳过"))
+            else:
+                self._write_row(kind, row, dialog.value)
 
     def _select_on_map(self, kind: str) -> None:
         bounds = self._bounds_provider()
@@ -247,9 +253,13 @@ class CalculationStepPanel:
             self._notify(tr("step3_map_picker_unavailable", "地图选点不可用（缺少 matplotlib/cartopy）：{error}").format(error=exc))
             return
         if dialog.exec() and dialog.selected_points:
+            added = 0
             for point in dialog.selected_points:
+                if self._is_duplicate(kind, point):
+                    continue
                 self._append_point(kind, point)
-            self._notify(tr("step3_points_added_from_map", "已从地图添加 {count} 个点位").format(count=len(dialog.selected_points)))
+                added += 1
+            self._notify(tr("step3_points_added_from_map", "已从地图添加 {count} 个点位").format(count=added))
 
     def _delete(self, kind: str) -> None:
         row = self._selected_data_row(kind)
@@ -278,11 +288,18 @@ class CalculationStepPanel:
         except OSError as exc:
             self._notify(tr("step3_read_file_failed", "读取文件失败：{error}").format(error=exc))
             return
+        skipped = 0
         for point in imported:
-            self._append_point(kind, point)
+            if self._is_duplicate(kind, point):
+                skipped += 1
+            else:
+                self._append_point(kind, point)
         for warning in warnings:
             self._notify(f"⚠️ {warning}")
-        self._notify(tr("step3_points_imported_from_file", "已从 {file} 导入 {count} 个点位").format(file=Path(path).name, count=len(imported)))
+        if skipped:
+            self._notify(tr("step3_points_imported_skipped_dup", "已从 {file} 导入 {count} 个点位，跳过 {skipped} 个重复点").format(file=Path(path).name, count=len(imported) - skipped, skipped=skipped))
+        else:
+            self._notify(tr("step3_points_imported_from_file", "已从 {file} 导入 {count} 个点位").format(file=Path(path).name, count=len(imported)))
 
     @staticmethod
     def _headers(kind: str) -> list[tuple[str, Qt.AlignmentFlag]]:
@@ -305,6 +322,33 @@ class CalculationStepPanel:
         table.insertRow(row)
         self._write_row(kind, row, point)
         self._resize_table_to_content(table)
+
+    def _is_duplicate(self, kind: str, point: dict, *, exclude_row: int | None = None) -> bool:
+        # [EN] Check if a point with the same coordinates or name already exists.
+        """检查是否存在相同坐标或名称的点位，可选排除某行（用于编辑场景）。"""
+        table = self._table(kind)
+        new_lon = point.get("lon")
+        new_lat = point.get("lat")
+        new_name = str(point.get("name", "")).strip()
+        for row in range(1, table.rowCount()):
+            if exclude_row is not None and row == exclude_row:
+                continue
+            try:
+                lon_item = table.item(row, 0 if kind == "spectral" else 1)
+                lat_item = table.item(row, 1 if kind == "spectral" else 2)
+                name_item = table.item(row, 2 if kind == "spectral" else 3)
+                lon = float(lon_item.text()) if lon_item else None
+                lat = float(lat_item.text()) if lat_item else None
+                name = name_item.text().strip() if name_item else ""
+            except (ValueError, TypeError):
+                continue
+            # [EN] Match by coordinates or by name.
+            # 按坐标或名称匹配
+            if new_lon is not None and new_lat is not None and lon == new_lon and lat == new_lat:
+                return True
+            if new_name and name and name == new_name:
+                return True
+        return False
 
     def _count(self, kind: str) -> int:
         return max(0, self._table(kind).rowCount() - 1)

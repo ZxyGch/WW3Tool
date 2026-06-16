@@ -160,19 +160,20 @@ class UnstructuredGridSettings:
     """三角非结构化网格（triangle mesh）参数。
 
     关键字段：
-    - ``hmax`` / ``hshr`` / ``nwav``：网格尺寸与波数相关控制量
+    - ``hmax`` / ``hmin`` / ``hshr`` / ``nwav``：网格尺寸与波数相关控制量
     - ``deep_ocean_threshold_m`` / ``margin_deg``：深海阈值与外扩边距
     - ``options``：底层 gridgen 额外选项
 
     [EN] Triangular unstructured grid (triangle mesh) parameters.
 
     Key fields:
-    - ``hmax`` / ``hshr`` / ``nwav``: mesh size and wavenumber-related control quantities
+    - ``hmax`` / ``hmin`` / ``hshr`` / ``nwav``: mesh size and wavenumber-related control quantities
     - ``deep_ocean_threshold_m`` / ``margin_deg``: deep-ocean threshold and outward margin
     - ``options``: underlying gridgen extra options
     """
 
     hmax: Optional[float] = None
+    hmin: Optional[float] = None
     hshr: Optional[float] = None
     nwav: Optional[int] = None
     dhdx: Optional[float] = None
@@ -401,7 +402,6 @@ class WaveMapsConfig:
     [EN] Wave height filled-color / contour map post-processing options.
     """
 
-    enabled: bool = True
     time_step_hours: Optional[float] = None
     figsize: Optional[List[float]] = None
     dpi: Optional[int] = None
@@ -417,7 +417,6 @@ class SpectrumConfig:
     [EN] 2-D directional spectrum plotting options.
     """
 
-    enabled: bool = False
     time_step_hours: Optional[float] = None
     energy_threshold: Optional[float] = None
     plot_mode: Optional[str] = None
@@ -430,7 +429,6 @@ class Jason3Config:
     [EN] Options for matching WW3 results with Jason-3 satellite altimeter data.
     """
 
-    enabled: bool = False
     data_folder: Optional[Path] = None
     lon_lat: List[float] = field(default_factory=list)
     time_range: List[str] = field(default_factory=list)
@@ -445,7 +443,6 @@ class NDBCConfig:
     [EN] Options for matching WW3 results with NDBC buoy observations or downloading data.
     """
 
-    enabled: bool = False
     data_folder: Optional[Path] = None
     download: bool = False
     time_range: List[str] = field(default_factory=list)

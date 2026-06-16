@@ -11,6 +11,7 @@ from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.validators import double_validator, int_validator
 from workflows.domain.config_models import GridConfig, GridRegion
+from workflows.domain.grid_spacing_recommendation import recommend_grid_params
 from workflows.support.translations import tr
 
 
@@ -32,6 +33,7 @@ class GridStepPanel:
         view_map: Callable[[], None],
         generate_grid: Callable[[], None],
         visualize_grid: Callable[[], None],
+        recommend_params: Callable[[], None],
     ) -> None:
         self._input_style = input_style
         self._nested_factor = nested_factor
@@ -125,9 +127,10 @@ class GridStepPanel:
         unst_layout.setSpacing(10)
         unst_layout.setColumnStretch(1, 1)
         self._unst_hmax = self._smc_field(unst_layout, 0, tr("step2_unst_spacing_hmax", "深水尺度 (km)："), "100.0")
-        self._unst_hshr = self._smc_field(unst_layout, 1, tr("step2_unst_spacing_hshr", "近岸尺度 (km)："), "20.0")
-        self._unst_dhdx = self._smc_field(unst_layout, 2, tr("step2_unst_spacing_dhdx", "水深梯度："), "0.05")
-        self._unst_deep_threshold = self._smc_field(unst_layout, 3, tr("step2_unst_spacing_deep_threshold", "深水阈值 (m)："), "4000")
+        self._unst_hmin = self._smc_field(unst_layout, 1, tr("step2_unst_spacing_hmin", "最小尺度 (km)："), "2.0")
+        self._unst_hshr = self._smc_field(unst_layout, 2, tr("step2_unst_spacing_hshr", "近岸尺度 (km)："), "20.0")
+        self._unst_dhdx = self._smc_field(unst_layout, 3, tr("step2_unst_spacing_dhdx", "水深梯度："), "0.05")
+        self._unst_deep_threshold = self._smc_field(unst_layout, 4, tr("step2_unst_spacing_deep_threshold", "深水阈值 (m)："), "4000")
         self.unst_params_widget.hide()
         layout.addWidget(self.unst_params_widget)
 
@@ -140,6 +143,7 @@ class GridStepPanel:
         self.setup_inner_button = create_button(tr("step2_setup_inner_grid", "设置内网格"), setup_inner_grid)
         self.setup_inner_button.hide()
         self.map_button = create_button(tr("step2_view_map", "查看地图"), view_map)
+        self.recommend_button = create_button(tr("step2_recommend_params", "推荐参数"), recommend_params)
         self.grid_button = create_button(tr("step2_create_grid", "生成网格"), generate_grid)
         self.visualize_button = create_button(tr("step2_visualize_grid", "网格可视化"), visualize_grid)
         for button in (
@@ -147,6 +151,7 @@ class GridStepPanel:
             self.setup_outer_button,
             self.setup_inner_button,
             self.map_button,
+            self.recommend_button,
             self.grid_button,
             self.visualize_button,
         ):
@@ -156,6 +161,7 @@ class GridStepPanel:
             self.setup_outer_button,
             self.setup_inner_button,
             self.map_button,
+            self.recommend_button,
             self.grid_button,
             self.visualize_button,
         ]
@@ -186,6 +192,8 @@ class GridStepPanel:
         if grid.unstructured is not None:
             if grid.unstructured.hmax is not None:
                 self._unst_hmax.setText(str(grid.unstructured.hmax))
+            if grid.unstructured.hmin is not None:
+                self._unst_hmin.setText(str(grid.unstructured.hmin))
             if grid.unstructured.hshr is not None:
                 self._unst_hshr.setText(str(grid.unstructured.hshr))
             if grid.unstructured.dhdx is not None:
@@ -220,11 +228,82 @@ class GridStepPanel:
         if mesh_type == "unstructured":
             result["unstructured"] = {
                 "hmax": self._unst_hmax.text().strip(),
+                "hmin": self._unst_hmin.text().strip(),
                 "hshr": self._unst_hshr.text().strip(),
                 "dhdx": self._unst_dhdx.text().strip(),
                 "deep_ocean_threshold_m": self._unst_deep_threshold.text().strip(),
             }
         return result
+
+    def apply_recommendations(self) -> tuple[bool, str]:
+        """Fill spacing/resolution fields with span-based recommendations for the
+        currently selected mesh type. Delegates the (UI-independent) computation to
+        ``recommend_grid_params``. Returns (ok, human-readable summary)."""
+        try:
+            lon = [
+                float(self.fields["grid_lon_west"].text().strip()),
+                float(self.fields["grid_lon_east"].text().strip()),
+            ]
+            lat = [
+                float(self.fields["grid_lat_south"].text().strip()),
+                float(self.fields["grid_lat_north"].text().strip()),
+            ]
+        except ValueError:
+            return False, ""
+
+        mesh_type = ["structured", "smc", "unstructured"][self.mesh_type_combo.currentIndex()]
+        rec = recommend_grid_params(mesh_type, lon, lat)
+        if rec is None:
+            return False, ""
+
+        if mesh_type == "unstructured":
+            self._unst_hmax.setText(rec.values["hmax"])
+            self._unst_hmin.setText(rec.values["hmin"])
+            self._unst_hshr.setText(rec.values["hshr"])
+            self._unst_dhdx.setText(rec.values["dhdx"])
+            mesh_name = tr("step2_mesh_type_unstructured", "非结构网格")
+        elif mesh_type == "smc":
+            self._smc_n_levels.setText(rec.values["n_levels"])
+            mesh_name = tr("step2_mesh_type_smc", "SMC 网格")
+        else:
+            self.set_value("grid_dx", rec.values["dx"])
+            self.set_value("grid_dy", rec.values["dy"])
+            mesh_name = tr("step2_mesh_type_structured", "矩形网格")
+
+        summary = tr("step2_recommend_body", "{mesh}（跨度≈{span} km）：{params}").format(
+            mesh=mesh_name, span=int(rec.span_km), params=rec.values_text()
+        )
+        return True, summary
+
+    def cfl_spacing_m(self) -> tuple[float | None, str]:
+        """CFL 所需的最小网格尺度（米），按当前网格类型从对应输入框取值。
+
+        返回 ``(dxy_m, reason)``；失败时 ``dxy_m`` 为 ``None``，``reason`` 为
+        ``"need_grid"`` / ``"need_hmin"``。非结构化用近岸最小尺度 ``hmin``，结构化/SMC
+        用基准格距 ``DX/DY`` 与纬度。[EN] Min grid spacing (m) for CFL, by mesh type."""
+        from workflows.domain.timestep_recommendation import cfl_spacing_meters
+
+        idx = self.mesh_type_combo.currentIndex()  # 0 结构化, 1 SMC, 2 非结构化
+        if idx == 2:  # unstructured
+            try:
+                hmin = float(self._unst_hmin.text().strip())
+            except ValueError:
+                return None, "need_hmin"
+            return cfl_spacing_meters("unstructured", hmin_km=hmin)
+        # 结构化 / SMC：度制基准格距 + 纬度
+        try:
+            dx = float(self.fields["grid_dx"].text().strip())
+            dy = float(self.fields["grid_dy"].text().strip())
+            lat_s = float(self.fields["grid_lat_south"].text().strip())
+            lat_n = float(self.fields["grid_lat_north"].text().strip())
+        except ValueError:
+            return None, "need_grid"
+        return cfl_spacing_meters(
+            "smc" if idx == 1 else "structured",
+            dx_deg=dx,
+            dy_deg=dy,
+            lat_deg=(lat_s + lat_n) / 2.0,
+        )
 
     def input_region(self, prefix: str) -> GridRegion:
         try:

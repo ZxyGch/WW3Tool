@@ -439,7 +439,6 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
     else:
         figsize = None
     wave_maps = WaveMapsConfig(
-        enabled=_bool_value(wm_raw.get("enabled", True), "plot.wave_maps.enabled"),
         time_step_hours=_float_value(wm_raw["time_step_hours"], "plot.wave_maps.time_step_hours") if wm_raw.get("time_step_hours") is not None else None,
         figsize=figsize,
         dpi=_int_value(wm_raw["dpi"], "plot.wave_maps.dpi") if wm_raw.get("dpi") is not None else None,
@@ -450,7 +449,6 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
 
     sp_raw = _as_dict(r.get("spectrum"), "plot.spectrum")
     spectrum = SpectrumConfig(
-        enabled=_bool_value(sp_raw.get("enabled", False), "plot.spectrum.enabled"),
         time_step_hours=_float_value(sp_raw["time_step_hours"], "plot.spectrum.time_step_hours") if sp_raw.get("time_step_hours") is not None else None,
         energy_threshold=_float_value(sp_raw["energy_threshold"], "plot.spectrum.energy_threshold") if sp_raw.get("energy_threshold") is not None else None,
         plot_mode=str(sp_raw["plot_mode"]) if sp_raw.get("plot_mode") is not None else None,
@@ -464,7 +462,6 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
     if j3_time_range and not isinstance(j3_time_range, (list, tuple)):
         raise ConfigError("plot.jason3.time_range 必须是 [起始日期, 结束日期] 数组")
     jason3 = Jason3Config(
-        enabled=_bool_value(j3_raw.get("enabled", False), "plot.jason3.enabled"),
         data_folder=_resolve_path(j3_raw.get("data_folder"), base_dir),
         lon_lat=[float(v) for v in j3_lon_lat] if j3_lon_lat else [],
         time_range=[str(t) for t in j3_time_range] if j3_time_range else [],
@@ -477,7 +474,6 @@ def _plot_config(raw: Any, base_dir: Path) -> PlotConfig:
     if not isinstance(ndbc_tr, (list, tuple)):
         raise ConfigError("plot.ndbc.time_range 必须是 [起始日期, 结束日期] 数组")
     ndbc = NDBCConfig(
-        enabled=_bool_value(ndbc_raw.get("enabled", False), "plot.ndbc.enabled"),
         data_folder=_resolve_path(ndbc_raw.get("data_folder"), base_dir),
         download=_bool_value(ndbc_raw.get("download", False), "plot.ndbc.download"),
         time_range=[str(t) for t in ndbc_tr],
@@ -752,6 +748,7 @@ def parse_pipeline_config(
     unstructured_raw = _as_dict(grid_raw.get("unstructured"), "grid.unstructured")
     unstructured = UnstructuredGridSettings(
         hmax=_float_value(unstructured_raw.get("hmax"), "grid.unstructured.hmax"),
+        hmin=_float_value(unstructured_raw.get("hmin"), "grid.unstructured.hmin"),
         hshr=_float_value(unstructured_raw.get("hshr"), "grid.unstructured.hshr"),
         nwav=_int_value(unstructured_raw.get("nwav"), "grid.unstructured.nwav"),
         dhdx=_float_value(unstructured_raw.get("dhdx"), "grid.unstructured.dhdx"),

@@ -2004,7 +2004,6 @@
   "grid_unst_cache_miss": "No matching unstructured grid cache; generating a new grid...",
   "grid_unst_saved": "Saved unstructured grid to cache ({key}...)",
   "grid_unst_save_failed": "Failed to save unstructured grid cache: {error}",
-  "set_show_in_step4": "Show in Step 4:",
   "icli_intro": "WAVEWATCH III Preprocessing Tool",
   "icli_intro_hint": "Type 'help' or '?' for available commands, 'exit' to quit.",
   "icli_help_header": "🌊 WW3Tool Interactive Command Line",

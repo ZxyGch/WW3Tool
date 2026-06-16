@@ -66,6 +66,8 @@
 !     INPUT%FORCING%WATER_LEVELS  = 'F'
 !     INPUT%FORCING%CURRENTS      = 'F'
 !     INPUT%FORCING%WINDS         = 'F'
+!     INPUT%FORCING%ATM_MOMENTUM  = 'F'
+!     INPUT%FORCING%AIR_DENSITY   = 'F'
 !     INPUT%FORCING%ICE_CONC      = 'F'
 !     INPUT%FORCING%ICE_PARAM1    = 'F'
 !     INPUT%FORCING%ICE_PARAM2    = 'F'
@@ -98,6 +100,8 @@
 !     INPUT%FORCING%WATER_LEVELS  = 'F'
 !     INPUT%FORCING%CURRENTS      = 'F'
 !     INPUT%FORCING%WINDS         = 'F'
+!     INPUT%FORCING%ATM_MOMENTUM  = 'F'
+!     INPUT%FORCING%AIR_DENSITY   = 'F'
 !     INPUT%FORCING%ICE_CONC      = 'F'
 !     INPUT%FORCING%ICE_PARAM1    = 'F'
 !     INPUT%FORCING%ICE_PARAM2    = 'F'
@@ -116,6 +120,7 @@
   INPUT%FORCING%WATER_LEVELS  = 'F'
   INPUT%FORCING%CURRENTS      = 'F'
   INPUT%FORCING%ICE_CONC      = 'F'
+  INPUT%FORCING%ICE_PARAM1    = 'F'
 /
 
 ! -------------------------------------------------------------------- !
@@ -151,9 +156,11 @@
 !  T  T  1     5   WLV        WLV   Water levels.
 !  T  T  1     6   ICE        ICE   Ice concentration.
 !  T  T  1     7   IBG        IBG   Iceberg-induced damping.
-!  T  T  1     8   D50        D50   Median sediment grain size.
-!  T  T  1     9   IC1        IC1   Ice thickness.
-!  T  T  1    10   IC5        IC5   Ice flow diameter.
+!  T  T  1     8   TAUA       TAU   Atm. momentum.
+!  T  T  1     9   RHOAIR     RHO   Air density.
+!  T  T  1    10   D50        D50   Median sediment grain size.
+!  T  T  1    11   IC1        IC1   Ice thickness.
+!  T  T  1    12   IC5        IC5   Ice flow diameter.
 !   -------------------------------------------------
 !        2                          Standard mean wave Parameters
 !   -------------------------------------------------
@@ -174,6 +181,8 @@
 !  T  T  2    15   HMAXD      SDMH  St Dev of MXC (STE)
 !  T  T  2    16   HCMAXD     SDMHC St Dev of MXHC (STE)
 !  F  T  2    17   WBT        WBT   Domiant wave breaking probability bT
+!  F  F  2    18   FP0        TP    Peak period (from peak freq)
+!  F  F  2    19   WNMEAN     WNM   Mean wavenumber
 !   -------------------------------------------------
 !        3                          Spectral Parameters (first 5)
 !   -------------------------------------------------
@@ -192,7 +201,7 @@
 !  T  T  4     4   PDIR       PDIR  Partitioned mean direction.
 !  T  T  4     5   PSI        PSPR  Partitioned mean directional spread.
 !  T  T  4     6   PWS        PWS   Partitioned wind sea fraction.
-!  T  T  4     7   PDP        PDP   Peak wave direction of partition.
+!  T  T  4     7   PTHP0      PDP   Peak wave direction of partition.
 !  T  T  4     8   PQP        PQP   Goda peakedness parameter of partition.
 !  T  T  4     9   PPE        PPE   JONSWAP peak enhancement factor of partition.
 !  T  T  4    10   PGW        PGW   Gaussian frequency width of partition.
@@ -232,6 +241,7 @@
 !  F  F  6    10   TAUICE     TWI   Wave to sea ice stress
 !  F  F  6    11   PHICE      FIC   Wave to sea ice energy flux
 !  F  F  6    12   USSP       USP   Partitioned surface Stokes drift
+!  F  F  6    13   TAUOC[X,Y] TOC   Total momentum to the ocean
 !   -------------------------------------------------
 !        7                          Wave-bottom layer
 !   -------------------------------------------------
@@ -245,10 +255,13 @@
 !   -------------------------------------------------
 !  F  F  8     1   MSS[X,Y]   MSS   Mean square slopes
 !  F  F  8     2   MSC[X,Y]   MSC   Spectral level at high frequency tail
-!  F  F  8     3   WL02[X,Y]  WL02  East/X North/Y mean wavelength compon
-!  F  F  8     4   ALPXT      AXT   Correl sea surface gradients (x,t)
-!  F  F  8     5   ALPYT      AYT   Correl sea surface gradients (y,t)
-!  F  F  8     6   ALPXY      AXY   Correl sea surface gradients (x,y)
+!  F  F  8     3   MSSD       MSD   Slope direction
+!  F  F  8     4   MSCD       MCD   Tail slope direction
+!  F  F  8     5   QP         QP    Goda peakedness parameter
+!  F  F  8     6   QKK        QKK   Wavenumber peakedness
+!  F  F  8     7   SKEW       SKW   Skewness of elevation for zero slopes
+!  F  F  8     8   EMBIA1     EMB   Mean sea level at zero slopes / Hs
+!  F  F  8     9   EMBIA2     EMC   Tracker bias for LRM least square altimetry
 !   -------------------------------------------------
 !        9                          Numerical diagnostics
 !   -------------------------------------------------
@@ -272,13 +285,18 @@
 !
 ! * coupling fields exchanged list is :
 !   - Sent fields by ww3:
-!       - Ocean model : T0M1 OCHA OHS DIR BHD TWO UBR FOC TAW TUS USS LM DRY
+!       - Ocean model : T0M1 OCHA OHS DIR BHD TWO UBR FOC TAW TUS USS LM DRY TOC
 !       - Atmospheric model : ACHA AHS TP (or FP) FWS
 !       - Ice model : IC5 TWI
 !   - Received fields by ww3:
 !       - Ocean model : SSH CUR
-!       - Atmospheric model : WND
+!       - Atmospheric model : WND TAU RHO
 !       - Ice model : ICE IC1 IC5
+!
+! * Coupling flag (T) or (F) at T+0 (extra fields in the restart needed)
+!
+! * extra fields to be written to the restart:
+!   - The list includes all fields sent by coupling exchange only
 !
 ! * namelist must be terminated with /
 ! * definitions & defaults:
@@ -294,6 +312,8 @@
 !     TYPE%PARTITION%FORMAT   =  T
 !     TYPE%COUPLING%SENT      = 'unset'
 !     TYPE%COUPLING%RECEIVED  = 'unset'
+!     TYPE%COUPLING%COUPLET0  =  F
+!     TYPE%RESTART%EXTRA      = 'unset'
 !
 ! -------------------------------------------------------------------- !
 !
@@ -329,9 +349,11 @@
 !  T  T  1     5   WLV        WLV   水位。
 !  T  T  1     6   ICE        ICE   冰浓度。
 !  T  T  1     7   IBG        IBG   冰山引起的阻尼。
-!  T  T  1     8   D50        D50   中值沉积物粒度。
-!  T  T  1     9   IC1        IC1   冰厚度。
-!  T  T  1    10   IC5        IC5   冰浮冰直径。
+!  T  T  1     8   TAUA       TAU   大气动量。
+!  T  T  1     9   RHOAIR     RHO   空气密度。
+!  T  T  1    10   D50        D50   中值沉积物粒度。
+!  T  T  1    11   IC1        IC1   冰厚度。
+!  T  T  1    12   IC5        IC5   冰浮冰直径。
 !   -------------------------------------------------
 !        2                          标准平均波浪参数
 !   -------------------------------------------------
@@ -352,6 +374,8 @@
 !  T  T  2    15   HMAXD      SDMH  MXC 的标准差 (STE)
 !  T  T  2    16   HCMAXD     SDMHC MXHC 的标准差 (STE)
 !  F  T  2    17   WBT        WBT   主导波破碎概率 bT
+!  F  F  2    18   FP0        TP    峰值周期（从峰值频率）
+!  F  F  2    19   WNMEAN     WNM   平均波数
 !   -------------------------------------------------
 !        3                          谱参数（前5个）
 !   -------------------------------------------------
@@ -370,7 +394,7 @@
 !  T  T  4     4   PDIR       PDIR  分区平均方向。
 !  T  T  4     5   PSI        PSPR  分区平均方向扩展。
 !  T  T  4     6   PWS        PWS   分区风海分数。
-!  T  T  4     7   PDP        PDP   分区的峰值波向。
+!  T  T  4     7   PTHP0      PDP   分区的峰值波向。
 !  T  T  4     8   PQP        PQP   分区的 Goda 峰值参数。
 !  T  T  4     9   PPE        PPE   分区的 JONSWAP 峰值增强因子。
 !  T  T  4    10   PGW        PGW   分区的高斯频率宽度。
@@ -410,6 +434,7 @@
 !  F  F  6    10   TAUICE     TWI   波浪到海冰的应力
 !  F  F  6    11   PHICE      FIC   波浪到海冰的能量通量
 !  F  F  6    12   USSP       USP   分区表面 Stokes 漂移
+!  F  F  6    13   TAUOC[X,Y] TOC   到海洋的总动量
 !   -------------------------------------------------
 !        7                          波浪-底层层
 !   -------------------------------------------------
@@ -423,10 +448,13 @@
 !   -------------------------------------------------
 !  F  F  8     1   MSS[X,Y]   MSS   均方斜率
 !  F  F  8     2   MSC[X,Y]   MSC   高频尾部的谱水平
-!  F  F  8     3   WL02[X,Y]  WL02  东/X 北/Y 平均波长分量
-!  F  F  8     4   ALPXT      AXT   海面梯度相关 (x,t)
-!  F  F  8     5   ALPYT      AYT   海面梯度相关 (y,t)
-!  F  F  8     6   ALPXY      AXY   海面梯度相关 (x,y)
+!  F  F  8     3   MSSD       MSD   斜率方向
+!  F  F  8     4   MSCD       MCD   尾部斜率方向
+!  F  F  8     5   QP         QP    Goda 峰值参数
+!  F  F  8     6   QKK        QKK   波数峰值
+!  F  F  8     7   SKEW       SKW   零斜率的偏度
+!  F  F  8     8   EMBIA1     EMB   零斜率的平均海平面 / Hs
+!  F  F  8     9   EMBIA2     EMC   LRM 最小二乘高度测量的跟踪器偏差
 !   -------------------------------------------------
 !        9                          数值诊断
 !   -------------------------------------------------
@@ -450,13 +478,18 @@
 !
 ! * 耦合场交换列表是：
 !   - ww3 发送的字段：
-!       - 海洋模型：T0M1 OCHA OHS DIR BHD TWO UBR FOC TAW TUS USS LM DRY
+!       - 海洋模型：T0M1 OCHA OHS DIR BHD TWO UBR FOC TAW TUS USS LM DRY TOC
 !       - 大气模型：ACHA AHS TP (或 FP) FWS
 !       - 冰模型：IC5 TWI
 !   - ww3 接收的字段：
 !       - 海洋模型：SSH CUR
-!       - 大气模型：WND
+!       - 大气模型：WND TAU RHO
 !       - 冰模型：ICE IC1 IC5
+!
+! * 耦合标志 (T) 或 (F) 在 T+0（重启中需要额外字段）
+!
+! * 要写入重启的额外字段：
+!   - 列表仅包括通过耦合交换发送的所有字段
 !
 ! * namelist 必须以 / 结尾
 ! * 定义和默认值：
@@ -472,6 +505,9 @@
 !     TYPE%PARTITION%FORMAT   =  T
 !     TYPE%COUPLING%SENT      = 'unset'
 !     TYPE%COUPLING%RECEIVED  = 'unset'
+!     TYPE%COUPLING%COUPLET0  =  F
+!     TYPE%RESTART%EXTRA      = 'unset'
+!
 ! -------------------------------------------------------------------- !
 &OUTPUT_TYPE_NML
   TYPE%FIELD%LIST       = 'WND HS T02 FP DIR EF PHS PTP PDIR PWS TWS PNR'
@@ -511,17 +547,44 @@
 !     DATE%RESTART             =  '19680606 000000' '0' '19680607 000000'
 ! -------------------------------------------------------------------- !
 &OUTPUT_DATE_NML
-  DATE%FIELD%START         = '20250103 000000'
-  DATE%FIELD%STRIDE        = '1800'
-  DATE%FIELD%STOP          = '20250105 235959'
-  DATE%POINT%START         = '20250103 000000'
-  DATE%POINT%STRIDE        = '1800'
-  DATE%POINT%STOP          = '20250105 235959'
-
-  DATE%RESTART%START       = '20250103 000000'
-  DATE%RESTART%STRIDE      = '86400'
-  DATE%RESTART%STOP        = '20250105 235959'
+  DATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
+  DATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
 /
+
+! -------------------------------------------------------------------- !
+! Define user-defined output paths via OUTPUT_PATH_NML namelist
+!
+! * user-defined paths include: raw output out_grd, out_pnt, and restart
+! * default path for these are set as './'
+! * NOTE: using user-defined path may cause post-processing fail
+!         user-defined directroy must exist before execution
+!
+! * namelist must be terminated with /
+! * definitions & defaults:
+!      PATH%GRD_OUT = './'
+!      PATH%PNT_OUT = './'
+!      PATH%RST_OUT = './'
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 OUTPUT_PATH_NML namelist 定义用户自定义输出路径
+!
+! * 用户自定义路径包括：原始输出 out_grd、out_pnt 和 restart
+! * 这些输出的默认路径为 './'
+! * 注意：使用自定义路径可能导致后处理失败，
+!         用户自定义目录必须在执行前存在
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!      PATH%GRD_OUT = './'
+!      PATH%PNT_OUT = './'
+!      PATH%RST_OUT = './'
+! -------------------------------------------------------------------- !
+!&OUTPUT_PATH_NML
+!  PATH%GRD_OUT = './'
+!  PATH%PNT_OUT = './'
+!  PATH%RST_OUT = './'
+!/
 
 ! -------------------------------------------------------------------- !
 ! Define homogeneous input via HOMOG_COUNT_NML and HOMOG_INPUT_NML namelist

@@ -80,10 +80,13 @@ class PlotInterface(QWidget):
         run_wind_field: Callable[[], None],
         view_photo_subdir: Callable[[str], None],
         open_photo_folder: Callable[[], None],
+        log: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("plot_interface")
         self._view_photo_subdir = view_photo_subdir
+        self._open_photo_folder = open_photo_folder
+        self._log = log
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -127,7 +130,7 @@ class PlotInterface(QWidget):
         )
         self._build_wind_field_card(run_wind_field, SUBDIR_WIND_FIELD)
         self._build_spectrum_card(run_spectrum_all, run_spectrum_selected, run_spectrum_map)
-        self._build_wave_card(run_wave_maps, run_wind_swell, run_contour, run_wave_video, open_photo_folder)
+        self._build_wave_card(run_wave_maps, run_wind_swell, run_contour, run_wave_video)
         self._vbox.addStretch(1)
 
     # [EN] ── Common utilities ────────────────────────────────────────────────────────────────
@@ -323,6 +326,17 @@ class PlotInterface(QWidget):
             self._apply_detected_file(self._jason3_fields, "wave_file", "wave_file_btn", jason3_wave_path, wave_default)
             self._apply_detected_file(self._ndbc_fields, "wind_file", "wind_file_btn", ndbc_wind_path, wind_default)
             self._apply_detected_file(self._ndbc_fields, "wave_file", "wave_file_btn", ndbc_wave_path, wave_default)
+
+            # [EN] Auto-fill range: prefer result file (ww3*.nc), fallback to wind.nc.
+            # 自动填充范围：优先结果文件 (ww3*.nc)，否则风场 (wind.nc)。
+            for fields, wave_path, wind_path in (
+                (self._jason3_fields, jason3_wave_path, jason3_wind_path),
+                (self._ndbc_fields, ndbc_wave_path, ndbc_wind_path),
+            ):
+                if wave_path and os.path.isfile(wave_path):
+                    self._read_and_fill_range(fields, wave_path)
+                elif wind_path and os.path.isfile(wind_path):
+                    self._read_and_fill_range(fields, wind_path)
 
             if wind_field_path:
                 self._wind_file_edit.setText(wind_field_path)
@@ -582,6 +596,7 @@ class PlotInterface(QWidget):
         else:
             self._add_gen_view_row(layout, generate_obs_label, on_generate_obs, view_obs_subdir)
             self._add_gen_view_row(layout, generate_fit_label, on_generate_fit, view_fit_subdir)
+        layout.addWidget(self._button(tr("plotting_open_photo_folder", "打开图片文件夹"), self._open_photo_folder))
         return fields
 
     # [EN] ── Wind field plotting ────────────────────────────────────────────────────────────────
@@ -644,6 +659,7 @@ class PlotInterface(QWidget):
             run_wind_field,
             view_subdir,
         )
+        layout.addWidget(self._button(tr("plotting_open_photo_folder", "打开图片文件夹"), self._open_photo_folder))
 
     def _pick_wind_field_file(self) -> None:
         # [EN] After selecting wind field file, update button text to filename and change to blue.
@@ -708,7 +724,11 @@ class PlotInterface(QWidget):
 
         self._spectrum_file = self._line()
         self._spectrum_file_btn = self._button(tr("plotting_choose_spectrum_file", "选择二维谱文件"), self._on_spectrum_file_picked)
-        layout.addWidget(self._spectrum_file_btn)
+        spec_btn_row = QHBoxLayout()
+        spec_btn_row.setSpacing(8)
+        spec_btn_row.addWidget(self._spectrum_file_btn, 3)
+        spec_btn_row.addWidget(self._info_button(self._spectrum_file), 1)
+        layout.addLayout(spec_btn_row)
         layout.addWidget(self._button(tr("plotting_show_on_map", "显示在地图上"), run_spectrum_map))
         self._add_gen_view_pair(
             layout,
@@ -723,6 +743,7 @@ class PlotInterface(QWidget):
                 SUBDIR_DIRECTIONAL_SPECTRUM,
             ),
         )
+        layout.addWidget(self._button(tr("plotting_open_photo_folder", "打开图片文件夹"), self._open_photo_folder))
 
     def _set_spectrum_table_header(self) -> None:
         if self._spectrum_table.rowCount() == 0:
@@ -804,7 +825,7 @@ class PlotInterface(QWidget):
     # [EN] ── Wave height maps ────────────────────────────────────────────────────────────────
     # ── 波高图 ────────────────────────────────────────────────────────────────
 
-    def _build_wave_card(self, run_wave_maps, run_wind_swell, run_contour, run_wave_video, open_photo_folder) -> None:
+    def _build_wave_card(self, run_wave_maps, run_wind_swell, run_contour, run_wave_video) -> None:
         layout = self._card(tr("plotting_wave_card_title", "波高图绘制"))
         ts_row = QHBoxLayout()
         ts_row.setSpacing(5)
@@ -817,7 +838,11 @@ class PlotInterface(QWidget):
 
         self._wave_file = self._line()
         self._wave_file_btn = self._button(tr("plotting_choose_wave_file", "选择波高文件"), self._pick_wave_file)
-        layout.addWidget(self._wave_file_btn)
+        wave_btn_row = QHBoxLayout()
+        wave_btn_row.setSpacing(8)
+        wave_btn_row.addWidget(self._wave_file_btn, 3)
+        wave_btn_row.addWidget(self._info_button(self._wave_file), 1)
+        layout.addLayout(wave_btn_row)
         self._add_gen_view_row(
             layout, tr("plotting_generate_wave_maps", "生成波高图"), run_wave_maps, SUBDIR_WAVE_HEIGHT
         )
@@ -830,7 +855,40 @@ class PlotInterface(QWidget):
         self._add_gen_view_row(
             layout, tr("plotting_generate_wave_video", "生成波高视频"), run_wave_video, SUBDIR_WAVE_HEIGHT_VIDEO
         )
-        layout.addWidget(self._button(tr("plotting_open_photo_folder", "打开图片文件夹"), open_photo_folder))
+        layout.addWidget(self._button(tr("plotting_open_photo_folder", "打开图片文件夹"), self._open_photo_folder))
+
+    def _info_button(self, file_edit: LineEdit) -> PrimaryPushButton:
+        """创建 1/3 宽度的文件信息按钮，点击后在日志中显示 NetCDF 元数据。"""
+        btn = PrimaryPushButton(tr("plotting_file_info", "文件信息"))
+        btn.setStyleSheet(styles.button_style())
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn.clicked.connect(lambda: self._show_file_info(file_edit))
+        return btn
+
+    def _show_file_info(self, file_edit: LineEdit) -> None:
+        """读取 NetCDF 文件基础信息并输出到日志。"""
+        path = file_edit.text().strip()
+        if not path or not os.path.isfile(path):
+            if self._log:
+                self._log(tr("plotting_info_no_file", "请先选择一个有效的文件"))
+            return
+        try:
+            from workflows.infrastructure.forcing.merge_service import read_netcdf_info
+
+            info = read_netcdf_info(path)
+            lines = [
+                f"📄 {os.path.basename(info.path)}",
+                f"  {tr('plotting_info_lat', '纬度范围：')} {info.lat_range}",
+                f"  {tr('plotting_info_lon', '经度范围：')} {info.lon_range}",
+                f"  {tr('plotting_info_time', '时间范围：')} {info.time_range}",
+                f"  {tr('plotting_info_vars', '变量：')} {info.variables}",
+            ]
+            for line in lines:
+                if self._log:
+                    self._log(line)
+        except Exception as exc:
+            if self._log:
+                self._log(tr("plotting_info_error", "读取文件信息失败：{error}").format(error=exc))
 
     def _pick_wave_file(self) -> None:
         # [EN] After selecting wave height file, update button text to filename and change to blue.

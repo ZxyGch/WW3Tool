@@ -8,8 +8,8 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QSizePolicy
 from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
-# [EN] Step 4 optional "spectrum parameters / numerical integration timestep" groups (visibility controlled by settings page toggle).
-# Step 4 可选「频谱参数 / 数值积分时间步长」分组（由设置页开关控制是否显示）。
+# [EN] Step 4 "spectrum parameters / numerical integration timestep" groups.
+# Step 4「频谱参数 / 数值积分时间步长」分组。
 _SPECTRUM_SPECS = [
     ("SPECTRUM%XFR", "set_freq_inc", "频率增量："),
     ("SPECTRUM%FREQ1", "set_freq_start", "起始频率："),
@@ -29,7 +29,6 @@ from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
 from ..components.validators import date_yyyymmdd_validator, int_validator
 from workflows.domain.config_models import PipelineConfig
-from workflows.infrastructure import runtime_config
 from workflows.support.translations import tr
 
 
@@ -175,11 +174,8 @@ class WW3StepPanel:
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
         self.widget = group
-        cfg = runtime_config.load_config()
-        self.set_step4_sections_visible(
-            bool(cfg.get("STEP4_SHOW_SPECTRUM", False)),
-            bool(cfg.get("STEP4_SHOW_TIMESTEPS", False)),
-        )
+        self._show_spectrum = True
+        self._show_timesteps = True
         QTimer.singleShot(100, lambda: self._align_control_columns(grid, wave_grid))
 
     def render(self, config: PipelineConfig) -> None:
@@ -273,18 +269,6 @@ class WW3StepPanel:
         parent_layout.addLayout(param_grid)
         return fields
 
-    def set_step4_sections_visible(self, show_spectrum: bool, show_timesteps: bool) -> None:
-        # [EN] Show/hide Step 4 spectrum/timestep groups based on settings page toggle.
-        """按设置页开关显隐 Step 4 的频谱/时间步分组。"""
-        self._show_spectrum = bool(show_spectrum)
-        self._show_timesteps = bool(show_timesteps)
-        for widget in self._spectrum_hideables:
-            widget.setVisible(self._show_spectrum)
-        for widget in self._timesteps_hideables:
-            widget.setVisible(self._show_timesteps)
-        if hasattr(self, "widget"):
-            self.widget.updateGeometry()
-
     def set_slurm_visible(self, visible: bool) -> None:
         # [EN] Show/hide Slurm config based on run mode (hidden in local mode).
         """按运行方式显隐 Slurm 配置（本地模式隐藏）。"""
@@ -304,13 +288,11 @@ class WW3StepPanel:
         return edit.text().strip() if edit is not None else ""
 
     def ww3_grid_overrides(self) -> dict[str, str]:
-        # [EN] Only when a group is visible, use its fields as ww3_grid overrides (form takes priority over config.json).
-        """仅当某分组可见时，将其字段作为 ww3_grid 覆盖（表单优先于 config.json）。"""
+        # [EN] Step 4 spectrum/timestep fields always override ww3_grid when filled (form takes priority over config.json).
+        """第四步频谱/时间步字段填写后始终覆盖 ww3_grid（表单优先于 config.json）。"""
         out: dict[str, str] = {}
-        if getattr(self, "_show_spectrum", False):
-            out.update({k: e.text().strip() for k, e in self._spectrum_fields.items() if e.text().strip()})
-        if getattr(self, "_show_timesteps", False):
-            out.update({k: e.text().strip() for k, e in self._timesteps_fields.items() if e.text().strip()})
+        out.update({k: e.text().strip() for k, e in self._spectrum_fields.items() if e.text().strip()})
+        out.update({k: e.text().strip() for k, e in self._timesteps_fields.items() if e.text().strip()})
         return out
 
     def ww3_overrides(self) -> dict[str, str]:

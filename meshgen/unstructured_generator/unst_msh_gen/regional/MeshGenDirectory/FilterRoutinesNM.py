@@ -148,7 +148,8 @@ def tri_to_tri(tria):
     data = np.ones(rows.size, dtype=np.int8)
     
     # ith tri is adj. to tri in ith row
-    return csr_matrix((data, (rows, cols)))
+    n = tria.shape[0]
+    return csr_matrix((data, (rows, cols)), shape=(n, n))
 
 
 def filter_dry(mesh, mask):

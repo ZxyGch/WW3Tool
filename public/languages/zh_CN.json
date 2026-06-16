@@ -2004,7 +2004,6 @@
   "grid_unst_cache_miss": "未找到匹配的非结构网格缓存，开始生成新网格...",
   "grid_unst_saved": "已保存非结构网格到缓存（{key}...）",
   "grid_unst_save_failed": "保存非结构网格缓存失败：{error}",
-  "set_show_in_step4": "在第四步显示：",
   "icli_intro": "WAVEWATCH III Preprocessing Tool",
   "icli_intro_hint": "输入 'help' 或 '?' 查看可用命令，输入 'exit' 退出。",
   "icli_help_header": "🌊 WW3Tool 交互式命令行",

@@ -15,6 +15,7 @@ from workflows.application.configuration import (
 )
 from workflows.domain.config_models import GridRegion, PipelineConfig
 from workflows.domain.forcing_fields import Step1Files
+from workflows.infrastructure.runtime_config import _dump_yaml_with_comments
 from workflows.support.translations import tr
 
 
@@ -372,7 +373,7 @@ class PipelineViewModel:
 
         yaml = _import_yaml()
         with destination.open("w", encoding="utf-8") as handle:
-            yaml.safe_dump(raw, handle, allow_unicode=True, sort_keys=False, default_flow_style=False)
+            handle.write(_dump_yaml_with_comments(raw, yaml))
         return destination
 
     def save_server_remote_dir(
@@ -398,7 +399,7 @@ class PipelineViewModel:
 
         yaml = _import_yaml()
         with destination.open("w", encoding="utf-8") as handle:
-            yaml.safe_dump(raw, handle, allow_unicode=True, sort_keys=False, default_flow_style=False)
+            handle.write(_dump_yaml_with_comments(raw, yaml))
         return destination
 
     def sync_from_root(self, workdir_params_path: str | Path) -> Path:
@@ -470,7 +471,7 @@ class PipelineViewModel:
         _normalize_params_scalar_types(raw)
         _strip_unstructured_dem_file(raw)
         with dest.open("w", encoding="utf-8") as handle:
-            yaml.safe_dump(raw, handle, allow_unicode=True, sort_keys=False, default_flow_style=False)
+            handle.write(_dump_yaml_with_comments(raw))
         return dest
 
     def _form_raw(
@@ -513,7 +514,7 @@ class PipelineViewModel:
         if grid_overrides:
             grid_raw = {**_as_dict(raw.get("grid"))}
             for key, value in grid_overrides.items():
-                if key in {"outer", "inner"} and isinstance(value, dict):
+                if key in {"outer", "inner", "unstructured", "smc"} and isinstance(value, dict):
                     grid_raw[key] = {**_as_dict(grid_raw.get(key)), **value}
                 elif key == "inner" and value is None:
                     grid_raw.pop("inner", None)
@@ -586,7 +587,7 @@ class PipelineViewModel:
         raw["server"] = server
 
         with target.open("w", encoding="utf-8") as fh:
-            yaml.safe_dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
+            fh.write(_dump_yaml_with_comments(raw))
         return target
 
     def _fail(self, action: str, message: str) -> None:
@@ -812,3 +813,8 @@ def _load_raw_yaml(path: Path) -> dict:
     if not isinstance(raw, dict):
         raise ConfigError("参数文件顶层必须是对象")
     return raw
+
+
+# ── YAML comment injection is now in runtime_config ─────────────────────────
+# _YAML_COMMENTS and _dump_yaml_with_comments moved to
+# workflows.infrastructure.runtime_config to be shared by all YAML writers.

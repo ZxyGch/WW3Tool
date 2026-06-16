@@ -286,7 +286,10 @@ def tri_to_tri(tria):
     data = np.ones(rows.size, dtype=np.int8)
     
     # ith tri is adj. to tri in ith row
-    return csr_matrix((data, (rows, cols)))
+    # 显式指定 shape，避免边界三角形（无邻居）导致维度不足
+    # [EN] Explicit shape to prevent off-by-one when boundary triangles have no neighbours
+    n = tria.shape[0]
+    return csr_matrix((data, (rows, cols)), shape=(n, n))
 
 
 def filter_dry(mesh, mask):

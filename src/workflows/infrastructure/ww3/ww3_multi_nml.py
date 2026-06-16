@@ -287,25 +287,49 @@ class WW3MultiNML(NMLPrimitives):
                     continue
 
                 if in_output:
-                    if re.search(r"ALLDATE%FIELD", line):
+                    # ALLDATE%FIELD%START/STRIDE/STOP: 只替换 START 为合并格式，跳过 STRIDE 和 STOP
+                    if re.search(r"ALLDATE%FIELD%START", line, re.IGNORECASE):
                         new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
                         continue
-                    if re.search(r"ALLDATE%RESTART", line):
-                        # 尝试提取原有的步长
-                        m = re.search(r"'(\d{8}\s+\d{6})'\s*'(\d+)'\s*'(\d{8}\s+\d{6})'", line)
-                        if m:
-                            restart_step = m.group(2)
-                            new_lines.append(f"  ALLDATE%RESTART        = '{start_date} 000000' '{restart_step}' '{end_date} 235959'\n")
-                        else:
-                            new_lines.append(f"  ALLDATE%RESTART        = '{start_date} 000000' '86400' '{end_date} 235959'\n")
+                    if re.search(r"ALLDATE%FIELD%(STRIDE|STOP)", line, re.IGNORECASE):
+                        continue  # 跳过（已合并到 ALLDATE%FIELD）
+                    if re.search(r"ALLDATE%FIELD", line) and not re.search(r"ALLDATE%FIELD%", line, re.IGNORECASE):
+                        # 已经是合并格式，直接替换
+                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
                         continue
+
+                    # ALLDATE%RESTART%START/STOP: 更新为正确日期，保留 STRIDE
+                    if re.search(r"ALLDATE%RESTART%START", line, re.IGNORECASE):
+                        # 提取原有步长（从 START 行或回退查找 STRIDE 行）
+                        new_lines.append(f"  ALLDATE%RESTART%START       = '{start_date} 000000'\n")
+                        continue
+                    if re.search(r"ALLDATE%RESTART%STRIDE", line, re.IGNORECASE):
+                        # 保留原有 STRIDE 值
+                        m = re.search(r"'(\d+)'", line)
+                        restart_step_val = m.group(1) if m else '86400'
+                        new_lines.append(f"  ALLDATE%RESTART%STRIDE      = '{restart_step_val}'\n")
+                        continue
+                    if re.search(r"ALLDATE%RESTART%STOP", line, re.IGNORECASE):
+                        new_lines.append(f"  ALLDATE%RESTART%STOP        = '{end_date} 235959'\n")
+                        continue
+                    if re.search(r"ALLDATE%RESTART", line) and not re.search(r"ALLDATE%RESTART%", line, re.IGNORECASE):
+                        # 已经是合并格式
+                        m = re.search(r"'(\d{8}\s+\d{6})'\s*'(\d+)'\s*'(\d{8}\s+\d{6})'", line)
+                        restart_step_val = m.group(2) if m else '86400'
+                        new_lines.append(f"  ALLDATE%RESTART        = '{start_date} 000000' '{restart_step_val}' '{end_date} 235959'\n")
+                        continue
+
+                    # ALLDATE%POINT%START/STRIDE/STOP: 删除（模板默认 2025 年日期会覆盖正确值）
+                    if re.search(r"ALLDATE%POINT%(START|STRIDE|STOP)", line, re.IGNORECASE):
+                        continue
+
                     if "/" in line:
                         # 在结束标记之前，如果是谱空间逐点计算模式，添加 ALLDATE%POINT
                         if is_spectral_point and has_spectral_points:
-                            # 检查是否已有 ALLDATE%POINT
+                            # 检查是否已有合并格式的 ALLDATE%POINT
                             has_alldate_point = False
-                            for prev_line in new_lines[-10:]:  # 检查最近10行
-                                if re.search(r'ALLDATE%POINT', prev_line, re.IGNORECASE):
+                            for prev_line in new_lines[-10:]:
+                                if re.search(r'ALLDATE%POINT\s*=', prev_line, re.IGNORECASE) and not re.search(r'ALLDATE%POINT%', prev_line, re.IGNORECASE):
                                     has_alldate_point = True
                                     break
 
@@ -315,10 +339,8 @@ class WW3MultiNML(NMLPrimitives):
                         in_output = False
                         new_lines.append(line)
                         continue
-                    # 跳过现有的 ALLDATE%POINT 行（如果存在）
-                    if re.search(r'ALLDATE%POINT', line, re.IGNORECASE):
-                        # 已存在，保留原行
-                        new_lines.append(line)
+                    # 跳过已有的合并格式 ALLDATE%POINT 行（后续在 / 处重新添加）
+                    if re.search(r'ALLDATE%POINT', line, re.IGNORECASE) and not re.search(r'ALLDATE%POINT%', line, re.IGNORECASE):
                         continue
                     new_lines.append(line)
                     continue
