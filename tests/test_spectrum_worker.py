@@ -8,6 +8,7 @@ from workflows.infrastructure.plot.spectrum_worker import (
     _find_spectrum_files,
     _ww3_direction_to_radians,
 )
+from workflows.infrastructure.plot.workers_utils import _collect_station_lon_lat
 
 
 class _TimeVar:
@@ -44,3 +45,25 @@ def test_find_spectrum_files_are_sorted(tmp_path) -> None:
 
     assert _find_spectrum_files(str(tmp_path)) == [str(first), str(second)]
     assert _find_spectrum_files(str(tmp_path), str(second)) == [str(second)]
+
+
+def test_collect_station_lon_lat_uses_station_axis_not_flattened_time_axis() -> None:
+    lon = np.array(
+        [
+            [123.0, 123.234, 123.481, 123.742],
+            [123.0, 123.234, 123.481, 123.742],
+        ]
+    )
+    lat = np.array(
+        [
+            [31.0, 33.2395, 35.4786, 37.7172],
+            [31.0, 33.2395, 35.4786, 37.7172],
+        ]
+    )
+
+    assert _collect_station_lon_lat(lon, lat, 4) == [
+        (123.0, 31.0),
+        (123.234, 33.2395),
+        (123.481, 35.4786),
+        (123.742, 37.7172),
+    ]

@@ -1717,8 +1717,18 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             from ..components.spectrum_station_map_dialog import SpectrumStationMapDialog
             dialog = SpectrumStationMapDialog(parent=self, spec_file=spec_file)
             dialog.exec()
-        except ImportError:
-            self._append_log(tr("plotting_cartopy_not_available", "缺少 cartopy 库，无法显示站点地图"))
+        except ImportError as exc:
+            self._append_log(
+                tr("plotting_cartopy_not_available", "缺少 cartopy 库，无法显示站点地图：{error}").format(
+                    error=exc
+                )
+            )
+            return
+        except Exception as exc:
+            self._append_log(
+                tr("plotting_display_failed_with_error", "显示失败：{error}").format(error=exc)
+            )
+            return
         self.titleBar.raise_()
 
     def _plot_wind_swell(self) -> None:

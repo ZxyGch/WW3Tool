@@ -109,6 +109,10 @@ class SpectrumStationMapDialog(MessageBoxBase):
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
         from netCDF4 import Dataset
+        from workflows.infrastructure.plot.workers_utils import (
+            _collect_station_lon_lat,
+            _decode_station_names,
+        )
 
         if not self._spec_file or not os.path.exists(self._spec_file):
             self._show_no_data(tr("plotting_no_spectrum_stations", "未找到有效的谱站点数据"))
@@ -118,23 +122,29 @@ class SpectrumStationMapDialog(MessageBoxBase):
             if "longitude" not in ds.variables or "latitude" not in ds.variables:
                 self._show_no_data(tr("plotting_no_spectrum_stations", "未找到有效的谱站点数据"))
                 return
-            lon = np.array(ds.variables["longitude"][:]).flatten()
-            lat = np.array(ds.variables["latitude"][:]).flatten()
+            if "station" in ds.dimensions:
+                n_stations = len(ds.dimensions["station"])
+            else:
+                n_stations = len(ds.variables["longitude"]) if hasattr(ds.variables["longitude"], "__len__") else 1
+            lon_data = np.array(ds.variables["longitude"][:])
+            lat_data = np.array(ds.variables["latitude"][:])
+            points = _collect_station_lon_lat(lon_data, lat_data, n_stations)
             station_names = []
             if "station_name" in ds.variables:
-                try:
-                    raw_names = np.array(ds.variables["station_name"][:])
-                    for row in raw_names[: len(lon)]:
-                        name = b"".join(row.tolist()).decode("utf-8", "ignore").strip()
-                        station_names.append(name.replace("\x00", "").strip())
-                except Exception:
-                    pass
+                station_names = _decode_station_names(ds.variables["station_name"][:], n_stations) or []
 
-        if len(lon) == 0:
+        if not points:
             self._show_no_data(tr("plotting_no_spectrum_stations", "未找到有效的谱站点数据"))
             return
 
-        margin = max((float(lon.max()) - float(lon.min())) * 0.1, 2.0)
+        lon = np.array([point[0] for point in points], dtype=float)
+        lat = np.array([point[1] for point in points], dtype=float)
+
+        margin = max(
+            (float(lon.max()) - float(lon.min())) * 0.1,
+            (float(lat.max()) - float(lat.min())) * 0.1,
+            2.0,
+        )
         ext = [
             float(lon.min()) - margin,
             float(lon.max()) + margin,
@@ -152,7 +162,7 @@ class SpectrumStationMapDialog(MessageBoxBase):
             pass
 
         # 绿色站点 [EN] green station dots
-        for i, (s_lon, s_lat) in enumerate(zip(lon, lat)):
+        for i, (s_lon, s_lat) in enumerate(points):
             ax.plot(
                 float(s_lon), float(s_lat), "go", markersize=8,
                 transform=ccrs.PlateCarree(),
@@ -176,7 +186,7 @@ class SpectrumStationMapDialog(MessageBoxBase):
 
         title_base = tr("plotting_spectrum_stations_distribution", "二维谱站点分布")
         ax.set_title(
-            f"{title_base}（{tr('plotting_total', '共')}{len(lon)}{tr('plotting_points_unit', '个点位')}）",
+            f"{title_base}（{tr('plotting_total', '共')}{len(points)}{tr('plotting_points_unit', '个点位')}）",
             fontsize=13, fontweight="bold",
         )
         self._fig.subplots_adjust(left=0.04, right=0.99, top=0.94, bottom=0.05)

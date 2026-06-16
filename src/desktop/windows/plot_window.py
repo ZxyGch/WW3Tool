@@ -762,6 +762,10 @@ class PlotInterface(QWidget):
         try:
             import numpy as np
             from netCDF4 import Dataset
+            from workflows.infrastructure.plot.workers_utils import (
+                _collect_station_lon_lat,
+                _decode_station_names,
+            )
 
             with Dataset(spec_file_path, "r") as ds:
                 if "longitude" not in ds.variables or "latitude" not in ds.variables:
@@ -776,28 +780,21 @@ class PlotInterface(QWidget):
                 else:
                     n_stations = len(lon_var) if hasattr(lon_var, "__len__") else 1
 
-                lon = np.array(lon_var[:]).flatten()
-                lat = np.array(lat_var[:]).flatten()
+                lon = np.array(lon_var[:])
+                lat = np.array(lat_var[:])
+                points = _collect_station_lon_lat(lon, lat, n_stations)
 
-                station_names = []
-                if name_var is not None:
-                    try:
-                        raw_names = np.array(name_var[:])
-                        for row in raw_names[:n_stations]:
-                            name = b"".join(row.tolist()).decode("utf-8", "ignore").strip()
-                            station_names.append(name.replace("\x00", "").strip())
-                    except Exception:
-                        station_names = []
+                station_names = _decode_station_names(name_var[:], n_stations) if name_var is not None else []
 
                 self._spectrum_table.setRowCount(0)
                 self._set_spectrum_table_header()
-                for i in range(min(n_stations, len(lon), len(lat))):
+                for i, (lon_val, lat_val) in enumerate(points):
                     row = self._spectrum_table.rowCount()
                     self._spectrum_table.insertRow(row)
                     sname = station_names[i] if i < len(station_names) else str(i)
                     self._spectrum_table.setItem(row, 0, QTableWidgetItem(sname))
-                    self._spectrum_table.setItem(row, 1, QTableWidgetItem(f"{float(lon[i]):.6f}"))
-                    self._spectrum_table.setItem(row, 2, QTableWidgetItem(f"{float(lat[i]):.6f}"))
+                    self._spectrum_table.setItem(row, 1, QTableWidgetItem(f"{float(lon_val):.6f}"))
+                    self._spectrum_table.setItem(row, 2, QTableWidgetItem(f"{float(lat_val):.6f}"))
 
                 self._spectrum_table.expand_to_contents(minimum_height=120)
                 self._spectrum_table.setVisible(True)

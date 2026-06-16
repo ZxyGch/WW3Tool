@@ -305,6 +305,20 @@ def _pick_station_lon_lat(lon, lat, station_index, n_station=None):
     return float(lon_arr.reshape(-1)[flat_idx]), float(lat_arr.reshape(-1)[flat_idx])
 
 
+def _collect_station_lon_lat(lon, lat, n_station):
+    """Return one finite (lon, lat) pair per station, avoiding time-axis flattening."""
+    points = []
+    for station_index in range(max(int(n_station or 0), 0)):
+        try:
+            lon_val, lat_val = _pick_station_lon_lat(lon, lat, station_index, n_station)
+        except Exception:
+            continue
+        if not (np.isfinite(lon_val) and np.isfinite(lat_val)):
+            continue
+        points.append((lon_val, lat_val))
+    return points
+
+
 def _decode_station_names(station_name_var, n_station):
     """将 NetCDF ``station_name`` 变量解码为长度为 ``n_station`` 的字符串列表。
 
