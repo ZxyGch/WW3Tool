@@ -2060,10 +2060,42 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _on_ntfy_smart_done(self, result: object) -> None:
         self._on_job_done(result)
-        # [EN] After the smart action, check status to update button text.
-        # 操作完成后，检查状态以更新按钮文本
-        if getattr(result, "success", False):
-            self._update_ntfy_button_text()
+        if not getattr(result, "success", False):
+            return
+        # [EN] After the smart action, update button text and show ntfy info.
+        # 操作完成后，更新按钮文本并显示 ntfy 信息
+        self._update_ntfy_button_text()
+        data = getattr(result, "data", None) or {}
+        topic = data.get("topic", "")
+        action = data.get("action", "")
+        if not topic:
+            return
+        url = f"https://ntfy.sh/{topic}"
+        if action == "inject":
+            title = tr("ntfy_info_title_injected", "📡 ntfy 监听已启动")
+            content = (
+                tr("ntfy_info_topic", "Topic: {topic}").format(topic=topic)
+                + "\n"
+                + tr("ntfy_info_subscribe", "订阅链接: {url}").format(url=url)
+                + "\n"
+                + tr("ntfy_info_action_injected", "已注入 watcher 并发送启动通知")
+            )
+        else:
+            title = tr("ntfy_info_title_test", "📡 ntfy 测试通知已发送")
+            content = (
+                tr("ntfy_info_topic", "Topic: {topic}").format(topic=topic)
+                + "\n"
+                + tr("ntfy_info_subscribe", "订阅链接: {url}").format(url=url)
+                + "\n"
+                + tr("ntfy_info_action_test", "已从服务器发送一条测试通知，请检查订阅端")
+            )
+        InfoBar.success(
+            title=title,
+            content=content,
+            duration=8000,
+            parent=self,
+        )
+        self.titleBar.raise_()
 
     def _update_ntfy_button_text(self) -> None:
         # [EN] Check ntfy watcher status and update button text accordingly.

@@ -163,12 +163,20 @@ class RemoteViewModel:
 
         client = self._ensure_client(config)
         status = run_check_ntfy_status(config, log=self._log, client=client)
-        data = getattr(status, "data", {}) or {}
-        if data.get("running"):
-            self._log("──")
-            return run_send_ntfy_test(config, log=self._log, client=client)
+        status_data = getattr(status, "data", {}) or {}
+        was_running = status_data.get("running", False)
         self._log("──")
-        return run_inject_ntfy_listener(config, log=self._log, client=client)
+        if was_running:
+            result = run_send_ntfy_test(config, log=self._log, client=client)
+        else:
+            result = run_inject_ntfy_listener(config, log=self._log, client=client)
+        # [EN] Enrich result data with action info for the UI callback.
+        # 给返回数据附加操作信息，供 UI 回调使用
+        data = getattr(result, "data", None) or {}
+        data["action"] = "test" if was_running else "inject"
+        data["was_running"] = was_running
+        result.data = data
+        return result
 
     def inject_ntfy_job_listener(self, config: PipelineConfig, job_id: str):
         from workflows.application.remote_ops import run_inject_ntfy_job_listener
