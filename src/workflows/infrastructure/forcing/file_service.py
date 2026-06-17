@@ -2,27 +2,22 @@
 
 [EN] WW3 Step 1 forcing field file I/O and format fixing service.
 
-用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并在副本上执行
-WW3 兼容性格式修正，包括：
+用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并只执行必要的
+WW3 兼容性变量名修正，包括：
 
 [EN] After the user selects a NetCDF file, this module is responsible for copying or moving
-it to the working directory and performing WW3-compatible format fixes on the copy, including:
+it to the working directory and performing only the necessary WW3-compatible variable-name
+fixes on the copy, including:
 
-- 时间变量 ``calendar`` 设为 ``standard``，``units`` 去掉多余时分秒；
 - 将 ``wndewd/wndnwd`` 重命名为 ``u10/v10``（部分再分析产品使用旧名）；
-- 纬度/经度递减时翻转坐标方向（WW3 要求纬度递增，经度建议递增）；
 - 扫描工作目录，按文件名规则或变量检测恢复 Step 1 四类场路径。
 
-[EN] - Setting the time variable ``calendar`` to ``standard`` and removing redundant time-of-day from ``units``;
-- Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
-- Flipping latitude/longitude coordinate direction when decreasing (WW3 requires increasing latitude;
-  longitude should be increasing to avoid interpolation misalignment);
+[EN] - Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
 - Scanning the working directory to recover Step 1 field paths via filename rules or variable detection.
 """
 import os
 import shutil
 import glob
-import numpy as np
 from netCDF4 import Dataset
 from typing import Optional
 from ...domain.forcing_fields import ForcingField, Step1Files
@@ -139,146 +134,12 @@ class FileService:
 
         os.replace(temp_file, source_path)
 
-    # 纬度/经度坐标变量候选名（沿用 wind_normalize_service.py 的列表）
-    # [EN] Latitude/longitude coordinate variable candidate names
-    # (reused from wind_normalize_service.py)
-    _LAT_NAMES = ("latitude", "lat", "LATITUDE", "LAT", "Latitude")
-    _LON_NAMES = ("longitude", "lon", "LONGITUDE", "LON", "Longitude")
-
-    @classmethod
-    def _find_coord_name(cls, var_names, candidates):
-        """在变量名集合中匹配第一个命中的坐标候选名。
-
-        [EN] Match the first hit coordinate candidate name in the variable name set.
-        """
-        for name in candidates:
-            if name in var_names:
-                return name
-        return None
-
-    @staticmethod
-    def _coordinate_flip_dimension(coord_var, coordinate_label):
-        """验证一维坐标严格单调，并返回需要翻转的真实维度名。"""
-        if len(coord_var.dimensions) != 1:
-            raise ValueError(
-                f"{coordinate_label}坐标变量 {coord_var.name} 必须是一维变量，"
-                f"当前维度为 {coord_var.dimensions}"
-            )
-
-        values = np.ma.asarray(coord_var[:])
-        if np.ma.is_masked(values) and np.any(np.ma.getmaskarray(values)):
-            raise ValueError(f"{coordinate_label}坐标变量 {coord_var.name} 包含缺测值")
-
-        values = np.asarray(values)
-        if values.ndim != 1:
-            raise ValueError(f"{coordinate_label}坐标变量 {coord_var.name} 必须是一维变量")
-        if values.size <= 1:
-            return None
-
-        try:
-            differences = np.diff(values.astype(np.float64))
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{coordinate_label}坐标变量 {coord_var.name} 不是数值坐标") from exc
-
-        if np.all(differences > 0):
-            return None
-        if np.all(differences < 0):
-            return coord_var.dimensions[0]
-        raise ValueError(
-            f"{coordinate_label}坐标变量 {coord_var.name} 必须严格单调，"
-            "不能包含重复值或乱序值"
-        )
-
-    @staticmethod
-    def _variable_creation_kwargs(var):
-        """返回复制变量时可安全复用的 ``createVariable`` 参数。"""
-        var_attrs = {name: var.getncattr(name) for name in var.ncattrs()}
-        fill_value = var_attrs.pop("_FillValue", None)
-        kwargs = {}
-        if fill_value is not None:
-            kwargs["fill_value"] = fill_value
-
-        try:
-            filters = var.filters() or {}
-            if filters.get("zlib"):
-                kwargs["zlib"] = True
-                kwargs["complevel"] = filters.get("complevel", 4)
-                kwargs["shuffle"] = filters.get("shuffle", True)
-            if filters.get("fletcher32"):
-                kwargs["fletcher32"] = True
-        except Exception:
-            pass
-
-        try:
-            chunking = var.chunking()
-            if isinstance(chunking, (list, tuple)):
-                kwargs["chunksizes"] = tuple(chunking)
-        except Exception:
-            pass
-
-        return var_attrs, kwargs
-
-    def _flip_lat_lon_in_place(self, target_file, flip_dimensions):
-        """原地翻转 NetCDF 沿纬度/经度维度的所有变量，使其单调递增。
-
-        WW3 ``ww3_prnc`` 要求纬度递增（递减会 ``EXTCDE(32)`` 直接崩溃），
-        经度递增可避免插值错位。本函数通过临时文件完整复制并沿指定轴翻转
-        数据，保留全局属性、维度名、变量名、压缩与 ``_FillValue`` 设置。
-
-        [EN] Flip all variables along the latitude/longitude dimensions in place to
-        make them monotonically increasing.
-
-        WW3 ``ww3_prnc`` requires increasing latitude (decreasing latitude triggers
-        ``EXTCDE(32)`` and crashes); increasing longitude avoids interpolation
-        misalignment. This method performs a full copy via a temporary file and
-        flips data along the specified axes, preserving global attributes,
-        dimension names, variable names, compression, and ``_FillValue`` settings.
-        """
-        temp_file = target_file + ".flip_tmp"
-        try:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            with Dataset(target_file, "r") as src:
-                file_format = getattr(src, "file_format", "NETCDF4")
-                with Dataset(temp_file, "w", format=file_format) as dst:
-                    for attr_name in src.ncattrs():
-                        dst.setncattr(attr_name, src.getncattr(attr_name))
-
-                    for dim_name, dim in src.dimensions.items():
-                        dst.createDimension(dim_name, len(dim) if not dim.isunlimited() else None)
-
-                    for var_name, var in src.variables.items():
-                        dims = var.dimensions
-                        var_attrs, var_kwargs = self._variable_creation_kwargs(var)
-                        new_var = dst.createVariable(var_name, var.dtype, dims, **var_kwargs)
-                        for attr_name, attr_value in var_attrs.items():
-                            new_var.setncattr(attr_name, attr_value)
-
-                        flip_axes = {
-                            axis for axis, dim_name in enumerate(dims)
-                            if dim_name in flip_dimensions
-                        }
-                        data = var[...]
-                        if flip_axes:
-                            slices = tuple(
-                                slice(None, None, -1) if axis in flip_axes else slice(None)
-                                for axis in range(len(dims))
-                            )
-                            data = data[slices]
-                        new_var[...] = data
-
-            os.replace(temp_file, target_file)
-        except Exception:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            raise
-    
     def copy_and_fix_forcing_file(self, source_file: str, target_file: str, process_mode: str = "copy") -> Optional[str]:
         """
-        复制或移动强迫场文件到工作目录，并修复时间变量格式问题和风场变量名（如果存在）
+        复制或移动强迫场文件到工作目录，并修复旧风场变量名（如果存在）。
 
-        [EN] Copy or move a forcing file to the working directory, and fix time variable format
-        issues and wind variable names (if present).
+        [EN] Copy or move a forcing file to the working directory, and fix legacy wind
+        variable names (if present).
         
         参数:
             source_file: 源文件路径
@@ -318,29 +179,16 @@ class FileService:
             else:
                 shutil.copy2(source_file, target_file)
 
-            # 2. 检查是否存在格式问题
-            # [EN] 2. Check for format issues
-            needs_fix_calendar = False
-            needs_fix_units = False
+            # 2. 只检查变量名兼容性。WW3 源码按维度名读取，不需要在这里重排维度、
+            # 改写 time units/calendar 或自动翻转经纬度。
+            # [EN] 2. Check variable-name compatibility only. WW3 reads dimensions by
+            # name, so this generic path does not reorder dimensions, rewrite time
+            # units/calendar, or flip coordinates automatically.
             needs_fix_wind_vars = False
-            lat_name = None
-            lon_name = None
-            lat_flip_dimension = None
-            lon_flip_dimension = None
-            time_var_name = None
-            old_units = None
-            new_units = None
             has_wndewd = False
             has_wndnwd = False
 
             with Dataset(target_file, "r") as f:
-                # 查找时间变量
-                # [EN] Find the time variable
-                for var_name in ["valid_time", "time", "Time", "TIME", "t", "MT", "mt"]:
-                    if var_name in f.variables:
-                        time_var_name = var_name
-                        break
-
                 # 检查是否需要修复风场变量名（wndewd/wndnwd -> u10/v10）
                 # [EN] Check if wind variable names need fixing (wndewd/wndnwd -> u10/v10)
                 if "wndewd" in f.variables or "WNDEWD" in f.variables:
@@ -354,56 +202,8 @@ class FileService:
                     if "u10" not in f.variables and "v10" not in f.variables:
                         needs_fix_wind_vars = True
 
-                if time_var_name:
-                    time_var = f.variables[time_var_name]
-
-                    # 检查 Calendar 属性是否需要修复
-                    # [EN] Check if the Calendar attribute needs fixing
-                    current_calendar = getattr(time_var, 'calendar', None)
-                    if current_calendar != 'standard':
-                        needs_fix_calendar = True
-
-                    # 检查时间单位格式是否需要修复
-                    # [EN] Check if the time units format needs fixing
-                    if hasattr(time_var, 'units') and time_var.units:
-                        old_units = time_var.units
-                        parts = old_units.split()
-                        # 检查是否包含时间部分（第四部分包含 ":"，如 "00:00:00"）
-                        # [EN] Check if it contains a time portion (4th part contains ":", e.g. "00:00:00")
-                        if len(parts) >= 4 and ':' in parts[3]:
-                            # 包含时间部分，只保留前三个部分（单位、since、日期）
-                            # [EN] Contains time portion; keep only the first three parts (unit, since, date)
-                            new_units = ' '.join(parts[:3])
-                            if new_units != old_units:
-                                needs_fix_units = True
-                        # 检查日期部分是否包含时间（如 "2025-01-01T00:00:00"）
-                        # [EN] Check if the date part contains time (e.g. "2025-01-01T00:00:00")
-                        elif len(parts) >= 3 and 'T' in parts[2]:
-                            # 日期部分包含时间，移除 T 之后的内容
-                            # [EN] Date part contains time; remove everything after 'T'
-                            date_part = parts[2].split('T')[0]
-                            new_units = f"{parts[0]} {parts[1]} {date_part}"
-                            if new_units != old_units:
-                                needs_fix_units = True
-
-                # 检查纬度/经度是否需要翻转（WW3 要求纬度递增，经度建议递增）
-                # [EN] Check if latitude/longitude need flipping
-                # (WW3 requires increasing latitude; longitude should be increasing)
-                lat_name = self._find_coord_name(f.variables.keys(), self._LAT_NAMES)
-                lon_name = self._find_coord_name(f.variables.keys(), self._LON_NAMES)
-                if lat_name:
-                    lat_flip_dimension = self._coordinate_flip_dimension(
-                        f.variables[lat_name], "纬度"
-                    )
-                if lon_name:
-                    lon_flip_dimension = self._coordinate_flip_dimension(
-                        f.variables[lon_name], "经度"
-                    )
-
             # 3. 如果需要修复风场变量名，需要重新创建文件（因为 netCDF4 不支持删除变量）
             # [EN] 3. If wind variable names need fixing, recreate the file (netCDF4 does not support deleting variables)
-            # 先处理风场变量修复，因为这会创建新文件，然后再处理时间变量修复
-            # [EN] Fix wind variables first (this creates a new file), then fix time variables
             if needs_fix_wind_vars:
                 try:
                     with Dataset(target_file, "r") as src:
@@ -419,56 +219,6 @@ class FileService:
                     self.log(tr("log_wind_vars_fix_failed", "⚠️ 修复风场变量名失败: {error}").format(error=str(e)))
                     # 不抛出异常，继续处理，让调用者决定如何处理
                     # [EN] Do not raise; continue processing and let the caller decide how to handle
-
-            # 4. 如果存在时间变量格式问题，在工作目录的副本上进行修复
-            # [EN] 4. If time variable format issues exist, fix them on the working directory copy
-            # 注意：不使用 renameVariable/renameDimension 重命名 valid_time -> time，
-            # [EN] Note: Do not use renameVariable/renameDimension to rename valid_time -> time,
-            # 因为 netCDF4 在变量名与维度名相同时 rename 会导致数据损坏（全部变成 fill value）。
-            # [EN] because netCDF4 corrupts data (all values become fill value) when renaming a variable
-            # whose name matches a dimension name.
-            # 变量名标准化由 wind 路径的 WindNormalizeService.normalize 处理；
-            # current/level/ice 的坐标方向翻转由第 5 步 _flip_lat_lon_in_place 处理。
-            # [EN] Variable name standardization is handled by the wind path's
-            # WindNormalizeService.normalize; coordinate direction flipping for
-            # current/level/ice is handled by step 5 _flip_lat_lon_in_place.
-            if needs_fix_calendar or needs_fix_units:
-                with Dataset(target_file, "r+") as f:
-                    if time_var_name:
-                        time_var = f.variables[time_var_name]
-
-                        # 修复 Calendar 属性
-                        # [EN] Fix the Calendar attribute
-                        if needs_fix_calendar:
-                            time_var.calendar = 'standard'
-
-                        # 修复时间单位格式
-                        # [EN] Fix the time units format
-                        if needs_fix_units:
-                            time_var.units = new_units
-
-                        f.sync()
-
-            # 5. 翻转纬度/经度方向（WW3 要求纬度递增，经度建议递增）
-            # [EN] 5. Flip latitude/longitude direction
-            # (WW3 requires increasing latitude; longitude should be increasing)
-            flip_dimensions = {
-                dimension
-                for dimension in (lat_flip_dimension, lon_flip_dimension)
-                if dimension is not None
-            }
-            if flip_dimensions:
-                self._flip_lat_lon_in_place(target_file, flip_dimensions)
-                flipped_parts = []
-                if lat_flip_dimension:
-                    flipped_parts.append("纬度")
-                if lon_flip_dimension:
-                    flipped_parts.append("经度")
-                self.log(
-                    tr("log_coords_flipped",
-                       "✅ 已翻转{fields}坐标方向（递减→递增）").format(
-                        fields="/".join(flipped_parts))
-                )
 
             return target_file
 
