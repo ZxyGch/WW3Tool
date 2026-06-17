@@ -11,8 +11,10 @@ The desktop layer wraps calls in its own thread; CLI calls directly.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import stat
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -192,7 +194,12 @@ class SshClient:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             try:
-                ssh.connect(**kwargs)
+                # [EN] Suppress paramiko's raw traceback printed directly to
+                # stderr by Transport (not via the logging module).
+                # 屏蔽 paramiko Transport 直接写入 stderr 的原始 traceback。
+                with open(os.devnull, "w") as _devnull, \
+                     contextlib.redirect_stderr(_devnull):
+                    ssh.connect(**kwargs)
                 self._ssh = ssh
                 self._conn_args = (conn.host, conn.port, conn.user, conn.password)
                 if attempt > 1:
