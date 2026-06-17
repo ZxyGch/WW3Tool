@@ -146,10 +146,13 @@ def _track_rows(points: Iterable[TrackPointConfig]) -> List[List[Any]]:
 
 
 def _resolve_st_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
-    """解析源项（ST）方案名称，优先使用流水线配置。
+    """解析源项（ST）方案名称，优先使用 slurm.server_st，向后兼容 ww3.st。
 
-    [EN] Resolve the source term (ST) scheme name, preferring the pipeline configuration.
+    [EN] Resolve the source term (ST) scheme name, preferring slurm.server_st,
+    with fallback to ww3.st for backward compatibility.
     """
+    if config.slurm.server_st:
+        return str(config.slurm.server_st)
     if config.ww3.st:
         return str(config.ww3.st)
     versions = app_config.get("ST_VERSIONS") or []
@@ -208,13 +211,13 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
             "DTMIN": parameters["TIMESTEPS%DTMIN"],
         }
     )
-    merged["ST_OPTIONS"] = list(config.presets.st)
+    merged["ST_OPTIONS"] = list(config.presets.server_st)
     merged["ST_VERSIONS"] = [
         {
             "name": name,
             "path": str(Path(executable_dir).parent),
         }
-        for name, executable_dir in config.presets.st.items()
+        for name, executable_dir in config.presets.server_st.items()
     ]
 
     # 谱分区输出方案：全部来自 PipelineConfig.presets.output_scheme (params.yml)

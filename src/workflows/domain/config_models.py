@@ -293,7 +293,7 @@ class ParameterPresets:
             name: list(fields) for name, fields in DEFAULT_OUTPUT_SCHEME_PRESETS.items()
         }
     )
-    st: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_ST_PRESETS))
+    server_st: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_ST_PRESETS))
     structured_bathymetry: List[str] = field(default_factory=lambda: list(STRUCTURED_BATHYMETRY_OPTIONS))
     smc_bathymetry: List[str] = field(default_factory=lambda: list(SMC_BATHYMETRY_OPTIONS))
     coastline_precision: List[str] = field(default_factory=lambda: list(COASTLINE_PRECISION_OPTIONS))
@@ -308,7 +308,7 @@ class WW3Config:
     - ``start_date`` / ``end_date``：模拟起止时间
     - ``compute_precision`` / ``output_precision``：积分与输出时间步（秒）
     - ``inner_*``：嵌套内圈网格的独立时间步（可选）
-    - ``output_scheme`` / ``st``：输出场方案与源项物理包
+    - ``output_scheme`` / ``st``：输出场方案与源项物理包（``st`` 已迁移至 ``slurm.server_st``，保留向后兼容）
 
     [EN] WAVEWATCH III run period and output scheme (corresponds to YAML ``ww3:`` section).
 
@@ -316,7 +316,8 @@ class WW3Config:
     - ``start_date`` / ``end_date``: simulation start and end times
     - ``compute_precision`` / ``output_precision``: integration and output time steps (seconds)
     - ``inner_*``: independent time steps for the nested inner grid (optional)
-    - ``output_scheme`` / ``st``: output field scheme and source-term physics package
+    - ``output_scheme``: output field scheme
+    - ``st``: DEPRECATED — use ``slurm.server_st`` instead; kept for backward compatibility
     """
 
     start_date: str = ""
@@ -353,18 +354,21 @@ class SlurmConfig:
     关键字段：
     - ``cpu`` / ``nodes`` / ``cores``：分区与并行规模
     - ``cpu_group``：可用的 CPU 分区列表（供 UI 下拉选择）
+    - ``server_st``：服务器上选择的 ST 版本名称（对应 presets.server_st 的键）
 
     [EN] Remote SLURM job resources (corresponds to YAML ``slurm:`` section).
 
     Key fields:
     - ``cpu`` / ``nodes`` / ``cores``: partition and parallelism scale
     - ``cpu_group``: list of available CPU partitions (for UI dropdown)
+    - ``server_st``: selected ST version name (key from presets.server_st)
     """
 
     cpu: Optional[str] = None
     cpu_group: Optional[List[str]] = None
     nodes: Optional[str] = None
     cores: Optional[str] = None
+    server_st: Optional[str] = None
 
 
 @dataclass
@@ -374,6 +378,7 @@ class ServerConfig:
     关键字段：
     - ``host`` / ``port`` / ``user``：连接目标
     - ``password`` / ``key_file``：认证方式（二选一或组合）
+    - ``ssh_config_host``：``~/.ssh/config`` 中的 Host 别名（设置后连接时现场解析，不导入到其它字段）
     - ``default_remote_dir``：默认远程基础目录（从设置页写入）
     - ``remote_dir``：实际远程工作目录（第六步输入框写入，为空时回退到 default_remote_dir + 工作目录名）
 
@@ -382,6 +387,7 @@ class ServerConfig:
     Key fields:
     - ``host`` / ``port`` / ``user``: connection target
     - ``password`` / ``key_file``: authentication method (either or combined)
+    - ``ssh_config_host``: Host alias in ``~/.ssh/config`` (resolved at connect time, not copied to other fields)
     - ``default_remote_dir``: default remote base directory (set from the settings page)
     - ``remote_dir``: actual remote working directory (set from step-6 input; falls back to default_remote_dir + workdir name when empty)
     """
@@ -391,6 +397,7 @@ class ServerConfig:
     user: str = ""
     password: str = ""
     key_file: Optional[Path] = None
+    ssh_config_host: str = ""
     default_remote_dir: str = ""
     remote_dir: str = ""
 

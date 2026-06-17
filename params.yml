@@ -6,7 +6,7 @@
 #     'standard'      : essential wave parameters (HS, DIR, FP, T02 …).
 #     'with_spectrum'  : standard + 2-D energy density (EF).
 #     'all_fields'     : every available WW3 output variable.
-#   st                  – source-term package paths keyed by scheme name
+#   server_st           – server WW3 binary paths keyed by scheme name
 #                          (ST2 / ST4 / ST6 / ST6A / ST6B).
 #   local_st           – local WW3 binary paths keyed by scheme name
 #                          (used by local run panel).
@@ -131,7 +131,7 @@ presets:
     - CFX
     - CFD
     - CFK
-  st:
+  server_st:
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
     ST4: /public/home/weiyl001/software2/ww4/model/exe
     ST6: /public/home/weiyl001/software2/ww6/model/exe
@@ -331,7 +331,6 @@ ww3:
   output_precision: 3600
   file_split: None
   output_scheme: standard
-  st: ST2
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
 # Keys follow the Fortran namelist syntax with '%' as sub-key separator.
@@ -356,10 +355,11 @@ ww3_grid:
   TIMESTEPS%DTMIN: 15
 # ────────────────────────────────────────────────────────────────────
 # SLURM job-scheduler settings for HPC cluster submissions.
-#   cpu       – default CPU model identifier.
-#   cpu_group – list of acceptable CPU models for job placement.
-#   nodes     – number of compute nodes to request.
-#   cores     – CPU cores per node.
+#   cpu         – default CPU model identifier.
+#   cpu_group   – list of acceptable CPU models for job placement.
+#   nodes       – number of compute nodes to request.
+#   cores       – CPU cores per node.
+#   server_st   – selected ST version name (must be a key from presets.server_st).
 # ────────────────────────────────────────────────────────────────────
 slurm:
   cpu: CPU6240R
@@ -368,6 +368,7 @@ slurm:
   - CPU6336Y
   nodes: 1
   cores: 48
+  server_st: ST2
 # ────────────────────────────────────────────────────────────────────
 # Post-processing and validation plot settings.
 # Each sub-section is invoked individually via CLI commands:
@@ -436,18 +437,20 @@ plot:
 #   host / port        – hostname or IP and SSH port number.
 #   user               – login username.
 #   password / key_file – password string or path to private key.
+#   ssh_config_host    – Host alias in ~/.ssh/config (resolved at connect time).
 #   default_remote_dir – base directory on the remote side; workdir name
 #                        is appended automatically during submission.
 #   remote_dir         – full resolved remote path (read-only, auto-set).
 # ────────────────────────────────────────────────────────────────────
 server:
-  host: 
+  host: null
   port: 22
-  user: 
-  password: 
+  user: null
+  password: null
   key_file: null
   default_remote_dir: /public/home/weiyl001/workSpace/
   remote_dir: ''
+  ssh_config_host: SHOU
 # ────────────────────────────────────────────────────────────────────
 # External tool and data directory paths.
 #   matlab_path       – MATLAB executable for grid generators that require it.
@@ -477,6 +480,6 @@ desktop:
   run_mode: both
   default_workdir: /Users/zxy/ocean/Paper/WW3Tool/workSpace
   recent_workdirs:
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ARR_20150709T0900_0094
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ARR_20150106T1300_0004
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ww3_2015_cpu6240r_1/ARR_20150402T0500_0062
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ww3_2015_cpu6240r_1/ARR_20150208T1400_0033
   forcing_field_dir: ''

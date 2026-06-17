@@ -327,7 +327,7 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
     print(_config_field(tr("icli_compute_precision", "计算精度：{}s"), cfg.ww3.compute_precision or not_set))
     print(_config_field(tr("icli_output_precision", "输出精度：{}s"), cfg.ww3.output_precision or not_set))
     print(_config_field(tr("icli_output_scheme", "输出方案：{}"), cfg.ww3.output_scheme or not_set))
-    print(_config_field(tr("icli_ww3_st", "ST：{}"), cfg.ww3.st or not_cfg))
+    print(_config_field(tr("icli_ww3_st", "ST：{}"), cfg.slurm.server_st or not_cfg))
 
     wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
     if wg:

@@ -186,7 +186,7 @@ class WW3StepPanel:
         self.set_value("ww3_output", ww3.output_precision)
         self.set_value("slurm_cores", config.slurm.cores)
         self.set_value("slurm_nodes", config.slurm.nodes)
-        self._replace_combo_items(self.st_combo, list(config.presets.st), ww3.st)
+        self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._replace_combo_items(self.output_scheme_combo, sorted(config.presets.output_scheme), ww3.output_scheme)
         self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
         params = config.ww3_grid.parameters
@@ -302,7 +302,6 @@ class WW3StepPanel:
             "compute_precision": self.fields["ww3_compute"].text().strip(),
             "output_precision": self.fields["ww3_output"].text().strip(),
             "output_scheme": self.output_scheme_combo.currentText().strip(),
-            "st": self.st_combo.currentText().strip(),
         }
 
     def slurm_overrides(self) -> dict[str, str]:
@@ -310,6 +309,7 @@ class WW3StepPanel:
             "cpu": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
+            "server_st": self.st_combo.currentText().strip(),
         }
 
     def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:

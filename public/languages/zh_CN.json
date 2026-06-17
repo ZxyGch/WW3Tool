@@ -2242,6 +2242,7 @@
   "cfg_nested_inner_required": "nested 网格需要 grid.inner",
   "cfg_spectral_points_required": "calc.mode=spectral_point 时必须提供 calc.points",
   "cfg_track_points_required": "calc.mode=track 时必须提供 calc.track_points",
+  "cfg_server_st_required": "slurm.server_st（或 ww3.st）不能为空，请在 params.yml 中配置 ST 版本",
   "icli_help_recommend_cfl": "按 CFL 公式推荐时间步长",
   "icli_help_recommend_grid": "按区域范围推荐网格间距/分辨率（--coarse 偏粗 / --fine 偏细）",
   "icli_recgrid_need_box": "⚠️ 请先在网格配置中填写有效的经纬度范围",

@@ -240,13 +240,12 @@ def _selected_output_scheme(value: Any, presets: ParameterPresets) -> str:
     return name
 
 
-def _st(value: Any) -> str:
+def _st(value: Any) -> Optional[str]:
+    """解析 ST 版本名，允许 None（已迁移至 slurm.server_st，保留向后兼容）。"""
     if value is None:
-        raise ConfigError("ww3.st 不能为空")
+        return None
     st = str(value).strip()
-    if not st:
-        raise ConfigError("ww3.st 不能为空")
-    return st
+    return st if st else None
 
 
 def _server_st_presets(value: Any) -> Dict[str, str]:
@@ -815,9 +814,9 @@ def parse_pipeline_config(
             "ww3.file_split 必须使用 presets.file_split 中的选项："
             + "、".join(presets.file_split)
         )
-    if presets.server_st and ww3.st not in presets.server_st:
+    if presets.server_st and slurm.server_st not in presets.server_st:
         raise ConfigError(
-            "ww3.st 必须使用 presets.server_st 中定义的名称：" + "、".join(presets.server_st)
+            "slurm.server_st 必须使用 presets.server_st 中定义的名称：" + "、".join(presets.server_st)
         )
 
     ww3_grid_raw = _as_dict(raw.get("ww3_grid"), "ww3_grid")
@@ -869,11 +868,21 @@ def parse_pipeline_config(
     )
 
     slurm_raw = _as_dict(raw.get("slurm"), "slurm")
+    # [EN] server_st: prefer slurm.server_st, fall back to ww3.st for backward compat.
+    # 优先读 slurm.server_st，向后兼容 ww3.st
+    _slurm_server_st = str(slurm_raw.get("server_st") or "").strip() or None
+    if _slurm_server_st is None and ww3.st:
+        _slurm_server_st = ww3.st
+    if not _slurm_server_st:
+        raise ConfigError(
+            tr("cfg_server_st_required", "slurm.server_st（或 ww3.st）不能为空，请在 params.yml 中配置 ST 版本")
+        )
     slurm = SlurmConfig(
         cpu=str(slurm_raw.get("cpu") or ""),
         cpu_group=list(slurm_raw.get("cpu_group") or []),
         nodes=str(slurm_raw.get("nodes") or ""),
         cores=str(slurm_raw.get("cores") or ""),
+        server_st=_slurm_server_st,
     )
 
     plot = _plot_config(raw.get("plot"), base_dir)
@@ -1100,8 +1109,6 @@ ww3:
   file_split: year
   output_scheme: standard          # [EN] Select one scheme defined in presets.output_scheme
                                    # 选择 presets.output_scheme 中定义的一个方案
-  st: ST2                        # [EN] Select one path name from presets.server_st
-                                 # 选择 presets.server_st 中的一个路径名称
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml
@@ -1127,6 +1134,8 @@ slurm:
   - CPU6336Y
   nodes: "1"
   cores: "48"
+  server_st: ST2                  # [EN] Select one path name from presets.server_st
+                                  # 选择 presets.server_st 中的一个路径名称
 
 # [EN] Post-processing plot configuration (used by CLI commands plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc)
 # 后处理绘图配置（CLI 命令 plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc 使用）

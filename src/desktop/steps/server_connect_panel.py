@@ -178,9 +178,8 @@ class ServerConnectPanel:
         self._idle_table.setWordWrap(False)
         idle_hdr = self._idle_table.horizontalHeader()
         idle_hdr.setStretchLastSection(False)
-        idle_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        idle_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        idle_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        for col in range(3):
+            idle_hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         idle_hdr.setMinimumSectionSize(36)
         self._idle_table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -367,6 +366,8 @@ class ServerConnectPanel:
             item = QTableWidgetItem(text)
             if col == 0:
                 align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            elif col == 2:
+                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             else:
                 align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
             item.setTextAlignment(align)
@@ -391,17 +392,18 @@ class ServerConnectPanel:
     def render_slurm(self, config: PipelineConfig) -> None:
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
-        self._replace_combo_items(self.st_combo, list(config.presets.st), config.ww3.st)
+        self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
 
     def ww3_overrides(self) -> dict[str, str]:
-        return {"st": self.st_combo.currentText().strip()}
+        return {}
 
     def slurm_overrides(self) -> dict[str, str]:
         return {
             "cpu": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
+            "server_st": self.st_combo.currentText().strip(),
         }
 
     def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:
