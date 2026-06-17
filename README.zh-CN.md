@@ -52,7 +52,7 @@ WW3Tool 可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 g
 ```sh
 python3 run.py                 # 1. 图形界面 (默认)
 python3 run.py shell           # 2. 交互式终端
-python3 run.py run params.yml  # 3. 无界面 CLI (一次性子命令)
+python3 run.py run-workflow params.yml  # 3. 无界面 CLI (一次性子命令)
 ```
 
 如果还有什么安装失败或缺失的包，请手动安装。
@@ -85,18 +85,22 @@ python3 run.py shell --lang en_US
 
 记住要先创建工作目录并修改工作目录的 params.yml，根目录的 params.yml 只是作为模版存在的，用于存储一些通用的数据。
 
-
+```sh
+python3 run.py workdir my_case    # 从模板创建并加载工作目录
+# 或在 shell 内：workdir my_case
+```
 
 ### 3. 无界面 CLI 
 
 每个步骤都可作为一次性子命令直接调用，读取工作目录的 `params.yml` 后执行并退出：
 
 ```sh
-python3 run.py validate params.yml          # 校验配置
-python3 run.py prepare-forcing params.yml   # 准备强迫场
-python3 run.py generate-grid params.yml     # 生成网格
-python3 run.py run params.yml               # 完整预处理
-python3 run.py plot params.yml              # 绘图
+python3 run.py workdir my_case              # 创建或加载工作目录
+python3 run.py validate my_case             # 校验配置
+python3 run.py prepare-forcing my_case      # 准备强迫场
+python3 run.py generate-grid my_case        # 生成网格
+python3 run.py run-workflow my_case         # 完整预处理
+python3 run.py plot-wave-maps my_case       # 绘图
 ```
 
 这种"一条命令一个步骤、无需人工交互"的形式特别适合脚本自动化与 AI（如 Claude Code 等）调用：AI 可以直接发起这些命令、读取标准输出与退出码来判断每一步是否成功，无需操作图形界面。
@@ -150,7 +154,7 @@ python3 run.py shell        → 交互式终端（可反复执行各步骤）
 python3 run.py <子命令> …   → 无界面 CLI（适合脚本与自动化）
 ```
 
-根目录的 `params.yml` 仅为模板；实际运行前须用 `create-workdir` 复制到独立工作目录，再编辑该目录下的 `params.yml`。
+根目录的 `params.yml` 仅为模板；实际运行前须用 `workdir` 创建或加载独立工作目录，再编辑该目录下的 `params.yml`。
 
 
 

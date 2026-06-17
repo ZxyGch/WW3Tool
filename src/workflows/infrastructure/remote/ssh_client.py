@@ -20,6 +20,7 @@ from typing import Callable, Iterator, List, Optional, Tuple
 from ...domain.config_models import ServerConfig
 from ...support.formatting import format_file_size
 from ...support.translations import tr
+from .ssh_config import resolve_server_connection
 
 LogFn = Callable[[str], None]
 _noop: LogFn = lambda _: None
@@ -79,36 +80,50 @@ class SshClient:
         """
         paramiko = _make_ssh()
         cfg = self._config
-        if not cfg.host or not cfg.user:
+        conn = resolve_server_connection(cfg)
+        if cfg.ssh_config_host:
+            log(tr(
+                "step5_connecting_ssh_config",
+                "🔄 正在通过 SSH 配置 [{alias}] 连接 {host}:{port}...",
+            ).format(alias=cfg.ssh_config_host, host=conn.host, port=conn.port))
+        elif not conn.host or not conn.user:
             raise ConnectionError(
                 tr("step5_config_missing_host_user", "❌ 请先在 params.yml server: 中配置 host 和 user")
             )
-        log(tr("step5_connecting_server", "🔄 正在连接服务器 {host}:{port}...").format(
-            host=cfg.host, port=cfg.port))
+        else:
+            log(tr("step5_connecting_server", "🔄 正在连接服务器 {host}:{port}...").format(
+                host=conn.host, port=conn.port))
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         kwargs: dict = dict(
-            hostname=cfg.host,
-            port=cfg.port,
-            username=cfg.user,
+            hostname=conn.host,
+            port=conn.port,
+            username=conn.user,
             timeout=timeout,
-            look_for_keys=bool(cfg.key_file),
-            allow_agent=bool(cfg.key_file),
+            look_for_keys=bool(conn.key_file),
+            allow_agent=bool(conn.key_file),
         )
-        if cfg.key_file and Path(str(cfg.key_file)).is_file():
-            kwargs["key_filename"] = str(cfg.key_file)
-        elif cfg.password:
-            kwargs["password"] = cfg.password
+        if conn.key_file and Path(str(conn.key_file)).is_file():
+            kwargs["key_filename"] = str(conn.key_file)
+        elif conn.password:
+            kwargs["password"] = conn.password
             kwargs["look_for_keys"] = False
             kwargs["allow_agent"] = False
         try:
             ssh.connect(**kwargs)
         except Exception as exc:
+            if cfg.ssh_config_host:
+                raise ConnectionError(
+                    tr(
+                        "step5_connect_ssh_config_failed",
+                        "❌ 通过 SSH 配置 [{alias}] 连接失败：{error}",
+                    ).format(alias=cfg.ssh_config_host, error=exc)
+                ) from exc
             raise ConnectionError(
                 tr("step5_connect_failed", "❌ 连接服务器失败：{error}").format(error=exc)
             ) from exc
         self._ssh = ssh
-        self._conn_args = (cfg.host, cfg.port, cfg.user, cfg.password)
+        self._conn_args = (conn.host, conn.port, conn.user, conn.password)
         log(tr("connect_success_log", "✅ 连接服务器成功"))
 
     def is_alive(self) -> bool:

@@ -76,6 +76,8 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "SERVER_PORT": "server.port",
     "SERVER_USER": "server.user",
     "SERVER_PASSWORD": "server.password",
+    "SERVER_KEY_FILE": "server.key_file",
+    "SERVER_SSH_CONFIG_HOST": "server.ssh_config_host",
     "SERVER_PATH": "server.default_remote_dir",
     "MATLAB_PATH": "paths.matlab_path",
     "WW3BIN_PATH": "paths.ww3bin_path",
@@ -657,7 +659,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#     'standard'      : essential wave parameters (HS, DIR, FP, T02 …).\n"
      "#     'with_spectrum'  : standard + 2-D energy density (EF).\n"
      "#     'all_fields'     : every available WW3 output variable.\n"
-     "#   st                  – source-term package paths keyed by scheme name\n"
+     "#   server_st           – server WW3 binary paths keyed by scheme name\n"
      "#                          (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "#   local_st           – local WW3 binary paths keyed by scheme name\n"
      "#                          (used by local run panel).\n"
@@ -823,6 +825,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   host / port        – hostname or IP and SSH port number.\n"
      "#   user               – login username.\n"
      "#   password / key_file – password string or path to private key.\n"
+     "#   ssh_config_host    – Host alias in ~/.ssh/config (resolved at connect time).\n"
      "#   default_remote_dir – base directory on the remote side; workdir name\n"
      "#                        is appended automatically during submission.\n"
      "#   remote_dir         – full resolved remote path (read-only, auto-set).\n"
@@ -1025,8 +1028,8 @@ def load_full_config() -> dict:
     presets = root.get("presets") or {}
     if isinstance(presets.get("output_scheme"), dict):
         merged["OUTPUT_VARS_SCHEMES"] = presets["output_scheme"]
-    if isinstance(presets.get("st"), dict):
-        st_dict = presets["st"]
+    if isinstance(presets.get("server_st"), dict):
+        st_dict = presets["server_st"]
         merged["ST_VERSIONS"] = [{"name": k, "path": v} for k, v in st_dict.items()]
         merged["ST_OPTIONS"] = list(st_dict.keys())
         merged["DEFAULT_ST"] = list(st_dict.keys())[0] if st_dict else ""
@@ -1056,6 +1059,9 @@ def save_full_config(config: dict) -> bool:
             if value is not None and str(value).strip() != "":
                 _set_nested(root, yaml_path, value)
                 written_paths.add(yaml_path)
+            elif flat_key in ("SERVER_KEY_FILE", "SERVER_PASSWORD", "SERVER_SSH_CONFIG_HOST"):
+                _set_nested(root, yaml_path, None)
+                written_paths.add(yaml_path)
     # presets 段
     if "OUTPUT_VARS_SCHEMES" in config:
         root.setdefault("presets", {})["output_scheme"] = config["OUTPUT_VARS_SCHEMES"]
@@ -1066,7 +1072,7 @@ def save_full_config(config: dict) -> bool:
             for item in versions:
                 if isinstance(item, dict) and item.get("name"):
                     st_dict[item["name"]] = item.get("path", "")
-            root.setdefault("presets", {})["st"] = st_dict
+            root.setdefault("presets", {})["server_st"] = st_dict
     if "LOCAL_ST_VERSIONS" in config:
         versions = config["LOCAL_ST_VERSIONS"]
         if isinstance(versions, list):

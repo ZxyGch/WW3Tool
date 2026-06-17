@@ -4,47 +4,65 @@
 一个入口通吃三种使用方式，并统一负责环境搭建（虚拟环境 / 依赖 / sys.path）：
 
     python3 run.py                       → 启动 Desktop 图形界面（默认）
-    python3 run.py shell [params]        → 启动交互式 REPL（可选带 params.yml）
-    python3 run.py <子命令> [选项] [工作目录]  → 无界面 CLI
+    python3 run.py shell [params.yml]    → 启动交互式 REPL（推荐日常操作）
+    python3 run.py <子命令> [选项] [工作目录]  → 无界面 CLI（适合脚本与自动化）
 
-----------------------------------------------------------------------
-无界面 CLI 子命令
-----------------------------------------------------------------------
+不带子命令执行 ``python3 run.py --help`` 时，打印命令参考（与 ``shell`` 内 ``help`` 相同）。
 
-**重要**：仓库根目录的 ``params.yml`` 是模板文件，不允许直接用于运行。
-请先使用 ``create-workdir`` 创建工作目录副本。``<工作目录>`` 可省略，
-此时使用当前目录（``.``）。
+**重要**：仓库根目录 ``params.yml`` 是模板，不允许直接用于运行。
+用 ``workdir <路径>`` 从模板创建或加载工作目录（CLI：
+``python3 run.py workdir <路径>``）。其余命令可跟可选的 ``[工作目录]``，
+省略时使用当前目录。
 
-一、工作目录
-  create-workdir --name my_case   从根 params.yml 模板创建新工作目录
+典型流程：
 
-二、预处理
-  validate                               校验 params.yml 是否合法
-  prepare-forcing                        只做 Step 1：准备强迫场（wind.nc 等）
-  merge-forcing INPUT... -o OUTPUT       校验并合并 NetCDF 强迫场文件
-  generate-grid                          只做 Step 2：生成网格
-  recommend-grid                         按区域范围推荐网格间距/分辨率并写回 params.yml
-  run                                    完整预处理（强迫场 → 网格 → WW3 namelist）
+    workdir → run-workflow → local-run
+                              └→ upload → submit → check-status → download-results
 
-三、后处理 / 绘图（配置见 params.yml 的 plot: 段）
-  plot                                   执行 plot 段里所有 enabled=true 的任务
-  plot-wave-maps [--contour]             生成波高填色图 / 等值线图
-  plot-spectrum [--mode first|all|selected] [--station N]   生成二维方向谱图
-  plot-jason3                            WW3 结果与 Jason-3 卫星数据匹配
-  plot-ndbc [--download]                 WW3 结果与 NDBC 浮标匹配
+配置管理
+  workdir <路径>           创建或加载工作目录（shell）；CLI 为独立子命令
+  validate [工作目录]      校验 params.yml
+  config [工作目录]        显示配置摘要
+  print-params [工作目录]  输出 params.yml 内容
 
-四、远程运维（配置见 params.yml 的 server: 段，走 SSH/SLURM）
-  connect-test / list-files / upload --confirm / submit [--script server.sh]
-  check-status / queue-status / download-results [--nested] / download-log
+预处理（merge-forcing 除外均可跟 [工作目录]）
+  prepare-forcing          Step 1：准备强迫场
+  merge-forcing <输入.nc> [...] -o <输出.nc> [--time-range ...] [--bbox ...]
+                           独立工具：校验并合并强迫场 NetCDF（无需工作目录）
+  generate-grid            Step 2：生成计算网格
+  prepare-ww3              仅生成 WW3 namelist
+  recommend-cfl            按 CFL 推荐时间步长并写回配置
+  recommend-grid           推荐网格间距/分辨率并写回配置
+  run-workflow             完整预处理：强迫场 → 网格 → WW3 namelist
+  local-run                执行 local.sh（本地跑 WW3）
+
+后处理 / 绘图（plot: 段）
+  plot-wave-maps [--contour] / plot-spectrum [--mode ...] [--station N]
+  plot-jason3 / plot-jason3-swh / download-jason3 / plot-ndbc [--download]
+
+远程运维（server: 段）
+  connect-test / ssh / slurm-idle / list-files
+  confirm-slurm [full|half]        写 server.sh；full/half 自动选取空闲 CPU
+  upload --confirm / submit [--script server.sh]
+  check-status / queue-status
+  download-results [--nested] / download-log
   clear-remote --confirm / cancel-job <job_id>
 
-五、辅助
-  print-example                          打印示例 params.yml（不需要工作目录）
+辅助
+  print-example            打印示例 params.yml
+  help / exit              仅 shell 模式
+
+----------------------------------------------------------------------
+使用方式
+----------------------------------------------------------------------
+
+    python3 run.py shell [params.yml]    交互式 REPL（命令不带 ``[工作目录]`` 时沿用已加载目录）
+    python3 run.py <子命令> [选项] [工作目录]  无界面 CLI（每条命令单独指定工作目录）
 
 ----------------------------------------------------------------------
 全局选项
 ----------------------------------------------------------------------
---lang <语言代码>   切换输出语言（支持 zh_CN / en_US），可放在任意位置。
+--lang <语言代码>   切换输出语言（zh_CN / en_US），三种模式均可用。
 
 ----------------------------------------------------------------------
 退出码
@@ -60,54 +78,59 @@ One entry point for three usage modes, and the single place responsible for
 runtime setup (venv / dependencies / sys.path):
 
     python3 run.py                       -> Launch the Desktop GUI (default)
-    python3 run.py shell [params]        -> Launch the interactive REPL (optional params.yml)
+    python3 run.py shell [params.yml]    -> Interactive REPL
     python3 run.py <subcommand> [opts] [workdir]  -> Headless CLI
 
-Internal delegation (all in-process import calls):
+Running ``python3 run.py --help`` without a subcommand prints the command
+reference (same as ``help`` inside ``shell``).
 
-    no args       -> desktop.application.main
-    shell         -> workflows.interfaces.interactive_cli.main
-    other commands-> workflows.interfaces.command_line.main
+**Important**: The repository-root ``params.yml`` is a template and must not be
+run directly. Use ``workdir <path>`` to create or load a workdir (CLI:
+``python3 run.py workdir <path>``). Other commands accept an optional ``[workdir]``;
+the current directory is used when omitted.
 
-----------------------------------------------------------------------
-Headless CLI subcommands
-----------------------------------------------------------------------
+Typical flow:
 
-**Important**: The repository-root ``params.yml`` is a template file and must
-not be run directly. Create a working-directory copy with ``create-workdir``
-first. ``<workdir>`` may be omitted, in which case the current directory
-(``.``) is used.
+    workdir -> run-workflow -> local-run
+                               -> upload -> submit -> check-status -> download-results
 
-1. Working directory
-  create-workdir --name my_case   Create a new workdir from the root params.yml template
+Configuration
+  workdir <path>           Create/load workdir (shell); standalone CLI subcommand
+  validate [workdir]       Validate params.yml
+  config [workdir]         Show configuration summary
+  print-params [workdir]   Print params.yml
 
-2. Preprocessing
-  validate                               Validate whether params.yml is legal
-  prepare-forcing                        Step 1 only: prepare forcing fields (wind.nc etc.)
-  merge-forcing INPUT... -o OUTPUT       Validate and merge NetCDF forcing files
-  generate-grid                          Step 2 only: generate the grid
-  recommend-grid                         Recommend grid spacing/resolution from the domain extent, write to params.yml
-  run                                    Full preprocessing (forcing -> grid -> WW3 namelist)
+Preprocessing (all except merge-forcing accept optional [workdir])
+  prepare-forcing / generate-grid / prepare-ww3 / recommend-cfl / recommend-grid
+  run-workflow / local-run
+  merge-forcing <in.nc> [...] -o <out.nc> [--time-range ...] [--bbox ...]  (standalone)
 
-3. Post-processing / plotting (configured in the plot: section of params.yml)
-  plot                                   Run all enabled=true tasks in the plot section
-  plot-wave-maps [--contour]             Generate wave-height filled-color / contour maps
-  plot-spectrum [--mode first|all|selected] [--station N]   Generate 2-D directional spectrum plots
-  plot-jason3                            Match WW3 results with Jason-3 satellite data
-  plot-ndbc [--download]                 Match WW3 results with NDBC buoys
+Post-processing / plotting (plot: section)
+  plot-wave-maps [--contour] / plot-spectrum [--mode ...] [--station N]
+  plot-jason3 / plot-jason3-swh / download-jason3 / plot-ndbc [--download]
 
-4. Remote operations (configured in the server: section of params.yml, via SSH/SLURM)
-  connect-test / list-files / upload --confirm / submit [--script server.sh]
+Remote operations (server: section)
+  connect-test / ssh / slurm-idle / list-files
+  confirm-slurm [full|half]        Write server.sh; full/half auto-pick idle CPUs
+  upload --confirm / submit [--script server.sh]
   check-status / queue-status / download-results [--nested] / download-log
   clear-remote --confirm / cancel-job <job_id>
 
-5. Auxiliary
-  print-example                          Print an example params.yml (no workdir needed)
+Auxiliary
+  print-example
+  help / exit              Shell mode only
+
+----------------------------------------------------------------------
+Usage modes
+----------------------------------------------------------------------
+
+    python3 run.py shell [params.yml]    Interactive REPL (reuses loaded workdir when omitted)
+    python3 run.py <subcommand> [opts] [workdir]  Headless CLI (workdir per invocation)
 
 ----------------------------------------------------------------------
 Global options
 ----------------------------------------------------------------------
---lang <code>   Switch output language (supports zh_CN / en_US); may appear anywhere.
+--lang <code>   Switch output language (zh_CN / en_US); available in all modes.
 
 ----------------------------------------------------------------------
 Exit codes
@@ -136,7 +159,7 @@ VENV_DIR = ROOT / ".venv"
 
 # 无需完整虚拟环境/依赖即可执行的轻量 CLI 子命令。
 # [EN] Lightweight CLI subcommands that don't require the full venv/dependencies.
-_LIGHT_CLI_COMMANDS = {"--help", "-h", "print-example", "create-workdir"}
+_LIGHT_CLI_COMMANDS = {"--help", "-h", "print-example", "workdir"}
 
 # 项目所需的全部依赖包及其对应的导入模块名。
 # [EN] All required packages and their importable module names.
@@ -244,11 +267,11 @@ def _requires_full_dependencies(mode: str, rest: list[str]) -> bool:
     """判断当前调用是否需要检查虚拟环境与完整依赖。
 
     Desktop 与 interactive 始终需要完整依赖；CLI 下的 help / print-example /
-    create-workdir 可跳过。
+    workdir 可跳过。
 
     [EN] Whether the current invocation needs the full venv/dependency check.
     Desktop and interactive always do; for the CLI, help / print-example /
-    create-workdir can be skipped.
+    workdir can be skipped.
     """
     if mode != "cli":
         return True

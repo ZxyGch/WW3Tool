@@ -814,10 +814,6 @@ def parse_pipeline_config(
             "ww3.file_split 必须使用 presets.file_split 中的选项："
             + "、".join(presets.file_split)
         )
-    if presets.server_st and slurm.server_st not in presets.server_st:
-        raise ConfigError(
-            "slurm.server_st 必须使用 presets.server_st 中定义的名称：" + "、".join(presets.server_st)
-        )
 
     ww3_grid_raw = _as_dict(raw.get("ww3_grid"), "ww3_grid")
     ww3_grid = WW3GridSettings(
@@ -884,6 +880,10 @@ def parse_pipeline_config(
         cores=str(slurm_raw.get("cores") or ""),
         server_st=_slurm_server_st,
     )
+    if presets.server_st and slurm.server_st not in presets.server_st:
+        raise ConfigError(
+            "slurm.server_st 必须使用 presets.server_st 中定义的名称：" + "、".join(presets.server_st)
+        )
 
     plot = _plot_config(raw.get("plot"), base_dir)
     server = _server_config(raw.get("server"), base_dir)

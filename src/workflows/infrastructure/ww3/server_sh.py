@@ -431,8 +431,8 @@ class ServerSh(NMLPrimitives):
             st_path = None
 
             presets_st = getattr(getattr(self, '_loaded_config', None), 'presets', None)
-            if presets_st and hasattr(presets_st, 'st'):
-                st_path = presets_st.st.get(selected_st)
+            if presets_st and hasattr(presets_st, 'server_st'):
+                st_path = presets_st.server_st.get(selected_st)
 
             if not st_path:
                 # [EN] Fallback: read old format from config.json
@@ -611,11 +611,11 @@ class ServerSh(NMLPrimitives):
             # [EN] Prefer reading ST version path from PipelineConfig / params.yml and dynamically build headers
             # 优先从 PipelineConfig / params.yml 读取 ST 版本路径和动态构建 headers
             presets_st = getattr(getattr(self, '_loaded_config', None), 'presets', None)
-            if presets_st and hasattr(presets_st, 'st'):
-                base_dir = presets_st.st.get(selected)
+            if presets_st and hasattr(presets_st, 'server_st'):
+                base_dir = presets_st.server_st.get(selected)
                 # [EN] Dynamically generate comment headers from configured ST versions
                 # 从配置的 ST 版本动态生成 comment headers
-                for st_name in presets_st.st:
+                for st_name in presets_st.server_st:
                     headers[st_name] = f"#wavewatch3--{st_name}"
 
             if not base_dir:

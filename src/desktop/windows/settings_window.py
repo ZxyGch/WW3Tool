@@ -53,6 +53,7 @@ from workflows.infrastructure.runtime_config import (
     smc_bathymetry_relpath_for_combo_index,
     swap_ww3_version,
 )
+from workflows.infrastructure.remote.ssh_config import list_ssh_config_hosts
 from workflows.support.translations import tr
 
 # 谱分区输出方案的候选变量（取自 params.yml all_fields 全集）。
@@ -204,6 +205,10 @@ _NUMERIC_DOTTED_KEYS = {
     "physics.depmin",
     "physics.dshalw",
 }
+
+_SERVER_LOGIN_MODE_PASSWORD = "password"
+_SERVER_LOGIN_MODE_KEY_FILE = "key_file"
+_SERVER_LOGIN_MODE_SSH_CONFIG = "ssh_config"
 
 
 def _file_split_items() -> list[tuple[str, str]]:
@@ -610,14 +615,208 @@ class SettingsInterface(QWidget):
 
     def _build_server_card(self) -> None:
         grid = self._card(tr("server_connection", "服务器连接"))
-        self._text(grid, 0, 0, tr("set_server_host", "服务器地址："), "SERVER_HOST")
-        self._text(grid, 1, 0, tr("set_server_port", "端口："), "SERVER_PORT")
-        self._text(grid, 2, 0, tr("set_server_user", "用户名："), "SERVER_USER")
-        self._text(grid, 3, 0, tr("set_server_password", "密码："), "SERVER_PASSWORD")
-        password = self._fields.get("SERVER_PASSWORD")
-        if password is not None:
-            password.setEchoMode(QLineEdit.EchoMode.Password)
-        self._text(grid, 4, 0, tr("set_server_path", "服务器工作目录："), "SERVER_PATH")
+
+        login_label = self._label(tr("set_server_login_mode", "登录方式："))
+        login_combo = ComboBox()
+        login_combo.setStyleSheet(styles.combo_style())
+        left_align_combo_text(login_combo)
+        for label, mode in (
+            (tr("set_server_login_password", "密码登录"), _SERVER_LOGIN_MODE_PASSWORD),
+            (tr("set_server_login_key_file", "私钥文件登录"), _SERVER_LOGIN_MODE_KEY_FILE),
+            (tr("set_server_login_ssh_config", "SSH 配置文件登录"), _SERVER_LOGIN_MODE_SSH_CONFIG),
+        ):
+            login_combo.addItem(label)
+            login_combo.setItemData(login_combo.count() - 1, mode)
+        selected_mode = self._infer_server_login_mode()
+        for index in range(login_combo.count()):
+            if login_combo.itemData(index) == selected_mode:
+                login_combo.setCurrentIndex(index)
+                break
+        self._expand_field(login_combo)
+        grid.addWidget(login_label, 0, 0)
+        grid.addWidget(login_combo, 0, 1, 1, 3)
+        self._server_login_mode_combo = login_combo
+
+        self._server_host_label = self._label(tr("set_server_host", "服务器地址："))
+        host_edit = LineEdit()
+        host_edit.setStyleSheet(styles.input_style())
+        host_edit.setText(_as_text(self._config.get("SERVER_HOST")))
+        self._expand_field(host_edit)
+        grid.addWidget(self._server_host_label, 1, 0)
+        grid.addWidget(host_edit, 1, 1, 1, 3)
+        self._fields["SERVER_HOST"] = host_edit
+
+        self._server_port_label = self._label(tr("set_server_port", "端口："))
+        port_edit = LineEdit()
+        port_edit.setStyleSheet(styles.input_style())
+        _apply_validator(port_edit, "SERVER_PORT")
+        port_edit.setText(_as_text(self._config.get("SERVER_PORT")))
+        self._expand_field(port_edit)
+        grid.addWidget(self._server_port_label, 2, 0)
+        grid.addWidget(port_edit, 2, 1, 1, 3)
+        self._fields["SERVER_PORT"] = port_edit
+
+        self._server_user_label = self._label(tr("set_server_user", "用户名："))
+        user_edit = LineEdit()
+        user_edit.setStyleSheet(styles.input_style())
+        user_edit.setText(_as_text(self._config.get("SERVER_USER")))
+        self._expand_field(user_edit)
+        grid.addWidget(self._server_user_label, 3, 0)
+        grid.addWidget(user_edit, 3, 1, 1, 3)
+        self._fields["SERVER_USER"] = user_edit
+
+        self._server_password_label = self._label(tr("set_server_password", "密码："))
+        password = LineEdit()
+        password.setStyleSheet(styles.input_style())
+        password.setText(_as_text(self._config.get("SERVER_PASSWORD")))
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        self._expand_field(password)
+        grid.addWidget(self._server_password_label, 4, 0)
+        grid.addWidget(password,  4, 1, 1, 3)
+        self._fields["SERVER_PASSWORD"] = password
+
+        self._server_key_label = self._label(tr("set_server_key_file", "私钥文件："))
+        key_edit = LineEdit()
+        key_edit.setStyleSheet(styles.input_style())
+        key_edit.setText(_as_text(self._config.get("SERVER_KEY_FILE")))
+        self._expand_field(key_edit)
+        key_button = PrimaryPushButton(tr("select", "选择"))
+        key_button.setStyleSheet(styles.button_style())
+        key_button.clicked.connect(lambda: self._pick_ssh_key_file(key_edit))
+        grid.addWidget(self._server_key_label, 5, 0)
+        grid.addWidget(key_edit, 5, 1, 1, 2)
+        grid.addWidget(key_button, 5, 3)
+        self._fields["SERVER_KEY_FILE"] = key_edit
+        self._server_key_button = key_button
+
+        ssh_alias = _as_text(self._config.get("SERVER_SSH_CONFIG_HOST", "")).strip()
+        self._server_ssh_config_label = self._label(
+            tr("set_server_ssh_config_host", "SSH 配置名称："),
+        )
+        ssh_combo = ComboBox()
+        ssh_combo.setStyleSheet(styles.combo_style())
+        left_align_combo_text(ssh_combo)
+        self._populate_ssh_config_combo(ssh_combo, selected=ssh_alias)
+        self._expand_field(ssh_combo)
+        grid.addWidget(self._server_ssh_config_label, 6, 0)
+        grid.addWidget(ssh_combo, 6, 1, 1, 3)
+        self._combos["SERVER_SSH_CONFIG_HOST"] = ssh_combo
+
+        self._text(grid, 7, 0, tr("set_server_path", "服务器工作目录："), "SERVER_PATH")
+
+        login_combo.currentIndexChanged.connect(self._on_server_login_mode_changed)
+        self._update_server_auth_visibility()
+
+    def _infer_server_login_mode(self) -> str:
+        if _as_text(self._config.get("SERVER_SSH_CONFIG_HOST", "")).strip():
+            return _SERVER_LOGIN_MODE_SSH_CONFIG
+        if _as_text(self._config.get("SERVER_KEY_FILE", "")).strip():
+            return _SERVER_LOGIN_MODE_KEY_FILE
+        return _SERVER_LOGIN_MODE_PASSWORD
+
+    def _server_login_mode(self) -> str:
+        combo = getattr(self, "_server_login_mode_combo", None)
+        if combo is None:
+            return self._infer_server_login_mode()
+        index = combo.currentIndex()
+        if index < 0:
+            return _SERVER_LOGIN_MODE_PASSWORD
+        mode = combo.itemData(index)
+        if mode in (
+            _SERVER_LOGIN_MODE_PASSWORD,
+            _SERVER_LOGIN_MODE_KEY_FILE,
+            _SERVER_LOGIN_MODE_SSH_CONFIG,
+        ):
+            return str(mode)
+        return (
+            _SERVER_LOGIN_MODE_PASSWORD,
+            _SERVER_LOGIN_MODE_KEY_FILE,
+            _SERVER_LOGIN_MODE_SSH_CONFIG,
+        )[index]
+
+    def _populate_ssh_config_combo(self, combo: ComboBox, *, selected: str = "") -> None:
+        hosts = list_ssh_config_hosts()
+        combo.blockSignals(True)
+        combo.clear()
+        if hosts:
+            for host in hosts:
+                combo.addItem(host)
+                combo.setItemData(combo.count() - 1, host)
+            combo.setEnabled(True)
+            selected = selected.strip()
+            selected_index = -1
+            if selected:
+                for index in range(combo.count()):
+                    if combo.itemData(index) == selected:
+                        selected_index = index
+                        break
+            combo.setCurrentIndex(selected_index)
+        else:
+            combo.addItem(tr("set_server_ssh_config_empty", "（~/.ssh/config 中无可用 Host）"), "")
+            combo.setEnabled(False)
+            combo.setCurrentIndex(0)
+        combo.blockSignals(False)
+
+    def _clear_ssh_config_selection(self) -> None:
+        combo = self._combos.get("SERVER_SSH_CONFIG_HOST")
+        if combo is None or not combo.count():
+            return
+        if combo.isEnabled():
+            combo.setCurrentIndex(-1)
+        else:
+            combo.setCurrentIndex(0)
+
+    def _pick_ssh_key_file(self, edit: LineEdit) -> None:
+        start = edit.text().strip()
+        if not start:
+            start = str(__import__("pathlib").Path.home() / ".ssh")
+        picked, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("set_server_key_file_dialog", "选择 SSH 私钥文件"),
+            start,
+            tr("set_server_key_file_filter", "SSH 私钥 (*);;所有文件 (*)"),
+        )
+        if picked:
+            edit.setText(picked)
+            self._save_config_now()
+
+    def _on_server_login_mode_changed(self, _index: int = 0) -> None:
+        mode = self._server_login_mode()
+        if mode == _SERVER_LOGIN_MODE_SSH_CONFIG:
+            self._fields["SERVER_PASSWORD"].clear()
+            self._fields["SERVER_KEY_FILE"].clear()
+            saved = _as_text(self._config.get("SERVER_SSH_CONFIG_HOST", "")).strip()
+            self._populate_ssh_config_combo(self._combos["SERVER_SSH_CONFIG_HOST"], selected=saved)
+        elif mode == _SERVER_LOGIN_MODE_KEY_FILE:
+            self._fields["SERVER_PASSWORD"].clear()
+            self._clear_ssh_config_selection()
+        else:
+            self._fields["SERVER_KEY_FILE"].clear()
+            self._clear_ssh_config_selection()
+        self._update_server_auth_visibility()
+        self._save_config_now()
+
+    def _update_server_auth_visibility(self) -> None:
+        mode = self._server_login_mode()
+        use_ssh = mode == _SERVER_LOGIN_MODE_SSH_CONFIG
+        use_key = mode == _SERVER_LOGIN_MODE_KEY_FILE
+        manual_visible = not use_ssh
+        for widget in (
+            self._server_host_label,
+            self._server_port_label,
+            self._server_user_label,
+            self._fields["SERVER_HOST"],
+            self._fields["SERVER_PORT"],
+            self._fields["SERVER_USER"],
+        ):
+            widget.setVisible(manual_visible)
+        self._server_password_label.setVisible(not use_key and not use_ssh)
+        self._fields["SERVER_PASSWORD"].setVisible(not use_key and not use_ssh)
+        self._server_key_label.setVisible(use_key)
+        self._fields["SERVER_KEY_FILE"].setVisible(use_key)
+        self._server_key_button.setVisible(use_key)
+        self._server_ssh_config_label.setVisible(use_ssh)
+        self._combos["SERVER_SSH_CONFIG_HOST"].setVisible(use_ssh)
 
     def _reset_spectrum_defaults(self) -> None:
         for key, value in {
@@ -991,12 +1190,27 @@ class SettingsInterface(QWidget):
         for key, edit in self._fields.items():
             updates[key] = edit.text().strip()
         for key, combo in self._combos.items():
+            if key == "SERVER_SSH_CONFIG_HOST":
+                data = combo.itemData(combo.currentIndex())
+                updates[key] = str(data or "").strip()
+                continue
             data = combo.itemData(combo.currentIndex())
             updates[key] = data if data is not None else combo.currentText()
         for key, check in self._checks.items():
             updates[key] = check.isChecked()
         if hasattr(self, "_cpu_group_edit"):
             updates["CPU_GROUP"] = [s.strip() for s in self._cpu_group_edit.text().split(",") if s.strip()]
+        if hasattr(self, "_server_login_mode_combo"):
+            mode = self._server_login_mode()
+            if mode == _SERVER_LOGIN_MODE_SSH_CONFIG:
+                updates["SERVER_PASSWORD"] = ""
+                updates["SERVER_KEY_FILE"] = ""
+            elif mode == _SERVER_LOGIN_MODE_KEY_FILE:
+                updates["SERVER_PASSWORD"] = ""
+                updates["SERVER_SSH_CONFIG_HOST"] = ""
+            else:
+                updates["SERVER_KEY_FILE"] = ""
+                updates["SERVER_SSH_CONFIG_HOST"] = ""
         return updates
 
     def _collect_nested(self, fields: dict[str, QWidget]) -> dict:

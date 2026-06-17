@@ -52,7 +52,7 @@ If you find this tool useful, please give it a ⭐️ 🥳
 ```sh
 python3 run.py                 # 1. GUI (default)
 python3 run.py shell           # 2. Interactive terminal
-python3 run.py run params.yml  # 3. Headless CLI (one-shot subcommands)
+python3 run.py run-workflow params.yml  # 3. Headless CLI (one-shot subcommands)
 ```
 
 If anything fails to install or some packages are missing, please install them manually.
@@ -90,11 +90,12 @@ Remember to create a working directory first and edit `params.yml` inside it. Th
 Each step can be invoked as a one-shot subcommand. The tool reads `params.yml` from the working directory, runs, and exits:
 
 ```sh
-python3 run.py validate params.yml          # validate configuration
-python3 run.py prepare-forcing params.yml   # prepare forcing fields
-python3 run.py generate-grid params.yml     # generate grid
-python3 run.py run params.yml               # full preprocessing
-python3 run.py plot params.yml              # plotting
+python3 run.py workdir my_case              # create or load a working directory
+python3 run.py validate my_case             # validate configuration
+python3 run.py prepare-forcing my_case      # prepare forcing fields
+python3 run.py generate-grid my_case        # generate grid
+python3 run.py run-workflow my_case         # full preprocessing
+python3 run.py plot-wave-maps my_case       # plotting
 ```
 
 This “one command, one step, no manual interaction” style is well suited to scripting and automation, including AI tools (such as Claude Code): an agent can run these commands directly and use stdout and exit codes to tell whether each step succeeded, without operating the GUI.
@@ -145,7 +146,7 @@ python3 run.py shell        → interactive terminal (repeat steps as needed)
 python3 run.py <subcommand> … → headless CLI (scripting and automation)
 ```
 
-The repository-root `params.yml` is only a template. Before running, copy it into a separate working directory with `create-workdir`, then edit `params.yml` in that directory.
+The repository-root `params.yml` is only a template. Before running, create or load a separate working directory with `workdir`, then edit `params.yml` in that directory.
 
 
 

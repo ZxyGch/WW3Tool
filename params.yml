@@ -355,11 +355,10 @@ ww3_grid:
   TIMESTEPS%DTMIN: 15
 # ────────────────────────────────────────────────────────────────────
 # SLURM job-scheduler settings for HPC cluster submissions.
-#   cpu         – default CPU model identifier.
-#   cpu_group   – list of acceptable CPU models for job placement.
-#   nodes       – number of compute nodes to request.
-#   cores       – CPU cores per node.
-#   server_st   – selected ST version name (must be a key from presets.server_st).
+#   cpu       – default CPU model identifier.
+#   cpu_group – list of acceptable CPU models for job placement.
+#   nodes     – number of compute nodes to request.
+#   cores     – CPU cores per node.
 # ────────────────────────────────────────────────────────────────────
 slurm:
   cpu: CPU6240R
