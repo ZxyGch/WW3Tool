@@ -174,39 +174,51 @@ class GridStepPanel:
         return self.grid_type_combo.currentIndex() == 1
 
     def render(self, grid: GridConfig) -> None:
-        self.set_value("grid_dx", f"{grid.outer.dx:.2f}")
-        self.set_value("grid_dy", f"{grid.outer.dy:.2f}")
-        self.set_value("grid_lon_west", f"{grid.outer.lon[0]:.4f}")
-        self.set_value("grid_lon_east", f"{grid.outer.lon[1]:.4f}")
-        self.set_value("grid_lat_south", f"{grid.outer.lat[0]:.4f}")
-        self.set_value("grid_lat_north", f"{grid.outer.lat[1]:.4f}")
-        self.grid_type_combo.setCurrentIndex(1 if grid.grid_type == "nested" else 0)
-        self.mesh_type_combo.setCurrentIndex({"structured": 0, "smc": 1, "unstructured": 2}.get(grid.mesh_type, 0))
-        if grid.smc is not None:
-            if grid.smc.n_levels is not None:
-                self._smc_n_levels.setText(str(grid.smc.n_levels))
-            if grid.smc.depmin is not None:
-                self._smc_depmin.setText(str(grid.smc.depmin))
-            if grid.smc.dshalw is not None:
-                self._smc_dshalw.setText(str(grid.smc.dshalw))
-        if grid.unstructured is not None:
-            if grid.unstructured.hmax is not None:
-                self._unst_hmax.setText(str(grid.unstructured.hmax))
-            if grid.unstructured.hmin is not None:
-                self._unst_hmin.setText(str(grid.unstructured.hmin))
-            if grid.unstructured.hshr is not None:
-                self._unst_hshr.setText(str(grid.unstructured.hshr))
-            if grid.unstructured.dhdx is not None:
-                self._unst_dhdx.setText(str(grid.unstructured.dhdx))
-            if grid.unstructured.deep_ocean_threshold_m is not None:
-                self._unst_deep_threshold.setText(str(grid.unstructured.deep_ocean_threshold_m))
-        if grid.inner is not None:
-            self.set_value("grid_inner_dx", f"{grid.inner.dx:.2f}")
-            self.set_value("grid_inner_dy", f"{grid.inner.dy:.2f}")
-            self.set_value("grid_inner_lon_west", f"{grid.inner.lon[0]:.4f}")
-            self.set_value("grid_inner_lon_east", f"{grid.inner.lon[1]:.4f}")
-            self.set_value("grid_inner_lat_south", f"{grid.inner.lat[0]:.4f}")
-            self.set_value("grid_inner_lat_north", f"{grid.inner.lat[1]:.4f}")
+        # [EN] Block combo signals to prevent cascade that resets values/visibility
+        # 阻止 combo 信号级联，避免 handler 在 render 过程中重置值和可见性
+        self.grid_type_combo.blockSignals(True)
+        self.mesh_type_combo.blockSignals(True)
+        try:
+            self.set_value("grid_dx", f"{grid.outer.dx:.2f}")
+            self.set_value("grid_dy", f"{grid.outer.dy:.2f}")
+            self.set_value("grid_lon_west", f"{grid.outer.lon[0]:.4f}")
+            self.set_value("grid_lon_east", f"{grid.outer.lon[1]:.4f}")
+            self.set_value("grid_lat_south", f"{grid.outer.lat[0]:.4f}")
+            self.set_value("grid_lat_north", f"{grid.outer.lat[1]:.4f}")
+            self.grid_type_combo.setCurrentIndex(1 if grid.grid_type == "nested" else 0)
+            self.mesh_type_combo.setCurrentIndex({"structured": 0, "smc": 1, "unstructured": 2}.get(grid.mesh_type, 0))
+            if grid.smc is not None:
+                if grid.smc.n_levels is not None:
+                    self._smc_n_levels.setText(str(grid.smc.n_levels))
+                if grid.smc.depmin is not None:
+                    self._smc_depmin.setText(str(grid.smc.depmin))
+                if grid.smc.dshalw is not None:
+                    self._smc_dshalw.setText(str(grid.smc.dshalw))
+            if grid.unstructured is not None:
+                if grid.unstructured.hmax is not None:
+                    self._unst_hmax.setText(str(grid.unstructured.hmax))
+                if grid.unstructured.hmin is not None:
+                    self._unst_hmin.setText(str(grid.unstructured.hmin))
+                if grid.unstructured.hshr is not None:
+                    self._unst_hshr.setText(str(grid.unstructured.hshr))
+                if grid.unstructured.dhdx is not None:
+                    self._unst_dhdx.setText(str(grid.unstructured.dhdx))
+                if grid.unstructured.deep_ocean_threshold_m is not None:
+                    self._unst_deep_threshold.setText(str(grid.unstructured.deep_ocean_threshold_m))
+            if grid.inner is not None:
+                self.set_value("grid_inner_dx", f"{grid.inner.dx:.2f}")
+                self.set_value("grid_inner_dy", f"{grid.inner.dy:.2f}")
+                self.set_value("grid_inner_lon_west", f"{grid.inner.lon[0]:.4f}")
+                self.set_value("grid_inner_lon_east", f"{grid.inner.lon[1]:.4f}")
+                self.set_value("grid_inner_lat_south", f"{grid.inner.lat[0]:.4f}")
+                self.set_value("grid_inner_lat_north", f"{grid.inner.lat[1]:.4f}")
+        finally:
+            self.grid_type_combo.blockSignals(False)
+            self.mesh_type_combo.blockSignals(False)
+        # [EN] Apply visibility states after all values are set
+        # 所有值设置完毕后再应用可见性状态
+        self._on_grid_type_changed()
+        self._on_mesh_type_changed()
 
     def overrides(self) -> dict[str, object]:
         inner = None

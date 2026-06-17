@@ -189,7 +189,11 @@ class CalculationStepPanel:
         ]
 
     def render(self, calc: CalcConfig) -> None:
-        self.mode_combo.setCurrentIndex({"region": 0, "spectral_point": 1, "track": 2}.get(calc.mode, 0))
+        self.mode_combo.blockSignals(True)
+        try:
+            self.mode_combo.setCurrentIndex({"region": 0, "spectral_point": 1, "track": 2}.get(calc.mode, 0))
+        finally:
+            self.mode_combo.blockSignals(False)
         self._fill_table(self.spectral_table, "spectral", [[p.lon, p.lat, p.name] for p in calc.points])
         self._fill_table(
             self.track_table, "track", [[p.datetime, p.lon, p.lat, p.name] for p in calc.track_points]
