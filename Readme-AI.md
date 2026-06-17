@@ -8,7 +8,7 @@
 
 WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理与运行辅助工具**。它不替代 WW3 本身的可执行程序（`ww3_grid`、`ww3_prnc`、`ww3_shel` 等），而是负责：
 
-- 强迫场文件的校验、必要修复与合并（变量检测、风场归一化、纬度递减处理、变量重命名）
+- 强迫场文件的校验、修复与合并（纬度排序、变量重命名、时间轴修复）
 - 网格生成（结构化矩形 / 三角形非结构化 / SMC 三种类型）
 - 自动配置 WW3 所需的全套 namelist 文件（`ww3_grid.nml`、`ww3_prnc.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`ww3_multi.nml` 等）
 - 生成 Slurm 提交脚本（`server.sh`）和本地运行脚本（`local.sh`）
@@ -26,7 +26,7 @@ WW3Tool 几乎完全由 Python 组成（其他语言的代码是网格生成器 
 ```sh
 python3 run.py                    # GUI（PyQt6 图形界面，默认）
 python3 run.py shell              # 交互式终端（REPL，可反复执行各步骤）
-python3 run.py <子命令>            # 无界面 CLI（从当前目录 params.yml 读取配置）
+python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
 ```
 
 三种模式共享同一套业务逻辑（`src/workflows/application/`），差别仅在交互层。
@@ -40,22 +40,22 @@ python3 run.py <子命令>            # 无界面 CLI（从当前目录 params.y
 
 ### 2.3 无界面 CLI 
 
-CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用。每个子命令从当前目录的 `params.yml` 读取配置后执行、打印日志到 stdout、通过退出码反馈成功/失败。主要子命令包括：
+CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用。每个子命令读取工作目录的 `params.yml` 后执行、打印日志到 stdout、通过退出码反馈成功/失败。主要子命令包括：
 
 | 类别 | 子命令 | 说明 |
 |------|--------|------|
 | 配置管理 | `workdir <path>` | 创建或加载工作目录 |
-| | `validate` | 校验 params.yml |
-| | `config` | 打印配置摘要 |
-| | `print-params` | 输出 params.yml 原文 |
-| 预处理 | `prepare-forcing` | 准备强迫场（Step 1） |
+| | `validate [workdir]` | 校验 params.yml |
+| | `config [workdir]` | 打印配置摘要 |
+| | `print-params [workdir]` | 输出 params.yml 原文 |
+| 预处理 | `prepare-forcing [workdir]` | 准备强迫场（Step 1） |
 | | `merge-forcing <in1.nc> [...] -o <out.nc>` | 独立工具：校验并合并强迫场 NetCDF |
-| | `generate-grid` | 生成网格（Step 2） |
+| | `generate-grid [workdir]` | 生成网格（Step 2） |
 | | `recommend-grid [--coarse\|--fine]` | 按区域范围推荐网格间距 |
 | | `recommend-cfl` | 按 CFL 公式推荐时间步长 |
-| | `prepare-ww3` | 仅生成 WW3 namelist |
-| | `run-workflow` | 完整预处理流程 |
-| | `local-run` | 执行 local.sh |
+| | `prepare-ww3 [workdir]` | 仅生成 WW3 namelist |
+| | `run-workflow [workdir]` | 完整预处理流程 |
+| | `local-run [workdir]` | 执行 local.sh |
 | 远程运维 | `connect-test` | 测试 SSH 连接 |
 | | `ssh` | 打开交互式 SSH 终端 |
 | | `slurm-idle` | 查看 Slurm 空闲 CPU |
@@ -159,7 +159,7 @@ python3 run.py workdir work_dir_name    # 从模板创建并加载工作目录
 3. 用正则替换工作目录路径、清空强迫场文件路径、清空日期范围和 `remote_dir`——这些是算例特有值，需要用户自行填写
 4. 其余段落（`presets`、`paths`、`ww3_grid`、`plot` 等通用配置）保持模板值不变
 
-工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响模板或其他算例。**后续所有 CLI 命令都需要先 `cd` 到工作目录后再执行**（命令自动从当前目录读取 `params.yml`）。
+工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响模板或其他算例。
 
 打开已有工作目录时，程序自动扫描目录中的文件来恢复 GUI 状态（详见 Section 7）。
 
@@ -168,38 +168,31 @@ python3 run.py workdir work_dir_name    # 从模板创建并加载工作目录
 ### 5.2 Step 1 — 强迫场准备
 
 ```sh
-python3 run.py prepare-forcing    # 准备强迫场
+python3 run.py prepare-forcing work_dir_name    # 准备强迫场
 python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ```
 
 `application/forcing_preparation.py` + `infrastructure/forcing/`
 
-强迫场导入由 `prepare_forcing()` 编排，实际逻辑在 `infrastructure/forcing/` 下。代码会先用 `VariableDetector.inspect_forcing_fields()` 打开 NetCDF 检测变量名，再按场类型走不同路径。
-
-当前支持的变量识别规则：
-
-- wind：`u10/v10`、`U10/V10`、`wndewd/wndnwd`、`WNDEWD/WNDNWD`、`uwnd/vwnd`、`UWND/VWND`
-- current：`uo/vo` 或 `UO/VO`
-- level：`zos` 或 `ZOS`
-- ice：`siconc` 或 `SICONC`
+强迫场导入分为两条路径：**风场**走独立的标准化流程（完整重写），**流场/水位场/冰场**走通用的复制+修复流程。
 
 #### 风场导入
 
-风场有专用归一化流程，但要区分**纯风场文件**和**多场文件中包含风场**：
+风场文件不是简单复制，而是经过完整的标准化重写，输出 WW3 `ww3_prnc` 所需的精确格式：
 
-- 纯风场文件：不先走通用复制修复，直接由 `WindNormalizeService.normalize(source, target)` 写出目标文件。通常目标就是工作目录下的 `wind.nc`；如果 `process_mode=move`，归一化成功后会删除原源文件。
-- 多场文件包含风场：先把原文件复制/移动到工作目录的组合文件名（例如 `wind_current_level.nc`），再额外从该文件归一化生成标准 `wind.nc`。这样其它强迫场仍指向组合文件，风场预处理使用单独的标准风场文件。
+1. **变量检测**：打开 NetCDF 检测风场变量，支持多种命名（`u10`/`v10`、`wndewd`/`wndnwd`、`uwnd`/`vwnd`、`eastward_wind` 等）
+2. **维度重排**：无论源文件维度顺序如何，输出统一为 `(time, latitude, longitude)`
+3. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
+4. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
+5. **纬度翻转**：如果纬度从大到小排列（ERA5 默认），自动翻转为从小到大
+6. **经度检查**：经度必须从小到大，递减则拒绝（抛出 `ValueError`）
+7. **输出变量名**：固定为 `u10`/`v10`，带 `units="m/s"`、`level="10m"` 属性
 
-风场归一化会完整重写 NetCDF，输出 WW3 `ww3_prnc` 更稳定读取的格式：
+大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（最多 256 个时间步/块）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96 时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再原子替换，保证完整性。
 
-1. **变量检测**：支持 `u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd`、`eastward_wind/northward_wind` 等风分量命名。
-2. **维度识别与重排**：优先按变量维度名识别 `time/lat/lon` 位置；必要时按数组形状兜底；输出统一为 `(time, latitude, longitude)`。
-3. **坐标变量标准化**：输出坐标固定为 `longitude`、`latitude`、`time`。
-4. **经纬度方向处理**：纬度递减会翻转为递增；经度递减也会翻转为递增，并同步翻转风场数据。
-5. **时间单位转换**：如源文件有 `time.units`，会尽量用 `num2date` 转为 `seconds since 1970-01-01`；转换失败则保留原始数值但输出属性仍写标准单位。
-6. **输出变量名与属性**：风变量固定写为 `u10`/`v10`，设置 `_FillValue=-32767.0`、`units="m/s"`、`level="10m"`，并尽量继承压缩过滤参数。
+#### 流场/水位场/冰场导入（`ImportForcingFileUseCase` + `FileService`）
 
-大文件采用自适应内存策略：根据可用内存和数据量选择全量加载、分块处理（最多 256 个时间步/块）或多进程并行（文件较大、时间步较多且分块数足够时）。写入先输出到临时文件，再用原子替换保证完整性。
+非风场强迫场采用复制+修复模式：
 
 #### 通用强迫场导入
 
@@ -234,7 +227,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ### 5.3 Step 2 — 网格生成
 
 ```sh
-python3 run.py generate-grid    # 生成网格
+python3 run.py generate-grid work_dir_name                  # 生成网格
 python3 run.py recommend-grid --coarse                # 推荐网格间距
 python3 run.py recommend-cfl                          # 推荐 CFL 时间步长
 ```
@@ -277,8 +270,8 @@ python3 run.py recommend-cfl                          # 推荐 CFL 时间步长
 ### 5.5 Step 4 — WW3 配置（namelist 与脚本生成）
 
 ```sh
-python3 run.py prepare-ww3    # 仅生成 namelist 和脚本
-python3 run.py run-workflow    # 完整预处理（Step 1~4 一次执行）
+python3 run.py prepare-ww3 work_dir_name      # 仅生成 namelist 和脚本
+python3 run.py run-workflow work_dir_name     # 完整预处理（Step 1~4 一次执行）
 ```
 
 `infrastructure/adapters/ww3_namelist_adapter.py` + `infrastructure/ww3/`
@@ -539,14 +532,14 @@ python3 run.py ssh                      # 打开交互式 SSH 终端
 ### 5.7 上传与运行
 
 ```sh
-python3 run.py upload --confirm    # 上传工作目录到服务器
-python3 run.py submit    # 提交 server.sh 到 Slurm
-python3 run.py check-status    # 检查远程任务状态
-python3 run.py download-results    # 下载结果（嵌套模式仅下载 fine/）
-python3 run.py download-log    # 下载 success.log / fail.log
-python3 run.py cancel-job 12345    # 取消 SLURM 任务
-python3 run.py clear-remote --confirm # 清空远程工作目录
-python3 run.py local-run    # 本地执行 local.sh
+python3 run.py upload --confirm work_dir_name       # 上传工作目录到服务器
+python3 run.py submit work_dir_name                 # 提交 server.sh 到 Slurm
+python3 run.py check-status work_dir_name           # 检查远程任务状态
+python3 run.py download-results work_dir_name       # 下载结果（嵌套模式仅下载 fine/）
+python3 run.py download-log work_dir_name           # 下载 success.log / fail.log
+python3 run.py cancel-job 12345 work_dir_name       # 取消 SLURM 任务
+python3 run.py clear-remote --confirm work_dir_name # 清空远程工作目录
+python3 run.py local-run work_dir_name              # 本地执行 local.sh
 ```
 
 **本地运行**：执行工作目录下的 `local.sh`，调用本地安装的 WW3 可执行文件。
@@ -561,8 +554,8 @@ python3 run.py local-run    # 本地执行 local.sh
 ### 5.8 ntfy 通知系统
 
 ```sh
-python3 run.py ntfy-watch    # 注入全局常驻监听
-python3 run.py ntfy-watch-job 12345    # 注入单任务一次性监听
+python3 run.py ntfy-watch work_dir_name              # 注入全局常驻监听
+python3 run.py ntfy-watch-job 12345 work_dir_name    # 注入单任务一次性监听
 ```
 
 通过 `ntfy.sh` 服务实现 Slurm 作业完成通知：
@@ -575,14 +568,14 @@ python3 run.py ntfy-watch-job 12345    # 注入单任务一次性监听
 ### 5.9 后处理绘图
 
 ```sh
-python3 run.py plot-wave-maps    # 波高填色图
-python3 run.py plot-wave-maps --contour    # 波高等高线图
-python3 run.py plot-spectrum    # 方向谱图
-python3 run.py plot-jason3    # Jason-3 卫星轨迹对比
-python3 run.py plot-jason3-swh    # Jason-3 波高对比
-python3 run.py download-jason3    # 下载 Jason-3 数据
-python3 run.py plot-ndbc    # NDBC 浮标匹配
-python3 run.py plot-ndbc --download    # 下载 NDBC 数据并匹配
+python3 run.py plot-wave-maps work_dir_name             # 波高填色图
+python3 run.py plot-wave-maps --contour work_dir_name   # 波高等高线图
+python3 run.py plot-spectrum work_dir_name              # 方向谱图
+python3 run.py plot-jason3 work_dir_name                # Jason-3 卫星轨迹对比
+python3 run.py plot-jason3-swh work_dir_name            # Jason-3 波高对比
+python3 run.py download-jason3 work_dir_name            # 下载 Jason-3 数据
+python3 run.py plot-ndbc work_dir_name                  # NDBC 浮标匹配
+python3 run.py plot-ndbc --download work_dir_name       # 下载 NDBC 数据并匹配
 ```
 
 

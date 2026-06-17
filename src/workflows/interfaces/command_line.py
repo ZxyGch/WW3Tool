@@ -1,11 +1,11 @@
 """无界面预处理与后处理的命令行适配器。
 
 本模块属于 ``interfaces/`` 入口层，解析 ``run.py`` 传入的子命令与参数，
-从当前目录加载 ``params.yml`` 后委派给 ``application/`` 对应用例执行。
+从指定工作目录中加载 ``params.yml`` 后委派给 ``application/`` 对应用例执行。
 
 **工作目录约定**：根目录 ``params.yml`` 仅作为模板，CLI 不允许直接使用。
-所有子命令从当前目录的 ``params.yml`` 读取配置，不接受工作目录参数。
-使用 ``workdir <路径>`` 子命令从模板创建或加载工作目录。
+所有子命令接受一个 ``workdir`` 参数（含 ``params.yml`` 的目录），
+省略时使用当前目录。用 ``workdir <路径>`` 从模板创建或加载工作目录。
 
 命令分组：
 - 配置管理：``workdir``、``validate``、``config``、``print-params``
@@ -20,13 +20,13 @@
 [EN] Command-line adapter for headless preprocessing and post-processing.
 
 This module belongs to the ``interfaces/`` entry-point layer. It parses subcommands
-and arguments passed from ``run.py``, loads ``params.yml`` from the current
+and arguments passed from ``run.py``, loads ``params.yml`` from the specified
 working directory, and delegates to the corresponding ``application/`` use case.
 
 **Working directory convention**: The root ``params.yml`` is only a template and
-cannot be used directly by the CLI. All subcommands read configuration from
-``./params.yml`` in the current directory and do not accept a workdir argument.
-Use the ``workdir <path>`` subcommand to create or load a working directory first.
+cannot be used directly by the CLI. All subcommands accept a ``workdir`` argument
+(directory containing ``params.yml``); the current directory is used when omitted.
+Use ``workdir <path>`` to create or load a working directory from the template first.
 
 Command groups:
 - Configuration: ``workdir``, ``validate``, ``config``, ``print-params``
@@ -135,6 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     # ── configuration ──────────────────────────────────────────────────────
+    _WD_HELP = tr("cli_help_workdir", "Working directory containing params.yml (default: current directory)")
 
     p_workdir = sub.add_parser(
         "workdir",
@@ -147,16 +148,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_validate = sub.add_parser("validate", help=tr("cli_help_validate", "Validate a YAML parameter file"))
+    p_validate.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_config = sub.add_parser("config", help=tr("cli_help_config", "Show a configuration summary"))
+    p_config.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_print_params = sub.add_parser(
         "print-params",
         help=tr("cli_help_print_params", "Print params.yml from the working directory"),
     )
+    p_print_params.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     # ── preprocessing ──────────────────────────────────────────────────────
     p_forcing = sub.add_parser("prepare-forcing", help=tr("cli_help_prepare_forcing", "Run only forcing preparation"))
+    p_forcing.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_merge = sub.add_parser(
         "merge-forcing",
@@ -201,11 +206,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "Run only grid generation"))
+    p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_recgrid = sub.add_parser(
         "recommend-grid",
         help=tr("cli_help_recommend_grid", "Recommend grid spacing/resolution from the domain extent and write to params.yml"),
     )
+    p_recgrid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_recgrid.add_argument(
         "--coarse", action="store_true",
         help=tr("cli_help_recommend_grid_coarse", "Use one tier coarser than the auto-matched recommendation"),
@@ -219,24 +226,29 @@ def build_parser() -> argparse.ArgumentParser:
         "run-workflow",
         help=tr("cli_help_run_workflow", "Run full preprocessing (forcing → grid → WW3 namelist)"),
     )
+    p_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_prepare_ww3 = sub.add_parser(
         "prepare-ww3",
         help=tr("cli_help_prepare_ww3", "Generate WW3 namelist only (skip forcing and grid)"),
     )
+    p_prepare_ww3.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_rec_cfl = sub.add_parser(
         "recommend-cfl",
         help=tr("cli_help_recommend_cfl", "Recommend timesteps via CFL and write back to params.yml"),
     )
+    p_rec_cfl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_local_run = sub.add_parser(
         "local-run",
         help=tr("cli_help_local_run", "Execute local.sh in the working directory"),
     )
+    p_local_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     # ── post-processing / plotting ─────────────────────────────────────────
     p_wm = sub.add_parser("plot-wave-maps", help=tr("cli_help_plot_wave_maps", "Generate wave height filled-color maps"))
+    p_wm.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_wm.add_argument(
         "--contour",
         action="store_true",
@@ -244,6 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_sp = sub.add_parser("plot-spectrum", help=tr("cli_help_plot_spectrum", "Generate 2-D spectrum plots"))
+    p_sp.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_sp.add_argument(
         "--mode",
         choices=["first", "all", "selected"],
@@ -259,18 +272,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_j3 = sub.add_parser("plot-jason3", help=tr("cli_help_match_jason3", "Match WW3 output to Jason-3 satellite data"))
+    p_j3.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_j3swh = sub.add_parser(
         "plot-jason3-swh",
         help=tr("cli_help_jason3_swh", "Plot Jason-3 satellite SWH / track map for the configured region"),
     )
+    p_j3swh.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_j3dl = sub.add_parser(
         "download-jason3",
         help=tr("cli_help_download_jason3", "Download Jason-3 L2 data for the configured time range"),
     )
+    p_j3dl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_ndbc = sub.add_parser("plot-ndbc", help=tr("cli_help_match_ndbc", "Match WW3 output to NDBC buoy observations"))
+    p_ndbc.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_ndbc.add_argument(
         "--download",
         action="store_true",
@@ -279,13 +296,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── remote server operations ───────────────────────────────────────────
     p_conn = sub.add_parser("connect-test", help=tr("cli_help_connect_test", "Test SSH connection to the server"))
+    p_conn.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_ssh = sub.add_parser("ssh", help=tr("cli_help_ssh", "Open an interactive SSH terminal"))
+    p_ssh.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_slurm_idle = sub.add_parser(
         "slurm-idle",
         help=tr("cli_help_slurm_idle", "Query Slurm idle CPU resources on the remote server"),
     )
+    p_slurm_idle.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_confirm_slurm = sub.add_parser(
         "confirm-slurm",
@@ -294,6 +314,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Write params.yml Slurm settings to server.sh (optional --full/--half to auto-pick idle CPUs)",
         ),
     )
+    p_confirm_slurm.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_confirm_slurm.add_argument(
         "--full",
         action="store_true",
@@ -306,11 +327,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_ls = sub.add_parser("list-files", help=tr("cli_help_list_files", "List files in the remote workdir"))
+    p_ls.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_upload = sub.add_parser(
         "upload",
         help=tr("cli_help_upload", "Upload the local workdir to the remote server (requires --confirm)"),
     )
+    p_upload.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_upload.add_argument(
         "--confirm",
         action="store_true",
@@ -318,6 +341,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_submit = sub.add_parser("submit", help=tr("cli_help_submit", "Execute a script on the remote server"))
+    p_submit.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_submit.add_argument(
         "--script",
         default="server.sh",
@@ -326,10 +350,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_status = sub.add_parser("check-status", help=tr("cli_help_check_status", "Check remote job completion status"))
+    p_status.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_queue = sub.add_parser("queue-status", help=tr("cli_help_queue_status", "Show SLURM queue (squeue -l)"))
+    p_queue.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_dl = sub.add_parser("download-results", help=tr("cli_help_download_results", "Download ww3*.nc output from remote server"))
+    p_dl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_dl.add_argument(
         "--nested",
         action="store_true",
@@ -337,11 +364,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_log = sub.add_parser("download-log", help=tr("cli_help_download_log", "Download success.log / fail.log from remote server"))
+    p_log.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_clear = sub.add_parser(
         "clear-remote",
         help=tr("cli_help_clear_remote", "Delete all files in the remote workdir (requires --confirm)"),
     )
+    p_clear.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_clear.add_argument(
         "--confirm",
         action="store_true",
@@ -349,17 +378,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_cancel = sub.add_parser("cancel-job", help=tr("cli_help_cancel_job", "Cancel a SLURM job by id"))
+    p_cancel.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_cancel.add_argument("job_id", nargs="?", default=None, help=tr("cli_help_job_id", "SLURM job id to cancel"))
 
     p_ntfy = sub.add_parser(
         "ntfy-watch",
         help=tr("cli_help_ntfy_watch", "Inject a persistent ntfy watcher on the remote login node"),
     )
+    p_ntfy.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_ntfy_job = sub.add_parser(
         "ntfy-watch-job",
         help=tr("cli_help_ntfy_watch_job", "Inject a one-shot ntfy watcher for a specific SLURM job"),
     )
+    p_ntfy_job.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_ntfy_job.add_argument(
         "job_id",
         help=tr("cli_help_ntfy_job_id", "SLURM job id to watch"),
@@ -382,6 +414,7 @@ _REMOTE_COMMANDS = {
     "check-status", "queue-status", "download-results", "download-log",
     "clear-remote", "cancel-job", "ntfy-watch", "ntfy-watch-job",
 }
+
 
 
 def _run_workdir(path: str) -> int:
@@ -446,9 +479,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 2
 
-        # 从当前目录解析 params.yml 路径
-        # [EN] Resolve params.yml path from the current directory
-        params_path = resolve_params_path(None)
+        # 从工作目录解析 params.yml 路径
+        # [EN] Resolve params.yml path from the working directory
+        params_path = resolve_params_path(getattr(args, "workdir", None))
 
         # Plot and remote commands skip preprocessing validation
         if args.command in _PLOT_COMMANDS or args.command in _REMOTE_COMMANDS:
