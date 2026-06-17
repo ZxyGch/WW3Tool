@@ -30,6 +30,7 @@ from typing import Optional
 
 from ..domain.forcing_fields import FORCING_FIELD_ORDER, ForcingField, Step1Files
 
+from ..support.formatting import format_file_size
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
 
@@ -202,7 +203,7 @@ def _first_named_variable(dataset, names: tuple[str, ...]):
     return None, None
 
 
-from ..support.formatting import format_file_size
+def _format_interval(seconds: float) -> str:
     """将秒数格式化为秒/分钟/小时/天的可读字符串。
 
     [EN] Format seconds into a human-readable string of seconds/minutes/hours/days.

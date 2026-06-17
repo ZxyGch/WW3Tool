@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shlex
 import stat
 import sys
 import tempfile
@@ -282,10 +283,9 @@ class SshClient:
         Returns the process exit code.
         """
         self.ensure_connected(log=log)
-        cmd = (
-            f"cd '{remote_dir}' && chmod +x {script_name} 2>/dev/null || true; "
-            f"cd '{remote_dir}' && bash {script_name}"
-        )
+        quoted_remote_dir = shlex.quote(remote_dir)
+        quoted_script_name = shlex.quote(script_name)
+        cmd = f"cd {quoted_remote_dir} && (chmod +x {quoted_script_name} 2>/dev/null || true) && bash {quoted_script_name}"
         log(f"▶ {cmd}")
         stdin, stdout, stderr = self._ssh.exec_command(cmd, get_pty=True)
         for line in iter(stdout.readline, ""):
@@ -537,7 +537,8 @@ class SshClient:
 
     def cancel_job(self, job_id: str, *, log: LogFn = _noop) -> None:
         """通过 ``scancel`` 取消指定 SLURM 任务。"""
-        out, err, code = self.exec_command(f"scancel {job_id}", log=log)
+        quoted_job_id = shlex.quote(str(job_id))
+        out, err, code = self.exec_command(f"scancel {quoted_job_id}", log=log)
         if code == 0:
             log(f"✅ 已取消任务 {job_id}")
         else:
@@ -545,10 +546,13 @@ class SshClient:
 
     def clear_remote_dir(self, remote_dir: str, *, log: LogFn = _noop) -> None:
         """清空 ``remote_dir`` 内所有文件与子目录（保留目录本身）。"""
-        cmd = f"cd '{remote_dir}' && sh -c 'rm -rf * .[!.]*' 2>&1 || true"
+        quoted_remote_dir = shlex.quote(remote_dir)
+        cmd = f"cd {quoted_remote_dir} && find . -mindepth 1 -maxdepth 1 -exec rm -rf -- {{}} +"
         log(tr("clear_remote_dir_start", "🗑 清空远程目录: {path}").format(path=remote_dir))
         out, err, code = self.exec_command(cmd, log=log, timeout=60)
-        if code == 0 or "No such file" not in err:
+        if code == 0:
             log(tr("clear_remote_dir_done", "✅ 已清空 {path}").format(path=remote_dir))
         else:
-            log(tr("clear_remote_dir_warning", "⚠️ 清空时有警告: {error}").format(error=err))
+            message = err or out or f"exit code {code}"
+            log(tr("clear_remote_dir_warning", "⚠️ 清空时有警告: {error}").format(error=message))
+            raise RuntimeError(f"清空远程目录失败：{remote_dir}（{message}）")

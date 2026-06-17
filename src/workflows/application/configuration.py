@@ -537,7 +537,7 @@ def load_pipeline_config(
 ) -> PipelineConfig:
     """从 YAML 文件路径加载流水线配置并完成校验。
 
-    若工作目录 params.yml 无法解析（YAML 语法错误或结构异常），整体回退到根 params.yml。
+    YAML 语法错误或顶层结构异常会立即报错，禁止回退后继续执行。
 
     Args:
         path: ``params.yml`` 或同类参数文件的路径。
@@ -551,8 +551,7 @@ def load_pipeline_config(
         ConfigError: 文件不存在、YAML 格式错误或校验未通过时。
 
     [EN] Load pipeline configuration from a YAML file path and complete validation.
-    If the workdir params.yml cannot be parsed (YAML syntax error or structural anomaly),
-    the entire config falls back to the root params.yml.
+    YAML syntax errors or invalid top-level structures fail fast instead of falling back.
 
     Args:
         path: Path to ``params.yml`` or similar parameter file.
@@ -570,14 +569,14 @@ def load_pipeline_config(
         raise ConfigError(f"参数文件不存在：{source_path}")
     yaml = _import_yaml()
 
-    raw: dict = {}
     try:
         with source_path.open("r", encoding="utf-8") as f:
             loaded = yaml.safe_load(f) or {}
-        if isinstance(loaded, dict):
-            raw = loaded
-    except Exception:
-        pass
+    except Exception as exc:
+        raise ConfigError(f"无法读取或解析参数文件：{source_path}（{exc}）") from exc
+    if not isinstance(loaded, dict):
+        raise ConfigError(f"参数文件顶层必须是对象：{source_path}")
+    raw = loaded
 
     return parse_pipeline_config(
         raw,
@@ -660,18 +659,16 @@ def parse_pipeline_config(
     )
     assert workdir_path is not None
 
-    # [EN] Validate workdir.path: must exist or be creatable.
-    # 工作目录必须存在或可创建，否则禁止继续执行任何指令
-    if not workdir_path.exists():
-        try:
-            workdir_path.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            raise ConfigError(
-                tr(
-                    "cli_workdir_unavailable",
-                    "❌ 工作目录不存在且无法创建：{path}（{error}）",
-                ).format(path=workdir_path, error=exc)
-            )
+    # [EN] Config parsing must not create directories. Creation belongs to
+    # explicit workflow commands so validation/preview stays side-effect free.
+    # 配置解析禁止创建目录；目录创建应由明确的工作流命令负责。
+    if workdir_path.exists() and not workdir_path.is_dir():
+        raise ConfigError(
+            tr(
+                "cli_workdir_unavailable",
+                "❌ 工作目录路径不是目录：{path}",
+            ).format(path=workdir_path)
+        )
 
     forcing_raw = _as_dict(raw.get("forcing"), "forcing")
     forcing = ForcingConfig(

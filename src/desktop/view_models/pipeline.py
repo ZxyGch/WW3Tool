@@ -48,24 +48,29 @@ class PipelineViewModel:
 
     def load_config(self, params_path: str | Path, *, validation_stage: str = "full") -> PipelineConfig:
         # [EN] Load workdir params.yml; empty values auto-fall-back to root params.yml defaults.
-        # [EN] If workdir params.yml cannot be parsed (YAML syntax error or structural anomaly), fall back entirely to root params.yml.
+        # [EN] If workdir params.yml cannot be parsed, fail fast instead of falling back.
         """加载工作目录 params.yml，空值自动回退到根 params.yml 默认值。
 
-        若工作目录 params.yml 无法解析（YAML 语法错误或结构异常），整体回退到根 params.yml。
+        若工作目录 params.yml 无法解析（YAML 语法错误或结构异常），立即报错。
         """
         from workflows.application.configuration import _import_yaml, parse_pipeline_config
 
         path = Path(params_path).expanduser().resolve()
         yaml = _import_yaml()
 
-        workdir_raw: dict = {}
         try:
             with path.open("r", encoding="utf-8") as f:
                 loaded = yaml.safe_load(f) or {}
-            if isinstance(loaded, dict):
-                workdir_raw = loaded
-        except Exception:
-            pass
+        except Exception as exc:
+            raise ConfigError(
+                tr("params_parse_failed", "参数文件无法读取或解析：{path}（{error}）").format(
+                    path=path,
+                    error=exc,
+                )
+            ) from exc
+        if not isinstance(loaded, dict):
+            raise ConfigError(tr("params_top_level_invalid", "参数文件顶层必须是对象：{path}").format(path=path))
+        workdir_raw: dict = loaded
 
         # [EN] Fill empty values in workdir with root params.yml defaults
         # 用根 params.yml 默认值填充工作目录中的空值
