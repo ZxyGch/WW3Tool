@@ -846,7 +846,7 @@ class SettingsInterface(QWidget):
             return
         cpu_group = dialog.value
         if not cpu_group:
-            InfoBar.warning(title="", content=tr("set_cpu_list_empty","CPU 列表不能为空"), duration=2000, parent=self)
+            InfoBar.warning(title="", content=tr("set_cpu_list_empty","CPU 列表不能为空"), duration=2000, parent=self.window())
             return
         updates = {"CPU_GROUP": cpu_group}
         if str(self._config.get("DEFAULT_CPU", "") or "") not in cpu_group:
@@ -1291,7 +1291,7 @@ class SettingsInterface(QWidget):
             self._on_run_mode_changed_callback(run_mode)
 
     def _toast(self, message: str) -> None:
-        InfoBar.success(title="", content=message, duration=2000, parent=self)
+        InfoBar.success(title="", content=message, duration=2000, parent=self.window())
 
 
 # ── 小对话框：名称(+路径) ─────────────────────────────────────────────────────
@@ -1385,7 +1385,7 @@ class _CpuGroupDialog(MessageBoxBase):
     def validate(self) -> bool:
         self.value = [line.strip() for line in self._text.toPlainText().splitlines() if line.strip()]
         if not self.value:
-            InfoBar.warning(title="", content=tr("set_cpu_list_empty","CPU 列表不能为空"), duration=2000, parent=self)
+            InfoBar.warning(title="", content=tr("set_cpu_list_empty","CPU 列表不能为空"), duration=2000, parent=self.window())
             return False
         return True
 
