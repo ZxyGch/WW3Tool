@@ -649,7 +649,6 @@ def parse_pipeline_config(
         yaml = _import_yaml()
         with open(PARAMS_FILE, "r", encoding="utf-8") as f:
             root_data = yaml.safe_load(f) or {}
-        root_data.pop("desktop", None)
         raw = _deep_merge_defaults(root_data, raw)
 
     presets = _parameter_presets(raw.get("presets"))

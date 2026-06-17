@@ -73,7 +73,6 @@ class PipelineViewModel:
         if root_path.is_file():
             with root_path.open("r", encoding="utf-8") as f:
                 root_raw = yaml.safe_load(f) or {}
-            root_raw.pop("desktop", None)
             workdir_raw = _deep_merge_defaults(root_raw, workdir_raw)
 
         return parse_pipeline_config(
@@ -447,7 +446,6 @@ class PipelineViewModel:
         # [EN] 2) Read root params.yml
         # 2) 读根 params.yml
         raw = _load_raw_yaml(root_path) if root_path.is_file() else {}
-        raw.pop("desktop", None)
 
         # [EN] 3) Restore case-specific fields
         # 3) 恢复 case 专属字段
@@ -543,8 +541,11 @@ class PipelineViewModel:
         return raw
 
     def init_workdir_params(self, source: Path | None, target: Path, workdir: str) -> Path:
-        # [EN] Generate params.yml for a new workdir: full copy of root template, only modify workdir.path and clear forcing paths and dates.
-        """为新工作目录生成 params.yml：完整复制根模板，仅修改 workdir.path 并清空强迫场路径和日期。"""
+        # [EN] Generate params.yml for a new workdir: full copy of root template, only modify
+        # specific fields via regex substitution to preserve the original file structure
+        # (comments, ordering, desktop section, formatting).
+        """为新工作目录生成 params.yml：完整复制根模板，仅就地修改特定字段，保留原始文件结构。"""
+        import re
         import shutil
 
         template = source if source and Path(source).is_file() else _repo_params_path()
@@ -559,35 +560,34 @@ class PipelineViewModel:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(template), str(target))
 
-        from workflows.application.configuration import _import_yaml
+        content = target.read_text(encoding="utf-8")
 
-        yaml = _import_yaml()
-        with target.open("r", encoding="utf-8") as fh:
-            raw = yaml.safe_load(fh) or {}
+        # [EN] Only modify specific fields via regex; preserve everything else as-is.
+        # 仅通过正则修改特定字段，其余内容（包括 desktop 段、注释、顺序）保持不变。
+        content = re.sub(
+            r"(^workdir:\s*\n  path:\s*).*",
+            rf"\g<1>{workdir}",
+            content, count=1, flags=re.MULTILINE,
+        )
+        for field in ("wind", "current", "level", "ice"):
+            content = re.sub(
+                rf"(^  {field}:\s*).*",
+                rf"\g<1>",
+                content, count=1, flags=re.MULTILINE,
+            )
+        for field in ("start_date", "end_date"):
+            content = re.sub(
+                rf"(^  {field}:\s*).*",
+                rf"\g<1>",
+                content, count=1, flags=re.MULTILINE,
+            )
+        content = re.sub(
+            r"(^  remote_dir:\s*).*",
+            r"\g<1>",
+            content, count=1, flags=re.MULTILINE,
+        )
 
-        raw["workdir"] = {"path": str(workdir)}
-        raw.pop("desktop", None)
-
-        forcing = raw.get("forcing") or {}
-        forcing["wind"] = None
-        forcing["current"] = None
-        forcing["level"] = None
-        forcing["ice"] = None
-        raw["forcing"] = forcing
-
-        ww3 = raw.get("ww3") or {}
-        ww3["start_date"] = None
-        ww3["end_date"] = None
-        raw["ww3"] = ww3
-
-        # [EN] Clear per-case server.remote_dir, let step 6 fall back to default_remote_dir + workdir name
-        # 清空 per-case 的 server.remote_dir，让第六步回退到 default_remote_dir + 工作目录名
-        server = raw.get("server") or {}
-        server["remote_dir"] = ""
-        raw["server"] = server
-
-        with target.open("w", encoding="utf-8") as fh:
-            fh.write(_dump_yaml_with_comments(raw))
+        target.write_text(content, encoding="utf-8")
         return target
 
     def _fail(self, action: str, message: str) -> None:
