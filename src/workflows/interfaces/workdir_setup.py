@@ -57,7 +57,14 @@ def ensure_workdir(path: str) -> tuple[Path, bool]:
     if not root_params.is_file():
         raise WorkdirError(tr("icli_no_template", "❌ 仓库根目录没有 params.yml 模板文件"))
 
-    workdir.mkdir(parents=True)
+    try:
+        workdir.mkdir(parents=True)
+    except OSError as exc:
+        raise WorkdirError(
+            tr("icli_workdir_mkdir_failed", "❌ 无法创建工作目录：{path}（{error}）").format(
+                path=workdir, error=exc
+            )
+        )
     shutil.copy2(str(root_params), str(params_yml))
     content = params_yml.read_text(encoding="utf-8")
     content = re.sub(

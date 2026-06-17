@@ -660,6 +660,19 @@ def parse_pipeline_config(
     )
     assert workdir_path is not None
 
+    # [EN] Validate workdir.path: must exist or be creatable.
+    # 工作目录必须存在或可创建，否则禁止继续执行任何指令
+    if not workdir_path.exists():
+        try:
+            workdir_path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ConfigError(
+                tr(
+                    "cli_workdir_unavailable",
+                    "❌ 工作目录不存在且无法创建：{path}（{error}）",
+                ).format(path=workdir_path, error=exc)
+            )
+
     forcing_raw = _as_dict(raw.get("forcing"), "forcing")
     forcing = ForcingConfig(
         wind=_resolve_path(forcing_raw.get("wind"), base_dir),
