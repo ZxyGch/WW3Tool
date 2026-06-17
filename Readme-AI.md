@@ -143,7 +143,19 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
   → [后处理] 波高图、谱图、卫星/浮标验证
 ```
 
+辅助 CLI 命令（可在任意阶段使用）：
+
+```sh
+python3 run.py validate my_case         # 校验 params.yml
+python3 run.py config my_case           # 打印配置摘要
+python3 run.py print-params my_case     # 输出 params.yml 原文
+```
+
 ### 5.1 创建工作目录
+
+```sh
+python3 run.py workdir my_case    # 从模板创建并加载工作目录
+```
 
 `workflows/interfaces/workdir_setup.py`
 
@@ -163,6 +175,11 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 
 ### 5.2 Step 1 — 强迫场准备
+
+```sh
+python3 run.py prepare-forcing my_case    # 准备强迫场
+python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
+```
 
 `application/forcing_preparation.py` + `infrastructure/forcing/`
 
@@ -211,6 +228,12 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 ### 5.3 Step 2 — 网格生成
 
+```sh
+python3 run.py generate-grid my_case                  # 生成网格
+python3 run.py recommend-grid --coarse                # 推荐网格间距
+python3 run.py recommend-cfl                          # 推荐 CFL 时间步长
+```
+
 `application/grid_preparation.py` + `meshgen/`
 
 三种网格类型：
@@ -236,6 +259,8 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 ### 5.4 Step 3 — 计算模式
 
+计算模式在 `params.yml` 的 `calc.mode` 字段中设置，或通过 GUI 选择。无独立 CLI 命令，在 `run-workflow` 或 `prepare-ww3` 执行时自动读取。
+
 `domain/config_models.py` 中 `CalcConfig.mode` 字段：
 
 - `region`：标准区域计算，输出 `ww3.YYYY.nc`（通过 `ww3_ounf`）
@@ -245,6 +270,11 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 打开工作目录时，程序会自动检测 `points.list` 或 `track_i.ww3` 并切换对应模式。
 
 ### 5.5 Step 4 — WW3 配置（namelist 与脚本生成）
+
+```sh
+python3 run.py prepare-ww3 my_case      # 仅生成 namelist 和脚本
+python3 run.py run-workflow my_case     # 完整预处理（Step 1~4 一次执行）
+```
 
 `infrastructure/adapters/ww3_namelist_adapter.py` + `infrastructure/ww3/`
 
@@ -469,6 +499,14 @@ WAVEWATCH III TRACK LOCATIONS DATA
 
 ### 5.6 连接服务器与 Slurm 配置
 
+```sh
+python3 run.py connect-test             # 测试 SSH 连接
+python3 run.py slurm-idle               # 查看 Slurm 空闲 CPU
+python3 run.py queue-status             # 查看 SLURM 作业队列
+python3 run.py confirm-slurm --full     # 确认 Slurm 参数并写 server.sh
+python3 run.py ssh                      # 打开交互式 SSH 终端
+```
+
 `application/remote_ops.py` + `application/slurm_ops.py`
 
 在运行之前，需要连接远程 HPC 服务器并确认计算资源。GUI 的"连接服务器"操作在后台执行以下步骤：
@@ -495,6 +533,17 @@ WAVEWATCH III TRACK LOCATIONS DATA
 
 ### 5.7 上传与运行
 
+```sh
+python3 run.py upload --confirm my_case       # 上传工作目录到服务器
+python3 run.py submit my_case                 # 提交 server.sh 到 Slurm
+python3 run.py check-status my_case           # 检查远程任务状态
+python3 run.py download-results my_case       # 下载结果（嵌套模式仅下载 fine/）
+python3 run.py download-log my_case           # 下载 success.log / fail.log
+python3 run.py cancel-job 12345 my_case       # 取消 SLURM 任务
+python3 run.py clear-remote --confirm my_case # 清空远程工作目录
+python3 run.py local-run my_case              # 本地执行 local.sh
+```
+
 **本地运行**：执行工作目录下的 `local.sh`，调用本地安装的 WW3 可执行文件。
 
 **服务器运行**：
@@ -506,6 +555,11 @@ WAVEWATCH III TRACK LOCATIONS DATA
 
 ### 5.8 ntfy 通知系统
 
+```sh
+python3 run.py ntfy-watch my_case              # 注入全局常驻监听
+python3 run.py ntfy-watch-job 12345 my_case    # 注入单任务一次性监听
+```
+
 通过 `ntfy.sh` 服务实现 Slurm 作业完成通知：
 
 - **全局监听**（`ntfy-watch`）：在登录节点注入常驻 bash 脚本 `ww3_ntfy_watch.sh`，通过 `nohup`/`disown` 后台运行，定期扫描 `squeue`/`sacct`，当任何作业完成时发送 ntfy 通知。Topic 由 `remote_dir` 的 SHA1 哈希生成（如 `ww3-f27171eb13a4b5c6`），不含工作目录名或用户名，避免信息泄露。
@@ -513,7 +567,20 @@ WAVEWATCH III TRACK LOCATIONS DATA
 - 通知标题使用 SLURM 任务名（通过 `sacct --format=JobName` 查询），格式为 `{JobName} {job_id} {state}`（如 `my_run 12345 COMPLETED`），不使用工作目录名。
 - GUI 中的"常驻 ntfy 监听"按钮具备智能判断：检查远端是否已有监听进程在运行，没有则注入，有则发送测试通知。
 
----
+### 5.9 后处理绘图
+
+```sh
+python3 run.py plot-wave-maps my_case             # 波高填色图
+python3 run.py plot-wave-maps --contour my_case   # 波高等高线图
+python3 run.py plot-spectrum my_case              # 方向谱图
+python3 run.py plot-jason3 my_case                # Jason-3 卫星轨迹对比
+python3 run.py plot-jason3-swh my_case            # Jason-3 波高对比
+python3 run.py download-jason3 my_case            # 下载 Jason-3 数据
+python3 run.py plot-ndbc my_case                  # NDBC 浮标匹配
+python3 run.py plot-ndbc --download my_case       # 下载 NDBC 数据并匹配
+```
+
+
 
 ## 6. 代码架构
 
