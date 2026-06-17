@@ -874,6 +874,7 @@ def parse_pipeline_config(
             tr("cfg_server_st_required", "slurm.server_st（或 ww3.st）不能为空，请在 params.yml 中配置 ST 版本")
         )
     slurm = SlurmConfig(
+        job_name=str(slurm_raw.get("job_name") or "").strip() or workdir_path.name,
         cpu=str(slurm_raw.get("cpu") or ""),
         cpu_group=list(slurm_raw.get("cpu_group") or []),
         nodes=str(slurm_raw.get("nodes") or ""),
@@ -1127,6 +1128,8 @@ ww3_grid:
   TIMESTEPS%DTMIN: "15"
 
 slurm:
+  job_name: null                 # [EN] Slurm job name (#SBATCH -J); null uses workdir name
+                                  # Slurm 作业名（#SBATCH -J）；null 使用工作目录名
   cpu: CPU6240R
   cpu_group:                # [EN] Available CPU partition list (for UI dropdown)
                             # 可用 CPU 分区列表（供 UI 下拉选择）

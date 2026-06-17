@@ -572,6 +572,7 @@
   "step4_total_cores": "Cores:",
   "step4_node_num": "Nodes:",
   "step4_st_version": "ST Version:",
+  "step5_slurm_job_name": "Job Name:",
   "step4_outer_params": "Outer Grid Parameters",
   "step4_inner_params": "Inner Grid Parameters",
   "step4_compute_precision": "Compute (s): ",

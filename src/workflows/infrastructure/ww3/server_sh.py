@@ -18,6 +18,13 @@ def _st_executable_dir(path: str) -> str:
 class ServerSh(NMLPrimitives):
     """Mixin: server.sh and SLURM parameter operations."""
 
+    def _server_sh_job_name(self, fallback) -> str:
+        """Return a Slurm-safe job name, defaulting to the workdir name."""
+        raw = str(getattr(self, "job_name_var", "") or "").strip()
+        if not raw:
+            raw = os.path.basename(str(getattr(self, "selected_folder", "") or "")) or str(fallback)
+        return "_".join(raw.split())
+
     def _load_slurm_params_from_server_sh(self):
         """从工作目录中的 server.sh 文件读取 slurm 参数并设置到 UI
 
@@ -392,6 +399,7 @@ class ServerSh(NMLPrimitives):
         # [EN] casename can only be like 202504, unknown reason
         # casename 只能是 202504 这样的，未知原因
         start_year_month = int(start_date[:6])
+        job_name = self._server_sh_job_name(start_year_month)
 
         num_n = self.num_n_edit.text().strip()
         num_N = self.num_N_edit.text().strip()
@@ -467,7 +475,7 @@ class ServerSh(NMLPrimitives):
                 # [EN] Modify SLURM configuration parameters
                 # 修改 SLURM 配置参数
                 if line_stripped.startswith("#SBATCH -J"):
-                    new_lines.append(f"#SBATCH -J {start_year_month}\n")
+                    new_lines.append(f"#SBATCH -J {job_name}\n")
                 elif line_stripped.startswith("#SBATCH -p"):
                     new_lines.append(f"#SBATCH -p {cpu}\n")
                 elif line_stripped.startswith("#SBATCH -n"):
@@ -554,7 +562,7 @@ class ServerSh(NMLPrimitives):
                 f.write(content_bytes)
 
             log_msg = tr("step4_server_sh_updated", "✅ 已更新 server.sh：-J={job}, -p={cpu}, -n={cores}, -N={nodes}, MPI_NPROCS={mpi_cores}, CASENAME={name}, ST={st}").format(
-                job=start_year_month, cpu=cpu, cores=num_n, nodes=num_N, mpi_cores=num_n, name=start_year_month, st=st_name
+                job=job_name, cpu=cpu, cores=num_n, nodes=num_N, mpi_cores=num_n, name=start_year_month, st=st_name
             )
 
             self.log(log_msg)

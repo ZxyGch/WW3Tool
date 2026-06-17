@@ -779,6 +779,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
     ("slurm:",
      "# ────────────────────────────────────────────────────────────────────\n"
      "# SLURM job-scheduler settings for HPC cluster submissions.\n"
+     "#   job_name  – Slurm job name written to #SBATCH -J; null uses workdir name.\n"
      "#   cpu       – default CPU model identifier.\n"
      "#   cpu_group – list of acceptable CPU models for job placement.\n"
      "#   nodes     – number of compute nodes to request.\n"

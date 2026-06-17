@@ -561,6 +561,7 @@
   "step4_total_cores": "总核数:",
   "step4_node_num": "节点数:",
   "step4_st_version": "ST 版本：",
+  "step5_slurm_job_name": "作业名：",
   "step4_outer_params": "外网格参数",
   "step4_inner_params": "内网格参数",
   "step4_compute_precision": "计算精度 (秒):",

@@ -202,14 +202,15 @@ class ServerConnectPanel:
         self.st_label = self._field_label(tr("step4_st_version", "ST 版本："))
         slurm_grid.addWidget(self.st_label, 0, 0)
         slurm_grid.addWidget(self.st_combo, 0, 1)
+        self._text_line(slurm_grid, 1, tr("step5_slurm_job_name", "作业名："), "slurm_job_name")
         self.cpu_combo = ComboBox()
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
         self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
-        slurm_grid.addWidget(self.cpu_label, 1, 0)
-        slurm_grid.addWidget(self.cpu_combo, 1, 1)
-        self._display_line(slurm_grid, 2, tr("step4_total_cores", "总核数:"), "slurm_cores")
-        self._display_line(slurm_grid, 3, tr("step4_node_num", "节点数:"), "slurm_nodes")
+        slurm_grid.addWidget(self.cpu_label, 2, 0)
+        slurm_grid.addWidget(self.cpu_combo, 2, 1)
+        self._display_line(slurm_grid, 3, tr("step4_total_cores", "总核数:"), "slurm_cores")
+        self._display_line(slurm_grid, 4, tr("step4_node_num", "节点数:"), "slurm_nodes")
         layout.addWidget(self._slurm_form)
 
         self._idle_actions_widget = QWidget()
@@ -390,6 +391,7 @@ class ServerConnectPanel:
         return list(getattr(self, "_idle_rows", []))
 
     def render_slurm(self, config: PipelineConfig) -> None:
+        self.fields["slurm_job_name"].setText(str(config.slurm.job_name or config.workdir.path.name))
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
@@ -400,6 +402,7 @@ class ServerConnectPanel:
 
     def slurm_overrides(self) -> dict[str, str]:
         return {
+            "job_name": self.fields["slurm_job_name"].text().strip(),
             "cpu": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
@@ -507,11 +510,15 @@ class ServerConnectPanel:
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def _display_line(self, grid: QGridLayout, row: int, label: str, key: str) -> None:
+        self._text_line(grid, row, label, key, integer=True)
+
+    def _text_line(self, grid: QGridLayout, row: int, label: str, key: str, *, integer: bool = False) -> None:
         field = LineEdit()
         field.setProperty("transparent", False)
         field.setStyleSheet(self._input_style())
         field.setMinimumHeight(33)
-        field.setValidator(int_validator(1))
+        if integer:
+            field.setValidator(int_validator(1))
         self._expand_field(field)
         field_label = self._field_label(label)
         grid.addWidget(field_label, row, 0)

@@ -89,6 +89,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
 
         self.num_n_edit = _TextValue(config.slurm.cores)
         self.num_N_edit = _TextValue(config.slurm.nodes)
+        self.job_name_var = config.slurm.job_name or config.workdir.path.name
         self.cpu_var = config.slurm.cpu
         self.st_var = _resolve_st_name(config, app_config)
 
