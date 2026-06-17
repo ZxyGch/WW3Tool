@@ -506,7 +506,25 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "print-params":
-            print(Path(params_path).read_text(encoding="utf-8"), end="")
+            # [EN] Filter out the desktop: section (GUI preferences) — it is not
+            # pipeline configuration and should not clutter CLI output.
+            # 过滤掉 desktop: 段（GUI 偏好设置），避免混入流水线配置输出。
+            text = Path(params_path).read_text(encoding="utf-8")
+            lines = text.splitlines(keepends=True)
+            out: list[str] = []
+            skip = False
+            for line in lines:
+                stripped = line.lstrip()
+                if stripped.startswith("desktop:") and (len(line) - len(stripped)) == 0:
+                    skip = True
+                    continue
+                if skip:
+                    if stripped and not stripped.startswith("#") and (len(line) - len(stripped)) == 0:
+                        skip = False
+                    else:
+                        continue
+                out.append(line)
+            print("".join(out), end="")
             return 0
 
         if args.command == "prepare-forcing":
