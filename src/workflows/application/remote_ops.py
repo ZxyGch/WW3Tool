@@ -493,6 +493,148 @@ def _ntfy_topic_for(config: PipelineConfig, remote_dir: str) -> str:
     return f"{cleaned}-{digest}"[:80]
 
 
+def run_check_ntfy_status(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """检查远程服务器上 ntfy 常驻 watcher 是否正在运行。
+
+    通过检查 ``ntfy_watch.pid`` 文件和 ``kill -0`` 验证进程存活。
+
+    Returns:
+        ``data`` 为 ``{"running": bool, "pid": str|None, "topic": str}``。
+    """
+    logger = CoreLogger(callback=log)
+    c, owns = _acquire(config, client)
+    try:
+        remote_dir = _resolve_remote_dir(config)
+        topic = _ntfy_topic_for(config, remote_dir)
+        if owns:
+            c.connect(log=logger.log)
+        pid_file = "ntfy_watch.pid"
+        mode_file = "ntfy_watch.pid.mode"
+        q_remote = shlex.quote(remote_dir)
+        command = (
+            f"cd {q_remote} && "
+            f"if [ -f {pid_file} ]; then "
+            f"PID=$(cat {pid_file}); "
+            f"MODE=$(cat {mode_file} 2>/dev/null); "
+            f"if kill -0 $PID 2>/dev/null && [ \"$MODE\" = 'all' ]; then "
+            f"echo \"RUNNING $PID\"; "
+            f"else "
+            f"echo \"STOPPED\"; "
+            f"fi; "
+            f"else "
+            f"echo \"STOPPED\"; "
+            f"fi"
+        )
+        out, err, code = c.exec_command(command, timeout=10)
+        running = False
+        pid = None
+        if out and out.strip().startswith("RUNNING"):
+            running = True
+            parts = out.strip().split()
+            pid = parts[1] if len(parts) > 1 else "unknown"
+        logger.log(
+            tr("ntfy_status_running", "✅ ntfy watcher 正在运行 (PID: {pid})").format(pid=pid)
+            if running
+            else tr("ntfy_status_stopped", "⏹ ntfy watcher 未运行")
+        )
+        return RemoteResult(
+            success=True,
+            data={"running": running, "pid": pid, "topic": topic},
+            messages=list(logger.messages),
+        )
+    except Exception as exc:
+        logger.log(tr("ntfy_status_check_failed", "❌ 检查 ntfy 状态失败：{error}").format(error=exc))
+        return RemoteResult(
+            success=False,
+            error=str(exc),
+            data={"running": False, "pid": None, "topic": ""},
+            messages=list(logger.messages),
+        )
+    finally:
+        if owns:
+            c.close()
+
+
+def run_send_ntfy_test(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    topic: str | None = None,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """通过远程服务器上已运行的 ntfy watcher 发送一条测试通知。
+
+    在服务器端执行 ``curl -d`` 向 ntfy.sh 发送测试消息，用于验证
+    watcher 的网络连通性和通知链路。
+
+    Returns:
+        ``data`` 为 ``{"topic": str}``。
+    """
+    logger = CoreLogger(callback=log)
+    c, owns = _acquire(config, client)
+    try:
+        remote_dir = _resolve_remote_dir(config)
+        topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
+        label = Path(remote_dir.rstrip("/")).name or "WW3"
+        if owns:
+            c.connect(log=logger.log)
+        host_check_cmd = "hostname 2>/dev/null || echo unknown"
+        host_out, _, _ = c.exec_command(host_check_cmd, timeout=5)
+        host = host_out.strip() if host_out else "unknown"
+        # [EN] Build curl command with proper quoting for remote bash execution.
+        # 构造 curl 命令，确保远程 bash 引号正确
+        q_topic = shlex.quote(topic)
+        q_host = shlex.quote(host)
+        q_title = shlex.quote(f"Title: {label} test")
+        q_url = shlex.quote(f"https://ntfy.sh/{topic}")
+        curl_cmd = (
+            f"body=$(printf 'Test from %s\\nTopic: %s\\nTime: %s' "
+            f"{q_host} {q_topic} \"$(date '+%F %T')\") && "
+            f"curl -fsS --connect-timeout 10 --max-time 30 "
+            f"-H {q_title} "
+            f"-H 'Tags: test,ocean' "
+            f"-d \"$body\" "
+            f"{q_url}"
+        )
+        logger.log(
+            tr("ntfy_test_sending", "📤 正在从服务器 {host} 发送测试通知到 topic: {topic}").format(
+                host=host, topic=topic
+            )
+        )
+        out, err, code = c.exec_command(curl_cmd, timeout=40)
+        if code == 0:
+            logger.log(
+                tr("ntfy_test_sent", "✅ 测试通知已发送，请检查 ntfy.sh/{topic}").format(topic=topic)
+            )
+        else:
+            err_msg = err.strip() if err else (out.strip() if out else f"exit code {code}")
+            logger.log(
+                tr("ntfy_test_failed", "❌ 测试通知发送失败：{error}").format(error=err_msg)
+            )
+            return RemoteResult(
+                success=False,
+                error=err_msg,
+                data={"topic": topic},
+                messages=list(logger.messages),
+            )
+        return RemoteResult(
+            success=True,
+            data={"topic": topic},
+            messages=list(logger.messages),
+        )
+    except Exception as exc:
+        logger.log(tr("ntfy_test_failed", "❌ 测试通知发送失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
+
 def run_inject_ntfy_listener(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,

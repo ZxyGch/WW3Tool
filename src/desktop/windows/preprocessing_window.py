@@ -1831,6 +1831,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # 启动轮询
         self._server_poll_config = self._build_poll_config()
         self._start_server_polling()
+        # [EN] Update ntfy button text after a short delay (non-blocking).
+        # 短暂延迟后更新 ntfy 按钮文本（不阻塞 UI）
+        QTimer.singleShot(2000, self._update_ntfy_button_text)
 
     def _local_run(self) -> None:
         bin_dir = self._local_run_panel.bin_dir() or None
@@ -2053,7 +2056,34 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _server_inject_ntfy(self) -> None:
         if not self._persist_server_remote_dir():
             return
-        self._run_job(self._remote_vm.inject_ntfy_listener)
+        self._run_job(self._remote_vm.ntfy_smart_action, on_done=self._on_ntfy_smart_done)
+
+    def _on_ntfy_smart_done(self, result: object) -> None:
+        self._on_job_done(result)
+        # [EN] After the smart action, check status to update button text.
+        # 操作完成后，检查状态以更新按钮文本
+        if getattr(result, "success", False):
+            self._update_ntfy_button_text()
+
+    def _update_ntfy_button_text(self) -> None:
+        # [EN] Check ntfy watcher status and update button text accordingly.
+        """检查 ntfy watcher 状态并更新按钮文本。"""
+        config = getattr(self, "_server_poll_config", None)
+        if config is None or not self._remote_vm.is_connected:
+            return
+        try:
+            status_result = self._remote_vm.check_ntfy_status(config)
+            data = getattr(status_result, "data", {}) or {}
+            if data.get("running"):
+                self._server_connect_panel.inject_ntfy_button.setText(
+                    tr("step6_ntfy_send_test", "发送测试通知")
+                )
+            else:
+                self._server_connect_panel.inject_ntfy_button.setText(
+                    tr("step6_inject_ntfy", "常驻 ntfy 监听")
+                )
+        except Exception:
+            pass
 
     def _server_watch_ntfy_job(self) -> None:
         job_id = self._server_connect_panel.job_id()
