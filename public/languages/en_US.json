@@ -2329,5 +2329,12 @@
   "icli_start_ntfy_watch_job": "▶ Injecting one-shot ntfy watcher for job {}...",
   "icli_done_ntfy_watch_job": "✅ One-shot ntfy watcher started for job {}",
   "icli_failed_ntfy_watch_job": "❌ ntfy injection failed: {}",
-  "icli_usage_ntfy_watch_job": "Usage: ntfy-watch-job <job_id>"
+  "icli_usage_ntfy_watch_job": "Usage: ntfy-watch-job <job_id>",
+  "connect_retry_success": "✅ Connected after {n} retries",
+  "connect_retry_transient": "⚠️ Transient network error ({error}), retrying in {delay}s (attempt {n})...",
+  "connect_hint_banner": "Possible causes: SSH service not running or overloaded, firewall blocking, wrong port",
+  "connect_hint_timeout": "Possible causes: server unreachable, network down, firewall blocking, wrong IP/port",
+  "connect_hint_refused": "Possible causes: SSH service not running, wrong port (default 22)",
+  "connect_hint_auth": "Possible causes: wrong username/password, invalid key file or incorrect permissions",
+  "connect_hint_network": "Possible causes: network unreachable, VPN not connected, wrong IP address"
 }

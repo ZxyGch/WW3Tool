@@ -2329,5 +2329,12 @@
   "icli_start_ntfy_watch_job": "▶ Injecting one-shot ntfy watcher for job {}...",
   "icli_done_ntfy_watch_job": "✅ One-shot ntfy watcher started for job {}",
   "icli_failed_ntfy_watch_job": "❌ ntfy injection failed: {}",
-  "icli_usage_ntfy_watch_job": "Usage: ntfy-watch-job <job_id>"
+  "icli_usage_ntfy_watch_job": "Usage: ntfy-watch-job <job_id>",
+  "connect_retry_success": "✅ 第 {n} 次重试后连接成功",
+  "connect_retry_transient": "⚠️ 瞬态网络错误（{error}），{delay}s 后第 {n} 次重试...",
+  "connect_hint_banner": "可能原因：SSH 服务未启动或过载、防火墙拦截、端口错误",
+  "connect_hint_timeout": "可能原因：服务器不可达、网络中断、防火墙阻止、IP/端口错误",
+  "connect_hint_refused": "可能原因：SSH 服务未启动、端口错误（默认 22）",
+  "connect_hint_auth": "可能原因：用户名/密码错误、密钥文件无效或权限不正确",
+  "connect_hint_network": "可能原因：网络不可达、VPN 未连接、IP 地址错误"
 }

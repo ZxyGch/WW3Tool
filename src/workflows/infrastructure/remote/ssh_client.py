@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 
@@ -24,6 +25,70 @@ from .ssh_config import resolve_server_connection
 
 LogFn = Callable[[str], None]
 _noop: LogFn = lambda _: None
+
+# [EN] Substrings in exception messages that indicate a transient network-level
+# failure worth retrying (SSH banner not received, socket timeout, EOF during
+# handshake, connection reset).
+# 瞬态网络错误关键词，匹配时自动重试。
+_TRANSIENT_ERROR_MARKERS = (
+    "error reading ssh protocol banner",
+    "banner",
+    "eof",
+    "timed out",
+    "timeout",
+    "connection reset",
+    "connection refused",
+    "no route to host",
+    "socket is closed",
+)
+
+def _is_transient_error(exc: Exception) -> bool:
+    """判断异常是否为可重试的瞬态网络错误。
+
+    [EN] Return ``True`` when the exception looks like a transient network
+    issue (SSH banner missing, EOF, timeout, reset) that may succeed on retry.
+    """
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _connect_error_hint(exc: Optional[Exception], ssh_config_host: str = "") -> str:
+    """根据异常类型返回常见原因提示（附加到错误消息末尾）。
+
+    [EN] Return a hint string with common causes based on the exception type.
+    """
+    if exc is None:
+        return ""
+    msg = str(exc).lower()
+    hints: list[str] = []
+    if "banner" in msg or "eof" in msg:
+        hints.append(tr(
+            "connect_hint_banner",
+            "可能原因：SSH 服务未启动或过载、防火墙拦截、端口错误",
+        ))
+    elif "timed out" in msg or "timeout" in msg:
+        hints.append(tr(
+            "connect_hint_timeout",
+            "可能原因：服务器不可达、网络中断、防火墙阻止、IP/端口错误",
+        ))
+    elif "connection refused" in msg:
+        hints.append(tr(
+            "connect_hint_refused",
+            "可能原因：SSH 服务未启动、端口错误（默认 22）",
+        ))
+    elif "authentication" in msg or "auth" in msg:
+        hints.append(tr(
+            "connect_hint_auth",
+            "可能原因：用户名/密码错误、密钥文件无效或权限不正确",
+        ))
+    elif "no route" in msg or "network" in msg:
+        hints.append(tr(
+            "connect_hint_network",
+            "可能原因：网络不可达、VPN 未连接、IP 地址错误",
+        ))
+    if not hints:
+        return ""
+    return "\n  💡 " + hints[0]
 
 
 def _make_ssh():
@@ -73,10 +138,15 @@ class SshClient:
 
     # ── connection ────────────────────────────────────────────────────────────
 
-    def connect(self, *, log: LogFn = _noop, timeout: int = 15) -> None:
+    def connect(self, *, log: LogFn = _noop, timeout: int = 15, retries: int = 3) -> None:
         """建立 SSH 连接；失败时抛出 ``ConnectionError``。
 
+        对瞬态网络错误（banner 缺失、EOF、超时、连接重置）自动重试，
+        最多 ``retries`` 次，间隔递增（2s, 4s, 6s...）。
+
         [EN] Establish an SSH connection; raises ``ConnectionError`` on failure.
+        Automatically retries transient network errors (banner missing, EOF,
+        timeout, reset) up to ``retries`` times with increasing delay.
         """
         paramiko = _make_ssh()
         cfg = self._config
@@ -93,8 +163,6 @@ class SshClient:
         else:
             log(tr("step5_connecting_server", "🔄 正在连接服务器 {host}:{port}...").format(
                 host=conn.host, port=conn.port))
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         kwargs: dict = dict(
             hostname=conn.host,
             port=conn.port,
@@ -109,22 +177,44 @@ class SshClient:
             kwargs["password"] = conn.password
             kwargs["look_for_keys"] = False
             kwargs["allow_agent"] = False
-        try:
-            ssh.connect(**kwargs)
-        except Exception as exc:
-            if cfg.ssh_config_host:
-                raise ConnectionError(
-                    tr(
-                        "step5_connect_ssh_config_failed",
-                        "❌ 通过 SSH 配置 [{alias}] 连接失败：{error}",
-                    ).format(alias=cfg.ssh_config_host, error=exc)
-                ) from exc
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, retries + 1):
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            try:
+                ssh.connect(**kwargs)
+                self._ssh = ssh
+                self._conn_args = (conn.host, conn.port, conn.user, conn.password)
+                if attempt > 1:
+                    log(tr("connect_retry_success", "✅ 第 {n} 次重试后连接成功").format(n=attempt - 1))
+                else:
+                    log(tr("connect_success_log", "✅ 连接服务器成功"))
+                return
+            except Exception as exc:
+                last_exc = exc
+                if _is_transient_error(exc) and attempt < retries:
+                    delay = attempt * 2
+                    log(tr(
+                        "connect_retry_transient",
+                        "⚠️ 瞬态网络错误（{error}），{delay}s 后第 {n} 次重试...",
+                    ).format(error=exc, delay=delay, n=attempt + 1))
+                    time.sleep(delay)
+                    continue
+                break
+        # [EN] Build a helpful error message with common cause suggestions.
+        # 构建包含常见原因提示的错误信息。
+        hint = _connect_error_hint(last_exc, cfg.ssh_config_host)
+        if cfg.ssh_config_host:
             raise ConnectionError(
-                tr("step5_connect_failed", "❌ 连接服务器失败：{error}").format(error=exc)
-            ) from exc
-        self._ssh = ssh
-        self._conn_args = (conn.host, conn.port, conn.user, conn.password)
-        log(tr("connect_success_log", "✅ 连接服务器成功"))
+                tr(
+                    "step5_connect_ssh_config_failed",
+                    "❌ 通过 SSH 配置 [{alias}] 连接失败：{error}{hint}",
+                ).format(alias=cfg.ssh_config_host, error=last_exc, hint=hint)
+            ) from last_exc
+        raise ConnectionError(
+            tr("step5_connect_failed", "❌ 连接服务器失败：{error}{hint}").format(
+                error=last_exc, hint=hint)
+        ) from last_exc
 
     def is_alive(self) -> bool:
         """当前 SSH 传输层是否仍处于活动状态。
