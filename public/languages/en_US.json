@@ -59,7 +59,7 @@
   "output_precision": "Output Precision (seconds):",
   "cpu_group": "CPU Group:",
   "manage_cpu": "Manage",
-  "st_version_config": "ST Version Configuration",
+  "st_version_config": "Server ST Version Management",
   "local_st_version_config": "Local ST Version Management",
   "set_local_st_path": "Local bin Path",
   "step5_local_st_version": "ST Version:",
