@@ -590,7 +590,7 @@ def run_send_ntfy_test(
     try:
         remote_dir = _resolve_remote_dir(config)
         topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
-        label = Path(remote_dir.rstrip("/")).name or "WW3"
+        label = "WW3"
         if owns:
             c.connect(log=logger.log)
         host_check_cmd = "hostname 2>/dev/null || echo unknown"
@@ -662,7 +662,7 @@ def run_inject_ntfy_listener(
     try:
         remote_dir = _resolve_remote_dir(config)
         topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
-        label = Path(remote_dir.rstrip("/")).name or "WW3"
+        label = "WW3"
         mode = "once" if mode == "once" else "all"
         job_id = str(job_id or "").strip()
         if mode == "once" and not job_id:

@@ -236,11 +236,20 @@ notify_workdir_if_finished() {
     workdir_name="$(basename "$dir")"
     body="Started: ${started_at}
 Host: ${host}
-Label: ${NTFY_LABEL}
 Workdir: ${dir}
 State: ${state}
 Elapsed: $(($(date '+%s') - start_epoch))s"
-    send_ntfy "${workdir_name} ${state}" "$body"
+    # [EN] Try to use the SLURM job name in the title
+    # 尝试从 sacct 获取最近完成的任务名作为标题
+    if command -v sacct >/dev/null 2>&1; then
+        local jname
+        jname="$(sacct -n -X -P --format=JobName -S "$(date -d '-1 hour' '+%Y-%m-%dT%H:%M' 2>/dev/null || date -v-1H '+%Y-%m-%dT%H:%M' 2>/dev/null)" 2>/dev/null | head -1)"
+        if [ -n "$jname" ] && [ "$jname" != "None" ]; then
+            send_ntfy "${jname} ${state}" "$body"
+            return 0
+        fi
+    fi
+    send_ntfy "${NTFY_LABEL} ${state}" "$body"
     return 0
 }
 
