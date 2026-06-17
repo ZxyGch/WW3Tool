@@ -132,7 +132,7 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 一次完整流程的典型链路：
 
 ```
-[创建工作目录] 从 params.yml 模板复制，编辑算例参数
+[创建或加载工作目录] 复制根 params.yml 到工作目录
   → [Step 1 强迫场准备] 校验、修复、复制/移动到工作目录
   → [Step 2 网格生成] 调用 meshgen 生成网格文件
   → [Step 3 计算模式] 选择 region / spectral_point / track
@@ -143,21 +143,12 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
   → [后处理] 波高图、谱图、卫星/浮标验证
 ```
 
-辅助 CLI 命令（可在任意阶段使用）：
-
-```sh
-python3 run.py validate my_case         # 校验 params.yml
-python3 run.py config my_case           # 打印配置摘要
-python3 run.py print-params my_case     # 输出 params.yml 原文
-```
 
 ### 5.1 创建工作目录
 
 ```sh
-python3 run.py workdir my_case    # 从模板创建并加载工作目录
+python3 run.py workdir work_dir_name    # 从模板创建并加载工作目录
 ```
-
-`workflows/interfaces/workdir_setup.py`
 
 根目录的 `params.yml` 仅为模板，不能直接用于运行。所有实际操作都必须在独立的工作目录中进行。
 
@@ -177,7 +168,7 @@ python3 run.py workdir my_case    # 从模板创建并加载工作目录
 ### 5.2 Step 1 — 强迫场准备
 
 ```sh
-python3 run.py prepare-forcing my_case    # 准备强迫场
+python3 run.py prepare-forcing work_dir_name    # 准备强迫场
 python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ```
 
@@ -229,7 +220,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ### 5.3 Step 2 — 网格生成
 
 ```sh
-python3 run.py generate-grid my_case                  # 生成网格
+python3 run.py generate-grid work_dir_name                  # 生成网格
 python3 run.py recommend-grid --coarse                # 推荐网格间距
 python3 run.py recommend-cfl                          # 推荐 CFL 时间步长
 ```
@@ -272,8 +263,8 @@ python3 run.py recommend-cfl                          # 推荐 CFL 时间步长
 ### 5.5 Step 4 — WW3 配置（namelist 与脚本生成）
 
 ```sh
-python3 run.py prepare-ww3 my_case      # 仅生成 namelist 和脚本
-python3 run.py run-workflow my_case     # 完整预处理（Step 1~4 一次执行）
+python3 run.py prepare-ww3 work_dir_name      # 仅生成 namelist 和脚本
+python3 run.py run-workflow work_dir_name     # 完整预处理（Step 1~4 一次执行）
 ```
 
 `infrastructure/adapters/ww3_namelist_adapter.py` + `infrastructure/ww3/`
@@ -534,14 +525,14 @@ python3 run.py ssh                      # 打开交互式 SSH 终端
 ### 5.7 上传与运行
 
 ```sh
-python3 run.py upload --confirm my_case       # 上传工作目录到服务器
-python3 run.py submit my_case                 # 提交 server.sh 到 Slurm
-python3 run.py check-status my_case           # 检查远程任务状态
-python3 run.py download-results my_case       # 下载结果（嵌套模式仅下载 fine/）
-python3 run.py download-log my_case           # 下载 success.log / fail.log
-python3 run.py cancel-job 12345 my_case       # 取消 SLURM 任务
-python3 run.py clear-remote --confirm my_case # 清空远程工作目录
-python3 run.py local-run my_case              # 本地执行 local.sh
+python3 run.py upload --confirm work_dir_name       # 上传工作目录到服务器
+python3 run.py submit work_dir_name                 # 提交 server.sh 到 Slurm
+python3 run.py check-status work_dir_name           # 检查远程任务状态
+python3 run.py download-results work_dir_name       # 下载结果（嵌套模式仅下载 fine/）
+python3 run.py download-log work_dir_name           # 下载 success.log / fail.log
+python3 run.py cancel-job 12345 work_dir_name       # 取消 SLURM 任务
+python3 run.py clear-remote --confirm work_dir_name # 清空远程工作目录
+python3 run.py local-run work_dir_name              # 本地执行 local.sh
 ```
 
 **本地运行**：执行工作目录下的 `local.sh`，调用本地安装的 WW3 可执行文件。
@@ -556,8 +547,8 @@ python3 run.py local-run my_case              # 本地执行 local.sh
 ### 5.8 ntfy 通知系统
 
 ```sh
-python3 run.py ntfy-watch my_case              # 注入全局常驻监听
-python3 run.py ntfy-watch-job 12345 my_case    # 注入单任务一次性监听
+python3 run.py ntfy-watch work_dir_name              # 注入全局常驻监听
+python3 run.py ntfy-watch-job 12345 work_dir_name    # 注入单任务一次性监听
 ```
 
 通过 `ntfy.sh` 服务实现 Slurm 作业完成通知：
@@ -570,14 +561,14 @@ python3 run.py ntfy-watch-job 12345 my_case    # 注入单任务一次性监听
 ### 5.9 后处理绘图
 
 ```sh
-python3 run.py plot-wave-maps my_case             # 波高填色图
-python3 run.py plot-wave-maps --contour my_case   # 波高等高线图
-python3 run.py plot-spectrum my_case              # 方向谱图
-python3 run.py plot-jason3 my_case                # Jason-3 卫星轨迹对比
-python3 run.py plot-jason3-swh my_case            # Jason-3 波高对比
-python3 run.py download-jason3 my_case            # 下载 Jason-3 数据
-python3 run.py plot-ndbc my_case                  # NDBC 浮标匹配
-python3 run.py plot-ndbc --download my_case       # 下载 NDBC 数据并匹配
+python3 run.py plot-wave-maps work_dir_name             # 波高填色图
+python3 run.py plot-wave-maps --contour work_dir_name   # 波高等高线图
+python3 run.py plot-spectrum work_dir_name              # 方向谱图
+python3 run.py plot-jason3 work_dir_name                # Jason-3 卫星轨迹对比
+python3 run.py plot-jason3-swh work_dir_name            # Jason-3 波高对比
+python3 run.py download-jason3 work_dir_name            # 下载 Jason-3 数据
+python3 run.py plot-ndbc work_dir_name                  # NDBC 浮标匹配
+python3 run.py plot-ndbc --download work_dir_name       # 下载 NDBC 数据并匹配
 ```
 
 
@@ -634,10 +625,10 @@ python3 run.py plot-ndbc --download my_case       # 下载 NDBC 数据并匹配
 
 ## 7. 工作目录结构
 
-一个典型工作目录（如 `workSpace/my_case/`）包含：
+一个典型工作目录（如 `workSpace/work_dir_name/`）包含：
 
 ```
-my_case/
+work_dir_name/
 ├── params.yml              # 该算例的参数配置
 ├── wind.nc                 # 风场（Step 1 产生）
 ├── current.nc              # 流场（如有）
