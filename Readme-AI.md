@@ -157,12 +157,13 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 `application/forcing_preparation.py` + `infrastructure/forcing/`
 
-- 扫描用户选择的 NetCDF 文件
-- 检测并修复纬度方向（ERA5 默认递减 → 自动翻转为递增）
-- 自动重命名变量（CFSR 的 `wndewd`/`wndnwd` → `u10`/`v10`）
-- 修复 Copernicus 数据的时间标签
-- 复制到工作目录并统一命名：`wind.nc`、`current.nc`、`level.nc`、`ice.nc`
-- 如果一个文件包含多种强迫场，命名为 `current_level.nc` 等
+对用户选择的 NetCDF 强迫场文件执行以下确定性操作（不修改原始文件内容中的科学数据）：
+
+- **纬度排序**：WAVEWATCH III 要求纬度从小到大排列。ERA5 数据默认从大到小，程序检测后自动翻转纬度轴及相关数据维度
+- **变量重命名**：CFSR 风场的变量名为 `wndewd`/`wndnwd`，程序自动重命名为 WW3 要求的 `u10`/`v10`
+- **时间标签修复**：Copernicus 数据的时间轴可能存在偏移，程序自动修正
+- **文件复制/移动与统一命名**：将处理后的文件放入工作目录，统一命名为 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`。如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），命名为 `current_level.nc` 以表明内容
+- **复制 vs 移动**：默认复制原文件到工作目录（可在设置页面切换为移动），不影响原始数据
 
 独立工具 `merge-forcing` 可脱离工作目录，直接校验并合并多个强迫场 NetCDF（按时间拼接 + 变量合并），支持 `--time-range` 和 `--bbox` 裁剪。
 
@@ -173,9 +174,13 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 三种网格类型：
 
 **结构化矩形网格**（`structured_generator/`）
-- 调用 `pygridgen` 生成 `grid.bot`（水深）、`grid.obst`（障碍物）、`grid.mask_nobound`（陆海掩膜）、`grid.meta`（网格描述）
-- 支持最多两层嵌套网格（coarse 外网格 + fine 内网格），使用 Two-way nesting，收缩系数默认 1.1x
-- 嵌套模式下在工作目录创建 `coarse/` 和 `fine/` 子目录
+- 调用 `pygridgen` 生成四个文件到工作目录：
+  - `grid.bot` — ASCII 水深数据（单位：米，实际值 = 文件值 / 1000），尺寸 Ny × Nx
+  - `grid.obst` — x/y 方向障碍物值（0-1 之间的比例），尺寸 Ny × Nx
+  - `grid.mask_nobound` — 陆海掩膜（0 = 陆地，1 = 海洋），尺寸 Ny × Nx
+  - `grid.meta` — 网格描述文件（实质是 `ww3_grid.nml` 的子集，包含 NX/NY/SX/SY/X0/Y0 等），Step 4 会同步这些参数到完整的 `ww3_grid.nml`
+- 支持最多两层嵌套网格（coarse 外网格 + fine 内网格），使用 Two-way nesting，收缩系数默认 1.1x（可在设置页面修改）
+- 嵌套模式下在工作目录创建 `coarse/` 和 `fine/` 子目录，各自的网格文件存放在对应子目录中
 
 **三角形非结构化网格**（`unst_generator/`）
 - 基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
@@ -201,24 +206,223 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 `infrastructure/adapters/ww3_namelist_adapter.py` + `infrastructure/ww3/`
 
-这是最核心的步骤，执行顺序：
+这是最核心的步骤。**每一步修改都是确定性的、可追溯的**——仅修改配置中明确指定的字段，不会改动模板中的其他内容。以下逐项说明每次操作实际修改了什么。
 
-1. 从 `public/ww3/` 复制模板文件到工作目录
-2. 同步 `grid.meta` 中的网格参数到 `ww3_grid.nml`
-3. 根据 `presets.output_scheme` 修改 `ww3_shel.nml` 和 `ww3_ounf.nml` 的谱分区输出
-4. 更新 `server.sh`：Slurm 作业名、CPU 分区、核数、节点数、ST 路径
-5. 设置 `ww3_ounf.nml` 的输出时间和间隔
-6. 设置 `ww3_shel.nml` 的计算域起止时间和时间步长
-7. 修改 `ww3_prnc.nml` 的强迫场时间范围
-8. 为每种非风强迫场生成独立的 `ww3_prnc_*.nml`（每个只能启用一个 `FORCING%FIELD%`）
-9. 更新 `ww3_shel.nml` 的 `INPUT%FORCING%*` 开关
-10. 航迹模式下生成 `track_i.ww3`，添加 `DATE%TRACK`
-11. 谱点模式下修改 `namelists.nml` 的 `E3D`，生成 `points.list`
-12. 嵌套网格模式额外生成 `ww3_multi.nml`，处理内外网格的资源分配
+#### 5.4.1 复制模板文件
 
-嵌套网格的特殊处理：
-- 使用 `ww3_multi.nml` 替代 `ww3_shel.nml` 作为主控
-- 内外网格分别处理，各自生成独立的 namelist
+从 `public/ww3/` 复制全套模板到工作目录，包含：`ww3_grid.nml`、`ww3_prnc.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`ww3_ounp.nml`、`ww3_trnc.nml`、`namelists.nml`、`server.sh`、`local.sh` 等。这些模板文件是后续所有修改的基础，修改只在模板上定点替换，不会重写整个文件。
+
+#### 5.4.2 同步网格参数到 ww3_grid.nml
+
+将 `grid.meta`（Step 2 网格生成的产物）中的参数同步到 `ww3_grid.nml` 对应位置。`grid.meta` 实质上就是 `ww3_grid.nml` 的子集，包含：
+
+```
+&RECT_NML
+  RECT%NX   =  201
+  RECT%NY   =  201
+  RECT%SX   =  0.100000000000
+  RECT%SY   =  0.100000000000
+  RECT%X0   =  110.0000
+  RECT%Y0   =  10.0000
+/
+&DEPTH_NML
+  DEPTH%SF       = 0.001
+  DEPTH%FILENAME = 'grid.bot'
+/
+&OBST_NML
+  OBST%SF        = 0.010
+  OBST%FILENAME  = 'grid.obst'
+/
+```
+
+这些值会被逐字段写入 `ww3_grid.nml` 中相同的 namelist group，确保网格描述一致。
+
+#### 5.4.3 谱分区输出方案 → ww3_shel.nml + ww3_ounf.nml
+
+根据 `presets.output_scheme`（可在设置页面配置）修改两个文件：
+
+`ww3_shel.nml` 的 `TYPE%FIELD%LIST`：
+```
+&OUTPUT_TYPE_NML
+  TYPE%FIELD%LIST = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
+/
+```
+
+`ww3_ounf.nml` 的 `FIELD%LIST`：
+```
+&FIELD_NML
+  FIELD%LIST      = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
+  FIELD%PARTITION = '0 1'
+/
+```
+
+其中 `FIELD%PARTITION = '0 1'` 表示同时输出总波和分区结果。输出变量列表完全由用户在设置页面选择的谱分区方案决定。
+
+#### 5.4.4 更新 server.sh
+
+写入 Slurm 作业参数和 WW3 可执行文件路径。修改的具体字段：
+
+```sh
+#SBATCH -J 202501          # 作业名
+#SBATCH -p CPU6240R        # CPU 分区
+#SBATCH -n 48              # 核数
+#SBATCH -N 1               # 节点数
+#SBATCH --time=2880:00:00
+
+#wavewatch3--ST2            # ST 版本标识
+export PATH=/public/home/.../exe:$PATH  # ST 可执行文件路径
+
+MPI_NPROCS=48               # MPI 进程数
+CASENAME=202501             # 算例名
+```
+
+所有值来自 `params.yml` 的 `slurm` 段和 `presets.server_st`，不引入任何自动推断。
+
+#### 5.4.5 设置输出时间 → ww3_ounf.nml
+
+修改 `FIELD%TIMESTART`（起始时间）和 `FIELD%TIMESTRIDE`（输出间隔，单位秒）：
+
+```
+&FIELD_NML
+  FIELD%TIMESTART  = '20250103 000000'
+  FIELD%TIMESTRIDE = '3600'
+/
+```
+
+#### 5.4.6 设置计算域时间 → ww3_shel.nml
+
+修改 `DOMAIN_NML` 和 `OUTPUT_DATE_NML`：
+
+```
+&DOMAIN_NML
+  DOMAIN%START = '20250103 000000'
+  DOMAIN%STOP  = '20250105 235959'
+/
+&OUTPUT_DATE_NML
+  DATE%FIELD   = '20250103 000000' '1800' '20250105 235959'
+  DATE%RESTART = '20250103 000000' '86400' '20250105 235959'
+/
+```
+
+`DATE%FIELD` 中间的值（如 `'1800'`）是输出步长。`DATE%RESTART` 控制 restart 文件的写入频率。这些值来自 `ww3.start_date`、`ww3.end_date` 和计算精度配置。
+
+#### 5.4.7 强迫场时间范围 → ww3_prnc.nml
+
+修改强迫场预处理的时间窗口，确保只处理计算需要的时间段：
+
+```
+&FORCING_NML
+  FORCING%TIMESTART      = '20250103 000000'
+  FORCING%TIMESTOP       = '20250105 235959'
+  FORCING%FIELD%WINDS    = T
+  FORCING%FIELD%CURRENTS = F
+  FORCING%FIELD%WATER_LEVELS = F
+  FORCING%FIELD%ICE_CONC = F
+/
+```
+
+#### 5.4.8 非风强迫场独立 prnc 文件
+
+对每种非风强迫场（流场、水位场、冰浓度、冰厚度）生成独立的 `ww3_prnc_*.nml`。这是因为 `ww3_prnc` 程序每次只能处理一种强迫场——每个文件只开启一个 `FORCING%FIELD%` 开关。
+
+例如 `ww3_prnc_current.nml`：
+```
+&FORCING_NML
+  FORCING%FIELD%CURRENTS = T
+/
+&FILE_NML
+  FILE%FILENAME  = 'current.nc'
+  FILE%LONGITUDE = 'longitude'
+  FILE%LATITUDE  = 'latitude'
+  FILE%VAR(1)    = 'uo'
+  FILE%VAR(2)    = 'vo'
+/
+```
+
+文件名和变量名来自 Step 1 强迫场准备阶段确定的映射关系。运行时 `server.sh` 会依次将每个 `ww3_prnc_*.nml` 重命名为 `ww3_prnc.nml` 再执行。
+
+#### 5.4.9 更新强迫场开关 → ww3_shel.nml
+
+根据实际使用的强迫场，更新 `ww3_shel.nml` 中的 `INPUT%FORCING%*` 开关：
+
+```
+&INPUT_NML
+  INPUT%FORCING%WINDS        = 'T'
+  INPUT%FORCING%WATER_LEVELS = 'T'
+  INPUT%FORCING%CURRENTS     = 'T'
+  INPUT%FORCING%ICE_CONC     = 'F'
+  INPUT%FORCING%ICE_PARAM1   = 'F'
+/
+```
+
+只有用户实际选择了的强迫场才会设为 `'T'`，其余保持 `'F'`。
+
+#### 5.4.10 航迹模式 → track_i.ww3 + ww3_shel.nml + ww3_trnc.nml
+
+航迹模式下额外生成 `track_i.ww3`：
+```
+WAVEWATCH III TRACK LOCATIONS DATA
+20250103 000000   113.121   19.314    0
+20250104 000000   126.442   21.132    1
+```
+
+在 `ww3_shel.nml` 的 `OUTPUT_DATE_NML` 中追加 `DATE%TRACK` 行：
+```
+&OUTPUT_DATE_NML
+  DATE%TRACK = '20250103 000000' '1800' '20250105 000000'
+/
+```
+
+修改 `ww3_trnc.nml` 的航迹输出时间：
+```
+&TRACK_NML
+  TRACK%TIMESTART  = '20250103 000000'
+  TRACK%TIMESTRIDE = '3600'
+/
+```
+
+#### 5.4.11 谱点模式 → namelists.nml + points.list + ww3_ounp.nml
+
+谱空间逐点计算模式下：
+
+1. 修改 `namelists.nml` 的 `E3D` 从 `0` 改为 `1`（开启三维谱输出）：
+```
+&OUTS E3D = 1 /
+```
+如果谱分区输出方案中包含 `EF`（完整二维谱），同样会执行此修改。
+
+2. 在工作目录生成 `points.list`（经度、纬度、点名称）：
+```
+117 18 '0'
+126 21 '1'
+127 20 '2'
+```
+
+3. 修改 `ww3_ounp.nml` 的输出时间和间隔：
+```
+&POINT_NML
+  POINT%TIMESTART  = '20250103 000000'
+  POINT%TIMESTRIDE = '3600'
+/
+```
+
+#### 5.4.12 嵌套网格 → ww3_multi.nml
+
+嵌套网格模式（coarse + fine 两个网格）额外处理：
+
+- 复制 `ww3_multi.nml` 模板到工作目录，替代 `ww3_shel.nml` 作为主控文件
+- `ww3_multi.nml` 配置内外网格的强迫场开关和资源分配比例：
+```
+&MODEL_GRID_NML
+  MODEL(1)%NAME     = 'coarse'
+  MODEL(1)%RESOURCE = 1 1 0.00 0.35 F
+  MODEL(2)%NAME     = 'fine'
+  MODEL(2)%RESOURCE = 2 1 0.35 1.00 F
+/
+```
+`RESOURCE` 中的 `0.00 0.35` 和 `0.35 1.00` 表示两个网格各自占用的计算资源比例区间。
+
+- 内外网格分别在 `coarse/` 和 `fine/` 子目录中各自生成完整的 namelist
 - 强迫场文件使用 `../wind.nc` 引用共享，避免双倍存储
 
 ### 5.5 运行
@@ -236,8 +440,9 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 通过 `ntfy.sh` 服务实现 Slurm 作业完成通知：
 
-- **全局监听**（`ntfy-watch`）：在登录节点注入常驻 bash 脚本 `ww3_ntfy_watch.sh`，通过 `nohup`/`disown` 后台运行，定期扫描 `squeue`/`sacct`，当任何作业完成时发送 ntfy 通知。Topic 由用户名+工作目录名+SHA1 摘要生成（如 `zxy-myproject-a1b2c3d4e5`）。
+- **全局监听**（`ntfy-watch`）：在登录节点注入常驻 bash 脚本 `ww3_ntfy_watch.sh`，通过 `nohup`/`disown` 后台运行，定期扫描 `squeue`/`sacct`，当任何作业完成时发送 ntfy 通知。Topic 由 `remote_dir` 的 SHA1 哈希生成（如 `ww3-f27171eb13a4b5c6`），不含工作目录名或用户名，避免信息泄露。
 - **单任务监听**（`ntfy-watch-job <job_id>`）：注入一次性监听，监控指定作业。使用独立 topic（基础 topic + `-job-{job_id}` 后缀），避免与全局监听混在同一频道。
+- 通知标题使用 SLURM 任务名（通过 `sacct --format=JobName` 查询），格式为 `{JobName} {job_id} {state}`（如 `my_run 12345 COMPLETED`），不使用工作目录名。
 - GUI 中的"常驻 ntfy 监听"按钮具备智能判断：检查远端是否已有监听进程在运行，没有则注入，有则发送测试通知。
 
 ---
@@ -325,7 +530,16 @@ my_case/
 └── fine/                   # 内网格文件（嵌套模式）
 ```
 
-打开工作目录时，程序自动扫描已有文件来恢复状态：检测强迫场文件名自动填充、检测 `coarse`/`fine` 切换嵌套模式、检测 `points.list` 或 `track_i.ww3` 切换计算模式、从 `server.sh` 读取 Slurm 参数等。
+打开工作目录时，程序自动扫描已有文件来恢复状态（只读取，不修改）：
+
+- 检测 `wind.nc`、`current.nc`、`level.nc`、`ice.nc` 等文件名 → 自动填充强迫场按钮
+- 检测 `coarse/` 和 `fine/` 文件夹是否存在 → 自动切换嵌套网格模式
+- 检测 `points.list` → 自动切换到谱空间逐点计算模式并导入点列表
+- 检测 `track_i.ww3` → 自动切换到航迹模式并导入航迹点
+- 从 `server.sh` 读取 `#SBATCH` 参数 → 自动填充 Slurm 配置（作业名、分区、核数、节点数）
+- 从 `ww3_shel.nml` 读取 `DOMAIN%START/STOP` → 恢复计算时间范围
+- 从 `ww3_shel.nml` 读取 `TYPE%FIELD%LIST` → 恢复谱分区输出方案
+- 从 `grid.bot` / `grid.meta` → 读取网格范围和精度，填充网格面板
 
 ---
 
