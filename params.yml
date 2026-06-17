@@ -481,6 +481,7 @@ desktop:
   run_mode: both
   default_workdir: /Users/zxy/ocean/Paper/WW3Tool/workSpace
   recent_workdirs:
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-17_19-37-01
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ww3_2015_cpu6240r_1/ARR_20150402T0500_0062
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/ww3_2015_cpu6240r_1/ARR_20150208T1400_0033
   forcing_field_dir: ''
