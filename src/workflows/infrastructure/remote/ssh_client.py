@@ -94,10 +94,20 @@ def _connect_error_hint(exc: Optional[Exception], ssh_config_host: str = "") -> 
 def _make_ssh():
     """延迟导入 paramiko；未安装时抛出带安装提示的 RuntimeError。
 
-    [EN] Lazy-import paramiko; raises a RuntimeError with installation instructions if not installed.
+    同时将 paramiko 的日志级别设为 CRITICAL，屏蔽其内部 traceback 输出。
+
+    [EN] Lazy-import paramiko; raises a RuntimeError with installation
+    instructions if not installed. Also sets paramiko's log level to
+    CRITICAL to suppress its internal traceback output.
     """
     try:
+        import logging
         import paramiko
+        # [EN] Suppress paramiko's internal traceback (e.g. "Exception (client):
+        # Error reading SSH protocol banner") — we handle errors ourselves.
+        # 屏蔽 paramiko 内部的 traceback 输出，由我们统一处理错误信息。
+        for name in ("paramiko", "paramiko.transport"):
+            logging.getLogger(name).setLevel(logging.CRITICAL)
         return paramiko
     except ImportError as exc:
         raise RuntimeError(
