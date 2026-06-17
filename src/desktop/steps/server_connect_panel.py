@@ -149,7 +149,6 @@ class ServerConnectPanel:
         cancel_row = QHBoxLayout(self._cancel_widget)
         cancel_row.setContentsMargins(0, 10, 0, 0)
         cancel_row.setSpacing(8)
-        cancel_row.addWidget(QLabel(tr("queue_jobid", "任务 ID:")))
         self.job_edit = LineEdit()
         self.job_edit.setStyleSheet(input_style())
         self.job_edit.setPlaceholderText(tr("enter_jobid_placeholder", "SLURM 任务号"))
@@ -225,7 +224,7 @@ class ServerConnectPanel:
         self._confirm_slurm_widget = QWidget()
         confirm_slurm_layout = QVBoxLayout(self._confirm_slurm_widget)
         confirm_slurm_layout.setContentsMargins(0, 8, 0, 0)
-        confirm_slurm_layout.setSpacing(0)
+        confirm_slurm_layout.setSpacing(8)
         self.confirm_slurm_button = create_button(
             tr("step6_confirm_slurm", "确认 Slurm 配置"),
             confirm_slurm,
