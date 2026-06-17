@@ -5,13 +5,13 @@
 
 **工作目录约定**：根目录 ``params.yml`` 仅作为模板，CLI 不允许直接使用。
 所有子命令接受一个 ``workdir`` 参数（含 ``params.yml`` 的目录），
-省略时使用当前目录。可先用 ``create-workdir`` 从模板创建工作目录。
+省略时使用当前目录。用 ``workdir <路径>`` 从模板创建或加载工作目录。
 
 命令分组：
-- 工作目录：``create-workdir``
-- 预处理：``validate``、``prepare-forcing``、``merge-forcing``、``generate-grid``、``run``
+- 配置管理：``workdir``、``validate``、``config``、``print-params``
+- 预处理：``prepare-forcing``、``merge-forcing``、``generate-grid``、``prepare-ww3``、``recommend-cfl``、``recommend-grid``、``run-workflow``、``local-run``
 - 后处理/绘图：``plot-wave-maps``、``plot-spectrum``、``plot-jason3``、``plot-jason3-swh``、``download-jason3``、``plot-ndbc``
-- 远程运维：``connect-test``、``upload``、``submit`` 等 SLURM/SSH 操作
+- 远程运维：``connect-test``、``ssh``、``upload``、``submit`` 等 SLURM/SSH 操作
 - 辅助：``print-example`` 输出示例 YAML
 
 主要消费者：
@@ -26,13 +26,13 @@ working directory, and delegates to the corresponding ``application/`` use case.
 **Working directory convention**: The root ``params.yml`` is only a template and
 cannot be used directly by the CLI. All subcommands accept a ``workdir`` argument
 (directory containing ``params.yml``); the current directory is used when omitted.
-Use ``create-workdir`` to create a working directory from the template first.
+Use ``workdir <path>`` to create or load a working directory from the template first.
 
 Command groups:
-- Working directory: ``create-workdir``
-- Preprocessing: ``validate``, ``prepare-forcing``, ``merge-forcing``, ``generate-grid``, ``run``
+- Configuration: ``workdir``, ``validate``, ``config``, ``print-params``
+- Preprocessing: ``prepare-forcing``, ``merge-forcing``, ``generate-grid``, ``prepare-ww3``, ``recommend-cfl``, ``recommend-grid``, ``run-workflow``, ``local-run``
 - Post-processing/plotting: ``plot-wave-maps``, ``plot-spectrum``, ``plot-jason3``, ``plot-jason3-swh``, ``download-jason3``, ``plot-ndbc``
-- Remote operations: ``connect-test``, ``upload``, ``submit`` and other SLURM/SSH operations
+- Remote operations: ``connect-test``, ``ssh``, ``upload``, ``submit`` and other SLURM/SSH operations
 - Auxiliary: ``print-example`` outputs a sample YAML
 
 Main consumers:
@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -104,7 +103,7 @@ def resolve_params_path(workdir_arg: str | None) -> str:
                 tr(
                     "cli_workdir_no_params",
                     "工作目录 {workdir} 中没有 params.yml。"
-                    "请先使用 create-workdir 命令创建工作目录。",
+                    "请先使用 workdir 命令创建或加载工作目录。",
                 ).format(workdir=p)
             )
 
@@ -113,8 +112,8 @@ def resolve_params_path(workdir_arg: str | None) -> str:
             tr(
                 "cli_root_params_rejected",
                 "不允许直接使用仓库根目录的 params.yml（它是模板文件）。\n"
-                "请先使用 create-workdir 命令复制到工作目录：\n"
-                "  python3 run.py create-workdir --name my_workdir",
+                "请先使用 workdir 命令创建或加载工作目录：\n"
+                "  python3 run.py workdir my_workdir",
             )
         )
 
@@ -135,30 +134,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python3 run.py")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # ── workdir management ─────────────────────────────────────────────────
+    # ── configuration ──────────────────────────────────────────────────────
     _WD_HELP = tr("cli_help_workdir", "Working directory containing params.yml (default: current directory)")
 
-    p_cw = sub.add_parser(
-        "create-workdir",
-        help=tr("cli_help_create_workdir", "Create a new working directory from the root params.yml template"),
+    p_workdir = sub.add_parser(
+        "workdir",
+        help=tr("cli_help_workdir_cmd", "Create or load a working directory from the root params.yml template"),
     )
-    p_cw.add_argument(
-        "--name",
-        required=True,
-        metavar="DIR",
-        help=tr("cli_help_workdir_name", "Name of the new working directory to create"),
+    p_workdir.add_argument(
+        "path",
+        metavar="PATH",
+        help=tr("cli_help_workdir_path", "Working directory path to create or load"),
     )
 
-    # ── preprocessing ──────────────────────────────────────────────────────
     p_validate = sub.add_parser("validate", help=tr("cli_help_validate", "Validate a YAML parameter file"))
     p_validate.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
+    p_config = sub.add_parser("config", help=tr("cli_help_config", "Show a configuration summary"))
+    p_config.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_print_params = sub.add_parser(
+        "print-params",
+        help=tr("cli_help_print_params", "Print params.yml from the working directory"),
+    )
+    p_print_params.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    # ── preprocessing ──────────────────────────────────────────────────────
     p_forcing = sub.add_parser("prepare-forcing", help=tr("cli_help_prepare_forcing", "Run only forcing preparation"))
     p_forcing.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_merge = sub.add_parser(
         "merge-forcing",
-        help=tr("cli_help_merge_forcing", "Validate and merge NetCDF forcing files"),
+        help=tr(
+            "cli_help_merge_forcing",
+            "Validate and merge NetCDF forcing files (standalone; no workdir needed)",
+        ),
     )
     p_merge.add_argument(
         "inputs",
@@ -203,9 +213,38 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("cli_help_recommend_grid", "Recommend grid spacing/resolution from the domain extent and write to params.yml"),
     )
     p_recgrid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_recgrid.add_argument(
+        "--coarse", action="store_true",
+        help=tr("cli_help_recommend_grid_coarse", "Use one tier coarser than the auto-matched recommendation"),
+    )
+    p_recgrid.add_argument(
+        "--fine", action="store_true",
+        help=tr("cli_help_recommend_grid_fine", "Use one tier finer than the auto-matched recommendation"),
+    )
 
-    p_run = sub.add_parser("run", help=tr("cli_help_run", "Run headless preprocessing"))
+    p_run = sub.add_parser(
+        "run-workflow",
+        help=tr("cli_help_run_workflow", "Run full preprocessing (forcing → grid → WW3 namelist)"),
+    )
     p_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_prepare_ww3 = sub.add_parser(
+        "prepare-ww3",
+        help=tr("cli_help_prepare_ww3", "Generate WW3 namelist only (skip forcing and grid)"),
+    )
+    p_prepare_ww3.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_rec_cfl = sub.add_parser(
+        "recommend-cfl",
+        help=tr("cli_help_recommend_cfl", "Recommend timesteps via CFL and write back to params.yml"),
+    )
+    p_rec_cfl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_local_run = sub.add_parser(
+        "local-run",
+        help=tr("cli_help_local_run", "Execute local.sh in the working directory"),
+    )
+    p_local_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     # ── post-processing / plotting ─────────────────────────────────────────
     p_wm = sub.add_parser("plot-wave-maps", help=tr("cli_help_plot_wave_maps", "Generate wave height filled-color maps"))
@@ -258,6 +297,34 @@ def build_parser() -> argparse.ArgumentParser:
     # ── remote server operations ───────────────────────────────────────────
     p_conn = sub.add_parser("connect-test", help=tr("cli_help_connect_test", "Test SSH connection to the server"))
     p_conn.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_ssh = sub.add_parser("ssh", help=tr("cli_help_ssh", "Open an interactive SSH terminal"))
+    p_ssh.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_slurm_idle = sub.add_parser(
+        "slurm-idle",
+        help=tr("cli_help_slurm_idle", "Query Slurm idle CPU resources on the remote server"),
+    )
+    p_slurm_idle.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_confirm_slurm = sub.add_parser(
+        "confirm-slurm",
+        help=tr(
+            "cli_help_confirm_slurm",
+            "Write params.yml Slurm settings to server.sh (optional --full/--half to auto-pick idle CPUs)",
+        ),
+    )
+    p_confirm_slurm.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_confirm_slurm.add_argument(
+        "--full",
+        action="store_true",
+        help=tr("cli_help_confirm_slurm_full", "Use the largest idle CPU partition (same as GUI full use)"),
+    )
+    p_confirm_slurm.add_argument(
+        "--half",
+        action="store_true",
+        help=tr("cli_help_confirm_slurm_half", "Use half of the largest idle CPU partition (same as GUI half use)"),
+    )
 
     p_ls = sub.add_parser("list-files", help=tr("cli_help_list_files", "List files in the remote workdir"))
     p_ls.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -327,53 +394,28 @@ _PLOT_COMMANDS = {
 # 远程 SSH/SLURM 操作命令集合
 # [EN] Remote SSH/SLURM operation commands
 _REMOTE_COMMANDS = {
-    "connect-test", "list-files", "upload", "submit", "check-status",
-    "queue-status", "download-results", "download-log",
+    "connect-test", "ssh", "slurm-idle", "confirm-slurm", "list-files", "upload", "submit",
+    "check-status", "queue-status", "download-results", "download-log",
     "clear-remote", "cancel-job",
 }
 
 
-def _handle_create_workdir(name: str) -> int:
-    """从根 params.yml 模板创建新的工作目录。
 
-    Args:
-        name: 新工作目录名称（在当前目录下创建）。
+def _run_workdir(path: str) -> int:
+    """Create or validate a working directory (shared with shell ``workdir``)."""
+    from .workdir_setup import WorkdirError, ensure_workdir
 
-    Returns:
-        ``0`` 成功，``1`` 失败。
-
-    [EN] Create a new working directory from the root params.yml template.
-
-    Args:
-        name: Name of the new working directory (created under the current directory).
-
-    Returns:
-        ``0`` on success, ``1`` on failure.
-    """
-    root_params = _repo_root_path() / "params.yml"
-    if not root_params.is_file():
-        print(
-            tr("cli_no_root_params", "❌ 错误：仓库根目录没有 params.yml 模板文件。"),
-            file=sys.stderr,
-        )
+    try:
+        workdir, created = ensure_workdir(path)
+        if created:
+            print(tr("icli_created_workdir", "✅ 已创建工作目录：{}").format(workdir))
+        else:
+            print(tr("icli_workdir_exists", "ℹ️ 目录已存在，自动加载：{}").format(workdir))
+        print(tr("cli_workdir_params", "配置文件：{path}").format(path=workdir / "params.yml"))
+        return 0
+    except WorkdirError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-
-    workdir = Path.cwd() / name
-    if workdir.exists():
-        print(
-            tr("cli_workdir_exists", "❌ 错误：目录已存在：{path}").format(path=workdir),
-            file=sys.stderr,
-        )
-        return 1
-
-    workdir.mkdir(parents=True)
-    target = workdir / "params.yml"
-    shutil.copy2(str(root_params), str(target))
-    print(
-        tr("cli_workdir_created", "✅ 已创建工作目录：{path}\n请编辑 params.yml 后执行：\n  python3 run.py run {name}")
-        .format(path=workdir, name=name)
-    )
-    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -402,8 +444,8 @@ def main(argv: list[str] | None = None) -> int:
         print(EXAMPLE_YAML, end="")
         return 0
 
-    if args.command == "create-workdir":
-        return _handle_create_workdir(args.name)
+    if args.command == "workdir":
+        return _run_workdir(args.path)
 
     try:
         if args.command == "merge-forcing":
@@ -441,6 +483,16 @@ def main(argv: list[str] | None = None) -> int:
             print(tr("cli_validate_ok", "✅ OK: {path}").format(path=params_path))
             return 0
 
+        if args.command == "config":
+            from .interactive_cli import print_config_summary
+
+            print_config_summary(config, params_path)
+            return 0
+
+        if args.command == "print-params":
+            print(Path(params_path).read_text(encoding="utf-8"), end="")
+            return 0
+
         if args.command == "prepare-forcing":
             from ..application.preprocessing_workflow import run_prepare_forcing
             run_prepare_forcing(config, log=print)
@@ -452,9 +504,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "recommend-grid":
-            return _run_recommend_grid(config, params_path)
+            offset = 1 if args.coarse else (-1 if args.fine else 0)
+            return _run_recommend_grid(config, params_path, offset=offset)
 
-        if args.command == "run":
+        if args.command == "run-workflow":
             from ..application.preprocessing_workflow import run_pipeline
             run_pipeline(
                 config,
@@ -463,6 +516,15 @@ def main(argv: list[str] | None = None) -> int:
                 use_grid_cache=True,
             )
             return 0
+
+        if args.command == "prepare-ww3":
+            return _run_prepare_ww3(config)
+
+        if args.command == "recommend-cfl":
+            return _run_recommend_cfl(config, params_path)
+
+        if args.command == "local-run":
+            return _run_local_run(config)
 
         if args.command == "plot-wave-maps":
             return _run_wave_maps(config, contour=args.contour)
@@ -486,6 +548,29 @@ def main(argv: list[str] | None = None) -> int:
             return _remote(lambda: __import__(
                 "workflows.application.remote_ops", fromlist=["run_connect_test"]
             ).run_connect_test(config, log=print))
+
+        if args.command == "ssh":
+            from .interactive_cli import open_ssh_session
+
+            rc = open_ssh_session(config, log=print)
+            return 0 if rc == 0 else 1
+
+        if args.command == "slurm-idle":
+            return _remote(lambda: __import__(
+                "workflows.application.slurm_ops", fromlist=["run_slurm_idle"]
+            ).run_slurm_idle(config, log=print))
+
+        if args.command == "confirm-slurm":
+            if args.full and args.half:
+                print(
+                    tr("cli_confirm_slurm_mode_conflict", "❌ 错误：--full 与 --half 不能同时使用"),
+                    file=sys.stderr,
+                )
+                return 2
+            mode = "full" if args.full else ("half" if args.half else None)
+            from ..application.slurm_ops import run_confirm_slurm
+
+            return run_confirm_slurm(config, params_path, print, mode=mode)
 
         if args.command == "list-files":
             return _remote(lambda: __import__(
@@ -551,6 +636,61 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
+def _run_prepare_ww3(config) -> int:
+    from ..infrastructure.forcing.file_service import FileService
+    from ..infrastructure.forcing.use_cases import ScanWorkdirForcingUseCase
+    from ..infrastructure.adapters.ww3_namelist_adapter import prepare_ww3_files
+    from ..support.logging import CoreLogger
+
+    logger = CoreLogger(callback=print)
+    file_service = FileService(logger=logger)
+    files = ScanWorkdirForcingUseCase(file_service).execute(str(config.workdir.path))
+    prepare_ww3_files(config, files, logger)
+    return 0
+
+
+def _run_recommend_cfl(config, params_path: str) -> int:
+    from ..domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps_from_spacing
+    from .interactive_cli import _cfl_spacing_from_grid, _extract_freq1, _persist_ww3_grid_timesteps
+
+    grid = config.grid
+    dxy_m, reason = _cfl_spacing_from_grid(grid)
+    if dxy_m is None:
+        if reason == "need_hmin":
+            print(tr("icli_cfl_need_hmin", "⚠️ 请先填写有效的非结构网格最小尺度 hmin（km）"), file=sys.stderr)
+        else:
+            print(tr("icli_cfl_need_grid", "⚠️ 请先在网格配置中填写有效的 DX、DY 与纬度范围"), file=sys.stderr)
+        return 1
+
+    freq1 = _extract_freq1(config)
+    if freq1 is None:
+        print(tr("icli_cfl_need_freq1", "⚠️ 请填写有效的起始频率 FREQ1（Hz）"), file=sys.stderr)
+        return 1
+
+    rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1)
+    new_params = as_ww3_grid_parameters(rec)
+    config.ww3_grid.parameters.update(new_params)
+    _persist_ww3_grid_timesteps(params_path, new_params)
+
+    print(tr("icli_cfl_result", "📐 CFL 推荐时间步长"))
+    print(f"  DXY ≈ {rec.dxy_m:.0f} m，Tcfl ≈ {rec.tcfl:.0f} s")
+    print(f"  DTXY  = {rec.dtxy} s")
+    print(f"  DTMAX = {rec.dtmax} s")
+    print(f"  DTKTH = {rec.dtkth} s")
+    print(f"  DTMIN = {rec.dtmin} s")
+    print(f"  CFL ratio = {rec.cfl_ratio:.2f}")
+    print(tr("icli_cfl_persisted", "✅ 已写入 {}").format(params_path))
+    return 0
+
+
+def _run_local_run(config) -> int:
+    from ..application.local_run import run_local
+    from ..infrastructure.local.run_service import LocalRunService
+
+    result = run_local(config, LocalRunService(), log=print)
+    return 0 if result.success else 1
+
+
 def _run_merge_forcing(
     input_paths: list[str],
     output_path: str,
@@ -601,12 +741,12 @@ def _run_all_plots(config) -> int:
     return rc
 
 
-def _run_recommend_grid(config, params_path: str) -> int:
+def _run_recommend_grid(config, params_path: str, *, offset: int = 0) -> int:
     """按区域范围推荐网格间距/分辨率，打印并写回 params.yml。
 
     [EN] Recommend grid spacing/resolution from the domain extent; print and
     persist to params.yml. Returns ``0`` on success, ``1`` when the extent is
-    missing/invalid.
+    missing/invalid. ``offset`` shifts the tier: +1 coarser, -1 finer.
     """
     from ..domain.grid_spacing_recommendation import recommend_grid_params
     from .interactive_cli import _persist_grid_params
@@ -619,14 +759,19 @@ def _run_recommend_grid(config, params_path: str) -> int:
     lon = [float(outer.lon[0]), float(outer.lon[1])]
     lat = [float(outer.lat[0]), float(outer.lat[1])]
 
-    rec = recommend_grid_params(grid.mesh_type, lon, lat)
+    rec = recommend_grid_params(grid.mesh_type, lon, lat, offset=offset)
     if rec is None:
         print(tr("cli_recgrid_need_box", "❌ 请先在 params.yml 的 grid.outer 中填写有效的经纬度范围"), file=sys.stderr)
         return 1
 
     _persist_grid_params(params_path, rec.section, rec.values)
+    offset_hint = ""
+    if offset > 0:
+        offset_hint = tr("cli_recgrid_offset_coarse", "（偏粗 {n} 档）").format(n=offset)
+    elif offset < 0:
+        offset_hint = tr("cli_recgrid_offset_fine", "（偏细 {n} 档）").format(n=-offset)
     print(tr("cli_recgrid_result", "📐 网格参数推荐（{mesh}，跨度≈{span} km）：").format(
-        mesh=rec.mesh_type, span=int(rec.span_km)))
+        mesh=rec.mesh_type, span=int(rec.span_km)) + offset_hint)
     for key, value in rec.values.items():
         print(f"  {key} = {value}")
     print(tr("cli_recgrid_persisted", "✅ 已写入 {path}").format(path=params_path))

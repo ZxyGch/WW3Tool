@@ -177,7 +177,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
                 ("recommend-cfl", tr("icli_help_recommend_cfl", "按 CFL 公式推荐时间步长")),
-                ("recommend-grid", tr("icli_help_recommend_grid", "按区域范围推荐网格间距/分辨率")),
+                ("recommend-grid", tr("icli_help_recommend_grid", "按区域范围推荐网格间距/分辨率（--coarse 偏粗 / --fine 偏细）")),
                 ("run-workflow", tr("icli_help_run_workflow", "完整预处理流程")),
                 ("local-run", tr("icli_help_local_run", "执行当前工作目录的 local.sh")),
             ],
@@ -939,13 +939,19 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_recommend_grid(self, arg: str) -> None:
-        """recommend-grid  — 按区域范围推荐网格间距/分辨率，自动写入配置
+        """recommend-grid [--coarse|--fine]  — 按区域范围推荐网格间距/分辨率，自动写入配置
 
-        [EN] recommend-grid  — Recommend grid spacing/resolution from the domain
-        extent, auto-write to config.
+        [EN] recommend-grid [--coarse|--fine]  — Recommend grid spacing/resolution
+        from the domain extent, auto-write to config.
+        --coarse: one tier coarser; --fine: one tier finer.
         """
         if not self._require_config():
             return
+        offset = 0
+        if "--coarse" in arg:
+            offset = 1
+        elif "--fine" in arg:
+            offset = -1
         try:
             from ..domain.grid_spacing_recommendation import recommend_grid_params
 
@@ -957,7 +963,7 @@ class InteractiveCLI(cmd.Cmd):
             lon = [float(outer.lon[0]), float(outer.lon[1])]
             lat = [float(outer.lat[0]), float(outer.lat[1])]
 
-            rec = recommend_grid_params(grid.mesh_type, lon, lat)
+            rec = recommend_grid_params(grid.mesh_type, lon, lat, offset=offset)
             if rec is None:
                 print(_warn(tr("icli_recgrid_need_box", "⚠️ 请先在网格配置中填写有效的经纬度范围")))
                 return
@@ -977,8 +983,13 @@ class InteractiveCLI(cmd.Cmd):
             # 回写 params.yml [EN] Persist to params.yml
             _persist_grid_params(self._params_path, rec.section, rec.values)
 
+            offset_hint = ""
+            if offset > 0:
+                offset_hint = tr("cli_recgrid_offset_coarse", "（偏粗 {n} 档）").format(n=offset)
+            elif offset < 0:
+                offset_hint = tr("cli_recgrid_offset_fine", "（偏细 {n} 档）").format(n=-offset)
             print(_bold(tr("icli_recgrid_result", "📐 网格参数推荐（{mesh}，跨度≈{span} km）").format(
-                mesh=rec.mesh_type, span=int(rec.span_km))))
+                mesh=rec.mesh_type, span=int(rec.span_km)) + offset_hint))
             for key, value in rec.values.items():
                 print(f"  {key} = {value}")
             print(_success(tr("icli_cfl_persisted", "✅ 已写入 {}").format(self._params_path)))

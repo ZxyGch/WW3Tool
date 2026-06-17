@@ -84,13 +84,41 @@ class GridParamRecommendation:
         return ", ".join(f"{k}={v}" for k, v in self.values.items())
 
 
+def _pick_tier(tiers: list, span: float, offset: int = 0):
+    """按 span 匹配首个满足条件的档位，再用 offset 偏移（正=更粗，负=更细）。
+
+    tiers 从最粗（index 0）到最细（index N-1）排列，所以 ``offset > 0``
+    需要 *减小* index 才能更粗；超出边界时截断到最近有效档。
+
+    [EN] Match the first tier whose threshold the span meets, then shift by
+    ``offset`` (positive → coarser = lower index, negative → finer = higher
+    index). Clamped to valid range.
+    """
+    matched = 0
+    for i, t in enumerate(tiers):
+        if span >= t[0]:
+            matched = i
+            break
+    # offset > 0 → coarser → lower index; offset < 0 → finer → higher index
+    shifted = max(0, min(len(tiers) - 1, matched - offset))
+    return tiers[shifted]
+
+
 def recommend_grid_params(
-    mesh_type: Optional[str], lon: list[float], lat: list[float]
+    mesh_type: Optional[str],
+    lon: list[float],
+    lat: list[float],
+    *,
+    offset: int = 0,
 ) -> Optional[GridParamRecommendation]:
     """按网格类型与经纬度范围返回推荐参数；范围无效（退化为点/线）时返回 ``None``。
 
+    ``offset`` 可在自动匹配的基础上偏移档位：``+1`` 更粗，``-1`` 更细，
+    超出边界时截断到最粗/最细档。
+
     [EN] Recommend params for the given mesh type and lon/lat box; returns ``None``
     when the extent is invalid (degenerates to a point/line).
+    ``offset`` shifts the matched tier: ``+1`` coarser, ``-1`` finer, clamped.
     """
     if lon[0] == lon[1] or lat[0] == lat[1]:
         return None
@@ -98,9 +126,8 @@ def recommend_grid_params(
     span = extent_km(lon, lat)
 
     if mesh_type == "unstructured":
-        hmax, hshr, hmin, dhdx = next(
-            (t[1], t[2], t[3], t[4]) for t in _UNST_TIERS if span >= t[0]
-        )
+        tier = _pick_tier(_UNST_TIERS, span, offset)
+        hmax, hshr, hmin, dhdx = tier[1], tier[2], tier[3], tier[4]
         values = {
             "hmax": _fmt(hmax),
             "hmin": _fmt(hmin),
@@ -110,11 +137,11 @@ def recommend_grid_params(
         return GridParamRecommendation("unstructured", span, "unstructured", values)
 
     if mesh_type == "smc":
-        n_levels = next(t[1] for t in _SMC_TIERS if span >= t[0])
-        return GridParamRecommendation("smc", span, "smc", {"n_levels": str(n_levels)})
+        tier = _pick_tier(_SMC_TIERS, span, offset)
+        return GridParamRecommendation("smc", span, "smc", {"n_levels": str(tier[1])})
 
     # 默认按结构化处理 [EN] default to structured
-    res = next(t[1] for t in _STRUCT_TIERS if span >= t[0])
+    tier = _pick_tier(_STRUCT_TIERS, span, offset)
     return GridParamRecommendation(
-        "structured", span, "outer", {"dx": _fmt(res), "dy": _fmt(res)}
+        "structured", span, "outer", {"dx": _fmt(tier[1]), "dy": _fmt(tier[1])}
     )
