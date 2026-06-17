@@ -475,7 +475,7 @@ class FileService:
         except Exception as e:
             # 修复失败时记录但不中断流程
             # [EN] Log but do not interrupt the workflow if fixing fails
-            self.log(f"{tr('log_copy_fix_failed', '⚠️ 复制或修复文件失败')}: {e}")
+            self.log(f"{tr('log_copy_fix_failed', '❌ 复制或修复文件失败')}: {e}")
             return None
 
     def scan_forcing_files(self, selected_folder: str) -> Step1Files:

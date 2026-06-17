@@ -668,7 +668,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._set_path_value("workdir", folder, tr("choose_workdir", "选择工作目录"))
         self.selected_folder = folder
         add_recent_workdir(folder)
-        self._append_log(tr("workdir_current", "当前工作目录：{folder}").format(folder=folder))
+        self._append_log(tr("workdir_current", "📂 工作目录：{folder}").format(folder=folder))
         self.setWindowTitle(f"{self._base_title}  |  {tr('workdir_path', '工作目录:')} {folder}")
         # [EN] Refresh step 6 server path (append workdir name)
         # 刷新第六步服务器路径（追加工作目录名）
@@ -1293,7 +1293,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _nested_factor(self) -> float:
         factor = self._loaded_config.grid.nested_contraction_coefficient if self._loaded_config else 1.3
         if factor <= 0:
-            raise ValueError(tr("nested_factor_must_positive", "嵌套收缩系数必须大于 0"))
+            raise ValueError(tr("nested_factor_must_positive", "❌ 嵌套收缩系数必须大于 0"))
         return factor
 
     def _setup_inner_grid(self) -> None:
@@ -1626,10 +1626,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         lon_lat = self._plot_interface.jason3_lon_lat()
         time_range = self._plot_interface.jason3_time_range()
         if not lon_lat:
-            self._show_error(tr("plotting_fill_lonlat_range", "请正确填写经纬度范围"))
+            self._show_error(tr("plotting_fill_lonlat_range", "❌ 请正确填写经纬度范围"))
             return
         if not time_range:
-            self._show_error(tr("plotting_fill_time_range", "请填写开始和结束时间（格式：YYYYMMDD）"))
+            self._show_error(tr("plotting_fill_time_range", "❌ 请填写开始和结束时间（格式：YYYYMMDD）"))
             return
         jason_folder = self._plot_interface.jason3_folder() or None
         self._run_plot(
@@ -1689,7 +1689,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if isinstance(result, dict) and result.get("success") is False:
             self._append_log(
                 tr("plotting_ndbc_download_process_failed", "❌ NDBC 下载失败：{error}").format(
-                    error=result.get("error", tr("unknown_error", "未知错误"))
+                    error=result.get("error", tr("unknown_error", "❌ 未知错误"))
                 )
             )
             return
@@ -1987,29 +1987,34 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._server_apply_idle_resources("half")
 
     def _server_apply_idle_resources(self, mode: str) -> None:
+        from workflows.application.slurm_ops import select_idle_allocation
+
         rows = self._server_connect_panel.idle_resources()
-        if not rows:
-            self._show_error(tr("step6_idle_resources_empty", "当前没有可用的空闲 CPU 数据，请先连接服务器或检查空闲资源"))
+        try:
+            allocation = select_idle_allocation(rows, "half" if mode == "half" else "full")
+        except ValueError as exc:
+            self._show_error(str(exc))
             return
-        best = max(rows, key=lambda item: int(item.get("cores") or 0))
-        total_cores = max(1, int(best.get("cores") or 1))
-        total_nodes = max(1, int(best.get("nodes") or 1))
-        max_per_node = max(1, int(best.get("max_cores_per_node") or 0) or ((total_cores + total_nodes - 1) // total_nodes))
-        if mode == "half":
-            cores = max(1, (total_cores + 1) // 2)
-            nodes = min(total_nodes, max(1, (cores + max_per_node - 1) // max_per_node))
-            action = tr("step6_use_idle_half", "半数使用")
-        else:
-            cores = total_cores
-            nodes = total_nodes
-            action = tr("step6_use_idle_full", "最大化使用")
-        cpu = str(best.get("cpu") or "").strip()
-        self._server_connect_panel.apply_slurm_resources(cpu=cpu, cores=cores, nodes=nodes)
+        self._server_connect_panel.apply_slurm_resources(
+            cpu=allocation.cpu,
+            cores=allocation.cores,
+            nodes=allocation.nodes,
+        )
+        action = (
+            tr("step6_use_idle_half", "半数使用")
+            if mode == "half"
+            else tr("step6_use_idle_full", "最大化使用")
+        )
         self._append_log(
             tr(
                 "step6_idle_resources_applied",
                 "✅ 已按{mode}选择空闲资源：CPU={cpu}, 核数={cores}, 节点数={nodes}",
-            ).format(mode=action, cpu=cpu, cores=cores, nodes=nodes)
+            ).format(
+                mode=action,
+                cpu=allocation.cpu,
+                cores=allocation.cores,
+                nodes=allocation.nodes,
+            )
         )
 
     def _server_confirm_slurm(self) -> None:
@@ -2307,9 +2312,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         elif state.action == "validate" and not state.error:
             self._pipeline_status.setText(tr("status_params_valid", "参数有效"))
         elif state.action == "run" and not state.error:
-            self._pipeline_status.setText(tr("status_preprocess_done", "预处理完成"))
+            self._pipeline_status.setText(tr("status_preprocess_done", "✅ 预处理流程完成"))
         elif state.action == "grid" and not state.error:
-            self._pipeline_status.setText(tr("status_grid_done", "网格生成完成"))
+            self._pipeline_status.setText(tr("status_grid_done", "✅ 网格生成完成"))
         elif state.action == "bounds" and not state.error:
             self._pipeline_status.setText(tr("status_bounds_loaded", "范围已读取"))
         elif state.action == "map" and not state.error:

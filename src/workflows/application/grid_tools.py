@@ -308,7 +308,7 @@ def render_region_map(
                 lat_max=f"{config.grid.outer.lat[1]:.2f}",
             )
         )
-    return GridPreviewResult(images=[str(output)], title=tr("step2_view_map", "ℹ️ 查看地图"), messages=list(logger.messages))
+    return GridPreviewResult(images=[str(output)], title=tr("step2_view_map", "查看地图"), messages=list(logger.messages))
 
 
 def visualize_grid(

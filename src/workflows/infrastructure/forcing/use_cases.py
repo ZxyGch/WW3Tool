@@ -218,7 +218,7 @@ class ImportForcingFileUseCase:
                 return ForcingImportResult(
                     success=False,
                     field=field,
-                    error=tr("log_copy_fix_failed", "❌ 复制或修复文件失败！"),
+                    error=tr("log_copy_fix_failed", "❌ 复制或修复文件失败"),
                 )
 
         actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path
@@ -428,7 +428,7 @@ class ImportWindForcingUseCase:
                     return ForcingImportResult(
                         success=False,
                         field=ForcingField.WIND,
-                        error=tr("log_copy_fix_failed", "❌ 复制或修复文件失败！"),
+                        error=tr("log_copy_fix_failed", "❌ 复制或修复文件失败"),
                     )
 
             actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path

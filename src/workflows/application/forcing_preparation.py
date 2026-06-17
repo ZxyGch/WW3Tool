@@ -49,7 +49,7 @@ def _forcing_import_error_message(result) -> str:
         if field == "wind":
             return tr(
                 "wind_file_missing_vars_msg",
-                "文件不包含风场变量（u10/v10），请选择正确的风场文件",
+                "❌ 文件不包含风场变量（u10/v10），请选择正确的风场文件",
             )
         return tr(
             "step1_field_missing_vars",

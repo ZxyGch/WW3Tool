@@ -249,16 +249,16 @@ def _st(value: Any) -> str:
     return st
 
 
-def _st_presets(value: Any) -> Dict[str, str]:
+def _server_st_presets(value: Any) -> Dict[str, str]:
     if value is None:
         return dict(DEFAULT_ST_PRESETS)
-    raw = _as_dict(value, "presets.st")
+    raw = _as_dict(value, "presets.server_st")
     result: Dict[str, str] = {}
     for name, path in raw.items():
         st_name = str(name).strip()
         executable_dir = str(path).strip()
         if not st_name or not executable_dir:
-            raise ConfigError("presets.st 的名称和路径均不能为空")
+            raise ConfigError("presets.server_st 的名称和路径均不能为空")
         result[st_name] = executable_dir.rstrip("/")
     return result
 
@@ -310,7 +310,7 @@ def _parameter_presets(value: Any) -> ParameterPresets:
         }
     return ParameterPresets(
         output_scheme=output_schemes,
-        st=_st_presets(raw.get("st")),
+        server_st=_server_st_presets(raw.get("server_st")),
         structured_bathymetry=_preset_values(
             raw.get("structured_bathymetry"),
             "presets.structured_bathymetry",
@@ -511,6 +511,7 @@ def _server_config(raw: Any, base_dir: Path) -> ServerConfig:
         user=str(r.get("user") or "").strip(),
         password=str(r.get("password") or ""),
         key_file=_resolve_path(r.get("key_file"), base_dir),
+        ssh_config_host=str(r.get("ssh_config_host") or "").strip(),
         default_remote_dir=str(r.get("default_remote_dir") or "").strip(),
         remote_dir=str(r.get("remote_dir") or "").strip(),
     )
@@ -527,7 +528,7 @@ def _validate_wind_path(wind: Optional[Path]) -> None:
     if wind is None:
         raise ConfigError(tr("cfg_wind_path_required", "风场文件路径不能为空"))
     if not wind.is_file():
-        raise ConfigError(tr("cfg_wind_path_not_exists", "风场文件不存在：{path}").format(path=wind))
+        raise ConfigError(tr("cfg_wind_path_not_exists", "❌ 风场文件不存在：{path}").format(path=wind))
 
 
 def load_pipeline_config(
@@ -814,8 +815,10 @@ def parse_pipeline_config(
             "ww3.file_split 必须使用 presets.file_split 中的选项："
             + "、".join(presets.file_split)
         )
-    if presets.st and ww3.st not in presets.st:
-        raise ConfigError("ww3.st 必须使用 presets.st 中定义的名称：" + "、".join(presets.st))
+    if presets.server_st and ww3.st not in presets.server_st:
+        raise ConfigError(
+            "ww3.st 必须使用 presets.server_st 中定义的名称：" + "、".join(presets.server_st)
+        )
 
     ww3_grid_raw = _as_dict(raw.get("ww3_grid"), "ww3_grid")
     ww3_grid = WW3GridSettings(
@@ -989,7 +992,7 @@ presets:
   # ST 值是服务器上的可执行文件所在目录，目录名不限；ww3.st 从这些名称中选择一个
   # 请根据实际服务器环境自行配置，示例：
   #   ST4: /path/to/your/ww3/model/exe
-  st: {}
+  server_st: {}
   structured_bathymetry: [GEBCO, ETOP1, ETOP2]
   smc_bathymetry: [ETOPO1, ETOPO2, GEBCO]
   coastline_precision: [full, high, inter, low, coarse]
@@ -1097,8 +1100,8 @@ ww3:
   file_split: year
   output_scheme: standard          # [EN] Select one scheme defined in presets.output_scheme
                                    # 选择 presets.output_scheme 中定义的一个方案
-  st: ST2                        # [EN] Select one path name from presets.st
-                                 # 选择 presets.st 中的一个路径名称
+  st: ST2                        # [EN] Select one path name from presets.server_st
+                                 # 选择 presets.server_st 中的一个路径名称
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml
@@ -1174,6 +1177,8 @@ server:
                             # 密码（建议改用 key_file）
   key_file:                 # [EN] SSH private key file path (takes priority over password)
                             # SSH 私钥文件路径（优先于 password）
+  ssh_config_host:          # [EN] Host alias in ~/.ssh/config (resolved at connect time)
+                            # ~/.ssh/config 中的 Host 别名（连接时解析）
   default_remote_dir: ""    # [EN] Default remote base directory, e.g. /home/username/ww3_run (set in settings page)
                             # 默认远程基础目录，如 /home/username/ww3_run（设置页写入）
   remote_dir: ""            # [EN] Actual remote workdir (set in step 6 input; when empty, uses default_remote_dir + workdir name)

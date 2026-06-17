@@ -434,7 +434,7 @@ class ModifyWW3NML(
                 except Exception as e:
                     self.log(tr("server_sh_cleanup_error", "⚠️ 清理 server.sh 的 \\r 时出错：{error}").format(error=e))
             else:
-                self.log(tr("server_sh_not_found", "⚠️ 未找到 server.sh 文件：{path}").format(path=server_script_path))
+                self.log(tr("server_sh_not_found", "❌ 未找到 server.sh 文件：{path}").format(path=server_script_path))
             
             # [EN] Only copy ww3_multi.nml / local.sh in nested grid mode
             # 只有在嵌套网格模式下才复制 ww3_multi.nml / local.sh

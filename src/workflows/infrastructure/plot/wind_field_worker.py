@@ -416,7 +416,7 @@ def _make_wind_field_worker(
             )
         else:
             log(tr("wind_no_images_generated",
-                   "\u26a0\ufe0f 未生成风场图，检查数据是否为空"))
+                   "⚠️ 未生成风场图，检查数据是否为空"))
 
     except Exception as e:
         import traceback
