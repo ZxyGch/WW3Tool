@@ -42,39 +42,39 @@ python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤
 
 CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用。每个子命令读取工作目录的 `params.yml` 后执行、打印日志到 stdout、通过退出码反馈成功/失败。主要子命令包括：
 
-| 类别 | 子命令 | 说明 |
-|------|--------|------|
-| 配置管理 | `workdir <path>` | 创建或加载工作目录 |
-| | `validate [workdir]` | 校验 params.yml |
-| | `config [workdir]` | 打印配置摘要 |
-| | `print-params [workdir]` | 输出 params.yml 原文 |
-| 预处理 | `prepare-forcing [workdir]` | 准备强迫场（Step 1） |
-| | `merge-forcing <in1.nc> [...] -o <out.nc>` | 独立工具：校验并合并强迫场 NetCDF |
-| | `generate-grid [workdir]` | 生成网格（Step 2） |
-| | `recommend-grid [--coarse\|--fine]` | 按区域范围推荐网格间距 |
-| | `recommend-cfl` | 按 CFL 公式推荐时间步长 |
-| | `prepare-ww3 [workdir]` | 仅生成 WW3 namelist |
-| | `run-workflow [workdir]` | 完整预处理流程 |
-| | `local-run [workdir]` | 执行 local.sh |
-| 远程运维 | `connect-test` | 测试 SSH 连接 |
-| | `ssh` | 打开交互式 SSH 终端 |
-| | `slurm-idle` | 查看 Slurm 空闲 CPU |
-| | `confirm-slurm [--full\|--half]` | 写 server.sh |
-| | `upload --confirm` | 上传工作目录到远程 |
-| | `submit` | 提交 server.sh |
-| | `check-status` | 检查远程任务状态 |
-| | `queue-status` | 查看 SLURM 队列 |
-| | `download-results [--nested]` | 下载远程结果 |
-| | `download-log` | 下载远程日志 |
-| | `clear-remote --confirm` | 清空远程目录 |
-| | `cancel-job <job_id>` | 取消 SLURM 任务 |
-| | `ntfy-watch` | 注入常驻 ntfy 监听 |
-| | `ntfy-watch-job <job_id>` | 为指定任务注入一次性 ntfy 监听 |
-| 后处理 | `plot-wave-maps [--contour]` | 波高填色图 |
-| | `plot-spectrum [--mode ...] [--station N]` | 方向谱图 |
-| | `plot-jason3` / `plot-jason3-swh` / `download-jason3` | Jason-3 相关 |
-| | `plot-ndbc [--download]` | NDBC 浮标匹配 |
-| 辅助 | `print-example` | 输出示例 params.yml |
+| 类别   | 子命令                                                   | 说明                   |
+| ---- | ----------------------------------------------------- | -------------------- |
+| 配置管理 | `workdir <path>`                                      | 创建或加载工作目录            |
+|      | `validate [workdir]`                                  | 校验 params.yml        |
+|      | `config [workdir]`                                    | 打印配置摘要               |
+|      | `print-params [workdir]`                              | 输出 params.yml 原文     |
+| 预处理  | `prepare-forcing [workdir]`                           | 准备强迫场（Step 1）        |
+|      | `merge-forcing <in1.nc> [...] -o <out.nc>`            | 独立工具：校验并合并强迫场 NetCDF |
+|      | `generate-grid [workdir]`                             | 生成网格（Step 2）         |
+|      | `recommend-grid [workdir] [--coarse\|--fine]`         | 按区域范围推荐网格间距          |
+|      | `recommend-cfl [workdir]`                             | 按 CFL 公式推荐时间步长       |
+|      | `prepare-ww3 [workdir]`                               | 仅生成 WW3 namelist     |
+|      | `run-workflow [workdir]`                              | 完整预处理流程              |
+|      | `local-run [workdir]`                                 | 执行 local.sh          |
+| 远程运维 | `connect-test [workdir]`                              | 测试 SSH 连接            |
+|      | `ssh [workdir]`                                       | 打开交互式 SSH 终端         |
+|      | `slurm-idle [workdir]`                                | 查看 Slurm 空闲 CPU      |
+|      | `confirm-slurm [workdir] [--full\|--half]`            | 写 server.sh          |
+|      | `upload [workdir] --confirm`                          | 上传工作目录到远程            |
+|      | `submit [workdir]`                                    | 提交 server.sh         |
+|      | `check-status [workdir]`                              | 检查远程任务状态             |
+|      | `queue-status [workdir]`                              | 查看 SLURM 队列          |
+|      | `download-results [workdir] [--nested]`               | 下载远程结果               |
+|      | `download-log [workdir]`                              | 下载远程日志               |
+|      | `clear-remote [workdir] --confirm`                    | 清空远程目录               |
+|      | `cancel-job [workdir] <job_id>`                       | 取消 SLURM 任务          |
+|      | `ntfy-watch [workdir]`                                | 注入常驻 ntfy 监听         |
+|      | `ntfy-watch-job [workdir] <job_id>`                   | 为指定任务注入一次性 ntfy 监听   |
+| 后处理  | `plot-wave-maps [workdir] [--contour]`                | 波高填色图                |
+|      | `plot-spectrum [workdir] [--mode ...] [--station N]`  | 方向谱图                 |
+|      | `plot-jason3` / `plot-jason3-swh` / `download-jason3` [workdir] | Jason-3 相关           |
+|      | `plot-ndbc [workdir] [--download]`                    | NDBC 浮标匹配            |
+| 辅助   | `print-example`                                       | 输出示例 params.yml      |
 
 
 
@@ -228,8 +228,8 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 
 ```sh
 python3 run.py generate-grid work_dir_name                  # 生成网格
-python3 run.py recommend-grid --coarse                # 推荐网格间距
-python3 run.py recommend-cfl                          # 推荐 CFL 时间步长
+python3 run.py recommend-grid work_dir_name --coarse  # 推荐网格间距
+python3 run.py recommend-cfl work_dir_name            # 推荐 CFL 时间步长
 ```
 
 `application/grid_preparation.py` + `meshgen/`
@@ -498,11 +498,11 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ### 5.6 连接服务器与 Slurm 配置
 
 ```sh
-python3 run.py connect-test             # 测试 SSH 连接
-python3 run.py slurm-idle               # 查看 Slurm 空闲 CPU
-python3 run.py queue-status             # 查看 SLURM 作业队列
-python3 run.py confirm-slurm --full     # 确认 Slurm 参数并写 server.sh
-python3 run.py ssh                      # 打开交互式 SSH 终端
+python3 run.py connect-test work_dir_name             # 测试 SSH 连接
+python3 run.py slurm-idle work_dir_name               # 查看 Slurm 空闲 CPU
+python3 run.py queue-status work_dir_name             # 查看 SLURM 作业队列
+python3 run.py confirm-slurm work_dir_name --full     # 确认 Slurm 参数并写 server.sh
+python3 run.py ssh work_dir_name                      # 打开交互式 SSH 终端
 ```
 
 `application/remote_ops.py` + `application/slurm_ops.py`
