@@ -167,11 +167,10 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
                 (
-                    "merge-forcing <输入1.nc> [...] -o <输出.nc> [--time-range ...] [--bbox ...]",
+                    "merge-forcing <in1.nc> [...] -o <out.nc> [--time-range ...] [--bbox ...]",
                     tr(
                         "icli_help_merge_forcing",
-                        "独立工具：校验风/流等强迫场 NetCDF 的网格与时间轴，"
-                        "按时间拼接和/或合并不同变量到单个文件（无需工作目录）",
+                        "Standalone: validate forcing NetCDFs, concat in time and/or merge variables (no workdir needed)",
                     ),
                 ),
                 ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
@@ -215,6 +214,8 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("download-log", tr("icli_help_download_log", "下载远程日志文件")),
                 ("clear-remote --confirm", tr("icli_help_clear_remote", "清空远程工作目录")),
                 ("cancel-job <job_id>", tr("icli_help_cancel_job", "取消 SLURM 任务")),
+                ("ntfy-watch", tr("icli_help_ntfy_watch", "注入常驻 ntfy 监听到远程服务器")),
+                ("ntfy-watch-job <job_id>", tr("icli_help_ntfy_watch_job", "为指定 SLURM 任务注入一次性 ntfy 监听")),
             ],
         ),
         (
@@ -804,9 +805,10 @@ class InteractiveCLI(cmd.Cmd):
                 _warn(
                     tr(
                         "icli_usage_merge_forcing",
-                        "用法：merge-forcing <输入1.nc> <输入2.nc> [...] -o <输出.nc> "
-                        "[--time-range <开始> <结束>] [--bbox <西> <东> <南> <北>]\n"
-                        "  独立工具，无需工作目录；校验网格/时间轴后按时间拼接和/或合并不同变量",
+                        "Usage: merge-forcing <in1.nc> <in2.nc> [...] -o <out.nc> "
+                        "[--time-range <start> <end>] [--bbox <W> <E> <S> <N>]\n"
+                        "  Standalone; no workdir needed. Validates grid/time axes, "
+                        "then concatenates in time and/or merges variables.",
                     )
                 )
             )
@@ -815,7 +817,7 @@ class InteractiveCLI(cmd.Cmd):
         try:
             from ..application.forcing_merge import run_merge_forcing
 
-            print(_info(tr("icli_start_merge_forcing", "▶ 开始校验并合并强迫场...")))
+            print(_info(tr("icli_start_merge_forcing", "▶ Validating and merging forcing fields...")))
             run_merge_forcing(
                 args.inputs,
                 args.output,
@@ -824,7 +826,7 @@ class InteractiveCLI(cmd.Cmd):
                 time_range=args.time_range,
                 bbox=args.bbox,
             )
-            print(_success(tr("icli_done_merge_forcing", "✅ 强迫场合并完成")))
+            print(_success(tr("icli_done_merge_forcing", "✅ Forcing merge complete")))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
@@ -1393,6 +1395,56 @@ class InteractiveCLI(cmd.Cmd):
                 print(_success(tr("icli_done_cancel", "✅ 任务已取消")))
             else:
                 print(_error(tr("icli_failed_cancel", "❌ 取消失败：{}").format(result.error)))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_ntfy_watch(self, arg: str) -> None:
+        """ntfy-watch  — Inject a persistent ntfy watcher on the remote login node
+
+        [EN] ntfy-watch  — Inject a persistent ntfy watcher on the remote login node
+        """
+        if not self._require_config():
+            return
+        try:
+            from ..application.remote_ops import run_inject_ntfy_listener
+
+            print(_info(tr("icli_start_ntfy_watch", "▶ Injecting persistent ntfy watcher...")))
+            result = run_inject_ntfy_listener(self._config, log=self._log_callback)
+            if result.success:
+                topic = (result.data or {}).get("topic", "")
+                print(_success(tr("icli_done_ntfy_watch", "✅ ntfy watcher started")))
+                if topic:
+                    print(f"  Topic: {topic}")
+                    print(f"  URL:   https://ntfy.sh/{topic}")
+            else:
+                print(_error(tr("icli_failed_ntfy_watch", "❌ ntfy injection failed: {}").format(result.error)))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_ntfy_watch_job(self, arg: str) -> None:
+        """ntfy-watch-job <job_id>  — Inject a one-shot ntfy watcher for a specific SLURM job
+
+        [EN] ntfy-watch-job <job_id>  — One-shot ntfy watcher for a SLURM job
+        """
+        if not self._require_config():
+            return
+        job_id = arg.strip()
+        if not job_id:
+            print(_warn(tr("icli_usage_ntfy_watch_job", "Usage: ntfy-watch-job <job_id>")))
+            return
+        try:
+            from ..application.remote_ops import run_inject_ntfy_job_listener
+
+            print(_info(tr("icli_start_ntfy_watch_job", "▶ Injecting one-shot ntfy watcher for job {}...").format(job_id)))
+            result = run_inject_ntfy_job_listener(self._config, job_id, log=self._log_callback)
+            if result.success:
+                topic = (result.data or {}).get("topic", "")
+                print(_success(tr("icli_done_ntfy_watch_job", "✅ One-shot ntfy watcher started for job {}").format(job_id)))
+                if topic:
+                    print(f"  Topic: {topic}")
+                    print(f"  URL:   https://ntfy.sh/{topic}")
+            else:
+                print(_error(tr("icli_failed_ntfy_watch_job", "❌ ntfy injection failed: {}").format(result.error)))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 

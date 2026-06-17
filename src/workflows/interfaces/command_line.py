@@ -11,7 +11,7 @@
 - 配置管理：``workdir``、``validate``、``config``、``print-params``
 - 预处理：``prepare-forcing``、``merge-forcing``、``generate-grid``、``prepare-ww3``、``recommend-cfl``、``recommend-grid``、``run-workflow``、``local-run``
 - 后处理/绘图：``plot-wave-maps``、``plot-spectrum``、``plot-jason3``、``plot-jason3-swh``、``download-jason3``、``plot-ndbc``
-- 远程运维：``connect-test``、``ssh``、``upload``、``submit`` 等 SLURM/SSH 操作
+- 远程运维：``connect-test``、``ssh``、``upload``、``submit``、``ntfy-watch``、``ntfy-watch-job`` 等 SLURM/SSH 操作
 - 辅助：``print-example`` 输出示例 YAML
 
 主要消费者：
@@ -190,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=tr(
             "cli_help_merge_forcing_time_range",
-            "裁剪输出到 [START, END]（YYYYMMDD 或 ISO 时间）；默认取所有输入的并集（最大时间范围）",
+            "Clip output to [START, END] (YYYYMMDD or ISO time); default: union of all inputs",
         ),
     )
     p_merge.add_argument(
@@ -201,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=tr(
             "cli_help_merge_forcing_bbox",
-            "裁剪输出到经纬度范围 west east south north；默认取公共网格（最小经纬度范围）",
+            "Clip output to lon/lat extent west east south north; default: common grid (min extent)",
         ),
     )
 
@@ -381,6 +381,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_cancel.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_cancel.add_argument("job_id", nargs="?", default=None, help=tr("cli_help_job_id", "SLURM job id to cancel"))
 
+    p_ntfy = sub.add_parser(
+        "ntfy-watch",
+        help=tr("cli_help_ntfy_watch", "Inject a persistent ntfy watcher on the remote login node"),
+    )
+    p_ntfy.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_ntfy_job = sub.add_parser(
+        "ntfy-watch-job",
+        help=tr("cli_help_ntfy_watch_job", "Inject a one-shot ntfy watcher for a specific SLURM job"),
+    )
+    p_ntfy_job.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_ntfy_job.add_argument(
+        "job_id",
+        help=tr("cli_help_ntfy_job_id", "SLURM job id to watch"),
+    )
+
     sub.add_parser("print-example", help=tr("cli_help_print_example", "Print an example YAML parameter file"))
     return parser
 
@@ -396,7 +412,7 @@ _PLOT_COMMANDS = {
 _REMOTE_COMMANDS = {
     "connect-test", "ssh", "slurm-idle", "confirm-slurm", "list-files", "upload", "submit",
     "check-status", "queue-status", "download-results", "download-log",
-    "clear-remote", "cancel-job",
+    "clear-remote", "cancel-job", "ntfy-watch", "ntfy-watch-job",
 }
 
 
@@ -624,6 +640,16 @@ def main(argv: list[str] | None = None) -> int:
             return _remote(lambda: __import__(
                 "workflows.application.remote_ops", fromlist=["run_cancel_job"]
             ).run_cancel_job(config, args.job_id, log=print))
+
+        if args.command == "ntfy-watch":
+            return _remote(lambda: __import__(
+                "workflows.application.remote_ops", fromlist=["run_inject_ntfy_listener"]
+            ).run_inject_ntfy_listener(config, log=print))
+
+        if args.command == "ntfy-watch-job":
+            return _remote(lambda: __import__(
+                "workflows.application.remote_ops", fromlist=["run_inject_ntfy_job_listener"]
+            ).run_inject_ntfy_job_listener(config, args.job_id, log=print))
 
     except ConfigError as exc:
         print(tr("cli_config_error", "❌ 参数错误：{error}").format(error=exc), file=sys.stderr)
