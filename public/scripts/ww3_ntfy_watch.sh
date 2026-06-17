@@ -3,7 +3,6 @@ set -u
 
 NTFY_SERVER="${NTFY_SERVER:-https://ntfy.sh}"
 NTFY_TOPIC="${NTFY_TOPIC:-}"
-NTFY_TITLE="${NTFY_TITLE:-WW3 jobs finished}"
 NTFY_LABEL="${NTFY_LABEL:-WW3}"
 NTFY_INTERVAL="${NTFY_INTERVAL:-60}"
 NTFY_JOBS="${NTFY_JOBS:-}"
@@ -19,7 +18,6 @@ Usage: ww3_ntfy_watch.sh --topic TOPIC [options]
 Options:
   --server URL          ntfy server URL, default: https://ntfy.sh
   --topic TOPIC         ntfy topic name
-  --title TEXT          ntfy notification title
   --label TEXT          label shown in the message
   --mode once|all       once: exit after watched targets finish; all: keep watching forever
   --jobs "ID ..."       Slurm job IDs to watch; once mode captures current user jobs when empty
@@ -33,7 +31,6 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --server) NTFY_SERVER="${2:-}"; shift 2 ;;
         --topic) NTFY_TOPIC="${2:-}"; shift 2 ;;
-        --title) NTFY_TITLE="${2:-}"; shift 2 ;;
         --label) NTFY_LABEL="${2:-}"; shift 2 ;;
         --mode) NTFY_MODE="${2:-once}"; shift 2 ;;
         --jobs) NTFY_JOBS="${2:-}"; shift 2 ;;
@@ -204,7 +201,7 @@ notify_finished_job() {
         echo "State: ${state}"
         echo "Elapsed: $(($(date '+%s') - start_epoch))s"
     } > "$state_dir/message_${job_id}.txt"
-    send_ntfy "${NTFY_LABEL} job ${job_id} finished" "$(cat "$state_dir/message_${job_id}.txt")" \
+    send_ntfy "${NTFY_LABEL} job ${job_id} ${state}" "$(cat "$state_dir/message_${job_id}.txt")" \
         && touch "$state_dir/job_${job_id}.done"
     return 0
 }
@@ -227,7 +224,8 @@ Label: ${NTFY_LABEL}
 Workdir: ${dir}
 State: ${state}
 Elapsed: $(($(date '+%s') - start_epoch))s"
-    send_ntfy "${NTFY_LABEL} workdir finished" "$body"
+    workdir_name="$(basename "$dir")"
+    send_ntfy "${NTFY_LABEL} ${workdir_name} ${state}" "$body"
     return 0
 }
 
@@ -299,8 +297,35 @@ Timeout reached while ${active} target(s) were still active.
         sleep "$NTFY_INTERVAL"
     done
 
-    title="${NTFY_TITLE}"
-    [ "$final_ok" -eq 1 ] || title="${NTFY_TITLE} (failed)"
+    # [EN] Build a dynamic title with job IDs and their states
+    # 根据任务 ID 和状态生成动态标题
+    if [ -n "$NTFY_JOBS" ]; then
+        job_count=0
+        job_ids=""
+        last_state=""
+        for job in $NTFY_JOBS; do
+            st="$(job_state "$job")"
+            job_count=$((job_count + 1))
+            if [ -z "$job_ids" ]; then
+                job_ids="$job"
+            else
+                job_ids="${job_ids}, $job"
+            fi
+            last_state="$st"
+        done
+        if [ "$job_count" -eq 1 ]; then
+            title="${NTFY_LABEL} job ${job_ids} ${last_state}"
+        else
+            if [ "$final_ok" -eq 1 ]; then
+                title="${NTFY_LABEL} ${job_count} jobs finished (${job_ids})"
+            else
+                title="${NTFY_LABEL} ${job_count} jobs finished — failed (${job_ids})"
+            fi
+        fi
+    else
+        title="${NTFY_LABEL} finished"
+        [ "$final_ok" -eq 1 ] || title="${title} (failed)"
+    fi
     send_ntfy "$title" "$summary"
 }
 
@@ -336,6 +361,7 @@ if send_ntfy "${NTFY_LABEL} watcher started" "Host: ${host}
 Mode: ${NTFY_MODE}
 Label: ${NTFY_LABEL}
 Topic: ${NTFY_TOPIC}
+Jobs: ${NTFY_JOBS:-auto-detect}
 Started: ${started_at}"; then
     log "startup notification sent OK"
 else
