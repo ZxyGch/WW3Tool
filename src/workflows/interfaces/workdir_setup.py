@@ -21,11 +21,29 @@ def repo_root_path() -> Path:
 def ensure_workdir(path: str) -> tuple[Path, bool]:
     """Create *path* from the root template, or verify an existing workdir.
 
+    When *path* is a bare directory name (no path separators), it is resolved
+    relative to the default workspace parent (``workSpace/``) rather than the
+    current working directory, keeping behaviour consistent with the Desktop GUI.
+
     Returns:
         ``(workdir, created)`` where *created* is ``True`` when a new directory
         was created and ``params.yml`` was copied from the template.
     """
-    workdir = Path(path).expanduser().resolve()
+    expanded = Path(path).expanduser()
+
+    # Bare name (no separators) → place under default workspace parent
+    if expanded.name == path.strip() and "/" not in path and "\\" not in path:
+        try:
+            from ..infrastructure.runtime_config import get_default_workdir
+            default_base = get_default_workdir(create_if_not_exists=True)
+            if default_base:
+                workdir = (Path(default_base) / path.strip()).resolve()
+            else:
+                workdir = expanded.resolve()
+        except Exception:
+            workdir = expanded.resolve()
+    else:
+        workdir = expanded.resolve()
     params_yml = workdir / "params.yml"
 
     if workdir.exists():
