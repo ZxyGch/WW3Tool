@@ -136,24 +136,44 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字典，由 `pipeline.py` 合并写入 `params.yml` 对应段落，再重新加载配置。这保证了 GUI 编辑和 YAML 文件始终保持同步。
 
----
+
 
 ## 5. 端到端工作流
 
 一次完整流程的典型链路：
 
 ```
-强迫场 NetCDF
+[创建工作目录] 从 params.yml 模板复制，编辑算例参数
   → [Step 1 强迫场准备] 校验、修复、复制/移动到工作目录
   → [Step 2 网格生成] 调用 meshgen 生成网格文件
   → [Step 3 计算模式] 选择 region / spectral_point / track
-  → [Step 4 WW3 配置] 生成全套 namelist 和脚本
-  → [运行] 本地执行 local.sh 或 上传到服务器执行 server.sh / Slurm
+  → [Step 4 WW3 配置] 生成全套 namelist 和脚本（含 server.sh）
+  → [连接服务器] SSH 连接、配置 Slurm 参数与 ST 版本
+  → [上传与运行] 上传工作目录、提交 server.sh / Slurm
   → WW3 模式输出 (ww3.YYYY.nc 等)
   → [后处理] 波高图、谱图、卫星/浮标验证
 ```
 
-### 5.1 Step 1 — 强迫场准备
+### 5.1 创建工作目录
+
+`workflows/interfaces/workdir_setup.py`
+
+根目录的 `params.yml` 仅为模板，不能直接用于运行。所有实际操作都必须在独立的工作目录中进行。
+
+创建工作目录时，程序执行以下操作：
+
+1. 在 `workSpace/`（默认路径，可在设置页面修改）下创建新文件夹，默认名称为当前时间戳（如 `2026-06-17_19-37-01`）
+2. 将根目录 `params.yml` 原样复制到工作目录（结构完全一致，不做裁剪或重排）
+3. 用正则替换工作目录路径、清空强迫场文件路径、清空日期范围和 `remote_dir`——这些是算例特有值，需要用户自行填写
+4. 其余段落（`presets`、`paths`、`ww3_grid`、`plot` 等通用配置）保持模板值不变
+
+工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响模板或其他算例。
+
+打开已有工作目录时，程序自动扫描目录中的文件来恢复 GUI 状态（详见 Section 7）。
+
+
+
+### 5.2 Step 1 — 强迫场准备
 
 `application/forcing_preparation.py` + `infrastructure/forcing/`
 
@@ -167,7 +187,9 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 独立工具 `merge-forcing` 可脱离工作目录，直接校验并合并多个强迫场 NetCDF（按时间拼接 + 变量合并），支持 `--time-range` 和 `--bbox` 裁剪。
 
-### 5.2 Step 2 — 网格生成
+
+
+### 5.3 Step 2 — 网格生成
 
 `application/grid_preparation.py` + `meshgen/`
 
@@ -192,7 +214,7 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 工具 `recommend-grid [--coarse|--fine]` 可根据经纬度范围和网格类型自动推荐网格间距。
 
-### 5.3 Step 3 — 计算模式
+### 5.4 Step 3 — 计算模式
 
 `domain/config_models.py` 中 `CalcConfig.mode` 字段：
 
@@ -202,17 +224,17 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 打开工作目录时，程序会自动检测 `points.list` 或 `track_i.ww3` 并切换对应模式。
 
-### 5.4 Step 4 — WW3 配置（namelist 与脚本生成）
+### 5.5 Step 4 — WW3 配置（namelist 与脚本生成）
 
 `infrastructure/adapters/ww3_namelist_adapter.py` + `infrastructure/ww3/`
 
 这是最核心的步骤。**每一步修改都是确定性的、可追溯的**——仅修改配置中明确指定的字段，不会改动模板中的其他内容。以下逐项说明每次操作实际修改了什么。
 
-#### 5.4.1 复制模板文件
+#### 5.5.1 复制模板文件
 
 从 `public/ww3/` 复制全套模板到工作目录，包含：`ww3_grid.nml`、`ww3_prnc.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`ww3_ounp.nml`、`ww3_trnc.nml`、`namelists.nml`、`server.sh`、`local.sh` 等。这些模板文件是后续所有修改的基础，修改只在模板上定点替换，不会重写整个文件。
 
-#### 5.4.2 同步网格参数到 ww3_grid.nml
+#### 5.5.2 同步网格参数到 ww3_grid.nml
 
 将 `grid.meta`（Step 2 网格生成的产物）中的参数同步到 `ww3_grid.nml` 对应位置。`grid.meta` 实质上就是 `ww3_grid.nml` 的子集，包含：
 
@@ -237,7 +259,7 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 这些值会被逐字段写入 `ww3_grid.nml` 中相同的 namelist group，确保网格描述一致。
 
-#### 5.4.3 谱分区输出方案 → ww3_shel.nml + ww3_ounf.nml
+#### 5.5.3 谱分区输出方案 → ww3_shel.nml + ww3_ounf.nml
 
 根据 `presets.output_scheme`（可在设置页面配置）修改两个文件：
 
@@ -258,7 +280,7 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 其中 `FIELD%PARTITION = '0 1'` 表示同时输出总波和分区结果。输出变量列表完全由用户在设置页面选择的谱分区方案决定。
 
-#### 5.4.4 更新 server.sh
+#### 5.5.4 更新 server.sh
 
 写入 Slurm 作业参数和 WW3 可执行文件路径。修改的具体字段：
 
@@ -278,7 +300,7 @@ CASENAME=202501             # 算例名
 
 所有值来自 `params.yml` 的 `slurm` 段和 `presets.server_st`，不引入任何自动推断。
 
-#### 5.4.5 设置输出时间 → ww3_ounf.nml
+#### 5.5.5 设置输出时间 → ww3_ounf.nml
 
 修改 `FIELD%TIMESTART`（起始时间）和 `FIELD%TIMESTRIDE`（输出间隔，单位秒）：
 
@@ -289,7 +311,7 @@ CASENAME=202501             # 算例名
 /
 ```
 
-#### 5.4.6 设置计算域时间 → ww3_shel.nml
+#### 5.5.6 设置计算域时间 → ww3_shel.nml
 
 修改 `DOMAIN_NML` 和 `OUTPUT_DATE_NML`：
 
@@ -306,7 +328,7 @@ CASENAME=202501             # 算例名
 
 `DATE%FIELD` 中间的值（如 `'1800'`）是输出步长。`DATE%RESTART` 控制 restart 文件的写入频率。这些值来自 `ww3.start_date`、`ww3.end_date` 和计算精度配置。
 
-#### 5.4.7 强迫场时间范围 → ww3_prnc.nml
+#### 5.5.7 强迫场时间范围 → ww3_prnc.nml
 
 修改强迫场预处理的时间窗口，确保只处理计算需要的时间段：
 
@@ -321,7 +343,7 @@ CASENAME=202501             # 算例名
 /
 ```
 
-#### 5.4.8 非风强迫场独立 prnc 文件
+#### 5.5.8 非风强迫场独立 prnc 文件
 
 对每种非风强迫场（流场、水位场、冰浓度、冰厚度）生成独立的 `ww3_prnc_*.nml`。这是因为 `ww3_prnc` 程序每次只能处理一种强迫场——每个文件只开启一个 `FORCING%FIELD%` 开关。
 
@@ -341,7 +363,7 @@ CASENAME=202501             # 算例名
 
 文件名和变量名来自 Step 1 强迫场准备阶段确定的映射关系。运行时 `server.sh` 会依次将每个 `ww3_prnc_*.nml` 重命名为 `ww3_prnc.nml` 再执行。
 
-#### 5.4.9 更新强迫场开关 → ww3_shel.nml
+#### 5.5.9 更新强迫场开关 → ww3_shel.nml
 
 根据实际使用的强迫场，更新 `ww3_shel.nml` 中的 `INPUT%FORCING%*` 开关：
 
@@ -357,7 +379,7 @@ CASENAME=202501             # 算例名
 
 只有用户实际选择了的强迫场才会设为 `'T'`，其余保持 `'F'`。
 
-#### 5.4.10 航迹模式 → track_i.ww3 + ww3_shel.nml + ww3_trnc.nml
+#### 5.5.10 航迹模式 → track_i.ww3 + ww3_shel.nml + ww3_trnc.nml
 
 航迹模式下额外生成 `track_i.ww3`：
 ```
@@ -381,7 +403,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 /
 ```
 
-#### 5.4.11 谱点模式 → namelists.nml + points.list + ww3_ounp.nml
+#### 5.5.11 谱点模式 → namelists.nml + points.list + ww3_ounp.nml
 
 谱空间逐点计算模式下：
 
@@ -406,7 +428,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 /
 ```
 
-#### 5.4.12 嵌套网格 → ww3_multi.nml
+#### 5.5.12 嵌套网格 → ww3_multi.nml
 
 嵌套网格模式（coarse + fine 两个网格）额外处理：
 
@@ -425,18 +447,44 @@ WAVEWATCH III TRACK LOCATIONS DATA
 - 内外网格分别在 `coarse/` 和 `fine/` 子目录中各自生成完整的 namelist
 - 强迫场文件使用 `../wind.nc` 引用共享，避免双倍存储
 
-### 5.5 运行
+### 5.6 连接服务器与 Slurm 配置
+
+`application/remote_ops.py` + `application/slurm_ops.py`
+
+在运行之前，需要连接远程 HPC 服务器并确认计算资源。GUI 的"连接服务器"操作在后台执行以下步骤：
+
+1. **SSH 连接**：通过 `paramiko` 使用 `params.yml` 中 `server` 段的账号/密码建立连接（`infrastructure/remote/ssh_client.py`），`exec_command` 使用 `get_pty=True` 以获取完整 shell 环境
+2. **CPU 占用查询**：连接成功后自动执行远程命令获取 CPU 负载排行，供用户了解当前集群繁忙程度
+3. **Slurm 队列查看**：执行 `squeue -l` 显示当前作业队列，用户可据此判断何时提交
+
+`params.yml` 中与服务器相关的配置段：
+
+| 字段 | 作用 |
+|------|------|
+| `server.user` | SSH 登录用户名 |
+| `server.host` | 服务器地址 |
+| `server.password` | SSH 密码 |
+| `server.default_remote_dir` | 默认远程路径（工作目录上传到此路径下） |
+| `server.remote_dir` | 可覆盖的自定义远程路径 |
+| `slurm.partition` | CPU 分区名（如 `CPU6240R`） |
+| `slurm.nodes` | 节点数 |
+| `slurm.ntasks` | 总核数 / MPI 进程数 |
+| `slurm.server_st` | WW3 可执行文件版本（对应 `presets.server_st` 中的路径） |
+
+这些参数在 Step 4 确认时写入 `server.sh`（见 5.5.4）。GUI 设置页面的"CPU 管理"允许用户根据服务器 `sinfo` 的输出来配置可用分区。`presets.server_st` 段保存了用户编译的不同 WW3 版本路径，`slurm.server_st` 指定本次算例使用哪个版本。
+
+### 5.7 上传与运行
 
 **本地运行**：执行工作目录下的 `local.sh`，调用本地安装的 WW3 可执行文件。
 
 **服务器运行**：
-1. 通过 SSH（`paramiko`）连接远程 HPC
-2. 上传工作目录到服务器指定路径
-3. 在登录节点执行 `server.sh`（通过 `sbatch` 提交 Slurm 作业）
-4. 服务器端生成 `success.log`（成功）、`fail.log`（失败）或 `run.log`（运行中）
-5. 通过 `check-status` 检测完成状态，`download-results` 下载结果
+1. 通过 SSH 将工作目录上传到服务器指定路径（`upload_matching_files` 自动处理 Windows `\r\n` → Unix `\n` 转换）
+2. 在登录节点执行 `server.sh`（通过 `sbatch` 提交 Slurm 作业）
+3. 服务器端 WW3 各程序依次运行（`ww3_grid` → `ww3_prnc` × N → `ww3_strt` → `ww3_shel` / `ww3_multi` → `ww3_ounf` / `ww3_ounp` / `ww3_trnc`）
+4. 全部成功后在服务器工作目录生成 `success.log`（含所有 WW3 执行日志）；任一步骤失败则生成 `fail.log`；运行中为 `run.log`
+5. 通过 `check-status` 检测完成状态，`download-results` 下载结果（嵌套模式下只下载 `fine/` 内的输出）
 
-### 5.6 ntfy 通知系统
+### 5.8 ntfy 通知系统
 
 通过 `ntfy.sh` 服务实现 Slurm 作业完成通知：
 
