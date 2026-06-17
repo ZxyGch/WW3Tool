@@ -2097,6 +2097,33 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
         self.titleBar.raise_()
 
+    def _on_ntfy_job_done(self, result: object) -> None:
+        self._on_job_done(result)
+        if not getattr(result, "success", False):
+            return
+        # [EN] Show per-job topic info (different from the global listener topic).
+        # 显示单任务 topic 信息（与全局监听使用不同频道）。
+        data = getattr(result, "data", None) or {}
+        topic = data.get("topic", "")
+        if not topic:
+            return
+        url = f"https://ntfy.sh/{topic}"
+        title = tr("ntfy_info_title_job", "📡 单任务 ntfy 监听已启动")
+        content = (
+            tr("ntfy_info_topic", "Topic: {topic}").format(topic=topic)
+            + "\n"
+            + tr("ntfy_info_subscribe", "订阅链接: {url}").format(url=url)
+            + "\n"
+            + tr("ntfy_info_action_job", "已启动单任务监听，任务完成后将自动通知")
+        )
+        InfoBar.success(
+            title=title,
+            content=content,
+            duration=8000,
+            parent=self,
+        )
+        self.titleBar.raise_()
+
     def _update_ntfy_button_text(self) -> None:
         # [EN] Check ntfy watcher status and update button text accordingly.
         """检查 ntfy watcher 状态并更新按钮文本。"""
@@ -2124,7 +2151,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         if not self._persist_server_remote_dir():
             return
-        self._run_job(lambda c: self._remote_vm.inject_ntfy_job_listener(c, job_id))
+        self._run_job(
+            lambda c: self._remote_vm.inject_ntfy_job_listener(c, job_id),
+            on_done=self._on_ntfy_job_done,
+        )
 
     def _server_clear(self) -> None:
         remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""

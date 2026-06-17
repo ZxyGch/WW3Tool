@@ -2243,6 +2243,8 @@
   "cfg_spectral_points_required": "calc.points is required when calc.mode=spectral_point",
   "cfg_track_points_required": "calc.track_points is required when calc.mode=track",
   "cfg_server_st_required": "slurm.server_st (or ww3.st) cannot be empty; please configure the ST version in params.yml",
+  "ntfy_info_title_job": "📡 Per-job ntfy watcher started",
+  "ntfy_info_action_job": "Per-job watcher started; you will be notified when the job finishes",
   "icli_help_recommend_cfl": "Recommend timesteps using the CFL formula",
   "icli_help_recommend_grid": "Recommend grid spacing/resolution (--coarse / --fine)",
   "icli_recgrid_need_box": "⚠️ Set a valid lon/lat extent in the grid config first",

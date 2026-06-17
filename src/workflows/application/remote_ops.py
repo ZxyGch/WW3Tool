@@ -744,6 +744,13 @@ def run_inject_ntfy_job_listener(
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
     """Upload and start a one-shot ntfy watcher for one Slurm job."""
+    # [EN] Generate a per-job topic so it doesn't collide with the global listener.
+    # 为单个任务生成独立 topic，避免与全局监听共用同一频道。
+    if topic is None:
+        remote_dir = _resolve_remote_dir(config)
+        base_topic = _ntfy_topic_for(config, remote_dir)
+        safe_id = re.sub(r"[^A-Za-z0-9_-]+", "-", job_id.strip()).strip("-")
+        topic = f"{base_topic}-job-{safe_id}"
     return run_inject_ntfy_listener(
         config,
         log=log,
