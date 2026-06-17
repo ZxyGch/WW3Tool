@@ -1,8 +1,8 @@
-# WW3Tool — AI 参考文档
+# WW3Tool  文档
 
 本文档面向 AI Agent 与开发者，旨在清晰说明 WW3Tool 的整体逻辑、代码组织与工作流。不包含图片，纯文字描述。
 
----
+
 
 ## 1. 项目定位
 
@@ -15,9 +15,9 @@ WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理
 - 通过 SSH 将工作目录上传到 HPC 服务器、提交 Slurm 作业、监控任务状态、下载结果
 - 后处理绘图（波高填色图、方向谱、Jason-3 卫星验证、NDBC 浮标匹配等）
 
-WW3Tool 几乎完全由 Python 组成（保留 gridgen 的原始 Matlab 代码），支持 Windows / Linux / macOS，UI 支持中英文双语。
+WW3Tool 几乎完全由 Python 组成（其他语言的代码是网格生成器 meshgen 的代码），支持 Windows / Linux / macOS，UI 支持中英文双语。
 
----
+
 
 ## 2. 三种入口模式
 
@@ -31,7 +31,14 @@ python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤
 
 三种模式共享同一套业务逻辑（`src/workflows/application/`），差别仅在交互层。
 
-### 2.1 无界面 CLI 的自动化适配
+
+### 2.1 GUI 
+
+
+### 2.2 交互式终端
+
+
+### 2.3 无界面 CLI 
 
 CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用。每个子命令读取工作目录的 `params.yml` 后执行、打印日志到 stdout、通过退出码反馈成功/失败。主要子命令包括：
 
@@ -69,7 +76,7 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 | | `plot-ndbc [--download]` | NDBC 浮标匹配 |
 | 辅助 | `print-example` | 输出示例 params.yml |
 
----
+
 
 ## 3. 项目结构
 
@@ -105,36 +112,18 @@ WW3Tool/
 
 GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用例函数。
 
----
+
 
 ## 4. 配置系统：params.yml
 
 `params.yml` 是描述一次算例全部参数的核心载体。根目录的 `params.yml` 只是模板；实际运行前须用 `workdir` 命令创建独立工作目录，再编辑该目录下的 `params.yml`。
 
-### 4.1 段落结构
 
-| 段落 | 内容 |
-|------|------|
-| `presets` | 可复用的命名列表：`output_scheme`（谱分区输出方案）、`server_st`（服务器 WW3 可执行文件路径）、`local_st`（本地 WW3 路径）、`structured_bathymetry` / `smc_bathymetry`（水深数据集）、`coastline_precision`（海岸线精度）、`file_split`（输出文件分割策略） |
-| `paths` | 本地路径：MATLAB、GRIDGEN、WW3BIN、reference_data、JASON 数据等 |
-| `forcing` | 强迫场源文件路径及处理方式（风/流/水位/海冰） |
-| `grid` | 网格类型（structured / unstructured / smc）、经纬度范围、分辨率、嵌套设置 |
-| `calc` | 计算模式（region / spectral_point / track） |
-| `ww3` | 时间范围、计算/输出精度、输出方案、文件分割 |
-| `ww3_grid` | 谱离散参数（XFR, FREQ1, NK, NTH）和时间步（DTMAX, DTXY, DTKTH, DTMIN） |
-| `slurm` | SSH 连接信息、CPU 分区、核数、节点数、`server_st`（ST 版本） |
-| `plot` | 绘图开关与参数（波高图、谱图、Jason-3、NDBC） |
 
-### 4.2 配置加载流程
 
-1. `configuration.py` 的 `load_pipeline_config(params_path, validation_stage)` 读取 YAML
-2. 解析为 `PipelineConfig` 数据类（`config_models.py`），包含 `ForcingConfig`、`GridConfig`、`CalcConfig`、`WW3Config`、`SlurmConfig`、`PlotConfig` 等子结构
-3. 根据 `validation_stage`（`forcing` / `grid` / `full` / `plot`）执行不同严格程度的校验
-4. 交叉验证：例如 `slurm.server_st` 必须存在于 `presets.server_st` 中
 
-### 4.3 GUI Override 机制
 
-GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字典，由 `pipeline.py` 合并写入 `params.yml` 对应段落，再重新加载配置。这保证了 GUI 编辑和 YAML 文件始终保持同步。
+
 
 
 
@@ -177,13 +166,44 @@ GUI 面板的值通过 `ww3_overrides()` 和 `slurm_overrides()` 方法返回字
 
 `application/forcing_preparation.py` + `infrastructure/forcing/`
 
-对用户选择的 NetCDF 强迫场文件执行以下确定性操作（不修改原始文件内容中的科学数据）：
+强迫场导入分为两条路径：**风场**走独立的标准化流程（完整重写），**流场/水位场/冰场**走通用的复制+修复流程。
 
-- **纬度排序**：WAVEWATCH III 要求纬度从小到大排列。ERA5 数据默认从大到小，程序检测后自动翻转纬度轴及相关数据维度
-- **变量重命名**：CFSR 风场的变量名为 `wndewd`/`wndnwd`，程序自动重命名为 WW3 要求的 `u10`/`v10`
-- **时间标签修复**：Copernicus 数据的时间轴可能存在偏移，程序自动修正
-- **文件复制/移动与统一命名**：将处理后的文件放入工作目录，统一命名为 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`。如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），命名为 `current_level.nc` 以表明内容
-- **复制 vs 移动**：默认复制原文件到工作目录（可在设置页面切换为移动），不影响原始数据
+#### 风场导入（`ImportWindForcingUseCase` + `WindNormalizeService`）
+
+风场文件不是简单复制，而是经过完整的标准化重写，输出 WW3 `ww3_prnc` 所需的精确格式：
+
+1. **变量检测**：打开 NetCDF 检测风场变量，支持多种命名（`u10`/`v10`、`wndewd`/`wndnwd`、`uwnd`/`vwnd`、`eastward_wind` 等）
+2. **维度重排**：无论源文件维度顺序如何，输出统一为 `(time, latitude, longitude)`
+3. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
+4. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
+5. **纬度翻转**：如果纬度从大到小排列（ERA5 默认），自动翻转为从小到大
+6. **经度检查**：经度必须从小到大，递减则拒绝（抛出 `ValueError`）
+7. **输出变量名**：固定为 `u10`/`v10`，带 `units="m/s"`、`level="10m"` 属性
+
+大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（最多 256 个时间步/块）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96 时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再原子替换，保证完整性。
+
+#### 流场/水位场/冰场导入（`ImportForcingFileUseCase` + `FileService`）
+
+非风场强迫场采用复制+修复模式：
+
+- **复制/移动**到工作目录（默认复制，可在设置页面切换为移动）
+- **纬度翻转**：检测纬度是否递减，如是则在文件内原地翻转所有相关变量
+- **经度检查**：递减则拒绝
+- 不做维度重排或时间转换（这些格式由 WW3 `ww3_prnc` 自行处理）
+
+#### 多场文件与自动关联
+
+如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），`VariableDetector` 会检测所有存在的场类型：
+
+- **自动关联**（`auto_associate=True`，默认）：文件名使用下划线连接所有检测到的场，如 `current_level.nc`、`wind_current_level_ice.nc`，同时多个强迫场槽位指向同一个文件
+- **风场特殊处理**：多场文件中如果包含风场，除了复制合并文件外，还会额外提取一个标准化后的 `wind.nc`（仅含风场），因为 `ww3_prnc` 处理风场时需要精确的维度格式
+
+#### 工作目录扫描
+
+打开已有工作目录时，`FileService.scan_forcing_files` 三阶段检测：
+1. 先查标准名（`wind.nc`、`current.nc` 等）
+2. 再解析合并文件名（如 `current_level.nc` → 映射到 current 和 level）
+3. 最后用变量检测兜底（打开 `.nc` 文件检查内部变量）
 
 独立工具 `merge-forcing` 可脱离工作目录，直接校验并合并多个强迫场 NetCDF（按时间拼接 + 变量合并），支持 `--time-range` 和 `--bbox` 裁剪。
 
