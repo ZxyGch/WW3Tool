@@ -210,7 +210,6 @@ notify_finished_job() {
     {
         echo "Started: ${started_at}"
         echo "Host: ${host}"
-        echo "Label: ${NTFY_LABEL}"
         echo "Job: ${job_id}"
         echo "JobName: ${jname}"
         echo "State: ${state}"
@@ -265,7 +264,6 @@ run_once_mode() {
         final_ok=1
         summary="Started: ${started_at}
 Host: ${host}
-Label: ${NTFY_LABEL}
 "
         if [ -n "$NTFY_JOBS" ]; then
             summary="${summary}
@@ -384,9 +382,8 @@ log "topic=${NTFY_TOPIC}"
 # Startup connectivity test: send a test notification so the user knows
 # the watcher is alive and curl can reach ntfy.sh from this host.
 log "sending startup test notification..."
-if send_ntfy "${NTFY_LABEL} watcher started" "Host: ${host}
+if send_ntfy "watcher started" "Host: ${host}
 Mode: ${NTFY_MODE}
-Label: ${NTFY_LABEL}
 Topic: ${NTFY_TOPIC}
 Jobs: ${NTFY_JOBS:-auto-detect}
 Started: ${started_at}"; then
