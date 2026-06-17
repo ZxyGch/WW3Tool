@@ -76,18 +76,30 @@ send_ntfy() {
         return 1
     fi
     url="${NTFY_SERVER%/}/${NTFY_TOPIC}"
+    local curl_err_file="${state_dir}/curl_last_error.log"
+    local rc=0
     if [ -n "$NTFY_RESOLVE_IP" ]; then
-        curl -fsS --retry 10 --retry-delay 30 --connect-timeout 10 \
+        curl -fsS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
             --resolve "ntfy.sh:443:${NTFY_RESOLVE_IP}" \
             -H "Title: ${subject}" \
             -H "Tags: ocean,wave" \
-            -d "$body" "$url" >/dev/null
+            -d "$body" "$url" >/dev/null 2>"$curl_err_file"
+        rc=$?
     else
-        curl -fsS --retry 10 --retry-delay 30 --connect-timeout 10 \
+        curl -fsS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
             -H "Title: ${subject}" \
             -H "Tags: ocean,wave" \
-            -d "$body" "$url" >/dev/null
+            -d "$body" "$url" >/dev/null 2>"$curl_err_file"
+        rc=$?
     fi
+    if [ "$rc" -ne 0 ]; then
+        log "send_ntfy FAILED (curl exit=$rc) topic=${NTFY_TOPIC} subject=${subject}"
+        if [ -s "$curl_err_file" ]; then
+            log "curl error: $(cat "$curl_err_file")"
+        fi
+        return 1
+    fi
+    return 0
 }
 
 current_user_jobs() {
@@ -108,7 +120,7 @@ job_state() {
         return
     fi
     if command -v sacct >/dev/null 2>&1; then
-        state="$(sacct -n -X -P -j "$job_id" --format=State,ExitCode 2>/dev/null | awk -F'|' 'NF {print $1 "|" $2; exit}')"
+        state="$(sacct -n -X -P -j "$job_id" --format=State,ExitCode --starttime="${started_at%% *}" 2>/dev/null | awk -F'|' 'NF {print $1 "|" $2; exit}')"
         if [ -n "$state" ]; then
             echo "$state"
             return
@@ -167,7 +179,20 @@ notify_finished_job() {
     case "$state" in
         ACTIVE*) return 1 ;;
     esac
-    rm -f "$state_dir/job_${job_id}.active"
+
+    # Guard against sacct lag: if job just left squeue but sacct hasn't
+    # caught up yet (UNKNOWN_DONE), wait one more poll cycle before notifying.
+    if [ "$state" = "UNKNOWN_DONE" ]; then
+        pending_file="$state_dir/job_${job_id}.pending_done"
+        if [ ! -f "$pending_file" ]; then
+            touch "$pending_file"
+            log "job ${job_id} left squeue but sacct has no record yet; deferring one cycle"
+            return 1
+        fi
+        rm -f "$pending_file"
+    fi
+
+    rm -f "$state_dir/job_${job_id}.active" "$state_dir/job_${job_id}.pending_done"
     if [ -f "$state_dir/job_${job_id}.done" ]; then
         return 0
     fi
@@ -303,6 +328,19 @@ log "ntfy watcher started on ${host}"
 log "mode=${NTFY_MODE}"
 log "label=${NTFY_LABEL}"
 log "topic=${NTFY_TOPIC}"
+
+# Startup connectivity test: send a test notification so the user knows
+# the watcher is alive and curl can reach ntfy.sh from this host.
+log "sending startup test notification..."
+if send_ntfy "${NTFY_LABEL} watcher started" "Host: ${host}
+Mode: ${NTFY_MODE}
+Label: ${NTFY_LABEL}
+Topic: ${NTFY_TOPIC}
+Started: ${started_at}"; then
+    log "startup notification sent OK"
+else
+    log "WARNING: startup notification FAILED — check network/DNS from this host to ${NTFY_SERVER}"
+fi
 
 if [ "$NTFY_MODE" = "all" ]; then
     run_all_mode

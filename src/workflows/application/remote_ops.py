@@ -559,7 +559,7 @@ def run_inject_ntfy_listener(
             "fi; "
             f"nohup ./ww3_ntfy_watch.sh --topic {q_topic} --label {q_label} --mode {q_mode} "
             f"--jobs {q_jobs} --workdirs {q_workdirs} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
-            f"> {q_log_file} 2>&1 & echo $! > {q_pid_file}; "
+            f"> {q_log_file} 2>&1 & echo $! > {q_pid_file}; disown; "
             f"printf '%s\\n' {q_mode} > {q_mode_file}; "
             f"echo \"ntfy watcher started: $(cat {q_pid_file})\"; "
             "fi; "
