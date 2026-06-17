@@ -10,6 +10,7 @@ NTFY_JOBS="${NTFY_JOBS:-}"
 NTFY_WORKDIRS="${NTFY_WORKDIRS:-}"
 NTFY_TIMEOUT_HOURS="${NTFY_TIMEOUT_HOURS:-0}"
 NTFY_RESOLVE_IP="${NTFY_RESOLVE_IP:-}"
+NTFY_MODE="${NTFY_MODE:-once}"
 
 usage() {
     cat <<'EOF'
@@ -20,10 +21,11 @@ Options:
   --topic TOPIC         ntfy topic name
   --title TEXT          ntfy notification title
   --label TEXT          label shown in the message
-  --jobs "ID ..."       Slurm job IDs to watch; default captures current user jobs
+  --mode once|all       once: exit after watched targets finish; all: keep watching forever
+  --jobs "ID ..."       Slurm job IDs to watch; once mode captures current user jobs when empty
   --workdirs "DIR ..."  Work directories to inspect for success.log/fail.log
   --interval SEC        Poll interval, default: 60
-  --timeout-hours N     Stop after N hours; 0 means no timeout
+  --timeout-hours N     once mode timeout; 0 means no timeout
 EOF
 }
 
@@ -33,6 +35,7 @@ while [ "$#" -gt 0 ]; do
         --topic) NTFY_TOPIC="${2:-}"; shift 2 ;;
         --title) NTFY_TITLE="${2:-}"; shift 2 ;;
         --label) NTFY_LABEL="${2:-}"; shift 2 ;;
+        --mode) NTFY_MODE="${2:-once}"; shift 2 ;;
         --jobs) NTFY_JOBS="${2:-}"; shift 2 ;;
         --workdirs) NTFY_WORKDIRS="${2:-}"; shift 2 ;;
         --interval) NTFY_INTERVAL="${2:-60}"; shift 2 ;;
@@ -50,14 +53,16 @@ fi
 case "$NTFY_INTERVAL" in
     ''|*[!0-9]*|0) NTFY_INTERVAL=60 ;;
 esac
-
-if [ -z "$NTFY_JOBS" ] && command -v squeue >/dev/null 2>&1; then
-    NTFY_JOBS="$(squeue -h -u "${USER:-$(id -un)}" -o '%A' 2>/dev/null | awk '!seen[$1]++' | tr '\n' ' ')"
-fi
+case "$NTFY_MODE" in
+    once|all) ;;
+    *) echo "Invalid --mode: $NTFY_MODE" >&2; exit 2 ;;
+esac
 
 started_at="$(date '+%F %T')"
 start_epoch="$(date '+%s')"
 host="$(hostname 2>/dev/null || echo unknown-host)"
+state_dir=".ntfy_watch_state_${NTFY_MODE}"
+mkdir -p "$state_dir"
 
 log() {
     printf '[%s] %s\n' "$(date '+%F %T')" "$*"
@@ -85,9 +90,20 @@ send_ntfy() {
     fi
 }
 
+current_user_jobs() {
+    if command -v squeue >/dev/null 2>&1; then
+        squeue -h -u "${USER:-$(id -un)}" -o '%A' 2>/dev/null | awk '!seen[$1]++'
+    fi
+}
+
+job_active() {
+    job_id="$1"
+    command -v squeue >/dev/null 2>&1 && squeue -h -j "$job_id" 2>/dev/null | grep -q .
+}
+
 job_state() {
     job_id="$1"
-    if command -v squeue >/dev/null 2>&1 && squeue -h -j "$job_id" 2>/dev/null | grep -q .; then
+    if job_active "$job_id"; then
         echo "ACTIVE"
         return
     fi
@@ -116,6 +132,7 @@ workdir_state() {
     failed_count=0
     completed_count=0
     while IFS= read -r child; do
+        [ -n "$child" ] || continue
         child_count=$((child_count + 1))
         if [ -f "$child/fail.log" ]; then
             failed_count=$((failed_count + 1))
@@ -138,90 +155,157 @@ EOF
     fi
 }
 
-log "ntfy watcher started on ${host}"
-log "label=${NTFY_LABEL}"
-log "topic=${NTFY_TOPIC}"
-log "jobs=${NTFY_JOBS:-<none>}"
-log "workdirs=${NTFY_WORKDIRS:-<none>}"
+remember_active_job() {
+    job_id="$1"
+    [ -n "$job_id" ] || return
+    touch "$state_dir/job_${job_id}.active"
+}
 
-final_summary=""
-final_ok=1
+notify_finished_job() {
+    job_id="$1"
+    state="$(job_state "$job_id")"
+    case "$state" in
+        ACTIVE*) return 1 ;;
+    esac
+    rm -f "$state_dir/job_${job_id}.active"
+    if [ -f "$state_dir/job_${job_id}.done" ]; then
+        return 0
+    fi
+    {
+        echo "Started: ${started_at}"
+        echo "Host: ${host}"
+        echo "Label: ${NTFY_LABEL}"
+        echo "Job: ${job_id}"
+        echo "State: ${state}"
+        echo "Elapsed: $(($(date '+%s') - start_epoch))s"
+    } > "$state_dir/message_${job_id}.txt"
+    send_ntfy "${NTFY_LABEL} job ${job_id} finished" "$(cat "$state_dir/message_${job_id}.txt")" \
+        && touch "$state_dir/job_${job_id}.done"
+    return 0
+}
 
-while :; do
-    active=0
-    final_summary="Started: ${started_at}
+notify_workdir_if_finished() {
+    dir="$1"
+    key="$(printf '%s' "$dir" | cksum | awk '{print $1}')"
+    state="$(workdir_state "$dir")"
+    case "$state" in
+        ACTIVE*) return 1 ;;
+    esac
+    previous="$(cat "$state_dir/workdir_${key}.state" 2>/dev/null || true)"
+    if [ "$previous" = "$state" ]; then
+        return 0
+    fi
+    printf '%s\n' "$state" > "$state_dir/workdir_${key}.state"
+    body="Started: ${started_at}
+Host: ${host}
+Label: ${NTFY_LABEL}
+Workdir: ${dir}
+State: ${state}
+Elapsed: $(($(date '+%s') - start_epoch))s"
+    send_ntfy "${NTFY_LABEL} workdir finished" "$body"
+    return 0
+}
+
+run_once_mode() {
+    if [ -z "$NTFY_JOBS" ]; then
+        NTFY_JOBS="$(current_user_jobs | tr '\n' ' ')"
+    fi
+    log "jobs=${NTFY_JOBS:-<none>}"
+    log "workdirs=${NTFY_WORKDIRS:-<none>}"
+
+    while :; do
+        active=0
+        final_ok=1
+        summary="Started: ${started_at}
 Host: ${host}
 Label: ${NTFY_LABEL}
 "
-
-    if [ -n "$NTFY_JOBS" ]; then
-        final_summary="${final_summary}
+        if [ -n "$NTFY_JOBS" ]; then
+            summary="${summary}
 Jobs:
 "
-        for job in $NTFY_JOBS; do
-            state="$(job_state "$job")"
-            final_summary="${final_summary}- ${job}: ${state}
+            for job in $NTFY_JOBS; do
+                state="$(job_state "$job")"
+                summary="${summary}- ${job}: ${state}
 "
-            case "$state" in
-                ACTIVE*) active=$((active + 1)) ;;
-                COMPLETED*) ;;
-                UNKNOWN_DONE*) ;;
-                *) final_ok=0 ;;
-            esac
-        done
-    fi
+                case "$state" in
+                    ACTIVE*) active=$((active + 1)) ;;
+                    COMPLETED*) ;;
+                    UNKNOWN_DONE*) ;;
+                    *) final_ok=0 ;;
+                esac
+            done
+        fi
 
-    if [ -n "$NTFY_WORKDIRS" ]; then
-        final_summary="${final_summary}
+        if [ -n "$NTFY_WORKDIRS" ]; then
+            summary="${summary}
 Workdirs:
 "
-        for dir in $NTFY_WORKDIRS; do
-            state="$(workdir_state "$dir")"
-            final_summary="${final_summary}- ${dir}: ${state}
+            for dir in $NTFY_WORKDIRS; do
+                state="$(workdir_state "$dir")"
+                summary="${summary}- ${dir}: ${state}
 "
-            case "$state" in
-                ACTIVE*) active=$((active + 1)) ;;
-                COMPLETED*) ;;
-                *) final_ok=0 ;;
-            esac
-        done
-    fi
+                case "$state" in
+                    ACTIVE*) active=$((active + 1)) ;;
+                    COMPLETED*) ;;
+                    *) final_ok=0 ;;
+                esac
+            done
+        fi
 
-    now_epoch="$(date '+%s')"
-    elapsed=$((now_epoch - start_epoch))
-    final_summary="${final_summary}
+        elapsed=$(($(date '+%s') - start_epoch))
+        summary="${summary}
 Elapsed: ${elapsed}s
 "
+        [ "$active" -eq 0 ] && break
 
-    if [ "$active" -eq 0 ]; then
-        break
-    fi
-
-    if [ "$NTFY_TIMEOUT_HOURS" != "0" ]; then
-        timeout=$((NTFY_TIMEOUT_HOURS * 3600))
-        if [ "$elapsed" -ge "$timeout" ]; then
-            final_ok=0
-            final_summary="${final_summary}
+        if [ "$NTFY_TIMEOUT_HOURS" != "0" ]; then
+            timeout=$((NTFY_TIMEOUT_HOURS * 3600))
+            if [ "$elapsed" -ge "$timeout" ]; then
+                final_ok=0
+                summary="${summary}
 Timeout reached while ${active} target(s) were still active.
 "
-            break
+                break
+            fi
         fi
-    fi
 
-    log "active targets: ${active}; polling again in ${NTFY_INTERVAL}s"
-    sleep "$NTFY_INTERVAL"
-done
+        log "active targets: ${active}; polling again in ${NTFY_INTERVAL}s"
+        sleep "$NTFY_INTERVAL"
+    done
 
-if [ "$final_ok" -eq 1 ]; then
     title="${NTFY_TITLE}"
-else
-    title="${NTFY_TITLE} (failed)"
-fi
+    [ "$final_ok" -eq 1 ] || title="${NTFY_TITLE} (failed)"
+    send_ntfy "$title" "$summary"
+}
 
-log "sending ntfy notification"
-if send_ntfy "$title" "$final_summary"; then
-    log "notification sent"
-    exit 0
+run_all_mode() {
+    log "persistent watcher enabled"
+    log "workdirs=${NTFY_WORKDIRS:-<none>}"
+    while :; do
+        for job in $(current_user_jobs); do
+            remember_active_job "$job"
+        done
+        for active_file in "$state_dir"/job_*.active; do
+            [ -e "$active_file" ] || continue
+            job="${active_file##*/job_}"
+            job="${job%.active}"
+            notify_finished_job "$job" || true
+        done
+        for dir in $NTFY_WORKDIRS; do
+            notify_workdir_if_finished "$dir" || true
+        done
+        sleep "$NTFY_INTERVAL"
+    done
+}
+
+log "ntfy watcher started on ${host}"
+log "mode=${NTFY_MODE}"
+log "label=${NTFY_LABEL}"
+log "topic=${NTFY_TOPIC}"
+
+if [ "$NTFY_MODE" = "all" ]; then
+    run_all_mode
+else
+    run_once_mode
 fi
-log "notification failed"
-exit 1

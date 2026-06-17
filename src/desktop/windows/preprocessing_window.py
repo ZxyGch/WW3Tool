@@ -585,6 +585,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             use_idle_half=self._server_use_idle_half,
             confirm_slurm=self._server_confirm_slurm,
             inject_ntfy=self._server_inject_ntfy,
+            watch_job_ntfy=self._server_watch_ntfy_job,
             cancel=self._server_cancel,
         )
         self._st_combo = self._server_connect_panel.st_combo
@@ -2048,6 +2049,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._persist_server_remote_dir():
             return
         self._run_job(self._remote_vm.inject_ntfy_listener)
+
+    def _server_watch_ntfy_job(self) -> None:
+        job_id = self._server_connect_panel.job_id()
+        if not job_id:
+            self._show_error(tr("step6_watch_job_empty", "请填写要监听的任务 ID"))
+            return
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(lambda c: self._remote_vm.inject_ntfy_job_listener(c, job_id))
 
     def _server_clear(self) -> None:
         remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""

@@ -141,6 +141,11 @@ class RemoteViewModel:
 
         return run_inject_ntfy_listener(config, log=self._log, client=self._ensure_client(config))
 
+    def inject_ntfy_job_listener(self, config: PipelineConfig, job_id: str):
+        from workflows.application.remote_ops import run_inject_ntfy_job_listener
+
+        return run_inject_ntfy_job_listener(config, job_id, log=self._log, client=self._ensure_client(config))
+
     def clear_remote(self, config: PipelineConfig, *, confirmed: bool = True):
         from workflows.application.remote_ops import run_clear_remote
 

@@ -499,16 +499,22 @@ def run_inject_ntfy_listener(
     *,
     topic: str | None = None,
     interval: int = 60,
-    timeout_hours: int = 336,
+    timeout_hours: int = 0,
+    mode: str = "all",
+    job_id: str | None = None,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """Upload and start a login-node ntfy watcher for current Slurm jobs/workdir."""
+    """Upload and start a login-node ntfy watcher."""
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
     try:
         remote_dir = _resolve_remote_dir(config)
         topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
         label = Path(remote_dir.rstrip("/")).name or "WW3"
+        mode = "once" if mode == "once" else "all"
+        job_id = str(job_id or "").strip()
+        if mode == "once" and not job_id:
+            raise ValueError(tr("ntfy_job_id_required", "❌ 请填写要监听的 Slurm 任务 ID"))
         scripts_dir = os.path.join(PUBLIC_DIR, "scripts")
         watcher = os.path.join(scripts_dir, "ww3_ntfy_watch.sh")
         if not os.path.isfile(watcher):
@@ -530,18 +536,32 @@ def run_inject_ntfy_listener(
         q_remote = shlex.quote(remote_dir)
         q_topic = shlex.quote(topic)
         q_label = shlex.quote(label)
+        q_mode = shlex.quote(mode)
+        q_jobs = shlex.quote(job_id) if job_id else "''"
+        q_workdirs = q_remote if mode == "all" else "''"
         q_topic_line = shlex.quote(f"ntfy topic: {topic}")
         q_url_line = shlex.quote(f"ntfy url: https://ntfy.sh/{topic}")
+        pid_file = "ntfy_watch.pid" if mode == "all" else f"ntfy_watch_{job_id}.pid"
+        log_file = "ntfy_watch.log" if mode == "all" else f"ntfy_watch_{job_id}.log"
+        mode_file = f"{pid_file}.mode"
+        q_pid_file = shlex.quote(pid_file)
+        q_log_file = shlex.quote(log_file)
+        q_mode_file = shlex.quote(mode_file)
         command = (
             f"cd {q_remote} && "
             "chmod +x ww3_ntfy_watch.sh && "
-            "if [ -f ntfy_watch.pid ] && kill -0 $(cat ntfy_watch.pid) 2>/dev/null; then "
-            "echo \"ntfy watcher already running: $(cat ntfy_watch.pid)\"; "
+            f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null "
+            f"&& [ \"$(cat {q_mode_file} 2>/dev/null)\" = {q_mode} ]; then "
+            f"echo \"ntfy watcher already running: $(cat {q_pid_file})\"; "
             "else "
-            f"nohup ./ww3_ntfy_watch.sh --topic {q_topic} --label {q_label} "
-            f"--workdirs {q_remote} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
-            "> ntfy_watch.log 2>&1 & echo $! > ntfy_watch.pid; "
-            "echo \"ntfy watcher started: $(cat ntfy_watch.pid)\"; "
+            f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null; then "
+            f"kill $(cat {q_pid_file}) 2>/dev/null || true; "
+            "fi; "
+            f"nohup ./ww3_ntfy_watch.sh --topic {q_topic} --label {q_label} --mode {q_mode} "
+            f"--jobs {q_jobs} --workdirs {q_workdirs} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
+            f"> {q_log_file} 2>&1 & echo $! > {q_pid_file}; "
+            f"printf '%s\\n' {q_mode} > {q_mode_file}; "
+            f"echo \"ntfy watcher started: $(cat {q_pid_file})\"; "
             "fi; "
             f"printf '%s\\n' {q_topic_line}; "
             f"printf '%s\\n' {q_url_line}"
@@ -570,6 +590,28 @@ def run_inject_ntfy_listener(
     finally:
         if owns:
             c.close()
+
+
+def run_inject_ntfy_job_listener(
+    config: PipelineConfig,
+    job_id: str,
+    log: Optional[LogCallback] = None,
+    *,
+    topic: str | None = None,
+    interval: int = 60,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """Upload and start a one-shot ntfy watcher for one Slurm job."""
+    return run_inject_ntfy_listener(
+        config,
+        log=log,
+        topic=topic,
+        interval=interval,
+        timeout_hours=0,
+        mode="once",
+        job_id=job_id,
+        client=client,
+    )
 
 
 def run_queue_status(

@@ -64,6 +64,7 @@ class ServerConnectPanel:
         use_idle_half: Callable[[], None],
         confirm_slurm: Callable[[], None],
         inject_ntfy: Callable[[], None],
+        watch_job_ntfy: Callable[[], None],
         cancel: Callable[[], None],
     ) -> None:
         self._input_style = input_style
@@ -153,6 +154,7 @@ class ServerConnectPanel:
         self.job_edit.setStyleSheet(input_style())
         self.job_edit.setPlaceholderText(tr("enter_jobid_placeholder", "SLURM 任务号"))
         cancel_row.addWidget(self.job_edit, 1)
+        cancel_row.addWidget(create_button(tr("step6_watch_job_ntfy", "监听此任务"), watch_job_ntfy))
         cancel_row.addWidget(create_button(tr("cancel_task", "取消任务"), cancel))
         layout.addWidget(self._cancel_widget)
 
@@ -230,7 +232,7 @@ class ServerConnectPanel:
         )
         confirm_slurm_layout.addWidget(self.confirm_slurm_button)
         self.inject_ntfy_button = create_button(
-            tr("step6_inject_ntfy", "注入 ntfy 监听"),
+            tr("step6_inject_ntfy", "常驻 ntfy 监听"),
             inject_ntfy,
         )
         confirm_slurm_layout.addWidget(self.inject_ntfy_button)
