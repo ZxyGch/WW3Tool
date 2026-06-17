@@ -110,6 +110,18 @@ job_active() {
     command -v squeue >/dev/null 2>&1 && squeue -h -j "$job_id" 2>/dev/null | grep -q .
 }
 
+job_name() {
+    job_id="$1"
+    if command -v sacct >/dev/null 2>&1; then
+        name="$(sacct -n -X -P -j "$job_id" --format=JobName 2>/dev/null | head -1)"
+        if [ -n "$name" ] && [ "$name" != "None" ]; then
+            echo "$name"
+            return
+        fi
+    fi
+    echo "$job_id"
+}
+
 job_state() {
     job_id="$1"
     if job_active "$job_id"; then
@@ -193,15 +205,18 @@ notify_finished_job() {
     if [ -f "$state_dir/job_${job_id}.done" ]; then
         return 0
     fi
+    local jname
+    jname="$(job_name "$job_id")"
     {
         echo "Started: ${started_at}"
         echo "Host: ${host}"
         echo "Label: ${NTFY_LABEL}"
         echo "Job: ${job_id}"
+        echo "JobName: ${jname}"
         echo "State: ${state}"
         echo "Elapsed: $(($(date '+%s') - start_epoch))s"
     } > "$state_dir/message_${job_id}.txt"
-    send_ntfy "${NTFY_LABEL} job ${job_id} ${state}" "$(cat "$state_dir/message_${job_id}.txt")" \
+    send_ntfy "${jname} ${job_id} ${state}" "$(cat "$state_dir/message_${job_id}.txt")" \
         && touch "$state_dir/job_${job_id}.done"
     return 0
 }
@@ -218,14 +233,14 @@ notify_workdir_if_finished() {
         return 0
     fi
     printf '%s\n' "$state" > "$state_dir/workdir_${key}.state"
+    workdir_name="$(basename "$dir")"
     body="Started: ${started_at}
 Host: ${host}
 Label: ${NTFY_LABEL}
 Workdir: ${dir}
 State: ${state}
 Elapsed: $(($(date '+%s') - start_epoch))s"
-    workdir_name="$(basename "$dir")"
-    send_ntfy "${NTFY_LABEL} ${workdir_name} ${state}" "$body"
+    send_ntfy "${workdir_name} ${state}" "$body"
     return 0
 }
 
@@ -297,14 +312,16 @@ Timeout reached while ${active} target(s) were still active.
         sleep "$NTFY_INTERVAL"
     done
 
-    # [EN] Build a dynamic title with job IDs and their states
-    # 根据任务 ID 和状态生成动态标题
+    # [EN] Build a dynamic title with job names and IDs
+    # 根据任务名称和 ID 生成动态标题
     if [ -n "$NTFY_JOBS" ]; then
         job_count=0
         job_ids=""
         last_state=""
+        last_name=""
         for job in $NTFY_JOBS; do
             st="$(job_state "$job")"
+            jn="$(job_name "$job")"
             job_count=$((job_count + 1))
             if [ -z "$job_ids" ]; then
                 job_ids="$job"
@@ -312,18 +329,19 @@ Timeout reached while ${active} target(s) were still active.
                 job_ids="${job_ids}, $job"
             fi
             last_state="$st"
+            last_name="$jn"
         done
         if [ "$job_count" -eq 1 ]; then
-            title="${NTFY_LABEL} job ${job_ids} ${last_state}"
+            title="${last_name} ${job_ids} ${last_state}"
         else
             if [ "$final_ok" -eq 1 ]; then
-                title="${NTFY_LABEL} ${job_count} jobs finished (${job_ids})"
+                title="${job_count} jobs finished (${job_ids})"
             else
-                title="${NTFY_LABEL} ${job_count} jobs finished — failed (${job_ids})"
+                title="${job_count} jobs finished — failed (${job_ids})"
             fi
         fi
     else
-        title="${NTFY_LABEL} finished"
+        title="jobs finished"
         [ "$final_ok" -eq 1 ] || title="${title} (failed)"
     fi
     send_ntfy "$title" "$summary"
