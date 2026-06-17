@@ -183,7 +183,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 - level：`zos` 或 `ZOS`
 - ice：`siconc` 或 `SICONC`
 
-#### 风场导入（`ImportWindForcingUseCase` + `WindNormalizeService`）
+#### 风场导入
 
 风场有专用归一化流程，但要区分**纯风场文件**和**多场文件中包含风场**：
 
@@ -201,7 +201,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 
 大文件采用自适应内存策略：根据可用内存和数据量选择全量加载、分块处理（最多 256 个时间步/块）或多进程并行（文件较大、时间步较多且分块数足够时）。写入先输出到临时文件，再用原子替换保证完整性。
 
-#### 通用强迫场导入（`ImportForcingFileUseCase` + `FileService`）
+#### 通用强迫场导入
 
 流场、水位场、海冰场，以及包含非风场的组合文件，走通用复制/移动 + 必要修复流程：
 
