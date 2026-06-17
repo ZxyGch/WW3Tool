@@ -167,8 +167,12 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
                 (
-                    "merge-forcing INPUT... -o OUTPUT",
-                    tr("icli_help_merge_forcing", "校验并合并 NetCDF 强迫场文件"),
+                    "merge-forcing <输入1.nc> [...] -o <输出.nc> [--time-range ...] [--bbox ...]",
+                    tr(
+                        "icli_help_merge_forcing",
+                        "独立工具：校验风/流等强迫场 NetCDF 的网格与时间轴，"
+                        "按时间拼接和/或合并不同变量到单个文件（无需工作目录）",
+                    ),
                 ),
                 ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
                 ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
@@ -194,6 +198,14 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 ("connect-test", tr("icli_help_connect_test", "测试 SSH 连接")),
                 ("ssh", tr("icli_help_ssh", "打开交互式 SSH 终端")),
+                ("slurm-idle", tr("icli_help_slurm_idle", "查看 Slurm 空闲 CPU 资源")),
+                (
+                    "confirm-slurm [full|half]",
+                    tr(
+                        "icli_help_confirm_slurm",
+                        "按 params.yml 的 Slurm 配置写 server.sh；full/half 自动选取空闲 CPU",
+                    ),
+                ),
                 ("list-files", tr("icli_help_list_files", "列出远程工作目录文件")),
                 ("upload --confirm", tr("icli_help_upload", "上传本地工作目录到远程")),
                 ("submit", tr("icli_help_submit", "在远程执行提交脚本")),
@@ -250,6 +262,253 @@ def print_help() -> None:
     print(f"    {g('workdir', _Colors.GREEN)} → {g('run-workflow', _Colors.GREEN)} → {g('local-run', _Colors.GREEN)}")
     print(f"                              └→ {g('upload', _Colors.GREEN)} → {g('submit', _Colors.GREEN)} → {g('check-status', _Colors.GREEN)} → {g('download-results', _Colors.GREEN)}")
     print()
+
+
+def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
+    """Print a human-readable summary of *cfg* (shared by shell and headless CLI)."""
+    not_set = tr("icli_not_set", "(未设置)")
+    not_cfg = tr("icli_not_configured", "(未配置)")
+
+    print(_bold(_color("\n" + tr("icli_config_summary", "📋 当前配置摘要"), _Colors.YELLOW)))
+    print(_config_field(tr("icli_config_file", "配置文件：{}"), params_path, indent=2))
+    print(_config_field(tr("icli_workdir", "工作目录：{}"), cfg.workdir.path, indent=2))
+
+    print(f"\n  {_section(tr('icli_config_grid', '网格'))}")
+    print(_config_field(tr("icli_grid_type", "类型：{} / {}"), cfg.grid.mesh_type, cfg.grid.grid_type))
+    outer = cfg.grid.outer
+    if outer and outer.lon and outer.lat:
+        print(
+            _config_field(
+                tr("icli_grid_range", "范围：经度 {} ~ {}，纬度 {} ~ {}"),
+                outer.lon[0],
+                outer.lon[1],
+                outer.lat[0],
+                outer.lat[1],
+            )
+        )
+    if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
+        s = cfg.grid.structured
+        if outer and outer.dx and outer.dy:
+            print(_config_field("dx={}, dy={}", outer.dx, outer.dy))
+        print(_config_field(tr("icli_bathymetry", "水深：{}"), s.bathymetry or not_set))
+        print(_config_field(tr("icli_coastline", "海岸线：{}"), s.coastline_precision or not_set))
+    elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
+        s = cfg.grid.smc
+        print(_config_field(tr("icli_bathymetry", "水深：{}"), s.bathymetry or not_set))
+        print(_config_field(tr("icli_smc_levels", "层数：{}"), s.n_levels or not_set))
+    elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
+        u = cfg.grid.unstructured
+        print(_config_field(tr("icli_unst_hmax", "hmax：{}"), u.hmax or not_set))
+
+    print(f"\n  {_section(tr('icli_forcing', '强迫场'))}")
+    print(_config_field(tr("icli_wind", "风场：{}"), cfg.forcing.wind or not_set))
+    print(_config_field(tr("icli_current", "流场：{}"), cfg.forcing.current or not_set))
+    print(_config_field(tr("icli_level", "水位：{}"), cfg.forcing.level or not_set))
+    print(_config_field(tr("icli_ice", "海冰：{}"), cfg.forcing.ice or not_set))
+    print(_config_field(tr("icli_process_mode", "处理模式：{}"), cfg.forcing.process_mode))
+    auto_mark = _success("✓") if cfg.forcing.auto_associate else _error("✗")
+    print(_config_field(tr("icli_auto_associate", "自动关联：{}"), auto_mark))
+
+    print(f"\n  {_section(tr('icli_config_calc', '计算模式'))}")
+    print(_config_field(tr("icli_calc_mode", "模式：{}"), cfg.calc.mode or not_set))
+    if cfg.calc.mode == "point":
+        print(_config_field(tr("icli_spectral_points", "谱点数：{}"), len(cfg.calc.points)))
+    elif cfg.calc.mode == "track":
+        print(_config_field(tr("icli_track_points", "航迹点数：{}"), len(cfg.calc.track_points)))
+
+    print(f"\n  {_section(tr('icli_config_ww3', 'WW3 配置'))}")
+    print(
+        _config_field(
+            tr("icli_ww3_period", "时段：{} ~ {}"),
+            cfg.ww3.start_date,
+            cfg.ww3.end_date,
+        )
+    )
+    print(_config_field(tr("icli_compute_precision", "计算精度：{}s"), cfg.ww3.compute_precision or not_set))
+    print(_config_field(tr("icli_output_precision", "输出精度：{}s"), cfg.ww3.output_precision or not_set))
+    print(_config_field(tr("icli_output_scheme", "输出方案：{}"), cfg.ww3.output_scheme or not_set))
+    print(_config_field(tr("icli_ww3_st", "ST：{}"), cfg.ww3.st or not_cfg))
+
+    wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
+    if wg:
+        spectrum = (
+            f"XFR={wg.get('SPECTRUM%XFR', '?')}, FREQ1={wg.get('SPECTRUM%FREQ1', '?')}, "
+            f"NK={wg.get('SPECTRUM%NK', '?')}, NTH={wg.get('SPECTRUM%NTH', '?')}"
+        )
+        timesteps = (
+            f"DTMAX={wg.get('TIMESTEPS%DTMAX', '?')}, DTXY={wg.get('TIMESTEPS%DTXY', '?')}, "
+            f"DTKTH={wg.get('TIMESTEPS%DTKTH', '?')}, DTMIN={wg.get('TIMESTEPS%DTMIN', '?')}"
+        )
+        print(_config_field(tr("icli_spectrum_params", "频谱：{}"), spectrum))
+        print(_config_field(tr("icli_timesteps_params", "时间步：{}"), timesteps))
+
+    print(f"\n  {_section(tr('icli_config_slurm', 'Slurm'))}")
+    print(_config_field(tr("icli_slurm_cpu", "CPU：{}"), cfg.slurm.cpu or not_cfg))
+    print(_config_field(tr("icli_slurm_cores", "核数：{}"), cfg.slurm.cores))
+    print(_config_field(tr("icli_slurm_nodes", "节点：{}"), cfg.slurm.nodes))
+    if cfg.slurm.cpu_group:
+        print(_config_field(tr("icli_slurm_cpu_group", "CPU 组：{}"), cfg.slurm.cpu_group))
+
+    print(f"\n  {_section(tr('icli_config_server', '服务器'))}")
+    if cfg.server.ssh_config_host:
+        print(_config_field(tr("icli_server_ssh_config", "SSH 配置：{}"), cfg.server.ssh_config_host))
+    else:
+        print(_config_field(tr("icli_server", "主机：{}"), cfg.server.host or not_cfg))
+    if cfg.server.ssh_config_host or cfg.server.host:
+        if not cfg.server.ssh_config_host:
+            print(_config_field(tr("icli_server_user", "用户：{}"), cfg.server.user or not_cfg))
+        print(_config_field(tr("icli_remote_dir", "远程目录：{}"), cfg.server.default_remote_dir or not_cfg))
+
+    print(f"\n  {_section(tr('icli_config_plot', '绘图'))}")
+    wm = cfg.plot.wave_maps
+    print(_config_field(tr("icli_plot_wave_maps", "波高图：{}"), _success("✓")))
+    if wm.time_step_hours is not None:
+        print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), wm.time_step_hours))
+    if wm.generate_video:
+        print(f"    {_color(tr('icli_plot_video', '生成视频：'), _Colors.BLUE)}{_success('✓')}")
+    if wm.dpi is not None:
+        print(_config_field("DPI：{}", wm.dpi))
+    if wm.figsize:
+        print(_config_field(tr("icli_plot_figsize", "图片尺寸：{}"), wm.figsize))
+    sp = cfg.plot.spectrum
+    print(_config_field(tr("icli_plot_spectrum", "二维谱：{}"), _success("✓")))
+    if sp.time_step_hours is not None:
+        print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), sp.time_step_hours))
+    if sp.energy_threshold is not None:
+        print(_config_field(tr("icli_plot_energy_threshold", "能量阈值：{}"), sp.energy_threshold))
+    if sp.plot_mode:
+        print(_config_field(tr("icli_plot_plot_mode", "绘制方式：{}"), sp.plot_mode))
+    j3 = cfg.plot.jason3
+    print(_config_field(tr("icli_plot_jason3", "Jason-3：{}"), _success("✓")))
+    if j3.data_folder:
+        print(_config_field(tr("icli_plot_data_folder", "数据目录：{}"), j3.data_folder))
+    if j3.time_range:
+        print(_config_field(tr("icli_plot_time_range", "时间范围：{}"), " ~ ".join(j3.time_range)))
+    if j3.max_dist_deg is not None:
+        print(_config_field(tr("icli_plot_max_dist", "最大距离：{}°"), j3.max_dist_deg))
+    if j3.time_window_hours is not None:
+        print(_config_field(tr("icli_plot_time_window", "时间窗口：{}h"), j3.time_window_hours))
+    nb = cfg.plot.ndbc
+    print(_config_field(tr("icli_plot_ndbc", "NDBC：{}"), _success("✓")))
+    if nb.data_folder:
+        print(_config_field(tr("icli_plot_data_folder", "数据目录：{}"), nb.data_folder))
+    if nb.time_range:
+        print(_config_field(tr("icli_plot_time_range", "时间范围：{}"), " ~ ".join(nb.time_range)))
+    if nb.download:
+        print(f"    {_color(tr('icli_plot_download', '自动下载：'), _Colors.BLUE)}{_success('✓')}")
+    wf = cfg.plot.wind_field
+    if wf.time_step_hours is not None:
+        print(f"    {_color(tr('icli_plot_wind_field', '风场：'), _Colors.BLUE)}{_success('✓')}")
+        print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), wf.time_step_hours))
+        if wf.flag_type:
+            print(_config_field(tr("icli_plot_flag_type", "风向标志：{}"), wf.flag_type))
+        if wf.flag_density is not None:
+            print(_config_field(tr("icli_plot_flag_density", "标志密度：{}"), wf.flag_density))
+    elif wf.flag_type or wf.flag_density is not None:
+        print(f"    {_color(tr('icli_plot_wind_field', '风场：'), _Colors.BLUE)}{_success('✓')}")
+        if wf.flag_type:
+            print(_config_field(tr("icli_plot_flag_type", "风向标志：{}"), wf.flag_type))
+        if wf.flag_density is not None:
+            print(_config_field(tr("icli_plot_flag_density", "标志密度：{}"), wf.flag_density))
+    print()
+
+
+def _ssh_via_paramiko(config: PipelineConfig, log) -> None:
+    try:
+        from ..infrastructure.remote.ssh_client import SshClient
+    except ImportError:
+        print(_error(tr("icli_need_paramiko", "❌ 需要 paramiko 才能使用 SSH 功能")))
+        return
+
+    server = config.server
+    client = SshClient(server)
+    try:
+        client.connect(log=log)
+        print(_success(tr("icli_ssh_connected", "✅ 已连接，SSH 终端已打开")))
+        print(_info(tr("icli_ssh_exit_hint", "  输入 exit 或按 Ctrl+D 关闭终端")))
+        print()
+
+        ssh = client._ssh
+        channel = ssh.invoke_shell()
+        channel.settimeout(0.1)
+
+        import select
+        while True:
+            r, _, _ = select.select([channel, sys.stdin], [], [], 0.1)
+            if channel in r:
+                try:
+                    data = channel.recv(4096)
+                    if not data:
+                        break
+                    sys.stdout.write(data.decode("utf-8", errors="replace"))
+                    sys.stdout.flush()
+                except Exception:
+                    break
+            if sys.stdin in r:
+                try:
+                    line = sys.stdin.readline()
+                    if not line:
+                        break
+                    channel.send(line.encode("utf-8"))
+                except Exception:
+                    break
+    except Exception as exc:
+        print(_error(tr("icli_ssh_failed", "❌ SSH 连接失败：{}").format(exc)))
+    finally:
+        client.close()
+        print()
+        print(_info(tr("icli_ssh_closed", "ℹ️ SSH 终端已关闭")))
+
+
+def open_ssh_session(config: PipelineConfig, *, log=print) -> int:
+    """Open an interactive SSH session; returns the ssh subprocess exit code when applicable."""
+    server = config.server
+    if server.ssh_config_host:
+        ssh_cmd = ["ssh", server.ssh_config_host]
+        print(_info(tr("icli_opening_ssh", "▶ 正在打开 SSH 终端：{}").format(server.ssh_config_host)))
+        print(_info(tr("icli_ssh_hint", "  提示：输入 exit 或按 Ctrl+D 关闭 SSH 终端")))
+        print()
+        try:
+            ret = subprocess.call(ssh_cmd)
+            if ret != 0:
+                print()
+                print(_warn(tr("icli_ssh_returned", "⚠️ SSH 会话已结束，返回码：{}").format(ret)))
+            return ret
+        except FileNotFoundError:
+            print(_warn(tr("icli_no_ssh_binary", "⚠️ 未找到系统 ssh 命令，使用 paramiko 回退")))
+            _ssh_via_paramiko(config, log)
+            return 0
+
+    if not server.host or not server.user:
+        print(_warn(tr("icli_ssh_not_configured", "⚠️ 请先在 params.yml server: 中配置 host 和 user")))
+        return 1
+
+    ssh_cmd = ["ssh", "-p", str(server.port)]
+    if server.key_file:
+        ssh_cmd.extend(["-i", str(server.key_file)])
+    ssh_cmd.append(f"{server.user}@{server.host}")
+
+    print(_info(tr("icli_opening_ssh", "▶ 正在打开 SSH 终端：{}").format(f"{server.user}@{server.host}:{server.port}")))
+    print(_info(tr("icli_ssh_hint", "  提示：输入 exit 或按 Ctrl+D 关闭 SSH 终端")))
+    print()
+
+    try:
+        ret = subprocess.call(ssh_cmd)
+        if ret != 0:
+            print()
+            print(_warn(tr("icli_ssh_returned", "⚠️ SSH 会话已结束，返回码：{}").format(ret)))
+            if server.password:
+                print(_info(tr("icli_ssh_paramiko_fallback", "  尝试使用 paramiko 回退连接...")))
+                _ssh_via_paramiko(config, log)
+        return ret
+    except FileNotFoundError:
+        print(_warn(tr("icli_no_ssh_binary", "⚠️ 未找到系统 ssh 命令，使用 paramiko 回退")))
+        _ssh_via_paramiko(config, log)
+        return 0
+    except KeyboardInterrupt:
+        print()
+        print(_info(tr("icli_ssh_interrupted", "⚠️ SSH 会话已中断")))
+        return 130
 
 
 class InteractiveCLI(cmd.Cmd):
@@ -432,154 +691,7 @@ class InteractiveCLI(cmd.Cmd):
         """
         if not self._require_config():
             return
-        cfg = self._config
-        not_set = tr("icli_not_set", "(未设置)")
-        not_cfg = tr("icli_not_configured", "(未配置)")
-
-        print(_bold(_color("\n" + tr("icli_config_summary", "📋 当前配置摘要"), _Colors.YELLOW)))
-        print(_config_field(tr("icli_config_file", "配置文件：{}"), self._params_path, indent=2))
-        print(_config_field(tr("icli_workdir", "工作目录：{}"), cfg.workdir.path, indent=2))
-
-        # 网格
-        print(f"\n  {_section(tr('icli_config_grid', '网格'))}")
-        print(_config_field(tr("icli_grid_type", "类型：{} / {}"), cfg.grid.mesh_type, cfg.grid.grid_type))
-        outer = cfg.grid.outer
-        if outer and outer.lon and outer.lat:
-            print(
-                _config_field(
-                    tr("icli_grid_range", "范围：经度 {} ~ {}，纬度 {} ~ {}"),
-                    outer.lon[0],
-                    outer.lon[1],
-                    outer.lat[0],
-                    outer.lat[1],
-                )
-            )
-        if cfg.grid.mesh_type == "structured" and cfg.grid.structured:
-            s = cfg.grid.structured
-            if outer and outer.dx and outer.dy:
-                print(_config_field("dx={}, dy={}", outer.dx, outer.dy))
-            print(_config_field(tr("icli_bathymetry", "水深：{}"), s.bathymetry or not_set))
-            print(_config_field(tr("icli_coastline", "海岸线：{}"), s.coastline_precision or not_set))
-        elif cfg.grid.mesh_type == "smc" and cfg.grid.smc:
-            s = cfg.grid.smc
-            print(_config_field(tr("icli_bathymetry", "水深：{}"), s.bathymetry or not_set))
-            print(_config_field(tr("icli_smc_levels", "层数：{}"), s.n_levels or not_set))
-        elif cfg.grid.mesh_type == "unstructured" and cfg.grid.unstructured:
-            u = cfg.grid.unstructured
-            print(_config_field(tr("icli_unst_hmax", "hmax：{}"), u.hmax or not_set))
-
-        # 强迫场
-        print(f"\n  {_section(tr('icli_forcing', '强迫场'))}")
-        print(_config_field(tr("icli_wind", "风场：{}"), cfg.forcing.wind or not_set))
-        print(_config_field(tr("icli_current", "流场：{}"), cfg.forcing.current or not_set))
-        print(_config_field(tr("icli_level", "水位：{}"), cfg.forcing.level or not_set))
-        print(_config_field(tr("icli_ice", "海冰：{}"), cfg.forcing.ice or not_set))
-        print(_config_field(tr("icli_process_mode", "处理模式：{}"), cfg.forcing.process_mode))
-        auto_mark = _success("✓") if cfg.forcing.auto_associate else _error("✗")
-        print(_config_field(tr("icli_auto_associate", "自动关联：{}"), auto_mark))
-
-        # 计算模式
-        print(f"\n  {_section(tr('icli_config_calc', '计算模式'))}")
-        print(_config_field(tr("icli_calc_mode", "模式：{}"), cfg.calc.mode or not_set))
-        if cfg.calc.mode == "point":
-            print(_config_field(tr("icli_spectral_points", "谱点数：{}"), len(cfg.calc.points)))
-        elif cfg.calc.mode == "track":
-            print(_config_field(tr("icli_track_points", "航迹点数：{}"), len(cfg.calc.track_points)))
-
-        # WW3 配置
-        print(f"\n  {_section(tr('icli_config_ww3', 'WW3 配置'))}")
-        print(
-            _config_field(
-                tr("icli_ww3_period", "时段：{} ~ {}"),
-                cfg.ww3.start_date,
-                cfg.ww3.end_date,
-            )
-        )
-        print(_config_field(tr("icli_compute_precision", "计算精度：{}s"), cfg.ww3.compute_precision or not_set))
-        print(_config_field(tr("icli_output_precision", "输出精度：{}s"), cfg.ww3.output_precision or not_set))
-        print(_config_field(tr("icli_output_scheme", "输出方案：{}"), cfg.ww3.output_scheme or not_set))
-        print(_config_field(tr("icli_ww3_st", "ST：{}"), cfg.ww3.st or not_cfg))
-
-        # WW3 Grid 参数
-        wg = cfg.ww3_grid.parameters if cfg.ww3_grid and cfg.ww3_grid.parameters else {}
-        if wg:
-            spectrum = f"XFR={wg.get('SPECTRUM%XFR', '?')}, FREQ1={wg.get('SPECTRUM%FREQ1', '?')}, NK={wg.get('SPECTRUM%NK', '?')}, NTH={wg.get('SPECTRUM%NTH', '?')}"
-            timesteps = f"DTMAX={wg.get('TIMESTEPS%DTMAX', '?')}, DTXY={wg.get('TIMESTEPS%DTXY', '?')}, DTKTH={wg.get('TIMESTEPS%DTKTH', '?')}, DTMIN={wg.get('TIMESTEPS%DTMIN', '?')}"
-            print(_config_field(tr("icli_spectrum_params", "频谱：{}"), spectrum))
-            print(_config_field(tr("icli_timesteps_params", "时间步：{}"), timesteps))
-
-        # Slurm
-        print(f"\n  {_section(tr('icli_config_slurm', 'Slurm'))}")
-        print(_config_field(tr("icli_slurm_cpu", "CPU：{}"), cfg.slurm.cpu or not_cfg))
-        print(_config_field(tr("icli_slurm_cores", "核数：{}"), cfg.slurm.cores))
-        print(_config_field(tr("icli_slurm_nodes", "节点：{}"), cfg.slurm.nodes))
-        if cfg.slurm.cpu_group:
-            print(_config_field(tr("icli_slurm_cpu_group", "CPU 组：{}"), cfg.slurm.cpu_group))
-
-        # 服务器
-        print(f"\n  {_section(tr('icli_config_server', '服务器'))}")
-        print(_config_field(tr("icli_server", "主机：{}"), cfg.server.host or not_cfg))
-        if cfg.server.host:
-            print(_config_field(tr("icli_server_user", "用户：{}"), cfg.server.user or not_cfg))
-            print(_config_field(tr("icli_remote_dir", "远程目录：{}"), cfg.server.default_remote_dir or not_cfg))
-
-        # 绘图
-        print(f"\n  {_section(tr('icli_config_plot', '绘图'))}")
-        wm = cfg.plot.wave_maps
-        print(_config_field(tr("icli_plot_wave_maps", "波高图：{}"), _success("✓") if wm.enabled else _error("✗")))
-        if wm.enabled:
-            if wm.time_step_hours is not None:
-                print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), wm.time_step_hours))
-            if wm.generate_video:
-                print(f"    {_color(tr('icli_plot_video', '生成视频：'), _Colors.BLUE)}{_success('✓')}")
-            if wm.dpi is not None:
-                print(_config_field("DPI：{}", wm.dpi))
-            if wm.figsize:
-                print(_config_field(tr("icli_plot_figsize", "图片尺寸：{}"), wm.figsize))
-        sp = cfg.plot.spectrum
-        print(_config_field(tr("icli_plot_spectrum", "二维谱：{}"), _success("✓") if sp.enabled else _error("✗")))
-        if sp.enabled:
-            if sp.time_step_hours is not None:
-                print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), sp.time_step_hours))
-            if sp.energy_threshold is not None:
-                print(_config_field(tr("icli_plot_energy_threshold", "能量阈值：{}"), sp.energy_threshold))
-            if sp.plot_mode:
-                print(_config_field(tr("icli_plot_plot_mode", "绘制方式：{}"), sp.plot_mode))
-        j3 = cfg.plot.jason3
-        print(_config_field(tr("icli_plot_jason3", "Jason-3：{}"), _success("✓") if j3.enabled else _error("✗")))
-        if j3.enabled:
-            if j3.data_folder:
-                print(_config_field(tr("icli_plot_data_folder", "数据目录：{}"), j3.data_folder))
-            if j3.time_range:
-                print(_config_field(tr("icli_plot_time_range", "时间范围：{}"), " ~ ".join(j3.time_range)))
-            if j3.max_dist_deg is not None:
-                print(_config_field(tr("icli_plot_max_dist", "最大距离：{}°"), j3.max_dist_deg))
-            if j3.time_window_hours is not None:
-                print(_config_field(tr("icli_plot_time_window", "时间窗口：{}h"), j3.time_window_hours))
-        nb = cfg.plot.ndbc
-        print(_config_field(tr("icli_plot_ndbc", "NDBC：{}"), _success("✓") if nb.enabled else _error("✗")))
-        if nb.enabled:
-            if nb.data_folder:
-                print(_config_field(tr("icli_plot_data_folder", "数据目录：{}"), nb.data_folder))
-            if nb.time_range:
-                print(_config_field(tr("icli_plot_time_range", "时间范围：{}"), " ~ ".join(nb.time_range)))
-            if nb.download:
-                print(f"    {_color(tr('icli_plot_download', '自动下载：'), _Colors.BLUE)}{_success('✓')}")
-        wf = cfg.plot.wind_field
-        if wf.time_step_hours is not None:
-            print(f"    {_color(tr('icli_plot_wind_field', '风场：'), _Colors.BLUE)}{_success('✓')}")
-            print(_config_field(tr("icli_plot_time_step", "时间步长：{}h"), wf.time_step_hours))
-            if wf.flag_type:
-                print(_config_field(tr("icli_plot_flag_type", "风向标志：{}"), wf.flag_type))
-            if wf.flag_density is not None:
-                print(_config_field(tr("icli_plot_flag_density", "标志密度：{}"), wf.flag_density))
-        elif wf.flag_type or wf.flag_density is not None:
-            print(f"    {_color(tr('icli_plot_wind_field', '风场：'), _Colors.BLUE)}{_success('✓')}")
-            if wf.flag_type:
-                print(_config_field(tr("icli_plot_flag_type", "风向标志：{}"), wf.flag_type))
-            if wf.flag_density is not None:
-                print(_config_field(tr("icli_plot_flag_density", "标志密度：{}"), wf.flag_density))
-        print()
+        print_config_summary(self._config, str(self._params_path))
 
     def do_print_params(self, arg: str) -> None:
         """print-params  — 输出当前 params.yml 内容
@@ -604,43 +716,18 @@ class InteractiveCLI(cmd.Cmd):
             print(_warn(tr("icli_usage_workdir", "用法：workdir <目录路径>")))
             return
 
-        workdir = Path(name).expanduser().resolve()
-        params_yml = workdir / "params.yml"
+        try:
+            from .workdir_setup import WorkdirError, ensure_workdir
 
-        if workdir.exists():
-            if params_yml.is_file():
-                # 目录已存在且包含 params.yml，直接加载
-                # [EN] Directory exists with params.yml, auto-load it
-                print(_info(tr("icli_workdir_exists", "ℹ️ 目录已存在，自动加载：{}").format(workdir)))
-                self._load_config(str(params_yml))
+            workdir, created = ensure_workdir(name)
+            params_yml = workdir / "params.yml"
+            if created:
+                print(_success(tr("icli_created_workdir", "✅ 已创建工作目录：{}").format(workdir)))
             else:
-                print(_error(tr("icli_workdir_no_params", "❌ 目录已存在但缺少 params.yml：{}").format(workdir)))
-        else:
-            # 目录不存在，创建并从根模板复制 params.yml
-            # [EN] Directory does not exist, create and copy root params.yml template
-            root = Path(__file__).resolve().parents[3]
-            root_params = root / "params.yml"
-            if not root_params.is_file():
-                print(_error(tr("icli_no_template", "❌ 仓库根目录没有 params.yml 模板文件")))
-                return
-
-            workdir.mkdir(parents=True)
-            shutil.copy2(str(root_params), str(params_yml))
-
-            # 自动将 workdir.path 改为新目录路径
-            # [EN] Automatically update workdir.path to the new directory path
-            import re
-            content = params_yml.read_text(encoding="utf-8")
-            content = re.sub(
-                r"(^workdir:\s*\n  path:\s*).*",
-                rf"\g<1>{workdir}",
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
-            params_yml.write_text(content, encoding="utf-8")
-            print(_success(tr("icli_created_workdir", "✅ 已创建工作目录：{}").format(workdir)))
+                print(_info(tr("icli_workdir_exists", "ℹ️ 目录已存在，自动加载：{}").format(workdir)))
             self._load_config(str(params_yml))
+        except WorkdirError as exc:
+            print(_error(str(exc)))
 
     def complete_workdir(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return []
@@ -692,9 +779,17 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_merge_forcing(self, arg: str) -> None:
-        """merge-forcing INPUT... -o OUTPUT  — 校验并合并 NetCDF 强迫场文件
+        """merge-forcing <输入1.nc> [...] -o <输出.nc>  — 校验并合并强迫场 NetCDF
 
-        [EN] merge-forcing INPUT... -o OUTPUT  — Validate and merge NetCDF forcing files
+        独立工具，不需要已加载的 params.yml。校验多个强迫场文件的网格、变量与
+        时间轴兼容性，再自动按时间拼接和/或合并不同变量，写入 -o 指定的输出文件。
+        可选 --time-range START END（时间裁剪）、--bbox W E S N（经纬度裁剪）。
+
+        [EN] merge-forcing <in1.nc> [...] -o <out.nc>  — Validate and merge forcing NetCDFs
+
+        Standalone utility; no params.yml required. Validates grid/variable/time
+        compatibility across inputs, then auto-concatenates in time and/or merges
+        different variables into the -o output. Optional --time-range and --bbox.
         """
         parser = argparse.ArgumentParser(prog="merge-forcing", add_help=False)
         parser.add_argument("inputs", nargs="+")
@@ -710,7 +805,8 @@ class InteractiveCLI(cmd.Cmd):
                     tr(
                         "icli_usage_merge_forcing",
                         "用法：merge-forcing <输入1.nc> <输入2.nc> [...] -o <输出.nc> "
-                        "[--time-range START END] [--bbox W E S N]",
+                        "[--time-range <开始> <结束>] [--bbox <西> <东> <南> <北>]\n"
+                        "  独立工具，无需工作目录；校验网格/时间轴后按时间拼接和/或合并不同变量",
                     )
                 )
             )
@@ -1056,96 +1152,68 @@ class InteractiveCLI(cmd.Cmd):
         """
         if not self._require_config():
             return
-        server = self._config.server
-        if not server.host or not server.user:
-            print(_warn(tr("icli_ssh_not_configured", "⚠️ 请先在 params.yml server: 中配置 host 和 user")))
+        open_ssh_session(self._config, log=self._log_callback)
+
+    def do_slurm_idle(self, arg: str) -> None:
+        """slurm-idle  — 查看 Slurm 空闲 CPU 资源
+
+        [EN] slurm-idle  — Query Slurm idle CPU resources on the remote server
+        """
+        if not self._require_config():
             return
-
-        # 优先使用系统 ssh 命令（完整交互体验）
-        # [EN] Prefer system ssh command (full interactive experience)
-        ssh_cmd = ["ssh", "-p", str(server.port)]
-        if server.key_file:
-            ssh_cmd.extend(["-i", str(server.key_file)])
-        ssh_cmd.append(f"{server.user}@{server.host}")
-
-        print(_info(tr("icli_opening_ssh", "▶ 正在打开 SSH 终端：{}").format(f"{server.user}@{server.host}:{server.port}")))
-        print(_info(tr("icli_ssh_hint", "  提示：输入 exit 或按 Ctrl+D 关闭 SSH 终端并返回 ww3>")))
-        print()
-
         try:
-            # 使用系统 ssh 客户端（支持完整交互）
-            # [EN] Use system ssh client (supports full interaction)
-            ret = subprocess.call(ssh_cmd)
-            if ret != 0:
-                print()
-                print(_warn(tr("icli_ssh_returned", "⚠️ SSH 会话已结束，返回码：{}").format(ret)))
-                # 如果系统 ssh 失败且配置了密码，尝试 paramiko 回退
-                # [EN] If system ssh fails and password is configured, try paramiko fallback
-                if server.password and ret != 0:
-                    print(_info(tr("icli_ssh_paramiko_fallback", "  尝试使用 paramiko 回退连接...")))
-                    self._ssh_via_paramiko()
-        except FileNotFoundError:
-            # 系统 ssh 命令不存在，回退到 paramiko
-            # [EN] System ssh command not found, fall back to paramiko
-            print(_warn(tr("icli_no_ssh_binary", "⚠️ 未找到系统 ssh 命令，使用 paramiko 回退")))
-            self._ssh_via_paramiko()
-        except KeyboardInterrupt:
-            print()
-            print(_info(tr("icli_ssh_interrupted", "  SSH 会话已中断")))
+            from ..application.slurm_ops import run_slurm_idle
+
+            print(_info(tr("icli_start_slurm_idle", "▶ 查询 Slurm 空闲资源...")))
+            result = run_slurm_idle(self._config, log=self._log_callback)
+            if not result.success:
+                print(_error(tr("icli_failed_slurm_idle", "❌ 查询失败：{}").format(result.error)))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_confirm_slurm(self, arg: str) -> None:
+        """confirm-slurm [full|half]  — 确认 Slurm 配置并写 server.sh
+
+        不带参数时仅按当前 params.yml 的 slurm 段更新 server.sh。
+        加 ``full`` 或 ``half`` 时先查询空闲 CPU，按 GUI 同名按钮逻辑选取资源。
+
+        [EN] confirm-slurm [full|half]  — Confirm Slurm settings and write server.sh
+        """
+        if not self._require_config():
+            return
+        token = arg.strip().lower()
+        mode = None
+        if token in {"full", "half"}:
+            mode = token
+        elif token:
+            print(
+                _warn(
+                    tr(
+                        "icli_usage_confirm_slurm",
+                        "用法：confirm-slurm [full|half]（省略参数则仅按当前配置写 server.sh）",
+                    )
+                )
+            )
+            return
+        try:
+            from ..application.slurm_ops import run_confirm_slurm
+
+            print(_info(tr("icli_start_confirm_slurm", "▶ 正在确认 Slurm 配置...")))
+            rc = run_confirm_slurm(
+                self._config,
+                str(self._params_path),
+                log=self._log_callback,
+                mode=mode,
+            )
+            if rc == 0:
+                print(_success(tr("icli_done_confirm_slurm", "✅ Slurm 配置已确认")))
+            else:
+                print(_error(tr("icli_failed_confirm_slurm", "❌ Slurm 配置确认失败")))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def _ssh_via_paramiko(self) -> None:
-        """使用 paramiko invoke_shell 提供交互式 SSH 终端（回退方案）。
-
-        [EN] Provide an interactive SSH terminal using paramiko invoke_shell (fallback).
-        """
-        try:
-            from ..infrastructure.remote.ssh_client import SshClient
-        except ImportError:
-            print(_error(tr("icli_need_paramiko", "❌ 需要 paramiko 才能使用 SSH 功能")))
-            return
-
-        server = self._config.server
-        client = SshClient(server)
-        try:
-            client.connect(log=self._log_callback)
-            print(_success(tr("icli_ssh_connected", "✅ 已连接，SSH 终端已打开")))
-            print(_info(tr("icli_ssh_exit_hint", "  输入 exit 或按 Ctrl+D 关闭终端")))
-            print()
-
-            # 获取 paramiko SSH client 并打开交互式 shell
-            # [EN] Get the paramiko SSH client and open an interactive shell
-            ssh = client._ssh
-            channel = ssh.invoke_shell()
-            channel.settimeout(0.1)
-
-            import select
-            while True:
-                # 检查是否有数据可读
-                # [EN] Check if there is data available to read
-                r, _, _ = select.select([channel, sys.stdin], [], [], 0.1)
-                if channel in r:
-                    try:
-                        data = channel.recv(4096)
-                        if not data:
-                            break
-                        sys.stdout.write(data.decode("utf-8", errors="replace"))
-                        sys.stdout.flush()
-                    except Exception:
-                        break
-                if sys.stdin in r:
-                    try:
-                        line = sys.stdin.readline()
-                        if not line:
-                            break
-                        channel.send(line.encode("utf-8"))
-                    except Exception:
-                        break
-        except Exception as exc:
-            print(_error(tr("icli_ssh_failed", "❌ SSH 连接失败：{}").format(exc)))
-        finally:
-            client.close()
-            print()
-            print(_info(tr("icli_ssh_closed", "  SSH 终端已关闭")))
+        _ssh_via_paramiko(self._config, self._log_callback)
 
     def do_list_files(self, arg: str) -> None:
         """list-files  — 列出远程工作目录文件
@@ -1387,6 +1455,9 @@ class InteractiveCLI(cmd.Cmd):
 
     def complete_clear_remote(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return self._complete_options(text, ["--confirm"])
+
+    def complete_confirm_slurm(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
+        return self._complete_options(text, ["full", "half"])
 
 
 def _cfl_spacing_from_grid(grid) -> tuple:

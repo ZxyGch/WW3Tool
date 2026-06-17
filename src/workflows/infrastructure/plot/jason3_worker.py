@@ -780,7 +780,7 @@ def _run_jason3_swh_worker(lon_lat, time_range, jason_folder, out_folder, log_qu
         # 处理 masked array，转换为普通数组并处理 NaN
         swh = np.ma.filled(np.array(swh), np.nan)
 
-        log(tr("plotting_jason_read_success", "Jason-3 数据读取成功"))
+        log(tr("plotting_jason_read_success", "✅ Jason-3 数据读取成功"))
 
         # 网格化 - 使用用户输入的筛选范围生成网格（与旧代码保持一致）
         lon_grid = np.linspace(lon_min, lon_max, int((lon_max - lon_min) * UPSAMPLE_FACTOR))

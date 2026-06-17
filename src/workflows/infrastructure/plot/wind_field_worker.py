@@ -78,7 +78,7 @@ def _make_wind_field_worker(
         except Exception:
             pass
 
-        log(tr("wind_field_worker_start", "\U0001f504 开始生成风场图（在子进程中执行）..."))
+        log(tr("wind_field_worker_start", "🔄 开始生成风场图（在子进程中执行）..."))
 
         # ------------------------------------------------------------------
         # Open dataset and resolve variable names
@@ -148,7 +148,7 @@ def _make_wind_field_worker(
             # -- time parsing -----------------------------------------------
             if time_values.size == 0:
                 log(tr("wind_time_dimension_empty",
-                       "\u26a0\ufe0f 时间维度为空，无法生成风场图"))
+                       "⚠️ 时间维度为空，无法生成风场图"))
                 log_queue.put("__DONE__")
                 result_queue.put([])
                 return
@@ -161,7 +161,7 @@ def _make_wind_field_worker(
                     times_dt = num2date(time_values, units, calendar=calendar)
             except Exception as e:
                 log(tr("wind_time_parse_failed",
-                       "\u26a0\ufe0f 时间解析失败，改用索引：{error}").format(error=e))
+                       "⚠️ 时间解析失败，改用索引：{error}").format(error=e))
                 times_dt = None
 
         # ------------------------------------------------------------------
@@ -198,7 +198,7 @@ def _make_wind_field_worker(
             output_dir = prepare_photo_subdir(selected_folder, SUBDIR_WIND_FIELD)
         except Exception as e:
             log(tr("wind_clean_output_dir_failed",
-                   "\u274c 清理输出目录失败: {error}").format(error=e))
+                   "❌ 清理输出目录失败: {error}").format(error=e))
             log_queue.put("__DONE__")
             result_queue.put([])
             return
@@ -271,7 +271,7 @@ def _make_wind_field_worker(
                 pct = int((progress_idx + 1) / total * 100)
                 log(
                     tr("wind_field_progress",
-                       "\U0001f4ca 进度: {current}/{total} ({percent}%)")
+                       "📊 进度: {current}/{total} ({percent}%)")
                     .format(current=progress_idx + 1, total=total, percent=pct)
                 )
 
@@ -411,7 +411,7 @@ def _make_wind_field_worker(
         if saved_paths:
             log(
                 tr("plotting_wind_field_generated",
-                   "\u2705 已生成 {count} 张风场图，保存在 {path}")
+                   "✅ 已生成 {count} 张风场图，保存在 {path}")
                 .format(count=len(saved_paths), path=output_dir)
             )
         else:
@@ -421,7 +421,7 @@ def _make_wind_field_worker(
     except Exception as e:
         import traceback
         error_msg = tr("wind_generation_failed",
-                       "\u274c 生成风场图失败: {error}").format(error=e)
+                       "❌ 生成风场图失败: {error}").format(error=e)
         try:
             log_queue.put(error_msg)
             log_queue.put(traceback.format_exc())

@@ -222,7 +222,7 @@ class StepFourServiceMixin:
                         f.writelines(new_lines)
                     success_count += 1
                 else:
-                    error_messages.append(tr("step4_ww3_shel_type_field_list_missing", "ww3_shel.nml 中未找到 TYPE%FIELD%LIST 配置行"))
+                    error_messages.append(tr("step4_ww3_shel_type_field_list_missing", "❌ ww3_shel.nml 中未找到 TYPE%FIELD%LIST 配置行"))
             except Exception as e:
                 error_messages.append(tr("step4_ww3_shel_update_failed", "更新 ww3_shel.nml 失败：{error}").format(error=str(e)))
         
@@ -255,7 +255,7 @@ class StepFourServiceMixin:
                         f.writelines(new_lines)
                     success_count += 1
                 else:
-                    error_messages.append(tr("step4_ww3_ounf_field_list_missing", "ww3_ounf.nml 中未找到 FIELD%LIST 配置行"))
+                    error_messages.append(tr("step4_ww3_ounf_field_list_missing", "❌ ww3_ounf.nml 中未找到 FIELD%LIST 配置行"))
             except Exception as e:
                 error_messages.append(tr("step4_ww3_ounf_update_failed", "更新 ww3_ounf.nml 失败：{error}").format(error=str(e)))
         

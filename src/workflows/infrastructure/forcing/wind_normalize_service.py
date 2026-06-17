@@ -639,7 +639,7 @@ class WindNormalizeService:
                     os.remove(temp_output_path)
             except Exception:
                 pass
-            self._emit(log, tr("log_write_file_failed", "❌ 写入新文件失败: {error}").format(error=exc))
+            self._emit(log, tr("log_write_file_failed", "❌ 写入新文件失败") + f": {exc}")
             return False
 
     @staticmethod
