@@ -496,11 +496,8 @@ def run_check_status(
 
 
 def _ntfy_topic_for(config: PipelineConfig, remote_dir: str) -> str:
-    base = Path(remote_dir.rstrip("/")).name or "ww3"
-    user = config.server.user or "ww3"
-    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{user}-{base}").strip("-").lower()
-    digest = hashlib.sha1(remote_dir.encode("utf-8")).hexdigest()[:10]
-    return f"{cleaned}-{digest}"[:80]
+    digest = hashlib.sha1(remote_dir.encode("utf-8")).hexdigest()[:16]
+    return f"ww3-{digest}"
 
 
 def run_check_ntfy_status(
