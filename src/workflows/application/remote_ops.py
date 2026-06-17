@@ -68,20 +68,30 @@ def _resolve_remote_dir(config: PipelineConfig) -> str:
 
     优先使用 ``server.remote_dir``（第六步输入框写入的实际路径）；
     为空时回退到 ``server.default_remote_dir`` + 工作目录名。
+
+    无论来源如何，若路径末段与工作目录名不匹配，自动追加工作目录名，
+    确保始终指向具体的 per-case 远程目录。
     """
     remote_dir = config.server.remote_dir.strip()
+    workdir_name = config.workdir.path.name if config.workdir.path else ""
+
     if not remote_dir:
         base = config.server.default_remote_dir.strip()
         if not base:
             raise ValueError(
                 tr("remote_dir_missing", "❌ server.remote_dir 和 server.default_remote_dir 均未配置。请在 params.yml 的 server: 段填写远程工作目录。")
             )
-        workdir_name = config.workdir.path.name if config.workdir.path else ""
         if workdir_name:
             tail = os.path.basename(base.rstrip("/"))
             remote_dir = base.rstrip("/") if tail == workdir_name else base.rstrip("/") + "/" + workdir_name
         else:
             remote_dir = base
+    elif workdir_name:
+        # remote_dir 非空但未包含工作目录名 → 自动追加
+        tail = os.path.basename(remote_dir.rstrip("/"))
+        if tail != workdir_name:
+            remote_dir = remote_dir.rstrip("/") + "/" + workdir_name
+
     if config.server.user and (remote_dir == "~" or remote_dir.startswith("~/")):
         remote_dir = f"/home/{config.server.user}{remote_dir[1:]}"
     return remote_dir
