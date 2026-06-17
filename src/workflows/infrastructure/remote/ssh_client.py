@@ -223,7 +223,7 @@ class SshClient:
     # ── upload ────────────────────────────────────────────────────────────────
 
     # Files that must have \r stripped before upload (Windows-edited shell scripts)
-    _UNIX_EOL_FILES = frozenset({"server.sh", "local.sh", "export.sh", "ww3.slurm"})
+    _UNIX_EOL_FILES = frozenset({"server.sh", "local.sh", "export.sh", "ww3.slurm", "ww3_ntfy_watch.sh"})
 
     def _put_file(self, sftp, local_file: str, remote_file: str) -> None:
         fname = os.path.basename(local_file)

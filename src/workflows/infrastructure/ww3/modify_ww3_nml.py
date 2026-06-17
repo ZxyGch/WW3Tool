@@ -398,6 +398,7 @@ class ModifyWW3NML(
         # [EN] Get the public/ww3 path under the project root directory
         # 获取项目根目录下的 public/ww3 路径
         src_dir = os.path.join(PUBLIC_DIR, "ww3")
+        scripts_dir = os.path.join(PUBLIC_DIR, "scripts")
         if not os.path.exists(src_dir):
             self.log(tr("directory_not_found", "⚠️ 未找到目录：{path}").format(path=src_dir))
             return
@@ -411,9 +412,11 @@ class ModifyWW3NML(
         copied_files = []
 
         try:
-            # [EN] Copy server.sh (default template public/ww3/server.sh)
-            # 复制 server.sh（默认模板 public/ww3/server.sh）
-            server_script_path = os.path.normpath(os.path.join(PUBLIC_DIR, "ww3", "server.sh"))
+            # [EN] Copy server.sh (prefer public/scripts/server.sh)
+            # 复制 server.sh（优先使用 public/scripts/server.sh）
+            server_script_path = os.path.normpath(os.path.join(scripts_dir, "server.sh"))
+            if not os.path.isfile(server_script_path):
+                server_script_path = os.path.normpath(os.path.join(src_dir, "server.sh"))
 
             if os.path.isfile(server_script_path):
                 dst_path = os.path.join(self.selected_folder, "server.sh")
@@ -442,11 +445,23 @@ class ModifyWW3NML(
                     shutil.copy2(multi_nml_path, dst_path)
                     copied_files.append("ww3_multi.nml")
 
-                local_sh_path = os.path.join(src_dir, "local.sh")
+                local_sh_path = os.path.join(scripts_dir, "local.sh")
+                if not os.path.isfile(local_sh_path):
+                    local_sh_path = os.path.join(src_dir, "local.sh")
                 if os.path.isfile(local_sh_path):
                     dst_path = os.path.join(self.selected_folder, "local.sh")
                     shutil.copy2(local_sh_path, dst_path)
                     copied_files.append("local.sh")
+
+            watcher_path = os.path.join(scripts_dir, "ww3_ntfy_watch.sh")
+            if os.path.isfile(watcher_path):
+                dst_path = os.path.join(self.selected_folder, "ww3_ntfy_watch.sh")
+                shutil.copy2(watcher_path, dst_path)
+                try:
+                    os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
+                except OSError:
+                    pass
+                copied_files.append("ww3_ntfy_watch.sh")
 
             if copied_files:
                 files_str = ', '.join(copied_files)

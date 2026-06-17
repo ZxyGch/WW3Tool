@@ -63,6 +63,7 @@ class ServerConnectPanel:
         use_idle_full: Callable[[], None],
         use_idle_half: Callable[[], None],
         confirm_slurm: Callable[[], None],
+        inject_ntfy: Callable[[], None],
         cancel: Callable[[], None],
     ) -> None:
         self._input_style = input_style
@@ -228,6 +229,11 @@ class ServerConnectPanel:
             confirm_slurm,
         )
         confirm_slurm_layout.addWidget(self.confirm_slurm_button)
+        self.inject_ntfy_button = create_button(
+            tr("step6_inject_ntfy", "注入 ntfy 监听"),
+            inject_ntfy,
+        )
+        confirm_slurm_layout.addWidget(self.inject_ntfy_button)
         layout.addWidget(self._confirm_slurm_widget)
 
         self._group.viewLayout.addLayout(layout)

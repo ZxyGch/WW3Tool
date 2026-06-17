@@ -584,6 +584,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             use_idle_full=self._server_use_idle_full,
             use_idle_half=self._server_use_idle_half,
             confirm_slurm=self._server_confirm_slurm,
+            inject_ntfy=self._server_inject_ntfy,
             cancel=self._server_cancel,
         )
         self._st_combo = self._server_connect_panel.st_combo
@@ -2042,6 +2043,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._persist_server_remote_dir():
             return
         self._run_job(self._remote_vm.check_status)
+
+    def _server_inject_ntfy(self) -> None:
+        if not self._persist_server_remote_dir():
+            return
+        self._run_job(self._remote_vm.inject_ntfy_listener)
 
     def _server_clear(self) -> None:
         remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""

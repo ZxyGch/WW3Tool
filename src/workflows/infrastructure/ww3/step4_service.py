@@ -400,6 +400,7 @@ class StepFourServiceMixin:
 
         # 获取项目根目录下的 public/ww3 路径
         src_dir = os.path.normpath(os.path.join(PUBLIC_DIR, "ww3"))
+        scripts_dir = os.path.normpath(os.path.join(PUBLIC_DIR, "scripts"))
         
         if not os.path.exists(src_dir):
             self.log(tr("step4_dir_not_found", "⚠️ 未找到目录：{path}").format(path=src_dir))
@@ -465,7 +466,25 @@ class StepFourServiceMixin:
                 dst_path = os.path.join(target_dir, item)
                 shutil.copy2(src_path, dst_path)
                 copied += 1
-                
+            scripts_target_dir = workdir_for_special if is_nested_grid else target_dir
+            scripts_copied = 0
+            if os.path.isdir(scripts_dir):
+                for item in os.listdir(scripts_dir):
+                    src_path = os.path.join(scripts_dir, item)
+                    if not os.path.isfile(src_path):
+                        continue
+                    dst_path = os.path.join(scripts_target_dir, item)
+                    shutil.copy2(src_path, dst_path)
+                    if item.endswith(".sh"):
+                        try:
+                            os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
+                        except OSError:
+                            pass
+                    scripts_copied += 1
+            else:
+                self.log(tr("step4_dir_not_found", "⚠️ 未找到目录：{path}").format(path=scripts_dir))
+
+            copied += scripts_copied
 
             if copied > 0:
                 prefix = f"{grid_label} " if grid_label else ""

@@ -397,9 +397,11 @@ class ServerSh(NMLPrimitives):
         num_N = self.num_N_edit.text().strip()
         cpu = self.cpu_var
 
-        # [EN] Get default template path for server.sh (public/ww3/server.sh)
-        # 获取 server.sh 的默认模板路径（public/ww3/server.sh）
-        server_script_path = os.path.normpath(os.path.join(PUBLIC_DIR, "ww3", "server.sh"))
+        # [EN] Get default template path for server.sh (prefer public/scripts/server.sh)
+        # 获取 server.sh 的默认模板路径（优先使用 public/scripts/server.sh）
+        server_script_path = os.path.normpath(os.path.join(PUBLIC_DIR, "scripts", "server.sh"))
+        if not os.path.exists(server_script_path):
+            server_script_path = os.path.normpath(os.path.join(PUBLIC_DIR, "ww3", "server.sh"))
 
         # [EN] If server.sh is not in the working directory, copy it there
         # 如果 server.sh 不在工作目录，复制到工作目录

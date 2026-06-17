@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import os
 import shlex
+import hashlib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
 from ..domain.config_models import PipelineConfig
 from ..infrastructure.remote.ssh_client import SshClient
+from ..infrastructure.runtime_config import PUBLIC_DIR
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
 
@@ -476,6 +479,93 @@ def run_check_status(
         return RemoteResult(success=True, data=status, messages=list(logger.messages))
     except Exception as exc:
         logger.log(tr("remote_status_check_failed", "❌ 状态检查失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
+
+def _ntfy_topic_for(config: PipelineConfig, remote_dir: str) -> str:
+    base = Path(remote_dir.rstrip("/")).name or "ww3"
+    user = config.server.user or "ww3"
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{user}-{base}").strip("-").lower()
+    digest = hashlib.sha1(remote_dir.encode("utf-8")).hexdigest()[:10]
+    return f"{cleaned}-{digest}"[:80]
+
+
+def run_inject_ntfy_listener(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    topic: str | None = None,
+    interval: int = 60,
+    timeout_hours: int = 336,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """Upload and start a login-node ntfy watcher for current Slurm jobs/workdir."""
+    logger = CoreLogger(callback=log)
+    c, owns = _acquire(config, client)
+    try:
+        remote_dir = _resolve_remote_dir(config)
+        topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
+        label = Path(remote_dir.rstrip("/")).name or "WW3"
+        scripts_dir = os.path.join(PUBLIC_DIR, "scripts")
+        watcher = os.path.join(scripts_dir, "ww3_ntfy_watch.sh")
+        if not os.path.isfile(watcher):
+            raise FileNotFoundError(
+                tr("ntfy_watcher_missing", "❌ 未找到 ntfy 监听脚本：{path}").format(path=watcher)
+            )
+        if owns:
+            c.connect(log=logger.log)
+        logger.log(
+            tr("ntfy_uploading_watcher", "📤 正在注入 ntfy 监听脚本到 {path}").format(path=remote_dir)
+        )
+        c.upload_matching_files(
+            scripts_dir,
+            remote_dir,
+            lambda relpath: relpath == "ww3_ntfy_watch.sh",
+            recursive=False,
+            log=logger.log,
+        )
+        q_remote = shlex.quote(remote_dir)
+        q_topic = shlex.quote(topic)
+        q_label = shlex.quote(label)
+        q_topic_line = shlex.quote(f"ntfy topic: {topic}")
+        q_url_line = shlex.quote(f"ntfy url: https://ntfy.sh/{topic}")
+        command = (
+            f"cd {q_remote} && "
+            "chmod +x ww3_ntfy_watch.sh && "
+            "if [ -f ntfy_watch.pid ] && kill -0 $(cat ntfy_watch.pid) 2>/dev/null; then "
+            "echo \"ntfy watcher already running: $(cat ntfy_watch.pid)\"; "
+            "else "
+            f"nohup ./ww3_ntfy_watch.sh --topic {q_topic} --label {q_label} "
+            f"--workdirs {q_remote} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
+            "> ntfy_watch.log 2>&1 & echo $! > ntfy_watch.pid; "
+            "echo \"ntfy watcher started: $(cat ntfy_watch.pid)\"; "
+            "fi; "
+            f"printf '%s\\n' {q_topic_line}; "
+            f"printf '%s\\n' {q_url_line}"
+        )
+        out, err, code = c.exec_command(command, timeout=20)
+        if out:
+            for line in out.splitlines():
+                logger.log(line)
+        if err:
+            for line in err.splitlines():
+                logger.log(f"[stderr] {line}")
+        if code != 0:
+            raise RuntimeError(
+                err or out or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code)
+            )
+        logger.log(
+            tr(
+                "ntfy_listener_injected",
+                "✅ ntfy 监听已启动；请订阅 topic：{topic}",
+            ).format(topic=topic)
+        )
+        return RemoteResult(success=True, data={"topic": topic}, messages=list(logger.messages))
+    except Exception as exc:
+        logger.log(tr("ntfy_listener_failed", "❌ 注入 ntfy 监听失败：{error}").format(error=exc))
         return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
     finally:
         if owns:
