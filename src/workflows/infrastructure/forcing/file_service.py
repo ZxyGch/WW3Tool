@@ -3,21 +3,28 @@
 [EN] WW3 Step 1 forcing field file I/O and format fixing service.
 
 用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并只执行必要的
-WW3 兼容性变量名修正，包括：
+WW3 兼容性修正，包括：
 
 [EN] After the user selects a NetCDF file, this module is responsible for copying or moving
-it to the working directory and performing only the necessary WW3-compatible variable-name
-fixes on the copy, including:
+it to the working directory and performing only the necessary WW3-compatible fixes
+on the copy, including:
 
 - 将 ``wndewd/wndnwd`` 重命名为 ``u10/v10``（部分再分析产品使用旧名）；
+- 一维纬度坐标递减时翻转为递增，避免 ``ww3_prnc`` 在规则经纬网下报错；
+- 一维经度坐标递减时明确拒绝，不静默改写经度闭合关系；
 - 扫描工作目录，按文件名规则或变量检测恢复 Step 1 四类场路径。
 
 [EN] - Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
+- Flipping descending 1-D latitude coordinates to ascending order to avoid
+  ``ww3_prnc`` failures on regular lat/lon grids;
+- Rejecting descending 1-D longitude coordinates instead of silently rewriting
+  longitude closure;
 - Scanning the working directory to recover Step 1 field paths via filename rules or variable detection.
 """
 import os
 import shutil
 import glob
+import numpy as np
 from netCDF4 import Dataset
 from typing import Optional
 from ...domain.forcing_fields import ForcingField, Step1Files
@@ -134,12 +141,115 @@ class FileService:
 
         os.replace(temp_file, source_path)
 
+    _LAT_NAMES = ("latitude", "lat", "Latitude", "y", "Y", "LATITUDE", "LAT")
+    _LON_NAMES = ("longitude", "lon", "Longitude", "x", "X", "LONGITUDE", "LON")
+
+    @staticmethod
+    def _find_coord_name(var_names, candidates):
+        for name in candidates:
+            if name in var_names:
+                return name
+        return None
+
+    @staticmethod
+    def _decreasing_1d_coord_dimension(coord_var, coordinate_label):
+        """返回递减一维坐标对应的维度名；递增返回 None。"""
+        if len(coord_var.dimensions) != 1:
+            return None
+
+        values = np.ma.asarray(coord_var[:])
+        if np.ma.is_masked(values) and np.any(np.ma.getmaskarray(values)):
+            raise ValueError(f"{coordinate_label}坐标变量 {coord_var.name} 包含缺测值")
+
+        values = np.asarray(values)
+        if values.ndim != 1 or values.size <= 1:
+            return None
+
+        try:
+            differences = np.diff(values.astype(np.float64))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{coordinate_label}坐标变量 {coord_var.name} 不是数值坐标") from exc
+
+        if np.all(differences > 0):
+            return None
+        if np.all(differences < 0):
+            return coord_var.dimensions[0]
+        raise ValueError(
+            f"{coordinate_label}坐标变量 {coord_var.name} 必须严格单调，"
+            "不能包含重复值或乱序值"
+        )
+
+    @staticmethod
+    def _variable_creation_kwargs(var):
+        var_attrs = {name: var.getncattr(name) for name in var.ncattrs()}
+        fill_value = var_attrs.pop("_FillValue", None)
+        kwargs = {}
+        if fill_value is not None:
+            kwargs["fill_value"] = fill_value
+
+        try:
+            filters = var.filters() or {}
+            if filters.get("zlib"):
+                kwargs["zlib"] = True
+                kwargs["complevel"] = filters.get("complevel", 4)
+                kwargs["shuffle"] = filters.get("shuffle", True)
+            if filters.get("fletcher32"):
+                kwargs["fletcher32"] = True
+        except Exception:
+            pass
+
+        try:
+            chunking = var.chunking()
+            if isinstance(chunking, (list, tuple)):
+                kwargs["chunksizes"] = tuple(chunking)
+        except Exception:
+            pass
+
+        return var_attrs, kwargs
+
+    def _flip_dimension_in_place(self, target_file: str, dimension_name: str) -> None:
+        """原地翻转 NetCDF 中所有包含指定维度的变量。"""
+        temp_file = target_file + ".flip_tmp"
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            with Dataset(target_file, "r") as src:
+                file_format = getattr(src, "file_format", "NETCDF4")
+                with Dataset(temp_file, "w", format=file_format) as dst:
+                    for attr_name in src.ncattrs():
+                        dst.setncattr(attr_name, src.getncattr(attr_name))
+
+                    for dim_name, dim in src.dimensions.items():
+                        dst.createDimension(dim_name, len(dim) if not dim.isunlimited() else None)
+
+                    for var_name, var in src.variables.items():
+                        var_attrs, var_kwargs = self._variable_creation_kwargs(var)
+                        new_var = dst.createVariable(var_name, var.dtype, var.dimensions, **var_kwargs)
+                        for attr_name, attr_value in var_attrs.items():
+                            new_var.setncattr(attr_name, attr_value)
+
+                        data = var[...]
+                        if dimension_name in var.dimensions:
+                            axis = var.dimensions.index(dimension_name)
+                            slices = tuple(
+                                slice(None, None, -1) if index == axis else slice(None)
+                                for index in range(len(var.dimensions))
+                            )
+                            data = data[slices]
+                        new_var[...] = data
+
+            os.replace(temp_file, target_file)
+        except Exception:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            raise
+
     def copy_and_fix_forcing_file(self, source_file: str, target_file: str, process_mode: str = "copy") -> Optional[str]:
         """
-        复制或移动强迫场文件到工作目录，并修复旧风场变量名（如果存在）。
+        复制或移动强迫场文件到工作目录，并执行必要兼容性修复。
 
-        [EN] Copy or move a forcing file to the working directory, and fix legacy wind
-        variable names (if present).
+        [EN] Copy or move a forcing file to the working directory, and apply necessary
+        compatibility fixes.
         
         参数:
             source_file: 源文件路径
@@ -179,14 +289,16 @@ class FileService:
             else:
                 shutil.copy2(source_file, target_file)
 
-            # 2. 只检查变量名兼容性。WW3 源码按维度名读取，不需要在这里重排维度、
-            # 改写 time units/calendar 或自动翻转经纬度。
-            # [EN] 2. Check variable-name compatibility only. WW3 reads dimensions by
-            # name, so this generic path does not reorder dimensions, rewrite time
-            # units/calendar, or flip coordinates automatically.
+            # 2. 检查必要兼容性。WW3 源码按维度名读取，不需要重排维度或改写 time
+            # units/calendar；规则经纬网下纬度递减会被 ww3_prnc 硬拒绝。
+            # [EN] 2. Check necessary compatibility. WW3 reads dimensions by name, so
+            # this generic path does not reorder dimensions or rewrite time
+            # units/calendar; descending latitude is rejected by ww3_prnc for regular
+            # lat/lon grids.
             needs_fix_wind_vars = False
             has_wndewd = False
             has_wndnwd = False
+            lat_flip_dimension = None
 
             with Dataset(target_file, "r") as f:
                 # 检查是否需要修复风场变量名（wndewd/wndnwd -> u10/v10）
@@ -201,6 +313,24 @@ class FileService:
                 if has_wndewd and has_wndnwd:
                     if "u10" not in f.variables and "v10" not in f.variables:
                         needs_fix_wind_vars = True
+
+                lat_name = self._find_coord_name(f.variables.keys(), self._LAT_NAMES)
+                lon_name = self._find_coord_name(f.variables.keys(), self._LON_NAMES)
+                if lat_name:
+                    lat_flip_dimension = self._decreasing_1d_coord_dimension(
+                        f.variables[lat_name], "纬度"
+                    )
+                if lon_name:
+                    lon_flip_dimension = self._decreasing_1d_coord_dimension(
+                        f.variables[lon_name], "经度"
+                    )
+                    if lon_flip_dimension:
+                        raise ValueError(
+                            tr(
+                                "log_lon_descending_not_supported",
+                                "经度坐标为递减顺序，WW3 插值假设经度递增；请先将经度调整为递增后再导入",
+                            )
+                        )
 
             # 3. 如果需要修复风场变量名，需要重新创建文件（因为 netCDF4 不支持删除变量）
             # [EN] 3. If wind variable names need fixing, recreate the file (netCDF4 does not support deleting variables)
@@ -219,6 +349,10 @@ class FileService:
                     self.log(tr("log_wind_vars_fix_failed", "⚠️ 修复风场变量名失败: {error}").format(error=str(e)))
                     # 不抛出异常，继续处理，让调用者决定如何处理
                     # [EN] Do not raise; continue processing and let the caller decide how to handle
+
+            if lat_flip_dimension:
+                self._flip_dimension_in_place(target_file, lat_flip_dimension)
+                self.log(tr("log_lat_flipped", "✅ 已翻转纬度坐标方向（递减→递增）"))
 
             return target_file
 
