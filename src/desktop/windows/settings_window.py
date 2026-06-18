@@ -929,7 +929,7 @@ class SettingsInterface(QWidget):
     def _build_st_card(self) -> None:
         group, layout = create_header_card(self._content, tr("st_version_config", "ST 版本管理"))
         layout.setSpacing(5)
-        self._st_table = _make_table([tr("set_st_name", "名称"), tr("set_st_path", "可执行路径")], first_column_width=96)
+        self._st_table = _make_table([tr("set_st_name", "名称"), tr("set_st_path", "可执行路径")])
         layout.addWidget(self._st_table)
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -1000,7 +1000,7 @@ class SettingsInterface(QWidget):
     def _build_local_st_card(self) -> None:
         group, layout = create_header_card(self._content, tr("local_st_version_config", "本地 ST 版本管理"))
         layout.setSpacing(5)
-        self._local_st_table = _make_table([tr("set_st_name", "名称"), tr("set_local_st_path", "本地 bin 路径")], first_column_width=96)
+        self._local_st_table = _make_table([tr("set_st_name", "名称"), tr("set_local_st_path", "本地 bin 路径")])
         layout.addWidget(self._local_st_table)
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -1393,7 +1393,7 @@ class _CpuGroupDialog(MessageBoxBase):
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _make_table(headers: list[str], *, first_column_width: int | None = None) -> EdgeAlignedTableWidget:
+def _make_table(headers: list[str]) -> EdgeAlignedTableWidget:
     table = EdgeAlignedTableWidget()
     table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     table.setColumnCount(len(headers))
@@ -1407,9 +1407,8 @@ def _make_table(headers: list[str], *, first_column_width: int | None = None) ->
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     header = table.horizontalHeader()
-    if first_column_width is not None and len(headers) >= 2:
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(0, first_column_width)
+    if len(headers) >= 2:
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         for col in range(1, len(headers)):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
     else:
