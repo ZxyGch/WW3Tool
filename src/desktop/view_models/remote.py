@@ -126,6 +126,11 @@ class RemoteViewModel:
 
         return run_slurm_idle_resources(config, log=self._log, client=self._ensure_client(config))
 
+    def node_status(self, config: PipelineConfig):
+        from workflows.application.remote_ops import run_node_status
+
+        return run_node_status(config, log=self._log, client=self._ensure_client(config))
+
     def submit(self, config: PipelineConfig, *, script: str = "server.sh"):
         from workflows.application.remote_ops import run_submit
 

@@ -65,6 +65,7 @@ class ServerConnectPanel:
         confirm_slurm: Callable[[], None],
         inject_ntfy: Callable[[], None],
         watch_job_ntfy: Callable[[], None],
+        node_status: Callable[[], None],
         cancel: Callable[[], None],
     ) -> None:
         self._input_style = input_style
@@ -235,6 +236,11 @@ class ServerConnectPanel:
             inject_ntfy,
         )
         confirm_slurm_layout.addWidget(self.inject_ntfy_button)
+        self.node_status_button = create_button(
+            tr("step6_node_status", "查看节点状态"),
+            node_status,
+        )
+        confirm_slurm_layout.addWidget(self.node_status_button)
         layout.addWidget(self._confirm_slurm_widget)
 
         self._group.viewLayout.addLayout(layout)

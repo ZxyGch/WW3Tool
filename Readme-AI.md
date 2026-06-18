@@ -1,10 +1,8 @@
 # WW3Tool  文档
 
-本文档面向 AI Agent 与开发者，旨在清晰说明 WW3Tool 的整体逻辑、代码组织与工作流。不包含图片，纯文字描述。
-
-
-
 ## 1. 项目定位
+
+![](public/resource/README-media/截屏2026-06-18%2011.02.07.png)
 
 WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理与运行辅助工具**。它不替代 WW3 本身的可执行程序（`ww3_grid`、`ww3_prnc`、`ww3_shel` 等），而是负责：
 
@@ -15,16 +13,16 @@ WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理
 - 通过 SSH 将工作目录上传到 HPC 服务器、提交 Slurm 作业、监控任务状态、下载结果
 - 后处理绘图（波高填色图、方向谱、Jason-3 卫星验证、NDBC 浮标匹配等）
 
-WW3Tool 几乎完全由 Python 组成（其他语言的代码是网格生成器 meshgen 的代码），支持 Windows / Linux / macOS，UI 支持中英文双语。
+WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshgen 的代码），支持 Windows / Linux / macOS，UI 支持中英文双语。
 
 
 
-## 2. 三种入口模式
+## 2. 快速开始
 
 `run.py` 是唯一入口，通过命令行参数区分三种模式：
 
 ```sh
-python3 run.py                    # GUI（PyQt6 图形界面，默认）
+python3 run.py                    # GUI（图形界面）
 python3 run.py shell              # 交互式终端（REPL，可反复执行各步骤）
 python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
 ```
@@ -34,48 +32,67 @@ python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤
 
 ### 2.1 GUI 
 
+![](public/resource/README-media/截屏2026-06-18%2011.02.07.png)
+
+```bash
+python3 run.py  
+```
+
+
 
 ### 2.2 交互式终端
+
+```sh
+python3 run.py shell              # 交互式终端
+```
+
+![](public/resource/README-media/截屏2026-06-18%2011.07.11.png)
+
+
 
 
 ### 2.3 无界面 CLI 
 
-CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用。每个子命令读取工作目录的 `params.yml` 后执行、打印日志到 stdout、通过退出码反馈成功/失败。主要子命令包括：
+```sh
+python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
+```
 
-| 类别   | 子命令                                                   | 说明                   |
-| ---- | ----------------------------------------------------- | -------------------- |
-| 配置管理 | `workdir <path>`                                      | 创建或加载工作目录            |
-|      | `validate [workdir]`                                  | 校验 params.yml        |
-|      | `config [workdir]`                                    | 打印配置摘要               |
-|      | `print-params [workdir]`                              | 输出 params.yml 原文     |
-| 预处理  | `prepare-forcing [workdir]`                           | 准备强迫场（Step 1）        |
-|      | `merge-forcing <in1.nc> [...] -o <out.nc>`            | 独立工具：校验并合并强迫场 NetCDF |
-|      | `generate-grid [workdir]`                             | 生成网格（Step 2）         |
-|      | `recommend-grid [workdir] [--coarse\|--fine]`         | 按区域范围推荐网格间距          |
-|      | `recommend-cfl [workdir]`                             | 按 CFL 公式推荐时间步长       |
-|      | `prepare-ww3 [workdir]`                               | 仅生成 WW3 namelist     |
-|      | `run-workflow [workdir]`                              | 完整预处理流程              |
-|      | `local-run [workdir]`                                 | 执行 local.sh          |
-| 远程运维 | `connect-test [workdir]`                              | 测试 SSH 连接            |
-|      | `ssh [workdir]`                                       | 打开交互式 SSH 终端         |
-|      | `slurm-idle [workdir]`                                | 查看 Slurm 空闲 CPU      |
-|      | `confirm-slurm [workdir] [--full\|--half]`            | 写 server.sh          |
-|      | `upload [workdir] --confirm`                          | 上传工作目录到远程            |
-|      | `submit [workdir]`                                    | 提交 server.sh         |
-|      | `check-status [workdir]`                              | 检查远程任务状态             |
-|      | `queue-status [workdir]`                              | 查看 SLURM 队列          |
-|      | `download-results [workdir] [--nested]`               | 下载远程结果               |
-|      | `download-log [workdir]`                              | 下载远程日志               |
-|      | `clear-remote [workdir] --confirm`                    | 清空远程目录               |
-|      | `cancel-job [workdir] <job_id>`                       | 取消 SLURM 任务          |
-|      | `ntfy-watch [workdir]`                                | 注入常驻 ntfy 监听         |
-|      | `ntfy-watch-job [workdir] <job_id>`                   | 为指定任务注入一次性 ntfy 监听   |
-| 后处理  | `plot-wave-maps [workdir] [--contour]`                | 波高填色图                |
-|      | `plot-spectrum [workdir] [--mode ...] [--station N]`  | 方向谱图                 |
+CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用，命令包括：
+
+| 类别   | 子命令                                                             | 说明                   |
+| ---- | --------------------------------------------------------------- | -------------------- |
+| 配置管理 | `workdir <path>`                                                | 创建或加载工作目录            |
+|      | `validate [workdir]`                                            | 校验 params.yml        |
+|      | `config [workdir]`                                              | 打印配置摘要               |
+|      | `print-params [workdir]`                                        | 输出 params.yml 原文     |
+| 预处理  | `prepare-forcing [workdir]`                                     | 准备强迫场（Step 1）        |
+|      | `merge-forcing <in1.nc> [...] -o <out.nc>`                      | 独立工具：校验并合并强迫场 NetCDF |
+|      | `generate-grid [workdir]`                                       | 生成网格（Step 2）         |
+|      | `recommend-grid [workdir] [--coarse\|--fine]`                   | 按区域范围推荐网格间距          |
+|      | `recommend-cfl [workdir]`                                       | 按 CFL 公式推荐时间步长       |
+|      | `prepare-ww3 [workdir]`                                         | 仅生成 WW3 namelist     |
+|      | `run-workflow [workdir]`                                        | 完整预处理流程              |
+|      | `local-run [workdir]`                                           | 执行 local.sh          |
+| 远程运维 | `connect-test [workdir]`                                        | 测试 SSH 连接            |
+|      | `ssh [workdir]`                                                 | 打开交互式 SSH 终端         |
+|      | `slurm-idle [workdir]`                                          | 查看 Slurm 空闲 CPU      |
+|      | `confirm-slurm [workdir] [--full\|--half]`                      | 写 server.sh          |
+|      | `upload [workdir] --confirm`                                    | 上传工作目录到远程            |
+|      | `submit [workdir]`                                              | 提交 server.sh         |
+|      | `check-status [workdir]`                                        | 检查远程任务状态             |
+|      | `queue-status [workdir]`                                        | 查看 SLURM 队列          |
+|      | `download-results [workdir] [--nested]`                         | 下载远程结果               |
+|      | `download-log [workdir]`                                        | 下载远程日志               |
+|      | `clear-remote [workdir] --confirm`                              | 清空远程目录               |
+|      | `cancel-job [workdir] <job_id>`                                 | 取消 SLURM 任务          |
+|      | `ntfy-watch [workdir]`                                          | 注入常驻 ntfy 监听         |
+|      | `ntfy-watch-job [workdir] <job_id>`                             | 为指定任务注入一次性 ntfy 监听   |
+| 后处理  | `plot-wave-maps [workdir] [--contour]`                          | 波高填色图                |
+|      | `plot-spectrum [workdir] [--mode ...] [--station N]`            | 方向谱图                 |
 |      | `plot-jason3` / `plot-jason3-swh` / `download-jason3` [workdir] | Jason-3 相关           |
-|      | `plot-ndbc [workdir]`                                 | NDBC 浮标匹配            |
-|      | `download-ndbc [workdir]`                             | 下载 NDBC 浮标观测数据      |
-| 辅助   | `print-example`                                       | 输出示例 params.yml      |
+|      | `plot-ndbc [workdir]`                                           | NDBC 浮标匹配            |
+|      | `download-ndbc [workdir]`                                       | 下载 NDBC 浮标观测数据       |
+| 辅助   | `print-example`                                                 | 输出示例 params.yml      |
 
 
 
@@ -148,21 +165,23 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 ### 5.1 创建工作目录
 
 ```sh
-python3 run.py workdir work_dir_name    # 从模板创建并加载工作目录
+python3 run.py workdir work_dir_name    # 创建并加载工作目录
 ```
 
-根目录的 `params.yml` 仅为模板，不能直接用于运行。所有实际操作都必须在独立的工作目录中进行。
-
-创建工作目录时，程序执行以下操作：
+创建工作目录时，程序会执行以下操作：
 
 1. 在 `workSpace/`（默认路径，可在设置页面修改）下创建新文件夹，默认名称为当前时间戳（如 `2026-06-17_19-37-01`）
-2. 将根目录 `params.yml` 原样复制到工作目录（结构完全一致，不做裁剪或重排）
-3. 用正则替换工作目录路径、清空强迫场文件路径、清空日期范围和 `remote_dir`——这些是算例特有值，需要用户自行填写
-4. 其余段落（`presets`、`paths`、`ww3_grid`、`plot` 等通用配置）保持模板值不变
 
-工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响模板或其他算例。
+2. 将根目录 `params.yml` 原样复制到工作目录
 
-打开已有工作目录时，程序自动扫描目录中的文件来恢复 GUI 状态（详见 Section 7）。
+3. 用正则替换工作目录路径、清空强迫场文件路径、清空日期范围和 `remote_dir` ——这些是算例特有值，需要用户自行填写 （在 GUI 中你填写表单就会自动填写，除非你使用 shell 或 cli）
+
+工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响根 params.yml (除了 GUI 的设置修改，修改设置会修改根 params.yml ，设置用来提供表单默认值)。
+
+打开已有工作目录时，程序自动扫描目录中的 params.yml 配置来恢复 GUI 表单
+
+
+
 
 
 
@@ -173,15 +192,15 @@ python3 run.py prepare-forcing work_dir_name    # 准备强迫场
 python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ```
 
-`application/forcing_preparation.py` + `infrastructure/forcing/`
-
 强迫场导入分为两条路径：**风场**走独立的标准化流程（完整重写），**流场/水位场/冰场**走通用的复制+修复流程。
+
+
 
 #### 风场导入
 
 风场文件不是简单复制，而是经过完整的标准化重写，输出 WW3 `ww3_prnc` 所需的精确格式：
 
-1. **变量检测**：打开 NetCDF 检测风场变量，支持多种命名（`u10`/`v10`、`wndewd`/`wndnwd`、`uwnd`/`vwnd`、`eastward_wind` 等）
+1. **变量检测**：打开 NetCDF 检测风场变量，支持多种命名（`u10` / `v10`、`wndewd` / `wndnwd`、`uwnd` / `vwnd`、`eastward_wind` 等），全部改为 u10/v10 便于 ww3_prnc 处理
 2. **维度重排**：无论源文件维度顺序如何，输出统一为 `(time, latitude, longitude)`
 3. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
 4. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
@@ -191,7 +210,10 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 
 大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（最多 256 个时间步/块）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96 时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再原子替换，保证完整性。
 
-#### 流场/水位场/冰场导入（`ImportForcingFileUseCase` + `FileService`）
+
+
+
+#### 流场/水位场/冰场导入
 
 非风场强迫场采用复制+修复模式：
 
@@ -222,6 +244,9 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 3. 最后用变量检测兜底（打开 `.nc` 文件检查内部变量）
 
 独立工具 `merge-forcing` 可脱离工作目录，直接校验并合并多个强迫场 NetCDF（按时间拼接 + 变量合并），支持 `--time-range` 和 `--bbox` 裁剪。
+
+
+
 
 
 

@@ -417,7 +417,126 @@ def run_slurm_idle_resources(
             c.close()
 
 
-# ── 提交作业 ────────────────────────────────────────────────────────────
+# ── 节点状态 ────────────────────────────────────────────────────────────
+
+def _parse_all_nodes(out: str) -> list[dict]:
+    """Parse ``sinfo -N`` output into a list of ALL nodes with CPU status."""
+    nodes: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("|")
+        if len(parts) < 5:
+            continue
+        node, state, cpus_text, cpu_state, partition = [p.strip() for p in parts[:5]]
+        state_l = state.lower().strip("*")
+        try:
+            cpus = int(cpus_text)
+        except ValueError:
+            cpus = 0
+        alloc = idle = other = total = 0
+        cpu_parts = cpu_state.split("/")
+        if len(cpu_parts) == 4:
+            try:
+                alloc, idle, other, total = [int(v) for v in cpu_parts]
+            except ValueError:
+                total = cpus
+        else:
+            total = cpus
+            idle = cpus if "idle" in state_l else 0
+        if total == 0:
+            total = cpus
+        # [EN] Categorize: idle / mixed / allocated / down / other
+        if "idle" in state_l:
+            category = "idle"
+        elif "mix" in state_l:
+            category = "mixed"
+        elif "alloc" in state_l:
+            category = "allocated"
+        elif "down" in state_l or "drain" in state_l:
+            category = "down"
+        else:
+            category = "other"
+        nodes.append({
+            "node": node,
+            "state": state,
+            "category": category,
+            "partition": partition.rstrip("*"),
+            "cpus": cpus,
+            "alloc_cpus": alloc,
+            "idle_cpus": idle,
+            "other_cpus": other,
+            "total_cpus": total,
+        })
+    return nodes
+
+
+def run_node_status(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """Query and display every Slurm node with per-node CPU status."""
+    logger = CoreLogger(callback=log)
+    c, owns = _acquire(config, client)
+    try:
+        if owns:
+            c.connect(log=logger.log)
+        cmd = "sinfo -h -N -o '%N|%T|%c|%C|%P'"
+        out, err, code = c.exec_command(cmd, timeout=10)
+        if code != 0:
+            raise RuntimeError(err or out or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code))
+        if err:
+            logger.log(tr("sinfo_cmd_warning", "⚠️ sinfo 警告: {error}").format(error=err))
+        nodes = _parse_all_nodes(out)
+        # [EN] Summary counts
+        counts: dict[str, int] = {}
+        for n in nodes:
+            counts[n["category"]] = counts.get(n["category"], 0) + 1
+        total_idle_cpus = sum(n["idle_cpus"] for n in nodes)
+        total_alloc_cpus = sum(n["alloc_cpus"] for n in nodes)
+        logger.log(
+            tr("node_status_summary",
+               "🖥️ 集群节点概览：共 {total} 个节点 | 空闲 {idle} · 混合 {mixed} · 已分配 {alloc} · 离线 {down}").format(
+                total=len(nodes),
+                idle=counts.get("idle", 0),
+                mixed=counts.get("mixed", 0),
+                alloc=counts.get("allocated", 0),
+                down=counts.get("down", 0),
+            )
+        )
+        logger.log(
+            tr("node_status_cpu_summary",
+               "   CPU：空闲 {idle} 核 · 已分配 {alloc} 核").format(
+                idle=total_idle_cpus, alloc=total_alloc_cpus
+            )
+        )
+        # [EN] Per-node detail
+        logger.log(tr("node_status_detail_header", "📍 节点详情："))
+        for n in nodes:
+            idle_bar = "█" * n["idle_cpus"] + "░" * n["alloc_cpus"]
+            if n["other_cpus"] > 0:
+                idle_bar += "·" * n["other_cpus"]
+            logger.log(
+                "  {node:<20s} [{partition}] {state:<10s} idle {idle}/{total}  {bar}".format(
+                    node=n["node"],
+                    partition=n["partition"],
+                    state=n["state"],
+                    idle=n["idle_cpus"],
+                    total=n["total_cpus"] or n["cpus"],
+                    bar=idle_bar,
+                )
+            )
+        return RemoteResult(success=True, data={"nodes": nodes, "counts": counts}, messages=list(logger.messages))
+    except Exception as exc:
+        logger.log(tr("node_status_failed", "❌ 查询节点状态失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), data=None, messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
 
 def run_submit(
     config: PipelineConfig,

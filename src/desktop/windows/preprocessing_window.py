@@ -586,6 +586,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             confirm_slurm=self._server_confirm_slurm,
             inject_ntfy=self._server_inject_ntfy,
             watch_job_ntfy=self._server_watch_ntfy_job,
+            node_status=self._server_node_status,
             cancel=self._server_cancel,
         )
         self._st_combo = self._server_connect_panel.st_combo
@@ -2155,6 +2156,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             lambda c: self._remote_vm.inject_ntfy_job_listener(c, job_id),
             on_done=self._on_ntfy_job_done,
         )
+
+    def _server_node_status(self) -> None:
+        self._run_job(self._remote_vm.node_status)
 
     def _server_clear(self) -> None:
         remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""
