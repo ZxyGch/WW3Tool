@@ -520,7 +520,7 @@ def run_node_status(
             if n["other_cpus"] > 0:
                 idle_bar += "·" * n["other_cpus"]
             logger.log(
-                "  {node:<20s} [{partition}] {state:<10s} idle {idle}/{total}  {bar}".format(
+                "  {node} [{partition}] {state} idle {idle}/{total}  {bar}".format(
                     node=n["node"],
                     partition=n["partition"],
                     state=n["state"],

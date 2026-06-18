@@ -2339,5 +2339,9 @@
   "connect_hint_auth": "Possible causes: wrong username/password, invalid key file or incorrect permissions",
   "connect_hint_network": "Possible causes: network unreachable, VPN not connected, wrong IP address",
   "icli_help_download_ndbc": "Download NDBC buoy observation data",
-  "step6_node_status": "Show Node Status"
+  "step6_node_status": "Show Node Status",
+  "node_status_summary": "🖥️ Cluster Node Overview: {total} nodes total | Idle {idle} · Mixed {mixed} · Allocated {alloc} · Down {down}",
+  "node_status_cpu_summary": "   CPU: {idle} cores idle · {alloc} cores allocated",
+  "node_status_detail_header": "📍 Node Details:",
+  "node_status_failed": "❌ Failed to query node status: {error}"
 }
