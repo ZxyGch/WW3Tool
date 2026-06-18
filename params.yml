@@ -137,7 +137,9 @@ presets:
     ST6: /public/home/weiyl001/software2/ww6/model/exe
     ST6A: /public/home/weiyl001/software2/ww6a/model/exe
     ST6B: /public/home/weiyl001/software2/ww6b/model/exe
-    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install/bin
+    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
+    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
+    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
   local_st:
     7.14 ST2: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
     7.14 ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin/
