@@ -150,8 +150,8 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 一次完整流程的典型链路：
 
 ```
-[创建或加载工作目录] 复制根 params.yml 到工作目录
-  → [Step 1 强迫场准备] 校验、修复、复制/移动到工作目录
+[创建或加载工作目录] 自动复制根 params.yml 到工作目录
+  → [Step 1 强迫场准备] 校验、修复、复制/移动强迫场数据到工作目录
   → [Step 2 网格生成] 调用 meshgen 生成网格文件
   → [Step 3 计算模式] 选择 region / spectral_point / track
   → [Step 4 WW3 配置] 生成全套 namelist 和脚本（含 server.sh）
@@ -201,12 +201,11 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 风场文件不是简单复制，而是经过完整的标准化重写，输出 WW3 `ww3_prnc` 所需的精确格式：
 
 1. **变量检测**：打开 NetCDF 检测风场变量，支持多种命名（`u10` / `v10`、`wndewd` / `wndnwd`、`uwnd` / `vwnd`、`eastward_wind` 等），全部改为 u10/v10 便于 ww3_prnc 处理
-2. **维度重排**：无论源文件维度顺序如何，输出统一为 `(time, latitude, longitude)`
-3. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
-4. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
-5. **纬度翻转**：如果纬度从大到小排列（ERA5 默认），自动翻转为从小到大
-6. **经度检查**：经度必须从小到大，递减则拒绝（抛出 `ValueError`）
-7. **输出变量名**：固定为 `u10`/`v10`，带 `units="m/s"`、`level="10m"` 属性
+2. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
+3. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
+4. **纬度翻转**：如果纬度从大到小排列（ERA5 默认），自动翻转为从小到大
+5. **经度检查**：经度必须从小到大，递减则拒绝（抛出 `ValueError`）
+6. **输出变量名**：固定为 `u10`/`v10`，带 `units="m/s"`、`level="10m"` 属性
 
 大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（最多 256 个时间步/块）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96 时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再原子替换，保证完整性。
 

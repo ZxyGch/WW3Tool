@@ -8,14 +8,12 @@
 [EN] Extracted from the desktop Step 1 logic, this module converts various reanalysis/forecast
 wind fields into a unified WW3 ``ww3_prnc``-readable format. Main processing includes:
 
-- 维度顺序统一为 ``(time, latitude, longitude)``；
 - 经纬度变量名标准化，必要时翻转 lat/lon 递增方向；
 - 东/北风分量统一命名为 ``u10/v10``；
 - 时间轴转为 ``seconds since 1970-01-01``；
 - 大文件分块或并行变换以控制内存占用。
 
-[EN] - Unifying dimension order to ``(time, latitude, longitude)``;
-- Standardizing lat/lon variable names, flipping lat/lon increment direction when necessary;
+[EN] - Standardizing lat/lon variable names, flipping lat/lon increment direction when necessary;
 - Renaming eastward/northward wind components to ``u10/v10``;
 - Converting time axis to ``seconds since 1970-01-01``;
 - Chunking or parallel transformation for large files to control memory usage.
@@ -38,21 +36,17 @@ from ...support.translations import tr
 def _transform_wind_chunks_for_pool(
     u10_chunk,
     v10_chunk,
-    transpose_order,
     lat_needs_flip,
     lon_needs_flip,
 ):
-    """多进程池用的纯数组变换：转置、纬向/经向翻转并保证 C 连续。
+    """多进程池用的纯数组变换：纬向/经向翻转并保证 C 连续。
 
-    [EN] Pure array transform for multiprocessing pool: transpose, lat/lon flip, and ensure C-contiguous.
+    [EN] Pure array transform for multiprocessing pool: lat/lon flip and ensure C-contiguous.
     """
 
     def _transform(chunk):
         chunk = np.asarray(chunk)
         changed = False
-        if transpose_order is not None:
-            chunk = np.transpose(chunk, transpose_order)
-            changed = True
         if lat_needs_flip:
             chunk = chunk[:, ::-1, :]
             changed = True
@@ -226,10 +220,11 @@ class WindNormalizeService:
                 u10_shape = src_u10_var.shape
                 u10_dims = src_u10_var.dimensions if hasattr(src_u10_var, "dimensions") else None
 
-                transpose_order = None
                 time_dim_idx = 0
                 lat_dim_idx = 1
                 lon_dim_idx = 2
+                # [EN] Track the original dimension order for output (preserve input order)
+                output_dim_order = ["time", "latitude", "longitude"]
 
                 if len(u10_shape) != 3:
                     raise ValueError(
@@ -250,28 +245,15 @@ class WindNormalizeService:
                             lon_dim_idx = index
 
                     if time_dim_idx is not None and lat_dim_idx is not None and lon_dim_idx is not None:
-                        if not (time_dim_idx == 0 and lat_dim_idx == 1 and lon_dim_idx == 2):
-                            transpose_order = [time_dim_idx, lat_dim_idx, lon_dim_idx]
-                            self._emit(
-                                log,
-                                tr(
-                                    "log_dim_order_transposed",
-                                    "🔄 检测到维度顺序为 {dims}，已转置为 (time, lat, lon)",
-                                ).format(dims=u10_dims),
-                            )
+                        # [EN] Build output dimension order matching input layout
+                        _std_names = {time_dim_idx: "time", lat_dim_idx: "latitude", lon_dim_idx: "longitude"}
+                        output_dim_order = [_std_names[i] for i in sorted(_std_names.keys())]
                 else:
                     if u10_shape[1] == len(latitude) and u10_shape[2] == len(longitude):
                         time_dim_idx, lat_dim_idx, lon_dim_idx = 0, 1, 2
                     elif u10_shape[1] == len(longitude) and u10_shape[2] == len(latitude):
                         time_dim_idx, lat_dim_idx, lon_dim_idx = 0, 2, 1
-                        transpose_order = (0, 2, 1)
-                        self._emit(
-                            log,
-                            tr(
-                                "log_dim_order_tlonlat",
-                                "🔄 检测到维度顺序为 (time, lon, lat)，已转置为 (time, lat, lon)",
-                            ),
-                        )
+                        output_dim_order = ["time", "longitude", "latitude"]
                     else:
                         raise ValueError(
                             tr(
@@ -356,7 +338,6 @@ class WindNormalizeService:
             same_target_file
             and not lon_needs_flip
             and not lat_needs_flip
-            and transpose_order is None
             and not needs_standardize
             and time_units_standard
         ):
@@ -366,9 +347,6 @@ class WindNormalizeService:
         def _transform_chunk_local(chunk):
             chunk = np.asarray(chunk)
             changed = False
-            if transpose_order is not None:
-                chunk = np.transpose(chunk, transpose_order)
-                changed = True
             if lat_needs_flip:
                 chunk = chunk[:, ::-1, :]
                 changed = True
@@ -413,7 +391,6 @@ class WindNormalizeService:
             and file_size_bytes >= 2 * 1024 * 1024 * 1024
             and points_per_step <= 300000
         )
-        transform_order = tuple(transpose_order) if transpose_order is not None else None
         total_chunks = max(1, (len(time) + chunk_time - 1) // chunk_time)
         progress_log_interval = 1 if total_chunks <= 12 else max(1, total_chunks // 8)
 
@@ -422,7 +399,9 @@ class WindNormalizeService:
             target_storage_chunk_bytes = 16 * 1024 * 1024
             time_chunk = max(1, min(len(time), target_storage_chunk_bytes // plane_bytes))
             time_chunk = min(time_chunk, 16)
-            return (time_chunk, len(latitude), len(longitude))
+            # [EN] Build chunksize tuple in the same order as output dimensions
+            _size_map = {"time": time_chunk, "latitude": len(latitude), "longitude": len(longitude)}
+            return tuple(_size_map[d] for d in output_dim_order)
 
         output_u10_chunksizes = _build_time_major_chunksizes(u10_dtype)
         output_v10_chunksizes = _build_time_major_chunksizes(v10_dtype)
@@ -469,18 +448,19 @@ class WindNormalizeService:
                     return kwargs
 
                 def _create_data_var(name, dtype, cached_filters, output_chunksizes):
+                    _dims = tuple(output_dim_order)
                     try:
                         return dst.createVariable(
                             name,
                             dtype,
-                            ("time", "latitude", "longitude"),
+                            _dims,
                             **_build_var_kwargs_from_filters(cached_filters, output_chunksizes),
                         )
                     except Exception:
                         return dst.createVariable(
                             name,
                             dtype,
-                            ("time", "latitude", "longitude"),
+                            _dims,
                             fill_value=-32767.0,
                         )
 
@@ -563,7 +543,6 @@ class WindNormalizeService:
                                 _transform_wind_chunks_for_pool,
                                 u10_chunk,
                                 v10_chunk,
-                                transform_order,
                                 lat_needs_flip,
                                 lon_needs_flip,
                             )
