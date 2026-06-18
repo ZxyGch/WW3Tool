@@ -189,7 +189,8 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("plot-jason3", tr("icli_help_match_jason3", "WW3 结果与 Jason-3 卫星数据匹配")),
                 ("plot-jason3-swh", tr("icli_help_jason3_swh", "绘制 Jason-3 卫星 SWH / 轨迹图")),
                 ("download-jason3", tr("icli_help_download_jason3", "下载 Jason-3 L2 数据")),
-                ("plot-ndbc [--download]", tr("icli_help_match_ndbc", "WW3 结果与 NDBC 浮标匹配")),
+                ("plot-ndbc", tr("icli_help_match_ndbc", "WW3 结果与 NDBC 浮标匹配")),
+                ("download-ndbc", tr("icli_help_download_ndbc", "下载 NDBC 浮标观测数据")),
             ],
         ),
         (
@@ -1119,21 +1120,38 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_plot_ndbc(self, arg: str) -> None:
-        """plot-ndbc [--download]  — WW3 结果与 NDBC 浮标匹配或下载数据
+        """plot-ndbc  — WW3 结果与 NDBC 浮标匹配
 
-        [EN] plot-ndbc [--download]  — Match WW3 output with NDBC buoys or download data
+        [EN] plot-ndbc  — Match WW3 output with NDBC buoy observations
         """
         if not self._require_config():
             return
-        download = "--download" in arg
         try:
             from .command_line import _run_match_ndbc
-            print(_info(tr("icli_start_ndbc", "▶ 开始 NDBC 处理...")))
-            rc = _run_match_ndbc(self._config, download=download)
+            print(_info(tr("icli_start_ndbc", "▶ 开始 NDBC 匹配...")))
+            rc = _run_match_ndbc(self._config)
             if rc == 0:
-                print(_success(tr("icli_done_ndbc", "✅ NDBC 处理完成")))
+                print(_success(tr("icli_done_ndbc", "✅ NDBC 匹配完成")))
             else:
-                print(_error(tr("icli_failed_ndbc", "❌ NDBC 处理失败")))
+                print(_error(tr("icli_failed_ndbc", "❌ NDBC 匹配失败")))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_download_ndbc(self, arg: str) -> None:
+        """download-ndbc  — 下载 NDBC 浮标观测数据
+
+        [EN] download-ndbc  — Download NDBC buoy observation data
+        """
+        if not self._require_config():
+            return
+        try:
+            from .command_line import _run_download_ndbc
+            print(_info(tr("icli_start_ndbc_dl", "▶ 开始下载 NDBC 数据...")))
+            rc = _run_download_ndbc(self._config)
+            if rc == 0:
+                print(_success(tr("icli_done_ndbc_dl", "✅ NDBC 下载完成")))
+            else:
+                print(_error(tr("icli_failed_ndbc_dl", "❌ NDBC 下载失败")))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 

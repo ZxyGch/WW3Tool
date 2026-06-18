@@ -73,7 +73,8 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 | 后处理  | `plot-wave-maps [workdir] [--contour]`                | 波高填色图                |
 |      | `plot-spectrum [workdir] [--mode ...] [--station N]`  | 方向谱图                 |
 |      | `plot-jason3` / `plot-jason3-swh` / `download-jason3` [workdir] | Jason-3 相关           |
-|      | `plot-ndbc [workdir] [--download]`                    | NDBC 浮标匹配            |
+|      | `plot-ndbc [workdir]`                                 | NDBC 浮标匹配            |
+|      | `download-ndbc [workdir]`                             | 下载 NDBC 浮标观测数据      |
 | 辅助   | `print-example`                                       | 输出示例 params.yml      |
 
 
@@ -575,7 +576,7 @@ python3 run.py plot-jason3 work_dir_name                # Jason-3 卫星轨迹�
 python3 run.py plot-jason3-swh work_dir_name            # Jason-3 波高对比
 python3 run.py download-jason3 work_dir_name            # 下载 Jason-3 数据
 python3 run.py plot-ndbc work_dir_name                  # NDBC 浮标匹配
-python3 run.py plot-ndbc --download work_dir_name       # 下载 NDBC 数据并匹配
+python3 run.py download-ndbc work_dir_name              # 下载 NDBC 浮标观测数据
 ```
 
 
