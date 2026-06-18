@@ -515,13 +515,15 @@ def run_node_status(
         )
         # [EN] Per-node detail
         logger.log(tr("node_status_detail_header", "📍 节点详情："))
+        name_width = max((len(n["node"]) for n in nodes), default=8)
         for n in nodes:
             idle_bar = "█" * n["idle_cpus"] + "░" * n["alloc_cpus"]
             if n["other_cpus"] > 0:
                 idle_bar += "·" * n["other_cpus"]
             logger.log(
-                "  {node} [{partition}] {state} idle {idle}/{total}  {bar}".format(
+                "  {node:<{w}} [{partition}] {state} idle {idle}/{total}  {bar}".format(
                     node=n["node"],
+                    w=name_width,
                     partition=n["partition"],
                     state=n["state"],
                     idle=n["idle_cpus"],
