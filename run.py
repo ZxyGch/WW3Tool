@@ -42,7 +42,7 @@
 
 远程运维（server: 段）
   connect-test / ssh / slurm-idle / list-files
-  confirm-slurm [full|half]        写 server.sh；full/half 自动选取空闲 CPU
+  confirm-slurm [workdir]            写 server.sh
   upload --confirm / submit [--script server.sh]
   check-status / queue-status
   download-results [--nested] / download-log
@@ -111,7 +111,7 @@ Post-processing / plotting (plot: section)
 
 Remote operations (server: section)
   connect-test / ssh / slurm-idle / list-files
-  confirm-slurm [full|half]        Write server.sh; full/half auto-pick idle CPUs
+  confirm-slurm [workdir]            Write server.sh
   upload --confirm / submit [--script server.sh]
   check-status / queue-status / download-results [--nested] / download-log
   clear-remote --confirm / cancel-job <job_id>

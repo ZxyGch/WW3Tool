@@ -581,8 +581,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             input_style=self._input_style,
             combo_style=self._combo_style,
             connect=self._server_connect,
-            use_idle_full=self._server_use_idle_full,
-            use_idle_half=self._server_use_idle_half,
             confirm_slurm=self._server_confirm_slurm,
             inject_ntfy=self._server_inject_ntfy,
             watch_job_ntfy=self._server_watch_ntfy_job,
@@ -1983,43 +1981,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._persist_server_remote_dir():
             return
         self._run_job(lambda c: self._remote_vm.upload(c, confirmed=True))
-
-    def _server_use_idle_full(self) -> None:
-        self._server_apply_idle_resources("full")
-
-    def _server_use_idle_half(self) -> None:
-        self._server_apply_idle_resources("half")
-
-    def _server_apply_idle_resources(self, mode: str) -> None:
-        from workflows.application.slurm_ops import select_idle_allocation
-
-        rows = self._server_connect_panel.idle_resources()
-        try:
-            allocation = select_idle_allocation(rows, "half" if mode == "half" else "full")
-        except ValueError as exc:
-            self._show_error(str(exc))
-            return
-        self._server_connect_panel.apply_slurm_resources(
-            cpu=allocation.cpu,
-            cores=allocation.cores,
-            nodes=allocation.nodes,
-        )
-        action = (
-            tr("step6_use_idle_half", "半数使用")
-            if mode == "half"
-            else tr("step6_use_idle_full", "最大化使用")
-        )
-        self._append_log(
-            tr(
-                "step6_idle_resources_applied",
-                "✅ 已按{mode}选择空闲资源：CPU={cpu}, 核数={cores}, 节点数={nodes}",
-            ).format(
-                mode=action,
-                cpu=allocation.cpu,
-                cores=allocation.cores,
-                nodes=allocation.nodes,
-            )
-        )
 
     def _server_confirm_slurm(self) -> None:
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")

@@ -312,20 +312,10 @@ def build_parser() -> argparse.ArgumentParser:
         "confirm-slurm",
         help=tr(
             "cli_help_confirm_slurm",
-            "[workdir] Write params.yml Slurm settings to server.sh (optional --full/--half to auto-pick idle CPUs)",
+            "[workdir] Write params.yml Slurm settings to server.sh",
         ),
     )
     p_confirm_slurm.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_confirm_slurm.add_argument(
-        "--full",
-        action="store_true",
-        help=tr("cli_help_confirm_slurm_full", "Use the largest idle CPU partition (same as GUI full use)"),
-    )
-    p_confirm_slurm.add_argument(
-        "--half",
-        action="store_true",
-        help=tr("cli_help_confirm_slurm_half", "Use half of the largest idle CPU partition (same as GUI half use)"),
-    )
 
     p_ls = sub.add_parser("list-files", help=tr("cli_help_list_files", "[workdir] List files in the remote workdir"))
     p_ls.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -599,16 +589,9 @@ def main(argv: list[str] | None = None) -> int:
             ).run_slurm_idle(config, log=print))
 
         if args.command == "confirm-slurm":
-            if args.full and args.half:
-                print(
-                    tr("cli_confirm_slurm_mode_conflict", "❌ 错误：--full 与 --half 不能同时使用"),
-                    file=sys.stderr,
-                )
-                return 2
-            mode = "full" if args.full else ("half" if args.half else None)
             from ..application.slurm_ops import run_confirm_slurm
 
-            return run_confirm_slurm(config, params_path, print, mode=mode)
+            return run_confirm_slurm(config, params_path, print)
 
         if args.command == "list-files":
             return _remote(lambda: __import__(

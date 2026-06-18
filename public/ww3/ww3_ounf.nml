@@ -15,9 +15,9 @@
 !  EF TH1M STH1M TH2M STH2M WN
 !  PHS PTP PLP PDIR PSPR PWS PDP PQP PPE PGW PSW PTM10 PT01 PT02 PEP TWS PNR
 !  UST CHA CGE FAW TAW TWA WCC WCF WCH WCM FWS
-!  SXY TWO BHD FOC TUS USS P2S USF P2L TWI FIC
+!  SXY TWO BHD FOC TUS USS P2S USF P2L TWI FIC USP TOC
 !  ABR UBR BED FBB TBB
-!  MSS MSC WL02 AXT AYT AXY
+!  MSS MSC MSD MCD QP QKK SKW EMB EMC
 !  DTD FC CFX CFD CFK
 !  U1 U2
 !
@@ -25,8 +25,9 @@
 ! * definitions & defaults:
 !     FIELD%TIMESTART            = '19000101 000000'  ! Stop date for the output field
 !     FIELD%TIMESTRIDE           = '0'                ! Time stride for the output field
+!     FIELD%TIMESTOP             = '29001231 000000'  ! Stop date for the output field
 !     FIELD%TIMECOUNT            = '1000000000'       ! Number of time steps
-!     FIELD%TIMESPLIT            = 6                  ! [4(yearly),6(monthly),8(daily),10(hourly)]
+!     FIELD%TIMESPLIT            = 6                  ! [0(nodate),4(yearly),6(monthly),8(daily),10(hourly)]
 !     FIELD%LIST                 = 'unset'            ! List of output fields
 !     FIELD%PARTITION            = '0 1 2 3'          ! List of wave partitions ['0 1 2 3 4 5']
 !     FIELD%SAMEFILE             = T                  ! All the variables in the same file [T|F]
@@ -42,9 +43,9 @@
 !  EF TH1M STH1M TH2M STH2M WN
 !  PHS PTP PLP PDIR PSPR PWS PDP PQP PPE PGW PSW PTM10 PT01 PT02 PEP TWS PNR
 !  UST CHA CGE FAW TAW TWA WCC WCF WCH WCM FWS
-!  SXY TWO BHD FOC TUS USS P2S USF P2L TWI FIC
+!  SXY TWO BHD FOC TUS USS P2S USF P2L TWI FIC USP TOC
 !  ABR UBR BED FBB TBB
-!  MSS MSC WL02 AXT AYT AXY
+!  MSS MSC MSD MCD QP QKK SKW EMB EMC
 !  DTD FC CFX CFD CFK
 !  U1 U2
 !
@@ -52,8 +53,9 @@
 ! * 定义和默认值：
 !     FIELD%TIMESTART            = '19000101 000000'  ! 输出场的开始日期
 !     FIELD%TIMESTRIDE           = '0'                ! 输出场的时间步长
+!     FIELD%TIMESTOP             = '29001231 000000'  ! 输出场的结束日期
 !     FIELD%TIMECOUNT            = '1000000000'       ! 时间步数
-!     FIELD%TIMESPLIT            = 6                  ! [4(年),6(月),8(日),10(小时)]
+!     FIELD%TIMESPLIT            = 6                  ! [0(无日期),4(年),6(月),8(日),10(小时)]
 !     FIELD%LIST                 = 'unset'            ! 输出场列表
 !     FIELD%PARTITION            = '0 1 2 3'          ! 波浪分区列表 ['0 1 2 3 4 5']
 !     FIELD%SAMEFILE             = T                  ! 所有变量在同一文件中 [T|F]

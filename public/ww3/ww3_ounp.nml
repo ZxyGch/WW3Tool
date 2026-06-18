@@ -18,6 +18,23 @@
 !     POINT%SAMEFILE             = T                  ! All the points in the same file
 !     POINT%BUFFER               = 150                ! Number of points to process per pass
 !     POINT%TYPE                 = 1                  ! [0=inventory | 1=spectra | 2=mean param | 3=source terms]
+!     POINT%DIMORDER             = T                  ! [time,station=T | station,time=F]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 通过 POINT_NML namelist 定义要后处理的输出场
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     POINT%TIMESTART            = '19000101 000000'  ! 输出场的开始日期
+!     POINT%TIMESTRIDE           = '0'                ! 输出场的时间步长
+!     POINT%TIMECOUNT            = '1000000000'       ! 时间步数
+!     POINT%TIMESPLIT            = 6                  ! [0(无日期),4(年),6(月),8(日),10(小时)]
+!     POINT%LIST                 = 'all'              ! 点索引列表 ['all'|'1 2 3']
+!     POINT%SAMEFILE             = T                  ! 所有点输出到同一文件
+!     POINT%BUFFER               = 150                ! 每次处理的点数量
+!     POINT%TYPE                 = 1                  ! [0=清单 | 1=谱 | 2=平均参数 | 3=源项]
+!     POINT%DIMORDER             = T                  ! [time,station=T | station,time=F]
 ! -------------------------------------------------------------------- !
 &POINT_NML
   POINT%TIMESTART        =  '20221203 000000'
@@ -28,6 +45,7 @@
   POINT%SAMEFILE         =  T
   POINT%BUFFER           =  100
   POINT%TYPE             =  1
+  POINT%DIMORDER         =  T
 /
 
 
@@ -107,11 +125,50 @@
 !                                          ! 4: Spectral partitioning
 !     SPECTRA%SCALE_FAC     = 1            ! Scale factor (-1=disabled)
 !     SPECTRA%OUTPUT_FAC    = 0            ! Output factor (0=normalized)
+!     SPECTRA%TYPE          = 4            ! [2 = SHORT, 3 = it depends , 4 = REAL]
+! -------------------------------------------------------------------- !
+!
+! -------------------------------------------------------------------- !
+! 定义类型 1：谱输出（通过 SPECTRA_NML）
+!
+! 1-D 谱表内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率 - 线性对数尺度（XFR 因子）
+!   - ffp、f、th1m、sth1m、alpha：1D 谱参数
+!   - dpt、ust、wnd、wnddir：平均参数
+!
+! 转换文件内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - 频率：单位 Hz，中心频带频率 - 线性对数尺度（XFR 因子）
+!   - 频率1：单位 Hz，频带下界频率
+!   - 频率2：单位 Hz，频带上界频率
+!   - 方向：单位度，向向约定，原点在东方，三角序
+!   - efth(time,station,frequency,direction)：2D 谱密度
+!   - dpt、wnd、wnddir、cur、curdir：平均参数
+!
+! 谱分区内容：
+!   - 时间、站点ID、站点名、经度、纬度
+!   - npart：分区数量
+!   - hs、tp、lm、th1m、sth1m、ws、tm10、t01、t02：分区参数
+!   - dpt、wnd、wnddir、cur、curdir：平均参数
+!
+! * SCALE_FAC 和 OUTPUT_FAC 只对打印图（OUTPUT=1）生效
+!
+! * namelist 必须以 / 结尾
+! * 定义和默认值：
+!     SPECTRA%OUTPUT        = 3            ! 1: 打印图
+!                                          ! 2: 1-D 谱表
+!                                          ! 3: 转换文件
+!                                          ! 4: 谱分区
+!     SPECTRA%SCALE_FAC     = 1            ! 缩放因子（-1=禁用）
+!     SPECTRA%OUTPUT_FAC    = 0            ! 输出因子（0=归一化）
+!     SPECTRA%TYPE          = 4            ! [2 = SHORT, 3 = 取决于, 4 = REAL]
 ! -------------------------------------------------------------------- !
 &SPECTRA_NML
   SPECTRA%OUTPUT        = 3
   SPECTRA%SCALE_FAC     = 1
   SPECTRA%OUTPUT_FAC    = 0
+  SPECTRA%TYPE          = 4
 /
 
 

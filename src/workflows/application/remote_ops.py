@@ -274,7 +274,7 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
     """Parse ``sinfo -N`` output into idle/mixed node and CPU counts."""
     idle_nodes: list[dict] = []
     mixed_nodes: list[dict] = []
-    summary_by_cpu: dict[str, dict] = {}
+    idle_summary: list[dict] = []
     all_partitions: set[str] = set()
     total_idle_cpus = 0
     total_idle_nodes = 0
@@ -287,23 +287,19 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
                 parts.append(name)
         return parts or [tr("unknown_cpu_partition", "未知")]
 
-    def add_summary(record: dict) -> None:
+    def append_summary(record: dict) -> None:
         idle_cpus = int(record.get("idle_cpus") or 0)
         if idle_cpus <= 0:
             return
         for cpu_name in partitions(str(record.get("partition") or "")):
-            item = summary_by_cpu.setdefault(
-                cpu_name,
+            idle_summary.append(
                 {
                     "cpu": cpu_name,
-                    "nodes": 0,
-                    "cores": 0,
-                    "max_cores_per_node": 0,
-                },
+                    "nodes": 1,
+                    "cores": idle_cpus,
+                    "max_cores_per_node": idle_cpus,
+                }
             )
-            item["nodes"] += 1
-            item["cores"] += idle_cpus
-            item["max_cores_per_node"] = max(item["max_cores_per_node"], idle_cpus)
 
     for line in out.splitlines():
         line = line.strip()
@@ -346,14 +342,13 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
             total_idle_nodes += 1
             total_idle_cpus += idle or total or cpus
             idle_nodes.append(record)
-            add_summary(record)
+            append_summary(record)
         elif idle > 0 and any(token in state_l for token in ("mix", "alloc")):
             total_idle_cpus += idle
             mixed_nodes.append(record)
-            add_summary(record)
-    idle_summary = sorted(
-        summary_by_cpu.values(),
-        key=lambda item: (item["cores"], item["nodes"], item["cpu"]),
+            append_summary(record)
+    idle_summary.sort(
+        key=lambda item: (item["cores"], item["cpu"]),
         reverse=True,
     )
     return {
@@ -418,6 +413,35 @@ def run_slurm_idle_resources(
 
 
 # ── 节点状态 ────────────────────────────────────────────────────────────
+
+def _node_cpu_bar(record: dict) -> str:
+    bar = "█" * int(record.get("idle_cpus") or 0) + "░" * int(record.get("alloc_cpus") or 0)
+    other = int(record.get("other_cpus") or 0)
+    if other > 0:
+        bar += "·" * other
+    return bar
+
+
+def _format_node_status_lines(nodes: list[dict], *, indent: str = "  ") -> list[str]:
+    """Format per-node status rows with fixed column widths for log alignment."""
+    if not nodes:
+        return []
+
+    name_w = max(len(str(n["node"])) for n in nodes)
+    part_w = max(len(str(n["partition"])) for n in nodes)
+    idle_w = max(len(str(n["idle_cpus"])) for n in nodes)
+    total_w = max(len(str(n["total_cpus"] or n["cpus"])) for n in nodes)
+
+    lines: list[str] = []
+    for n in nodes:
+        total = n["total_cpus"] or n["cpus"]
+        lines.append(
+            f"{indent}{n['node']:<{name_w}}  "
+            f"[{n['partition']:<{part_w}}]  "
+            f"{n['idle_cpus']:>{idle_w}}/{total:<{total_w}}  "
+            f"{_node_cpu_bar(n)}"
+        )
+    return lines
 
 def _parse_all_nodes(out: str) -> list[dict]:
     """Parse ``sinfo -N`` output into a list of ALL nodes with CPU status."""
@@ -515,21 +539,8 @@ def run_node_status(
         )
         # [EN] Per-node detail
         logger.log(tr("node_status_detail_header", "📍 节点详情："))
-        name_width = max((len(n["node"]) for n in nodes), default=8)
-        for n in nodes:
-            idle_bar = "█" * n["idle_cpus"] + "░" * n["alloc_cpus"]
-            if n["other_cpus"] > 0:
-                idle_bar += "·" * n["other_cpus"]
-            logger.log(
-                "  {node:<{w}} [{partition}] {idle}/{total}  {bar}".format(
-                    node=n["node"],
-                    w=name_width,
-                    partition=n["partition"],
-                    idle=n["idle_cpus"],
-                    total=n["total_cpus"] or n["cpus"],
-                    bar=idle_bar,
-                )
-            )
+        for line in _format_node_status_lines(nodes):
+            logger.log(line)
         return RemoteResult(success=True, data={"nodes": nodes, "counts": counts}, messages=list(logger.messages))
     except Exception as exc:
         logger.log(tr("node_status_failed", "❌ 查询节点状态失败：{error}").format(error=exc))

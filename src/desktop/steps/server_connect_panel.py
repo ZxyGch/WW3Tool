@@ -60,8 +60,6 @@ class ServerConnectPanel:
         input_style: Callable[[], str],
         combo_style: Callable[[], str],
         connect: Callable[[], None],
-        use_idle_full: Callable[[], None],
-        use_idle_half: Callable[[], None],
         confirm_slurm: Callable[[], None],
         inject_ntfy: Callable[[], None],
         watch_job_ntfy: Callable[[], None],
@@ -214,14 +212,6 @@ class ServerConnectPanel:
         self._display_line(slurm_grid, 4, tr("step4_node_num", "节点数:"), "slurm_nodes")
         layout.addWidget(self._slurm_form)
 
-        self._idle_actions_widget = QWidget()
-        idle_actions = QHBoxLayout(self._idle_actions_widget)
-        idle_actions.setContentsMargins(0, 6, 0, 0)
-        idle_actions.setSpacing(8)
-        idle_actions.addWidget(create_button(tr("step6_use_idle_full", "最大化使用"), use_idle_full))
-        idle_actions.addWidget(create_button(tr("step6_use_idle_half", "半数使用"), use_idle_half))
-        layout.addWidget(self._idle_actions_widget)
-
         self._confirm_slurm_widget = QWidget()
         confirm_slurm_layout = QVBoxLayout(self._confirm_slurm_widget)
         confirm_slurm_layout.setContentsMargins(0, 8, 0, 0)
@@ -271,7 +261,6 @@ class ServerConnectPanel:
         self._idle_table.setVisible(connected)
         self._slurm_title.setVisible(connected)
         self._slurm_form.setVisible(connected)
-        self._idle_actions_widget.setVisible(connected)
         self._confirm_slurm_widget.setVisible(connected)
         if connected and self._idle_table.rowCount() == 0:
             self.update_idle_resources([])
@@ -496,7 +485,6 @@ class ServerConnectPanel:
         self._idle_table.setVisible(False)
         self._slurm_title.setVisible(False)
         self._slurm_form.setVisible(False)
-        self._idle_actions_widget.setVisible(False)
         self._confirm_slurm_widget.setVisible(False)
         self._idle_table.setRowCount(0)
         self._idle_rows = []

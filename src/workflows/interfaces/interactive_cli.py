@@ -200,10 +200,10 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("ssh", tr("icli_help_ssh", "打开交互式 SSH 终端")),
                 ("slurm-idle", tr("icli_help_slurm_idle", "查看 Slurm 空闲 CPU 资源")),
                 (
-                    "confirm-slurm [full|half]",
+                    "confirm-slurm",
                     tr(
                         "icli_help_confirm_slurm",
-                        "按 params.yml 的 Slurm 配置写 server.sh；full/half 自动选取空闲 CPU",
+                        "按 params.yml 的 Slurm 配置写 server.sh",
                     ),
                 ),
                 ("list-files", tr("icli_help_list_files", "列出远程工作目录文件")),
@@ -1203,25 +1203,20 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_confirm_slurm(self, arg: str) -> None:
-        """confirm-slurm [full|half]  — 确认 Slurm 配置并写 server.sh
+        """confirm-slurm  — 确认 Slurm 配置并写 server.sh
 
-        不带参数时仅按当前 params.yml 的 slurm 段更新 server.sh。
-        加 ``full`` 或 ``half`` 时先查询空闲 CPU，按 GUI 同名按钮逻辑选取资源。
+        按当前 params.yml 的 slurm 段更新 server.sh。
 
-        [EN] confirm-slurm [full|half]  — Confirm Slurm settings and write server.sh
+        [EN] confirm-slurm  — Confirm Slurm settings and write server.sh
         """
         if not self._require_config():
             return
-        token = arg.strip().lower()
-        mode = None
-        if token in {"full", "half"}:
-            mode = token
-        elif token:
+        if arg.strip():
             print(
                 _warn(
                     tr(
                         "icli_usage_confirm_slurm",
-                        "用法：confirm-slurm [full|half]（省略参数则仅按当前配置写 server.sh）",
+                        "用法：confirm-slurm（按当前配置写 server.sh）",
                     )
                 )
             )
@@ -1234,7 +1229,6 @@ class InteractiveCLI(cmd.Cmd):
                 self._config,
                 str(self._params_path),
                 log=self._log_callback,
-                mode=mode,
             )
             if rc == 0:
                 print(_success(tr("icli_done_confirm_slurm", "✅ Slurm 配置已确认")))

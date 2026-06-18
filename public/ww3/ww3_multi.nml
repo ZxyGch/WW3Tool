@@ -75,6 +75,8 @@
 !     INPUT(I)%FORCING%WATER_LEVELS  = F
 !     INPUT(I)%FORCING%CURRENTS      = F
 !     INPUT(I)%FORCING%WINDS         = F
+!     INPUT(I)%FORCING%ATM_MOMENTUM  = F
+!     INPUT(I)%FORCING%AIR_DENSITY   = F
 !     INPUT(I)%FORCING%ICE_CONC      = F
 !     INPUT(I)%FORCING%ICE_PARAM1    = F
 !     INPUT(I)%FORCING%ICE_PARAM2    = F
@@ -101,6 +103,8 @@
 !     INPUT(I)%FORCING%WATER_LEVELS  = F
 !     INPUT(I)%FORCING%CURRENTS      = F
 !     INPUT(I)%FORCING%WINDS         = F
+!     INPUT(I)%FORCING%ATM_MOMENTUM  = F
+!     INPUT(I)%FORCING%AIR_DENSITY   = F
 !     INPUT(I)%FORCING%ICE_CONC      = F
 !     INPUT(I)%FORCING%ICE_PARAM1    = F
 !     INPUT(I)%FORCING%ICE_PARAM2    = F
@@ -155,6 +159,8 @@
 !     MODEL(I)%FORCING%WATER_LEVELS  = 'no'
 !     MODEL(I)%FORCING%CURRENTS      = 'no'
 !     MODEL(I)%FORCING%WINDS         = 'no'
+!     MODEL(I)%FORCING%ATM_MOMENTUM  = 'no'
+!     MODEL(I)%FORCING%AIR_DENSITY   = 'no'
 !     MODEL(I)%FORCING%ICE_CONC      = 'no'
 !     MODEL(I)%FORCING%ICE_PARAM1    = 'no'
 !     MODEL(I)%FORCING%ICE_PARAM2    = 'no'
@@ -269,16 +275,8 @@
 ! * namelist 必须以 / 结尾
 ! -------------------------------------------------------------------- !
 &OUTPUT_DATE_NML
-  ALLDATE%FIELD%START         = '20250103 000000'
-  ALLDATE%FIELD%STRIDE        = '1800'
-  ALLDATE%FIELD%STOP          = '20250105 235959'
-  ALLDATE%POINT%START         = '20250103 000000'
-  ALLDATE%POINT%STRIDE        = '1800'
-  ALLDATE%POINT%STOP          = '20250105 235959'
-
-  ALLDATE%RESTART%START       = '20250103 000000'
-  ALLDATE%RESTART%STRIDE      = '86400'
-  ALLDATE%RESTART%STOP        = '20250105 235959'
+  ALLDATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
+  ALLDATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
 /
 
 ! -------------------------------------------------------------------- !

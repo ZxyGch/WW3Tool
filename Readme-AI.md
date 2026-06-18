@@ -76,7 +76,7 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 | 远程运维 | `connect-test [workdir]`                                        | 测试 SSH 连接            |
 |      | `ssh [workdir]`                                                 | 打开交互式 SSH 终端         |
 |      | `slurm-idle [workdir]`                                          | 查看 Slurm 空闲 CPU      |
-|      | `confirm-slurm [workdir] [--full\|--half]`                      | 写 server.sh          |
+|      | `confirm-slurm [workdir]`                                       | 写 server.sh          |
 |      | `upload [workdir] --confirm`                                    | 上传工作目录到远程            |
 |      | `submit [workdir]`                                              | 提交 server.sh         |
 |      | `check-status [workdir]`                                        | 检查远程任务状态             |
@@ -554,7 +554,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 python3 run.py connect-test work_dir_name             # 测试 SSH 连接
 python3 run.py slurm-idle work_dir_name               # 查看 Slurm 空闲 CPU
 python3 run.py queue-status work_dir_name             # 查看 SLURM 作业队列
-python3 run.py confirm-slurm work_dir_name --full     # 确认 Slurm 参数并写 server.sh
+python3 run.py confirm-slurm work_dir_name             # 确认 Slurm 参数并写 server.sh
 python3 run.py ssh work_dir_name                      # 打开交互式 SSH 终端
 ```
 
