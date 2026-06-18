@@ -137,9 +137,13 @@ presets:
     ST6: /public/home/weiyl001/software2/ww6/model/exe
     ST6A: /public/home/weiyl001/software2/ww6a/model/exe
     ST6B: /public/home/weiyl001/software2/ww6b/model/exe
+    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install/bin
   local_st:
-    ST2: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
-    ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin/
+    7.14 ST2: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
+    7.14 ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin/
+    6.07 ST2: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2/
+    6.07 ST4: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4/
+    6.07 ST6: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6/
   structured_bathymetry:
   - GEBCO
   - ETOP1
@@ -324,7 +328,7 @@ calc:
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
-  version: 6.07
+  version: 7.14
   start_date: '20250101'
   end_date: '20250103'
   compute_precision: 1800
