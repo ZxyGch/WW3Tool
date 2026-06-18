@@ -2,19 +2,23 @@
 
 [EN] WW3 Step 1 forcing field file I/O and format fixing service.
 
-用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并只执行必要的
+用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并执行必要的
 WW3 兼容性修正，包括：
 
 [EN] After the user selects a NetCDF file, this module is responsible for copying or moving
 it to the working directory and performing only the necessary WW3-compatible fixes
 on the copy, including:
 
+- 坐标变量名标准化（``lon`` → ``longitude``、``lat`` → ``latitude``、``valid_time`` → ``time`` 等）；
+- 时间单位统一转换为 ``seconds since 1970-01-01``；
 - 将 ``wndewd/wndnwd`` 重命名为 ``u10/v10``（部分再分析产品使用旧名）；
 - 一维纬度坐标递减时翻转为递增，避免 ``ww3_prnc`` 在规则经纬网下报错；
 - 一维经度坐标递减时明确拒绝，不静默改写经度闭合关系；
 - 扫描工作目录，按文件名规则或变量检测恢复 Step 1 四类场路径。
 
-[EN] - Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
+[EN] - Standardizing coordinate variable names (``lon`` → ``longitude``, ``lat`` → ``latitude``, etc.);
+- Converting time units to ``seconds since 1970-01-01``;
+- Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
 - Flipping descending 1-D latitude coordinates to ascending order to avoid
   ``ww3_prnc`` failures on regular lat/lon grids;
 - Rejecting descending 1-D longitude coordinates instead of silently rewriting
@@ -25,7 +29,8 @@ import os
 import shutil
 import glob
 import numpy as np
-from netCDF4 import Dataset
+from datetime import datetime
+from netCDF4 import Dataset, num2date
 from typing import Optional
 from ...domain.forcing_fields import ForcingField, Step1Files
 from ...support.translations import tr
@@ -244,6 +249,162 @@ class FileService:
                 os.remove(temp_file)
             raise
 
+    # [EN] Coordinate name alias → standard name mappings
+    _LON_ALIASES = ("lon", "Longitude", "x", "X", "LONGITUDE", "LON")
+    _LAT_ALIASES = ("lat", "Latitude", "y", "Y", "LATITUDE", "LAT")
+    _TIME_ALIASES = ("valid_time", "Time", "TIME", "t", "MT", "mt")
+
+    def _standardize_coordinate_names(self, target_file: str) -> None:
+        """统一坐标变量名为 longitude / latitude / time。
+
+        [EN] Standardize coordinate variable names to longitude / latitude / time.
+
+        如果所有坐标变量名已是标准名，跳过；否则通过临时文件重写。
+        维度和引用该维度的变量同步重命名。
+
+        [EN] If all coordinate names are already standard, skip; otherwise rewrite
+        via a temporary file. Dimensions and variables referencing the renamed
+        dimension are updated accordingly.
+        """
+        temp_file = target_file + ".std_coord_tmp"
+        try:
+            with Dataset(target_file, "r") as src:
+                # [EN] Build variable rename map: only rename 1-D coord vars whose dim matches
+                rename_map: dict[str, str] = {}
+                for alias in self._LON_ALIASES:
+                    if alias in src.variables:
+                        var = src.variables[alias]
+                        if len(var.dimensions) == 1 and var.dimensions[0] == alias:
+                            rename_map[alias] = "longitude"
+                        break
+                for alias in self._LAT_ALIASES:
+                    if alias in src.variables:
+                        var = src.variables[alias]
+                        if len(var.dimensions) == 1 and var.dimensions[0] == alias:
+                            rename_map[alias] = "latitude"
+                        break
+                for alias in self._TIME_ALIASES:
+                    if alias in src.variables:
+                        var = src.variables[alias]
+                        if len(var.dimensions) == 1 and var.dimensions[0] == alias:
+                            rename_map[alias] = "time"
+                        break
+
+                if not rename_map:
+                    return  # [EN] Nothing to rename
+
+                # [EN] Build dimension rename map
+                dim_rename_map: dict[str, str] = {}
+                for old_name, new_name in rename_map.items():
+                    if old_name in src.dimensions:
+                        dim_rename_map[old_name] = new_name
+
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                file_format = getattr(src, "file_format", "NETCDF4")
+                with Dataset(temp_file, "w", format=file_format) as dst:
+                    for attr_name in src.ncattrs():
+                        dst.setncattr(attr_name, src.getncattr(attr_name))
+
+                    for dim_name, dim in src.dimensions.items():
+                        new_dim = dim_rename_map.get(dim_name, dim_name)
+                        dst.createDimension(new_dim, len(dim) if not dim.isunlimited() else None)
+
+                    for var_name, var in src.variables.items():
+                        new_name = rename_map.get(var_name, var_name)
+                        new_dims = tuple(dim_rename_map.get(d, d) for d in var.dimensions)
+                        var_attrs, var_kwargs = self._variable_creation_kwargs(var)
+                        new_var = dst.createVariable(new_name, var.dtype, new_dims, **var_kwargs)
+                        for attr_name, attr_value in var_attrs.items():
+                            new_var.setncattr(attr_name, attr_value)
+                        new_var[:] = var[:]
+
+            os.replace(temp_file, target_file)
+            renamed = ", ".join(f"{k}→{v}" for k, v in rename_map.items())
+            self.log(tr("log_coord_names_standardized",
+                        "✅ 坐标变量已标准化：{renamed}").format(renamed=renamed))
+        except Exception:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            raise
+
+    def _standardize_time_units(self, target_file: str) -> None:
+        """统一时间单位为 ``seconds since 1970-01-01``。
+
+        [EN] Standardize time units to ``seconds since 1970-01-01``.
+
+        如果已经是标准单位，跳过；否则原地重写时间变量值。
+
+        [EN] If already in standard units, skip; otherwise rewrite the time variable values in place.
+        """
+        target_units = "seconds since 1970-01-01"
+        temp_file = target_file + ".time_tmp"
+        try:
+            with Dataset(target_file, "r") as src:
+                time_name = None
+                for candidate in ("time", "MT"):
+                    if candidate in src.variables:
+                        time_name = candidate
+                        break
+                if time_name is None:
+                    return
+
+                time_var = src.variables[time_name]
+                if len(time_var.dimensions) != 1:
+                    return
+
+                original_units = getattr(time_var, "units", None)
+                if not original_units:
+                    return
+
+                if original_units.strip().lower() == target_units.lower():
+                    return  # [EN] Already standard
+
+                original_calendar = getattr(time_var, "calendar", "gregorian")
+                time_values = np.asarray(time_var[:])
+
+                try:
+                    time_datetimes = num2date(time_values, original_units, calendar=original_calendar)
+                    if hasattr(time_datetimes, "compressed"):
+                        time_datetimes = time_datetimes.compressed()
+                    epoch = datetime(1970, 1, 1)
+                    time_seconds = [(dt - epoch).total_seconds() for dt in time_datetimes]
+                except Exception as exc:
+                    self.log(tr("log_time_units_convert_failed",
+                                "⚠️ 时间单位转换失败，使用原始值: {error}").format(error=exc))
+                    return
+
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                file_format = getattr(src, "file_format", "NETCDF4")
+                with Dataset(temp_file, "w", format=file_format) as dst:
+                    for attr_name in src.ncattrs():
+                        dst.setncattr(attr_name, src.getncattr(attr_name))
+
+                    for dim_name, dim in src.dimensions.items():
+                        dst.createDimension(dim_name, len(dim) if not dim.isunlimited() else None)
+
+                    for var_name, var in src.variables.items():
+                        var_attrs, var_kwargs = self._variable_creation_kwargs(var)
+                        new_var = dst.createVariable(var_name, var.dtype, var.dimensions, **var_kwargs)
+                        for attr_name, attr_value in var_attrs.items():
+                            new_var.setncattr(attr_name, attr_value)
+
+                        if var_name == time_name:
+                            new_var[:] = time_seconds
+                            new_var.units = target_units
+                        else:
+                            new_var[:] = var[:]
+
+            os.replace(temp_file, target_file)
+            self.log(tr("log_time_units_converted",
+                        "🔄 时间单位已从 '{old}' 转换为 '{new}'").format(
+                old=original_units, new=target_units))
+        except Exception:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            raise
+
     def copy_and_fix_forcing_file(self, source_file: str, target_file: str, process_mode: str = "copy") -> Optional[str]:
         """
         复制或移动强迫场文件到工作目录，并执行必要兼容性修复。
@@ -289,12 +450,18 @@ class FileService:
             else:
                 shutil.copy2(source_file, target_file)
 
-            # 2. 检查必要兼容性。WW3 源码按维度名读取，不需要重排维度或改写 time
-            # units/calendar；规则经纬网下纬度递减会被 ww3_prnc 硬拒绝。
-            # [EN] 2. Check necessary compatibility. WW3 reads dimensions by name, so
-            # this generic path does not reorder dimensions or rewrite time
-            # units/calendar; descending latitude is rejected by ww3_prnc for regular
-            # lat/lon grids.
+            # 2. 坐标变量名标准化（lon→longitude, lat→latitude, valid_time→time 等）
+            # [EN] 2. Standardize coordinate variable names
+            self._standardize_coordinate_names(target_file)
+
+            # 3. 时间单位转换（→ seconds since 1970-01-01）
+            # [EN] 3. Convert time units
+            self._standardize_time_units(target_file)
+
+            # 4. 检查其他必要兼容性。WW3 源码按维度名读取；
+            # 规则经纬网下纬度递减会被 ww3_prnc 硬拒绝。
+            # [EN] 4. Check remaining compatibility. WW3 reads by dimension name;
+            # descending latitude is rejected by ww3_prnc for regular lat/lon grids.
             needs_fix_wind_vars = False
             has_wndewd = False
             has_wndnwd = False
@@ -332,8 +499,8 @@ class FileService:
                             )
                         )
 
-            # 3. 如果需要修复风场变量名，需要重新创建文件（因为 netCDF4 不支持删除变量）
-            # [EN] 3. If wind variable names need fixing, recreate the file (netCDF4 does not support deleting variables)
+            # 5. 如果需要修复风场变量名，需要重新创建文件（因为 netCDF4 不支持删除变量）
+            # [EN] 5. If wind variable names need fixing, recreate the file (netCDF4 does not support deleting variables)
             if needs_fix_wind_vars:
                 try:
                     with Dataset(target_file, "r") as src:

@@ -136,10 +136,14 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 `params.yml` 是描述一次算例全部参数的核心载体。根目录的 `params.yml` 只是模板；实际运行前须用 `workdir` 命令创建独立工作目录，再编辑该目录下的 `params.yml`。
 
+根 params.yml 的参数用于提供默认值，但是在创建工作目录并复制过去的时候，会自动清除一些常用的参数。因为这些参数在 GUI 在打开的时候会自动读取并填充表单，这是为了让用户能够清晰的查看工作目录曾经的参数历史。
 
+例如你生成了指定参数的网格，再次打开软件，你不需要查看 params.yml  就可以直接知道当初是用什么参数生成的。
 
+GUI 模式下，你填写的表单，程序在执行中都是先修改工作目录的 params.yml 然后执行 src/workflows 的代码。
 
-
+Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然后使用 Shell 和 CLI  的指令执行，Shell 和 CLI 的指令几乎是完全相同的。
+ 
 
 
 
@@ -161,12 +165,32 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
   → [后处理] 波高图、谱图、卫星/浮标验证
 ```
 
+```mermaid
+flowchart LR
+  A[强迫场 NetCDF] --> B[Step 1 强迫场准备]
+  B --> C[Step 2 网格生成]
+  C --> D[Step 3 计算模式
+  区域 / 谱点 / 航迹]
+  D --> E[Step 4 WW3 配置 
+  namelist / 脚本]
+  E --> F{运行方式}
+  F -->|本地| G[local.sh]
+  F -->|服务器| H[上传 + server.sh / Slurm]
+  G --> I[WW3 模式输出 ww3.2025.nc 等]
+  H --> I
+  I --> J[后处理绘图
+  波高图 / 谱图 / 检验等]
+```
+
 
 ### 5.1 创建工作目录
 
 ```sh
-python3 run.py workdir work_dir_name    # 创建并加载工作目录
+python3 run.py workdir [work_dir_name]    # 创建并加载工作目录
 ```
+
+![](public/resource/README-media/截屏2026-06-18%2013.02.46.png)
+
 
 创建工作目录时，程序会执行以下操作：
 
@@ -214,7 +238,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 
 #### 流场/水位场/冰场导入
 
-非风场强迫场采用复制+修复模式：
+非风场强迫场采用复制+修复模式，但通用处理已同步了坐标标准化和时间单位转换：
 
 #### 通用强迫场导入
 
@@ -222,11 +246,15 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 
 - 目标文件名由 `FilePathManager.generate_forcing_filename()` 生成。单场通常是 `current.nc`、`level.nc`、`ice.nc`；自动关联多场时使用固定顺序组合，如 `wind_current_level_ice.nc`。
 - 文件写入方式由 `forcing.process_mode` 控制，支持 `copy` 和 `move`。
-- 通用修复只做三类事情：
+- 通用修复流程：
+  - **坐标变量名标准化**：`lon`→`longitude`、`lat`→`latitude`、`valid_time`→`time` 等，同步重命名维度和引用该维度的所有变量。
+  - **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算，保留 `calendar` 属性。
   - 如果文件中有旧风变量 `wndewd/wndnwd` 且没有 `u10/v10`，重写 NetCDF 并改名为 `u10/v10`，同时保留全局属性、维度、压缩设置和 `_FillValue`。
   - 如果一维纬度坐标递减，则翻转该纬度维度上的所有变量，使纬度递增，避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`。
   - 如果一维经度坐标递减，则拒绝导入并记录错误；不会静默翻转经度，因为经度闭合和 `0~360` / `-180~180` 范围关系不能安全猜测。
-- 通用修复**不再**改写 `time.units` / `calendar`，也**不强制**变量维度顺序。WW3 的 `ww3_prnc` 会按维度名匹配变量维度。
+- 通用修复**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
+
+
 
 #### 多场文件与自动关联
 
