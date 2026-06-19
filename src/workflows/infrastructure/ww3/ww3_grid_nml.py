@@ -46,6 +46,29 @@ class WW3GridNML(NMLPrimitives):
         st = tr("step2_mesh_type_smc", "SMC 网格")
         return getattr(self, "mesh_type_var", "") == st
 
+    def _detect_mesh_type_from_files(self, folder: str) -> str:
+        """根据工作目录内的特征文件推断实际网格类型。
+
+        返回 ``"smc"`` / ``"unstructured"`` / ``"structured"``。
+        当 params.yml 的 ``mesh_type`` 与实际生成的网格文件不一致时，
+        用作回退检测（如 GUI 切换了网格类型但未回写 params.yml）。
+
+        [EN] Detect actual mesh type from signature files in the workdir.
+
+        Returns ``"smc"`` / ``"unstructured"`` / ``"structured"``.
+        Used as fallback when params.yml mesh_type doesn't match the
+        actual generated grid files (e.g. GUI switched type without writeback).
+        """
+        if not folder or not os.path.isdir(folder):
+            return "structured"
+        # SMC 网格特征文件
+        if os.path.isfile(os.path.join(folder, "grid_cell.dat")):
+            return "smc"
+        # 非结构网格特征文件（grid.ww3 由 Gmsh 生成）
+        if os.path.isfile(os.path.join(folder, "grid.ww3")):
+            return "unstructured"
+        return "structured"
+
     def _transform_ww3_grid_nml_for_unstructured(self, nml_path):
         """RECT/DEPTH/MASK/OBST 块整段注释；启用 &UNST_NML；GRID%TYPE → UNST；UNST%FILENAME → grid.ww3"""
         if not nml_path or not os.path.isfile(nml_path):
