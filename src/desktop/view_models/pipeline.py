@@ -563,7 +563,9 @@ class PipelineViewModel:
 
         target = Path(target)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(template), str(target))
+        # [EN] Use copyfile instead of copy2 to avoid [Errno 22] on external disks
+        # (exFAT/NTFS/FAT32 may not support metadata/extended-attribute copying).
+        shutil.copyfile(str(template), str(target))
 
         content = target.read_text(encoding="utf-8")
 

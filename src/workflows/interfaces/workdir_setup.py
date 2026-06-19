@@ -65,7 +65,9 @@ def ensure_workdir(path: str) -> tuple[Path, bool]:
                 path=workdir, error=exc
             )
         )
-    shutil.copy2(str(root_params), str(params_yml))
+    # [EN] Use copyfile instead of copy2 to avoid [Errno 22] on external disks
+    # (exFAT/NTFS/FAT32 may not support metadata/extended-attribute copying).
+    shutil.copyfile(str(root_params), str(params_yml))
     content = params_yml.read_text(encoding="utf-8")
     content = re.sub(
         r"(^workdir:\s*\n  path:\s*).*",
