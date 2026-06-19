@@ -304,6 +304,9 @@ class WW3OunpNML(NMLPrimitives):
         # none/hour/day/month/year；界面翻译仅用于显示。
         from ..runtime_config import load_full_config
         config = load_full_config()
+        # WW3 6.x 的 ww3_ounp 不支持 SPECTRA%TYPE namelist 变量；据版本决定是否剔除该行。
+        ww3_version = str(config.get("WW3_VERSION", "6.07")).strip()
+        drop_spectra_type = ww3_version.startswith("6")
         file_split = str(config.get("FILE_SPLIT", "year")).strip().lower()
         file_split_value_map = {"none": 0, "year": 4, "month": 6, "day": 8, "hour": 10}
         if file_split not in file_split_value_map:
@@ -318,6 +321,7 @@ class WW3OunpNML(NMLPrimitives):
             modified_start = False
             modified_stride = False
             modified_split = False
+            removed_spectra_type = False
             for line in lines:
                 # [EN] Check if comment line (starts with !, after stripping leading whitespace)
                 # 检查是否为注释行（以 ! 开头，去除前导空格后）
@@ -327,6 +331,11 @@ class WW3OunpNML(NMLPrimitives):
                 # [EN] Only replace non-comment lines
                 # 只替换非注释行
                 if not is_comment:
+                    # [EN] WW3 6.x: drop unsupported SPECTRA%TYPE line so ww3_ounp won't fail on namelist read.
+                    # WW3 6.x 的 ww3_ounp 不认识 SPECTRA%TYPE，剔除该行避免 namelist 读取报错。
+                    if drop_spectra_type and re.search(r'SPECTRA%TYPE', line, re.IGNORECASE):
+                        removed_spectra_type = True
+                        continue
                     # [EN] Modify POINT%TIMESTART
                     # 修改 POINT%TIMESTART
                     if re.search(r'POINT%TIMESTART', line, re.IGNORECASE):
@@ -359,9 +368,11 @@ class WW3OunpNML(NMLPrimitives):
                 if insert_index > 0:
                     new_lines.insert(insert_index, f"  POINT%TIMESPLIT        =  {timesplit_value}\n")
 
-            if modified_start or modified_stride or modified_split:
+            if modified_start or modified_stride or modified_split or removed_spectra_type:
                 with open(ww3_ounp_path, "w", encoding="utf-8") as f:
                     f.writelines(new_lines)
+                if removed_spectra_type:
+                    self.log(tr("step4_ww3_ounp_drop_spectra_type", "✅ 已按 WW3 {ver} 从 ww3_ounp.nml 移除不支持的 SPECTRA%TYPE 行").format(ver=ww3_version))
                 if modified_start and modified_stride:
                     log_msg = tr("step4_ww3_ounp_updated", "✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '{start}'，POINT%TIMESTRIDE = '{stride}'（谱空间逐点计算模式）").format(
                         start=f"{start_date} 000000", stride=output_precision
