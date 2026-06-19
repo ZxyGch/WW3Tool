@@ -374,33 +374,8 @@ class ModifyWW3NML(
             )
             self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="")
         else:
-            # [EN] params.yml says structured — but verify against actual files
-            # (user may have switched mesh type in GUI without writeback).
-            actual = self._detect_mesh_type_from_files(self.selected_folder)
-            if actual == "smc":
-                wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
-                self._transform_ww3_grid_nml_for_smcc(wgp)
-                self.log(
-                    tr(
-                        "step4_smcc_nml_applied",
-                        "✅ SMC 网格：已将 ww3_grid.nml 设为 SMCG（RECT/DEPTH/MASK/OBST 已注释，SMC_NML 启用；grid_cell / grid_subtr 由 smc_generator，ISIDE/JSIDE 见 README；边界/北极文件存在时写入 BUNDY/MBARC）",
-                    )
-                )
-                self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="")
-            elif actual == "unstructured":
-                wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
-                self._transform_ww3_grid_nml_for_unstructured(wgp)
-                nlp = os.path.join(self.selected_folder, "namelists.nml")
-                self._set_namelists_misc_flagtr_zero(nlp)
-                self.log(
-                    tr(
-                        "step4_unst_nml_applied",
-                        "✅ 非结构网格：已将 ww3_grid.nml 设为 UNST（RECT/DEPTH/MASK/OBST 已注释，UNST_NML 启用），namelists.nml 中 FLAGTR=0",
-                    )
-                )
-            else:
-                self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
-                self._update_grid_closure_from_meta(self.selected_folder)
+            self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
+            self._update_grid_closure_from_meta(self.selected_folder)
 
     def apply_ww3_params(self):
         """应用 WW3 运行参数（第五步的功能）
