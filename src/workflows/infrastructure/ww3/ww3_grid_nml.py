@@ -609,6 +609,11 @@ class WW3GridNML(NMLPrimitives):
         if not target_dir or not isinstance(target_dir, str):
             return
 
+        # [EN] meta → nml sync only applies to structured grids; SMC / unstructured
+        # grids have no grid.meta and handle ww3_grid.nml differently.
+        if self._is_step2_smc_mesh() or self._is_step2_unstructured_mesh():
+            return
+
         meta_path = structured_grid_desc_path(target_dir)
         nml_path = os.path.join(target_dir, "ww3_grid.nml")
 
