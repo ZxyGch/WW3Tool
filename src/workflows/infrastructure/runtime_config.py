@@ -646,6 +646,9 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# Working directory: all intermediate files, WW3 namelists, forcing\n"
      "# inputs, model output and post-processing results are stored here.\n"
      "#   path – absolute or relative path to the work directory.\n"
+     "#   default_workspace – default parent folder for new work directories; the\n"
+     "#                       `workdir <name>` command creates under here when given\n"
+     "#                       a bare name. Empty/missing → falls back to workSpace.\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("forcing:",
      "# ────────────────────────────────────────────────────────────────────\n"
@@ -816,7 +819,6 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   language           – UI locale: 'en_US' or 'zh_CN'.\n"
      "#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.\n"
      "#   run_mode           – 'local' / 'server' / 'both'.\n"
-     "#   default_workdir    – default parent folder for new work directories.\n"
      "#   recent_workdirs    – recently opened work directories (MRU list).\n"
      "#   forcing_field_dir  – last-used forcing file browse directory.\n"
      "# ════════════════════════════════════════════════════════════════════"),
@@ -888,10 +890,9 @@ def _write_root_params(data: dict) -> bool:
         return False
 
 
-# 根 params.yml 里"必须存在才能用"的本地路径参数（section, key）。
-# 不含按需创建的目录（workdir.path / workdir.default_workdir / paths.jason_path /
-# paths.ndbc_path）、远程路径（server.*_remote_dir）与 URL。
-_ROOT_PATH_PARAMS = (
+# 校验①：必须存在才能用的本地输入/工具路径——指向不存在路径则置 null。
+# 不含远程路径（server.*_remote_dir）、URL、以及下方回填默认的存储目录。
+_ROOT_PATH_PARAMS_NULL = (
     ("forcing", "wind"),
     ("forcing", "current"),
     ("forcing", "level"),
@@ -902,30 +903,53 @@ _ROOT_PATH_PARAMS = (
     ("server", "key_file"),
 )
 
+# 校验②：按需创建的本地存储目录——为空或指向不存在路径则回填默认值。
+_ROOT_PATH_PARAMS_DEFAULT = (
+    ("paths", "jason_path", os.path.join(PROJECT_ROOT, "jason3")),
+    ("paths", "ndbc_path", os.path.join(PROJECT_ROOT, "ndbc")),
+    ("workdir", "default_workspace", os.path.join(PROJECT_ROOT, "workSpace")),
+)
+
 
 def sanitize_root_params_paths() -> list[str]:
-    """校验根 params.yml 的本地路径参数；指向不存在路径的一律置为 null。
+    """校验根 params.yml 的本地路径参数（shell/CLI 启动时调用）。
 
-    仅在 shell/CLI 启动时调用，清理模板里的失效路径（如已移动/删除的强迫场文件）。
-    返回被置空的参数名列表（如 ``["forcing.wind"]``）；无改动则不写文件。
+    - 必须存在才能用的输入/工具路径（forcing.*、grid.reference_data_path、
+      paths.matlab_path/ww3bin_path、server.key_file）：指向不存在路径则置 null。
+    - 按需创建的本地存储目录（paths.jason_path→jason3、paths.ndbc_path→ndbc、
+      workdir.default_workspace→workSpace）：为空或指向不存在路径则回填默认值。
 
-    [EN] Validate local path params in the root params.yml; null out any that point
-    to a non-existent path. Called on shell/CLI startup. Returns the nulled keys.
+    返回有改动的参数名（如 ``["forcing.wind=null", "paths.jason_path=.../jason3"]``）；
+    无改动则不写文件。
     """
     root = _read_root_params()
-    nulled: list[str] = []
-    for section, key in _ROOT_PATH_PARAMS:
+    changed: list[str] = []
+
+    for section, key in _ROOT_PATH_PARAMS_NULL:
         sec = root.get(section)
         if not isinstance(sec, dict):
             continue
         val = sec.get(key)
-        if isinstance(val, str) and val.strip():
-            if not os.path.exists(os.path.expanduser(val.strip())):
-                sec[key] = None
-                nulled.append(f"{section}.{key}")
-    if nulled:
+        if isinstance(val, str) and val.strip() and not os.path.exists(os.path.expanduser(val.strip())):
+            sec[key] = None
+            changed.append(f"{section}.{key}=null")
+
+    for section, key, default in _ROOT_PATH_PARAMS_DEFAULT:
+        sec = root.get(section)
+        if not isinstance(sec, dict):
+            sec = {}
+            root[section] = sec
+        val = sec.get(key)
+        is_str = isinstance(val, str) and val.strip()
+        # 为空，或指向不存在路径 → 回填默认（已是默认值则不动，保证幂等）
+        if (not is_str) or (not os.path.exists(os.path.expanduser(val.strip()))):
+            if sec.get(key) != default:
+                sec[key] = default
+                changed.append(f"{section}.{key}={default}")
+
+    if changed:
         _write_root_params(root)
-    return nulled
+    return changed
 
 
 def _desktop_section_to_legacy(desktop: dict) -> dict:
@@ -1256,8 +1280,8 @@ def get_default_workdir(create_if_not_exists=True):
     返回:
         成功时为绝对路径字符串；无法创建或配置无效时为 None
     """
-    # 从根 params.yml 的 workdir.default_workdir 读取（已从 desktop 段移到 workdir 段）。
-    raw = (_read_root_params().get("workdir") or {}).get("default_workdir")
+    # 从根 params.yml 的 workdir.default_workspace 读取（已从 desktop 段移到 workdir 段）。
+    raw = (_read_root_params().get("workdir") or {}).get("default_workspace")
     workdir = str(raw).strip() if raw else ""
 
     # 如果配置中的路径为空或无效，使用默认值

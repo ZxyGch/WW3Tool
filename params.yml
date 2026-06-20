@@ -173,13 +173,13 @@ presets:
 # Working directory: all intermediate files, WW3 namelists, forcing
 # inputs, model output and post-processing results are stored here.
 #   path – absolute or relative path to the work directory.
-#   default_workdir – default parent folder for new work directories; the
-#                     `workdir <name>` command creates under here when given
-#                     a bare name (no path separator) instead of a full path.
+#   default_workspace – default parent folder for new work directories; the
+#                       `workdir <name>` command creates under here when given
+#                       a bare name. Empty/missing → falls back to workSpace.
 # ────────────────────────────────────────────────────────────────────
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
-  default_workdir: /Volumes/Zxy's Disk/WW3Tool_workSpace/
+  default_workspace: /Volumes/Zxy's Disk/WW3Tool_workSpace/
 # ────────────────────────────────────────────────────────────────────
 # Forcing fields: NetCDF file paths for external driving fields.
 #   wind    – 10-m wind speed / direction (U10, V10).
