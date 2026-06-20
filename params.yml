@@ -146,6 +146,9 @@ presets:
     6.07 ST2: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2/
     6.07 ST4: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4/
     6.07 ST6: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6/
+    6.07 ST2 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2_SMC/
+    6.07 ST4 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4_SMC/
+    6.07 ST6 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6_SMC/
   structured_bathymetry:
   - GEBCO
   - ETOP1
@@ -221,13 +224,6 @@ grid:
     lat:
     - 10.0
     - 30.0
-  # grid_type 为 nested 时，可填写 inner；省略时依据 nested_contraction_coefficient 从 outer 自动生成
-  # [EN] When grid_type is nested, inner can be filled; omitted auto-generates from outer using nested_contraction_coefficient
-  # inner:
-  #   dx: 0.05
-  #   dy: 0.05
-  #   lon: [112, 128]
-  #   lat: [12, 28]
   # Structured grid options:
   #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
   #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).
@@ -337,7 +333,7 @@ calc:
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
-  version: 6.07
+  version: '6.07'
   start_date: '20250101'
   end_date: '20250103'
   compute_precision: 1800
@@ -494,6 +490,6 @@ desktop:
   run_mode: both
   default_workdir: /Volumes/Zxy's Disk/WW3Tool_workSpace/
   recent_workdirs:
+  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2015/ARR_20150106T1300_0004
   - /Volumes/Zxy's Disk/WW3Tool_workSpace/new
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2026-06-19_13-31-03
   forcing_field_dir: ''
