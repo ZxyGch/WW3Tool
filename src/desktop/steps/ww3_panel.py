@@ -29,6 +29,7 @@ from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
 from ..components.validators import date_yyyymmdd_validator, int_validator
 from workflows.domain.config_models import PipelineConfig
+from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES, get_ww3_version
 from workflows.support.translations import tr
 
 
@@ -134,16 +135,26 @@ class WW3StepPanel:
         wave_grid.setSpacing(10)
         wave_grid.setColumnStretch(0, 0)
         wave_grid.setColumnStretch(1, 1)
-        self._display_line(wave_grid, 0, 0, tr("step4_compute_precision", "计算精度 (秒):"), "ww3_compute")
-        self._display_line(wave_grid, 1, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
-        self._display_line(wave_grid, 2, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
-        self._display_line(wave_grid, 3, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
+        # [EN] NML template version (read-only, for display only)
+        # NML 模板版本（只读，仅展示当前使用的模板）
+        self.nml_version_combo = ComboBox()
+        self.nml_version_combo.addItems(list(WW3_VERSION_VALUES))
+        self.nml_version_combo.setStyleSheet(combo_style())
+        self.nml_version_combo.setEnabled(False)
+        left_align_combo_text(self.nml_version_combo)
+        self.nml_version_label = self._field_label(tr("step4_nml_template_version", "NML 模板版本："))
+        wave_grid.addWidget(self.nml_version_label, 0, 0)
+        wave_grid.addWidget(self.nml_version_combo, 0, 1)
+        self._display_line(wave_grid, 1, 0, tr("step4_compute_precision", "计算精度 (秒):"), "ww3_compute")
+        self._display_line(wave_grid, 2, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
+        self._display_line(wave_grid, 3, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
+        self._display_line(wave_grid, 4, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self.output_scheme_combo = ComboBox()
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
-        wave_grid.addWidget(self.output_scheme_label, 4, 0)
-        wave_grid.addWidget(self.output_scheme_combo, 4, 1)
+        wave_grid.addWidget(self.output_scheme_label, 5, 0)
+        wave_grid.addWidget(self.output_scheme_combo, 5, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -186,6 +197,7 @@ class WW3StepPanel:
         self.set_value("ww3_output", ww3.output_precision)
         self.set_value("slurm_cores", config.slurm.cores)
         self.set_value("slurm_nodes", config.slurm.nodes)
+        self.nml_version_combo.setCurrentText(get_ww3_version())
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._replace_combo_items(self.output_scheme_combo, sorted(config.presets.output_scheme), ww3.output_scheme)
         self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
@@ -343,6 +355,7 @@ class WW3StepPanel:
         # [EN] Align label column width for Slurm / WAVEWATCH main form only.
         """仅对齐 Slurm / WAVEWATCH 主表单的标签列宽。"""
         labels = [
+            self.nml_version_label,
             self.st_label,
             self.cpu_label,
             self.field_labels["slurm_cores"],
