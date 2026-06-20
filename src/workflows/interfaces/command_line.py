@@ -447,6 +447,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    # 启动时校验根 params.yml 的本地路径参数，失效路径置 null
+    from ..infrastructure.runtime_config import sanitize_root_params_paths
+    _nulled = sanitize_root_params_paths()
+    if _nulled:
+        print(tr("cli_paths_nulled", "ℹ️ 根 params.yml 中以下路径不存在，已置为 null：{keys}").format(keys=", ".join(_nulled)))
+
     if args.command == "print-example":
         print(EXAMPLE_YAML, end="")
         return 0

@@ -173,9 +173,13 @@ presets:
 # Working directory: all intermediate files, WW3 namelists, forcing
 # inputs, model output and post-processing results are stored here.
 #   path – absolute or relative path to the work directory.
+#   default_workdir – default parent folder for new work directories; the
+#                     `workdir <name>` command creates under here when given
+#                     a bare name (no path separator) instead of a full path.
 # ────────────────────────────────────────────────────────────────────
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
+  default_workdir: /Volumes/Zxy's Disk/WW3Tool_workSpace/
 # ────────────────────────────────────────────────────────────────────
 # Forcing fields: NetCDF file paths for external driving fields.
 #   wind    – 10-m wind speed / direction (U10, V10).
@@ -324,7 +328,7 @@ calc:
 # ────────────────────────────────────────────────────────────────────
 # WW3 model run settings.
 #   version           – WW3 version: '6.07' or '7.14'
-#                          (switches public/ww3 template directory).
+#                          (reads public/{version}_nml template directory).
 #   start_date / end_date – simulation period (YYYYMMDD).
 #   compute_precision – main propagation time-step DTMAX (seconds).
 #   output_precision  – output writing interval (seconds).
@@ -333,7 +337,7 @@ calc:
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
-  version: '6.07'
+  version: '7.14'
   start_date: '20250101'
   end_date: '20250103'
   compute_precision: 1800
@@ -480,7 +484,6 @@ paths:
 #   language           – UI locale: 'en_US' or 'zh_CN'.
 #   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.
 #   run_mode           – 'local' / 'server' / 'both'.
-#   default_workdir    – default parent folder for new work directories.
 #   recent_workdirs    – recently opened work directories (MRU list).
 #   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
@@ -488,8 +491,7 @@ desktop:
   language: en_US
   theme: AUTO
   run_mode: both
-  default_workdir: /Volumes/Zxy's Disk/WW3Tool_workSpace/
   recent_workdirs:
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2015/ARR_20150106T1300_0004
   - /Volumes/Zxy's Disk/WW3Tool_workSpace/new
+  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2015/ARR_20150106T1300_0004
   forcing_field_dir: ''

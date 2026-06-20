@@ -32,7 +32,6 @@ _DESKTOP_YAML_TO_LEGACY = {
     "language": "LANGUAGE",
     "theme": "THEME",
     "run_mode": "RUN_MODE",
-    "default_workdir": "DEFAULT_WORKDIR",
     "recent_workdirs": "RECENT_WORKDIRS",
     "forcing_field_dir": "FORCING_FIELD_DIR_PATH",
 }
@@ -492,12 +491,15 @@ DEFAULT_CONFIG = {
 
 WW3_VERSION_VALUES = ("6.07", "7.14")
 
-# WW3 version → directory name prefix under public/
-# Active version always uses "ww3", inactive versions use "{prefix}_ww3"
-_WW3_VERSION_DIR_PREFIX = {
-    "6.07": "6",
-    "7.14": "7",
-}
+
+def _nml_template_dir(version: str) -> str:
+    """返回指定版本的 NML 模板目录绝对路径（如 ``public/6.07_nml``）。"""
+    return os.path.join(PUBLIC_DIR, f"{version}_nml")
+
+
+def get_nml_template_dir() -> str:
+    """返回当前 params.yml 中 ``ww3.version`` 对应的 NML 模板目录。"""
+    return _nml_template_dir(get_ww3_version())
 
 
 def get_ww3_version() -> str:
@@ -508,12 +510,9 @@ def get_ww3_version() -> str:
 
 
 def swap_ww3_version(new_version: str) -> bool:
-    """切换 WW3 版本：重命名 public/ 下的模板目录。
+    """切换 WW3 版本：更新 params.yml 中的 ``ww3.version``。
 
-    激活版本的目录始终命名为 ``ww3``，非激活版本命名为 ``{prefix}_ww3``。
-    例如从 6.07 切换到 7.14：
-        public/ww3     → public/6_ww3
-        public/7_ww3   → public/ww3
+    模板目录使用固定命名 ``public/{version}_nml``，无需重命名。
     """
     if new_version not in WW3_VERSION_VALUES:
         return False
@@ -522,40 +521,11 @@ def swap_ww3_version(new_version: str) -> bool:
     if old_version == new_version:
         return True
 
-    old_prefix = _WW3_VERSION_DIR_PREFIX.get(old_version)
-    new_prefix = _WW3_VERSION_DIR_PREFIX.get(new_version)
-    if not old_prefix or not new_prefix:
+    target_dir = _nml_template_dir(new_version)
+    if not os.path.isdir(target_dir):
+        print(f"切换 WW3 版本失败：模板目录 {target_dir} 不存在")
         return False
 
-    active_dir = os.path.join(PUBLIC_DIR, "ww3")
-    old_backup = os.path.join(PUBLIC_DIR, f"{old_prefix}_ww3")
-    new_source = os.path.join(PUBLIC_DIR, f"{new_prefix}_ww3")
-
-    # Safety: new source must exist
-    if not os.path.isdir(new_source):
-        print(f"切换 WW3 版本失败：目录 {new_source} 不存在")
-        return False
-
-    try:
-        # Step 1: rename current active → old backup
-        if os.path.isdir(active_dir):
-            if os.path.isdir(old_backup):
-                shutil.rmtree(old_backup)
-            os.rename(active_dir, old_backup)
-
-        # Step 2: rename new source → active
-        os.rename(new_source, active_dir)
-    except Exception as e:
-        print(f"切换 WW3 版本失败: {e}")
-        # Attempt rollback
-        if not os.path.isdir(active_dir) and os.path.isdir(old_backup):
-            try:
-                os.rename(old_backup, active_dir)
-            except Exception:
-                pass
-        return False
-
-    # Step 3: update params.yml
     root = _read_root_params()
     ww3 = root.get("ww3") or {}
     ww3["version"] = new_version
@@ -754,7 +724,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# ────────────────────────────────────────────────────────────────────\n"
      "# WW3 model run settings.\n"
      "#   version           – WW3 version: '6.07' or '7.14'\n"
-     "#                          (switches public/ww3 template directory).\n"
+     "#                          (reads public/{version}_nml template directory).\n"
      "#   start_date / end_date – simulation period (YYYYMMDD).\n"
      "#   compute_precision – main propagation time-step DTMAX (seconds).\n"
      "#   output_precision  – output writing interval (seconds).\n"
@@ -916,6 +886,46 @@ def _write_root_params(data: dict) -> bool:
     except Exception as e:
         print(f"保存 params.yml 失败: {e}")
         return False
+
+
+# 根 params.yml 里"必须存在才能用"的本地路径参数（section, key）。
+# 不含按需创建的目录（workdir.path / workdir.default_workdir / paths.jason_path /
+# paths.ndbc_path）、远程路径（server.*_remote_dir）与 URL。
+_ROOT_PATH_PARAMS = (
+    ("forcing", "wind"),
+    ("forcing", "current"),
+    ("forcing", "level"),
+    ("forcing", "ice"),
+    ("grid", "reference_data_path"),
+    ("paths", "matlab_path"),
+    ("paths", "ww3bin_path"),
+    ("server", "key_file"),
+)
+
+
+def sanitize_root_params_paths() -> list[str]:
+    """校验根 params.yml 的本地路径参数；指向不存在路径的一律置为 null。
+
+    仅在 shell/CLI 启动时调用，清理模板里的失效路径（如已移动/删除的强迫场文件）。
+    返回被置空的参数名列表（如 ``["forcing.wind"]``）；无改动则不写文件。
+
+    [EN] Validate local path params in the root params.yml; null out any that point
+    to a non-existent path. Called on shell/CLI startup. Returns the nulled keys.
+    """
+    root = _read_root_params()
+    nulled: list[str] = []
+    for section, key in _ROOT_PATH_PARAMS:
+        sec = root.get(section)
+        if not isinstance(sec, dict):
+            continue
+        val = sec.get(key)
+        if isinstance(val, str) and val.strip():
+            if not os.path.exists(os.path.expanduser(val.strip())):
+                sec[key] = None
+                nulled.append(f"{section}.{key}")
+    if nulled:
+        _write_root_params(root)
+    return nulled
 
 
 def _desktop_section_to_legacy(desktop: dict) -> dict:
@@ -1246,11 +1256,12 @@ def get_default_workdir(create_if_not_exists=True):
     返回:
         成功时为绝对路径字符串；无法创建或配置无效时为 None
     """
-    config = load_config()
-    workdir = config.get("DEFAULT_WORKDIR", "")
-    
+    # 从根 params.yml 的 workdir.default_workdir 读取（已从 desktop 段移到 workdir 段）。
+    raw = (_read_root_params().get("workdir") or {}).get("default_workdir")
+    workdir = str(raw).strip() if raw else ""
+
     # 如果配置中的路径为空或无效，使用默认值
-    if not workdir or not workdir.strip():
+    if not workdir:
         workdir = DEFAULT_CONFIG.get("DEFAULT_WORKDIR", os.path.join(PROJECT_ROOT, "workSpace"))
     
     # 规范化路径

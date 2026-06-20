@@ -2269,6 +2269,7 @@
   "cli_help_workdir_path": "Working directory path to create or load",
   "cli_slurm_section_missing": "❌ params.yml is missing the slurm: section",
   "cli_workdir_params": "Config file: {path}",
+  "cli_paths_nulled": "ℹ️ The following paths in root params.yml do not exist and were set to null: {keys}",
   "icli_done_confirm_slurm": "✅ Slurm configuration confirmed",
   "icli_done_merge_forcing": "✅ Forcing merge complete",
   "icli_failed_confirm_slurm": "❌ Slurm configuration confirmation failed",

@@ -130,6 +130,28 @@ def _config_field(label: str, *values: object, indent: int = 4) -> str:
     return "".join(chunks)
 
 
+def _repo_root_path() -> Path:
+    """返回仓库根目录的绝对路径。
+
+    [EN] Return the absolute path of the repository root directory.
+    """
+    # interactive_cli.py 位于 src/workflows/interfaces/，向上 3 级即为仓库根。
+    # [EN] interactive_cli.py is in src/workflows/interfaces/; 3 levels up is the repo root.
+    return Path(__file__).resolve().parents[3]
+
+
+def _is_root_params(path: Path) -> bool:
+    """判断 *path* 是否指向仓库根目录的 params.yml（模板文件）。
+
+    [EN] Check whether *path* points to the repository root params.yml (template file).
+    """
+    root_params = _repo_root_path() / "params.yml"
+    try:
+        return os.path.normpath(str(path.resolve())) == os.path.normpath(str(root_params))
+    except OSError:
+        return False
+
+
 _HISTORY_FILE = Path.home() / ".ww3tool_history"
 _HISTORY_MAX_LINES = 500
 
@@ -648,13 +670,29 @@ class InteractiveCLI(cmd.Cmd):
     def _load_config(self, path: str) -> bool:
         """加载或重新加载 params.yml 配置文件。
 
+        拒绝直接使用仓库根目录的 params.yml（它是模板文件），必须使用工作目录副本。
+
         [EN] Load or reload a params.yml configuration file.
+
+        Rejects the repository root params.yml (template); a workdir copy must be used.
         """
         try:
             # 去除用户可能输入的引号
             # [EN] Strip any quotes the user may have entered
             path = path.strip().strip("'\"")
             source = Path(path).expanduser().resolve()
+
+            # 拒绝直接使用根目录模板 params.yml
+            # [EN] Reject direct use of the root template params.yml
+            if _is_root_params(source):
+                print(_error(tr(
+                    "icli_root_params_rejected",
+                    "❌ 不允许直接使用仓库根目录的 params.yml（它是模板文件）。\n"
+                    "请先使用 workdir 命令创建或加载工作目录：\n"
+                    "  workdir my_workdir",
+                )))
+                return False
+
             self._config = load_pipeline_config(str(source), validation_stage="plot")
             self._params_path = source
             print(_success(tr("icli_loaded_config", "✅ 已加载配置：{}").format(source)))
@@ -1712,11 +1750,13 @@ def _find_default_params() -> Optional[str]:
     """查找默认 params.yml：优先使用根模板中 workdir.path 指向的工作目录配置。
 
     若根 params.yml 的 workdir.path 指向的目录下也存在 params.yml，
-    则加载工作目录版本（通常包含更完整的用户配置）；否则回退到根模板。
+    则加载工作目录版本（通常包含更完整的用户配置）；否则返回 ``None``，
+    **不**回退到根目录模板（根目录 params.yml 是模板，不允许直接运行）。
 
     [EN] Find default params.yml: prefer the workdir config pointed to by the root template.
          If root params.yml has a workdir.path whose directory also contains params.yml,
-         load that one (usually has more complete user config); otherwise fall back to root.
+         load that one (usually has more complete user config); otherwise return ``None``
+         and do **not** fall back to the root template (it is a template, not for direct use).
     """
     # interactive_cli.py 位于 src/workflows/interfaces/
     # [EN] interactive_cli.py is located at src/workflows/interfaces/
@@ -1734,12 +1774,14 @@ def _find_default_params() -> Optional[str]:
         workdir_path = (data.get("workdir") or {}).get("path")
         if workdir_path:
             workdir_params = Path(str(workdir_path)).expanduser().resolve() / "params.yml"
-            if workdir_params.is_file() and workdir_params != default:
+            if workdir_params.is_file() and not _is_root_params(workdir_params):
                 return str(workdir_params)
     except Exception:
         pass
 
-    return str(default)
+    # 不回退到根目录模板；返回 None，由调用方提示用户使用 workdir 命令。
+    # [EN] Do not fall back to root template; return None so the caller prompts for workdir.
+    return None
 
 
 def main(params_path: Optional[str] = None) -> int:
@@ -1761,6 +1803,15 @@ def main(params_path: Optional[str] = None) -> int:
     Returns:
         Exit code (always 0).
     """
+    # 启动时校验根 params.yml 的本地路径参数，失效路径置 null
+    try:
+        from ..infrastructure.runtime_config import sanitize_root_params_paths
+        _nulled = sanitize_root_params_paths()
+        if _nulled:
+            print(_info(tr("cli_paths_nulled", "ℹ️ 根 params.yml 中以下路径不存在，已置为 null：{keys}").format(keys=", ".join(_nulled))))
+    except Exception:
+        pass
+
     if params_path is None:
         params_path = _find_default_params()
     cli = InteractiveCLI(params_path)
