@@ -568,6 +568,7 @@
   "step4_output_precision": "输出精度 (秒):",
   "step4_start_date": "起始日期:",
   "step4_end_date": "结束日期:",
+  "step4_nml_template_version": "NML 模板版本：",
   "step4_points_added": "✅ 已将 {count} 个点位添加到表格",
   "step4_time_range_loaded": "✅ 已从 {file} 读取时间范围：{start} → {end}",
   "step4_default_scheme_save_failed": "⚠️ 保存默认方案失败：{error}",

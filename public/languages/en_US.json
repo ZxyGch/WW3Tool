@@ -579,6 +579,7 @@
   "step4_output_precision": "Output (s): ",
   "step4_start_date": "Start Date:",
   "step4_end_date": "End Date:",
+  "step4_nml_template_version": "NML Template Version:",
   "step4_points_added": "✅ {count} points added to table",
   "step4_time_range_loaded": "✅ Time range loaded from {file}: {start} → {end}",
   "step4_default_scheme_save_failed": "⚠️ Failed to save default scheme: {error}",
