@@ -897,7 +897,6 @@ _ROOT_PATH_PARAMS_NULL = (
     ("forcing", "current"),
     ("forcing", "level"),
     ("forcing", "ice"),
-    ("grid", "reference_data_path"),
     ("paths", "matlab_path"),
     ("paths", "ww3bin_path"),
     ("server", "key_file"),
@@ -909,17 +908,18 @@ _ROOT_PATH_PARAMS_DEFAULT = (
     ("paths", "ndbc_path", os.path.join(PROJECT_ROOT, "ndbc")),
     ("workdir", "default_workspace", os.path.join(PROJECT_ROOT, "workSpace")),
     ("desktop", "forcing_field_dir", os.path.join(PROJECT_ROOT, "public", "forcing")),
+    ("grid", "reference_data_path", os.path.join(PROJECT_ROOT, "meshgen", "reference_data")),
 )
 
 
 def sanitize_root_params_paths() -> list[str]:
     """校验根 params.yml 的本地路径参数（shell/CLI 启动时调用）。
 
-    - 必须存在才能用的输入/工具路径（forcing.*、grid.reference_data_path、
-      paths.matlab_path/ww3bin_path、server.key_file）：指向不存在路径则置 null。
+    - 必须存在才能用的输入/工具路径（forcing.*、paths.matlab_path/ww3bin_path、
+      server.key_file）：指向不存在路径则置 null。
     - 按需创建/默认的本地目录（paths.jason_path→jason3、paths.ndbc_path→ndbc、
-      workdir.default_workspace→workSpace、desktop.forcing_field_dir→public/forcing）：
-      为空或指向不存在路径则回填默认值。
+      workdir.default_workspace→workSpace、desktop.forcing_field_dir→public/forcing、
+      grid.reference_data_path→meshgen/reference_data）：为空或指向不存在路径则回填默认值。
 
     返回有改动的参数名（如 ``["forcing.wind=null", "paths.jason_path=.../jason3"]``）；
     无改动则不写文件。

@@ -217,7 +217,7 @@ grid:
   mesh_type: structured
   grid_type: normal
   gridgen_version: Python
-  reference_data_path: null
+  reference_data_path: /Users/zxy/ocean/Paper/WW3Tool/meshgen/reference_data
   nested_contraction_coefficient: 1.3
   outer:
     dx: 0.05
@@ -337,7 +337,7 @@ calc:
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
-  version: '7.14'
+  version: 7.14
   start_date: '20250101'
   end_date: '20250103'
   compute_precision: 1800
