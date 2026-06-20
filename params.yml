@@ -494,4 +494,4 @@ desktop:
   recent_workdirs:
   - /Volumes/Zxy's Disk/WW3Tool_workSpace/new
   - /Volumes/Zxy's Disk/WW3Tool_workSpace/2015/ARR_20150106T1300_0004
-  forcing_field_dir: ''
+  forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing
