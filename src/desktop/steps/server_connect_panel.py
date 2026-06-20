@@ -537,7 +537,7 @@ class ServerConnectPanel:
             if not ln or not ln.strip():
                 continue
             parts = ln.split()
-            if len(parts) < 7:
+            if len(parts) < 8:
                 continue
             state = parts[3]
             if state not in _ACTIVE_STATES:
@@ -552,7 +552,8 @@ class ServerConnectPanel:
                     "state": state_text,
                     "time": parts[4],
                     "nodes": parts[5],
-                    "nodelist": " ".join(parts[6:]),
+                    "cpus": parts[6],
+                    "nodelist": " ".join(parts[7:]),
                 }
             )
         return tasks
@@ -577,6 +578,7 @@ class ServerConnectPanel:
             (tr("queue_status", "状态:"), task.get("state", "")),
             (tr("queue_runtime", "已运行:"), task.get("time", "")),
             (tr("queue_node_num", "节点数:"), task.get("nodes", "")),
+            (tr("queue_cpus", "核数:"), task.get("cpus", "")),
             (tr("queue_node_list", "节点列表:"), task.get("nodelist", "")),
         ]
         table = EdgeAlignedTableWidget()
@@ -611,7 +613,7 @@ class ServerConnectPanel:
     def _update_existing_queue_cards(self, tasks: list[dict]) -> None:
         # [EN] Only update existing card contents, without rebuilding.
         """仅更新已有卡片的内容，不重建。"""
-        fields_keys = ["jobid", "partition", "name", "state", "time", "nodes", "nodelist"]
+        fields_keys = ["jobid", "partition", "name", "state", "time", "nodes", "cpus", "nodelist"]
         labels = [
             tr("queue_jobid", "JobID:"),
             tr("queue_cpu", "CPU:"),
@@ -619,6 +621,7 @@ class ServerConnectPanel:
             tr("queue_status", "状态:"),
             tr("queue_runtime", "已运行:"),
             tr("queue_node_num", "节点数:"),
+            tr("queue_cpus", "核数:"),
             tr("queue_node_list", "节点列表:"),
         ]
         for i in range(min(self._queue_layout.count(), len(tasks))):

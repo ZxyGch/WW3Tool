@@ -916,6 +916,7 @@
   "queue_status": "Status:",
   "queue_runtime": "Runtime:",
   "queue_node_num": "Nodes:",
+  "queue_cpus": "Cores:",
   "queue_node_list": "Node List:",
   "cancel_task": "Cancel Task",
   "enter_jobid_placeholder": "Enter JobID",

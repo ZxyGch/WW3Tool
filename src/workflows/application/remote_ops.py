@@ -1100,7 +1100,7 @@ def run_squeue_detail(
 
     Returns:
         ``data`` 字段为行列表 ``[line, ...]``，每行格式:
-        ``JOBID PARTITION NAME STATE TIME NODES NODELIST``
+        ``JOBID PARTITION NAME STATE TIME NODES CPUS NODELIST``
     """
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
@@ -1108,7 +1108,7 @@ def run_squeue_detail(
         if owns:
             c.connect(log=logger.log)
         out, err, _ = c.exec_command(
-            "squeue -o '%i %P %j %T %M %D %R' -h", timeout=10
+            "squeue -o '%i %P %j %T %M %D %C %R' -h", timeout=10
         )
         if err:
             logger.log(tr("squeue_cmd_error", "⚠️ squeue 错误: {error}").format(error=err))
@@ -1162,7 +1162,7 @@ def run_server_status(
 
         # 任务队列
         q_out, q_err, _ = c.exec_command(
-            "squeue -o '%i %P %j %T %M %D %R' -h", timeout=10
+            "squeue -o '%i %P %j %T %M %D %C %R' -h", timeout=10
         )
         queue_lines = [ln for ln in q_out.splitlines() if ln.strip()]
 

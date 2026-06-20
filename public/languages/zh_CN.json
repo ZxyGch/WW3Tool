@@ -905,6 +905,7 @@
   "queue_status": "状态:",
   "queue_runtime": "已运行:",
   "queue_node_num": "节点数:",
+  "queue_cpus": "核数:",
   "queue_node_list": "节点列表:",
   "cancel_task": "取消任务",
   "enter_jobid_placeholder": "请输入 JobID",
