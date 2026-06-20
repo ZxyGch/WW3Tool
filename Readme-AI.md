@@ -104,7 +104,8 @@ WW3Tool/
 ├── params.yml              # 算例参数模板（勿直接运行；用 workdir 创建副本后编辑）
 ├── public/                 # 全局资源
 │   ├── languages/          #   zh_CN.json / en_US.json 翻译文件
-│   ├── ww3/                #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
+│   ├── 7.14_nml/           #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
+│   ├── 6.07_nml/           #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
 │   ├── scripts/            #   远程脚本（ww3_ntfy_watch.sh 等）
 │   └── forcing/            #   示例强迫场文件（测试用）
 ├── meshgen/                # 网格生成器
@@ -134,7 +135,7 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 ## 4. 配置系统：params.yml
 
-`params.yml` 是描述一次算例全部参数的核心载体。根目录的 `params.yml` 只是模板；实际运行前须用 `workdir` 命令创建独立工作目录，再编辑该目录下的 `params.yml`。
+`params.yml` 是描述一次算例全部参数的核心载体。根目录的 `params.yml` (即 WW3Tool/params.yml) 只是模板；实际运行前须用 `workdir` 命令创建独立工作目录，再编辑该目录下的 `params.yml`。
 
 根 params.yml 的参数用于提供默认值，但是在创建工作目录并复制过去的时候，会自动清除一些常用的参数。因为这些参数在 GUI 在打开的时候会自动读取并填充表单，这是为了让用户能够清晰的查看工作目录曾经的参数历史。
 
@@ -186,15 +187,14 @@ flowchart LR
 ### 5.1 创建工作目录
 
 ```sh
-python3 run.py workdir [work_dir_name]    # 创建并加载工作目录
+python3 run.py workdir [work_dir_name]    # 创建并加载工作目录，默认在 WW3Tool/workSpace 内创建
 ```
 
 ![](public/resource/README-media/截屏2026-06-18%2013.02.46.png)
 
-
 创建工作目录时，程序会执行以下操作：
 
-1. 在 `workSpace/`（默认路径，可在设置页面修改）下创建新文件夹，默认名称为当前时间戳（如 `2026-06-17_19-37-01`）
+1. 在 `WW3Tool/workSpace/` 下创建新文件夹，默认名称为当前时间戳（如 `2026-06-17_19-37-01`）
 
 2. 将根目录 `params.yml` 原样复制到工作目录
 
@@ -212,7 +212,7 @@ python3 run.py workdir [work_dir_name]    # 创建并加载工作目录
 ### 5.2 Step 1 — 强迫场准备
 
 ```sh
-python3 run.py prepare-forcing work_dir_name    # 准备强迫场
+python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ```
 
@@ -228,7 +228,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 2. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
 3. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
 4. **纬度翻转**：如果纬度从大到小排列（ERA5 默认），自动翻转为从小到大
-5. **经度检查**：经度必须从小到大，递减则拒绝（抛出 `ValueError`）
+5. **经度翻转**：经度若从大到小排列，同样自动翻转为从小到大（与通用路径**不对称**——通用路径对递减经度直接拒绝，风场路径因完整重写而直接翻转）
 6. **输出变量名**：固定为 `u10`/`v10`，带 `units="m/s"`、`level="10m"` 属性
 
 大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（最多 256 个时间步/块）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96 时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再原子替换，保证完整性。
@@ -280,33 +280,50 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ### 5.3 Step 2 — 网格生成
 
 ```sh
-python3 run.py generate-grid work_dir_name                  # 生成网格
-python3 run.py recommend-grid work_dir_name --coarse  # 推荐网格间距
-python3 run.py recommend-cfl work_dir_name            # 推荐 CFL 时间步长
+python3 run.py generate-grid  [work_dir_name]                 # 生成网格
+python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网格间距
+python3 run.py recommend-cfl  [work_dir_name]                 # 推荐 CFL 时间步长
 ```
 
-`application/grid_preparation.py` + `meshgen/`
+在生成网格前，我们需要下载水深数据、海岸边界数据，我已经把下载功能集成到 WW3Tool 了，你只需点击生成网格就会自动提示你下载。
 
-三种网格类型：
+关于网格生成器，他们的详细说明可以查看 meshgen/README.md ，这里不再赘述。
 
-**结构化矩形网格**（`structured_generator/`）
+所有网格生成结果自动缓存到 `meshgen/cache/`，以参数 hash 为 key，避免重复计算。
+
+#### 结构化矩形网格
+
+
+
 - 调用 `pygridgen` 生成四个文件到工作目录：
   - `grid.bot` — ASCII 水深数据（单位：米，实际值 = 文件值 / 1000），尺寸 Ny × Nx
   - `grid.obst` — x/y 方向障碍物值（0-1 之间的比例），尺寸 Ny × Nx
   - `grid.mask_nobound` — 陆海掩膜（0 = 陆地，1 = 海洋），尺寸 Ny × Nx
   - `grid.meta` — 网格描述文件（实质是 `ww3_grid.nml` 的子集，包含 NX/NY/SX/SY/X0/Y0 等），Step 4 会同步这些参数到完整的 `ww3_grid.nml`
+
+关于嵌套网格，后续将进行重构，目前存在问题。
+
 - 支持最多两层嵌套网格（coarse 外网格 + fine 内网格），使用 Two-way nesting，收缩系数默认 1.1x（可在设置页面修改）
+
 - 嵌套模式下在工作目录创建 `coarse/` 和 `fine/` 子目录，各自的网格文件存放在对应子目录中
 
-**三角形非结构化网格**（`unst_generator/`）
+
+
+
+#### 三角形非结构化网格
+
 - 基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
 
-**SMC 网格**（`smc_generator/`）
-- 基于 SMCGTools 生成
 
-所有网格生成结果自动缓存到 `meshgen/cache/`，以参数 hash 为 key，避免重复计算。
+#### SMC 网格
 
-工具 `recommend-grid [--coarse|--fine]` 可根据经纬度范围和网格类型自动推荐网格间距。
+基于 SMCGTools 生成
+
+![](public/resource/README-media/grid_smc_structure.png)
+
+
+
+
 
 ### 5.4 Step 3 — 计算模式
 
