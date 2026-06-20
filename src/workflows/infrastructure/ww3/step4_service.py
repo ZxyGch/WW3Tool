@@ -1,7 +1,7 @@
 """第四步：WW3 运行参数配置 — 业务逻辑 Mixin。
 
 从原 ``ui.py`` 拆分而来，负责输出变量方案管理、从 NetCDF 读取模拟时间范围、
-将 ``public/ww3`` 模板文件复制到工作目录，以及嵌套网格 UI 状态联动等第四步
+将 NML 模板文件复制到工作目录，以及嵌套网格 UI 状态联动等第四步
 面板功能。与 ``ModifyWW3NML`` 组合后构成完整的 WW3 配置流程。
 """
 import os
@@ -14,6 +14,7 @@ from netCDF4 import Dataset, num2date
 from ...support.translations import tr
 from ..runtime_config import (
     PUBLIC_DIR,
+    get_nml_template_dir,
     load_full_config,
     DEFAULT_OUTPUT_VARS_SCHEME_NAME,
     DEFAULT_OUTPUT_VARS_SCHEME_VARS,
@@ -26,7 +27,7 @@ class StepFourServiceMixin:
     主要公开方法
     ------------
     - ``load_time_from_nc`` — 从风场 NetCDF 读取时间范围并写入 GUI 起止日期。
-    - ``copy_public_files`` — 将 ``public/ww3`` 模板复制到当前工作目录。
+    - ``copy_public_files`` — 将 NML 模板复制到当前工作目录。
     - ``_load_output_schemes_to_combo`` / ``_on_output_scheme_changed`` — 管理谱分区输出方案。
     """
 
@@ -182,13 +183,12 @@ class StepFourServiceMixin:
         
         # 生成变量列表字符串
         var_list_str = ' '.join(selected_vars)
+
+        # 获取 NML 模板目录路径
+        nml_template_dir = get_nml_template_dir()
         
-        # 获取 public/ww3 目录路径（在项目根目录下）
-        # __file__ is main/home/step4/step4_service.py; public is under project root
-        public_ww3_dir = config.get("PUBLIC_WW3_PATH", os.path.join(PUBLIC_DIR, "ww3"))
-        
-        ww3_shel_path = os.path.join(public_ww3_dir, "ww3_shel.nml")
-        ww3_ounf_path = os.path.join(public_ww3_dir, "ww3_ounf.nml")
+        ww3_shel_path = os.path.join(nml_template_dir, "ww3_shel.nml")
+        ww3_ounf_path = os.path.join(nml_template_dir, "ww3_ounf.nml")
         
         success_count = 0
         error_messages = []
@@ -387,19 +387,19 @@ class StepFourServiceMixin:
             self.log(tr("step4_time_read_failed", "❌ 读取 {file} 时间失败：{error}").format(file=file_name, error=e))
 
     def copy_public_files(self):
-        """将 public/ww3 下的文件复制到工作文件夹"""
+        """将 NML 模板目录下的文件复制到工作文件夹"""
         if not self.selected_folder or not isinstance(self.selected_folder, str):
             self.log(tr("step4_workdir_missing", "❌ 当前工作目录不存在！"))
             return
         self._copy_public_files_to_dir(self.selected_folder)
 
     def _copy_public_files_to_dir(self, target_dir, grid_label=""):
-        """将 public/ww3 下的文件复制到指定目录"""
+        """将 NML 模板目录下的文件复制到指定目录"""
         if not target_dir or not isinstance(target_dir, str):
             return
 
-        # 获取项目根目录下的 public/ww3 路径
-        src_dir = os.path.normpath(os.path.join(PUBLIC_DIR, "ww3"))
+        # 获取项目根目录下的 NML 模板路径
+        src_dir = os.path.normpath(get_nml_template_dir())
         scripts_dir = os.path.normpath(os.path.join(PUBLIC_DIR, "scripts"))
         
         if not os.path.exists(src_dir):
@@ -489,7 +489,7 @@ class StepFourServiceMixin:
             if copied > 0:
                 prefix = f"{grid_label} " if grid_label else ""
                 # 嵌套网格模式下，特殊文件已在公共文件处理中复制，这里只显示其他文件
-                self.log(f"{prefix}{tr('step4_files_copied', '✅ 已复制 {count} 个 public/ww3 文件到当前工作目录').format(count=copied)}")
+                self.log(f"{prefix}{tr('step4_files_copied', '✅ 已复制 {count} 个 NML 模板文件到当前工作目录').format(count=copied)}")
             else:
                 self.log(tr("step4_no_files_to_copy", "⚠️ {path} 中没有可复制的文件。").format(path=src_dir))
 

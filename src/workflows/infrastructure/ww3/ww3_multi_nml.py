@@ -6,7 +6,7 @@ import re
 import traceback
 
 from ...support.translations import tr
-from ..runtime_config import load_config, PUBLIC_DIR
+from ..runtime_config import load_config, PUBLIC_DIR, get_nml_template_dir
 from .nml_primitives import NMLPrimitives
 
 
@@ -190,11 +190,11 @@ class WW3MultiNML(NMLPrimitives):
                     shel_path = os.path.join(self.selected_folder, "ww3_shel.nml")
                     alltype_field_list_value = self._read_type_field_list_from_shel(shel_path)
 
-                # 如果工作目录中没有，尝试从 public/ww3 读取
+                # 如果工作目录中没有，尝试从 NML 模板目录读取
                 if not alltype_field_list_value:
                     config = load_config()
-                    public_ww3_dir = config.get("PUBLIC_WW3_PATH", os.path.join(PUBLIC_DIR, "ww3"))
-                    shel_path = os.path.join(public_ww3_dir, "ww3_shel.nml")
+                    nml_template_dir = get_nml_template_dir()
+                    shel_path = os.path.join(nml_template_dir, "ww3_shel.nml")
                     alltype_field_list_value = self._read_type_field_list_from_shel(shel_path)
 
                 # 如果还是找不到，使用默认值（谱分区输出常用变量）
