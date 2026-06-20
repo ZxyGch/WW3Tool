@@ -547,6 +547,12 @@ class WW3GridNML(NMLPrimitives):
                 out.append(line)
                 i += 1
 
+            # SMC 深度取自 grid_cell.dat 第 5 列（正的水深 m）。WW3 海点判据为
+            # ZBIN = DEPTH%SF × depth ≤ ZLIM(<0)，故必须 DEPTH%SF=-1 把正深度翻成负（水）；
+            # 否则正深度全部 > ZLIM → 全判陆地 → ww3_grid 的 Status map 全 0、波浪全缺测。
+            # 上面已把模板里的 DEPTH_NML 文档块注释掉，这里追加一个生效的块强制 SF=-1。
+            out.append("\n&DEPTH_NML\n  DEPTH%SF        = -1.0\n/\n")
+
             with open(nml_path, "w", encoding="utf-8") as f:
                 f.writelines(out)
             for aux in ("grid_iside.dat", "grid_jside.dat", "grid_subtr.dat"):
