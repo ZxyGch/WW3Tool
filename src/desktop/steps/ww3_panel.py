@@ -29,7 +29,7 @@ from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
 from ..components.validators import date_yyyymmdd_validator, int_validator
 from workflows.domain.config_models import PipelineConfig
-from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES, get_ww3_version
+from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES, get_ww3_version, swap_ww3_version
 from workflows.support.translations import tr
 
 
@@ -135,13 +135,13 @@ class WW3StepPanel:
         wave_grid.setSpacing(10)
         wave_grid.setColumnStretch(0, 0)
         wave_grid.setColumnStretch(1, 1)
-        # [EN] NML template version (read-only, for display only)
-        # NML 模板版本（只读，仅展示当前使用的模板）
+        # [EN] NML template version (editable; selecting switches the public/{version}_nml template)
+        # NML 模板版本（可修改：切换后写回 params.yml 的 ww3.version，对应 public/{version}_nml 模板目录）
         self.nml_version_combo = ComboBox()
         self.nml_version_combo.addItems(list(WW3_VERSION_VALUES))
         self.nml_version_combo.setStyleSheet(combo_style())
-        self.nml_version_combo.setEnabled(False)
         left_align_combo_text(self.nml_version_combo)
+        self.nml_version_combo.currentTextChanged.connect(self._on_nml_version_changed)
         self.nml_version_label = self._field_label(tr("step4_nml_template_version", "NML 模板版本："))
         wave_grid.addWidget(self.nml_version_label, 0, 0)
         wave_grid.addWidget(self.nml_version_combo, 0, 1)
@@ -197,7 +197,9 @@ class WW3StepPanel:
         self.set_value("ww3_output", ww3.output_precision)
         self.set_value("slurm_cores", config.slurm.cores)
         self.set_value("slurm_nodes", config.slurm.nodes)
+        self.nml_version_combo.blockSignals(True)
         self.nml_version_combo.setCurrentText(get_ww3_version())
+        self.nml_version_combo.blockSignals(False)
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._replace_combo_items(self.output_scheme_combo, sorted(config.presets.output_scheme), ww3.output_scheme)
         self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
@@ -229,6 +231,21 @@ class WW3StepPanel:
         # 风场始终勾选（点击后由 toggled 信号强制恢复）
         if has_wind:
             self._forcing_checkboxes["wind"]["checkbox"].setChecked(True)
+
+    def _on_nml_version_changed(self, version: str) -> None:
+        """用户在第四步切换 NML 模板版本：写回 params.yml 的 ww3.version（→ public/{version}_nml）。
+
+        切换失败（如该版本模板目录不存在）则回退到当前生效版本。
+
+        [EN] User switched the NML template version in step 4: persist ww3.version to
+        params.yml (selects public/{version}_nml). Revert to the current version on failure.
+        """
+        if not version:
+            return
+        if not swap_ww3_version(version):
+            self.nml_version_combo.blockSignals(True)
+            self.nml_version_combo.setCurrentText(get_ww3_version())
+            self.nml_version_combo.blockSignals(False)
 
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text)
