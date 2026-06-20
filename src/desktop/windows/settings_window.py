@@ -527,15 +527,8 @@ class SettingsInterface(QWidget):
             directory=True,
             readonly=True,
             button_text=tr("open", "打开"),
-            placeholder=tr("set_ww3_config_ph", "默认路径：WW3Tool/public/ww3"),
+            placeholder=tr("set_ww3_config_ph", "默认路径：WW3Tool/public/{version}_nml"),
             open_existing=True,
-        )
-        self._path_field(
-            layout,
-            tr("set_ww3bin_label", "WW3BIN 路径："),
-            "WW3BIN_PATH",
-            directory=True,
-            placeholder=tr("set_ww3bin_ph", "为空则隐藏本地执行"),
         )
         self._path_field(layout, tr("set_jason_label", "JASON 数据路径："), "JASON_PATH", directory=True)
         self._path_field(layout, tr("set_ndbc_label", "NDBC 数据路径："), "NDBC_PATH", directory=True)
