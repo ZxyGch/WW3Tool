@@ -2337,5 +2337,10 @@
   "node_status_summary": "🖥️ Cluster Node Overview: {total} nodes total | Idle {idle} · Mixed {mixed} · Allocated {alloc} · Down {down}",
   "node_status_cpu_summary": "   CPU: {idle} cores idle · {alloc} cores allocated",
   "node_status_detail_header": "📍 Node Details:",
-  "node_status_failed": "❌ Failed to query node status: {error}"
+  "node_status_failed": "❌ Failed to query node status: {error}",
+  "ref_data_missing_title": "Missing reference_data",
+  "ref_data_missing_prompt": "Required data files (coastline, bathymetry, etc.) are missing from the reference_data directory. Grid generation cannot proceed.\n\nPath: {path}\n\nDownload from GitHub now? (~6.5 GB)",
+  "ref_data_downloading": "📥 Downloading reference_data (~6.5 GB), please wait...",
+  "ref_data_download_complete": "✅ reference_data downloaded! You can now click 'Generate Grid' to continue.",
+  "ref_data_download_failed": "❌ Failed to download reference_data: {error}"
 }

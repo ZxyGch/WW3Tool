@@ -2337,5 +2337,10 @@
   "node_status_summary": "🖥️ 集群节点概览：共 {total} 个节点 | 空闲 {idle} · 混合 {mixed} · 已分配 {alloc} · 离线 {down}",
   "node_status_cpu_summary": "   CPU：空闲 {idle} 核 · 已分配 {alloc} 核",
   "node_status_detail_header": "📍 节点详情：",
-  "node_status_failed": "❌ 查询节点状态失败：{error}"
+  "node_status_failed": "❌ 查询节点状态失败：{error}",
+  "ref_data_missing_title": "缺少 reference_data",
+  "ref_data_missing_prompt": "reference_data 目录中缺少必要的数据文件（海岸线、地形等），无法生成网格。\n\n路径：{path}\n\n是否从 GitHub 下载？（约 6.5 GB）",
+  "ref_data_downloading": "📥 正在下载 reference_data（约 6.5 GB），请耐心等待...",
+  "ref_data_download_complete": "✅ reference_data 下载完成！现在可以点击「生成网格」继续。",
+  "ref_data_download_failed": "❌ reference_data 下载失败：{error}"
 }

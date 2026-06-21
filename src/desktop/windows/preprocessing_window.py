@@ -43,8 +43,12 @@ from workflows.domain.forcing_fields import ForcingField, Step1Files
 from workflows.infrastructure.runtime_config import (
     add_recent_workdir,
     get_forcing_field_default_dir,
+    get_project_meshgen_path,
     load_config as _load_runtime_config,
     normalize_run_mode,
+)
+from workflows.infrastructure.adapters.grid_generation_adapter import (
+    REFERENCE_DATA_REQUIRED_FILES,
 )
 from workflows.support.translations import tr
 
@@ -1406,11 +1410,17 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 self._map_preview_path = None
 
     def _generate_grid(self) -> None:
+        if self._busy:
+            return
+        # [EN] Check reference_data availability before starting generation
+        # 在开始生成前检查 reference_data 是否就绪
+        if not self._reference_data_available():
+            return
         config = self._config_from_current_workdir_params(
             validation_stage="grid",
             log=False,
         )
-        if config is None or self._busy:
+        if config is None:
             return
         # Only disable the grid button — other buttons remain usable
         self._grid_button.setEnabled(False)
@@ -1420,6 +1430,70 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return self._pipeline_vm.generate_grid(config)
 
         self._runner.run(task, self._on_grid_done)
+
+    def _reference_data_available(self) -> bool:
+        """Check if reference_data files are present. Prompt to download if missing."""
+        ref_dir = Path(get_project_meshgen_path()) / "reference_data"
+        missing = [name for name in REFERENCE_DATA_REQUIRED_FILES if not (ref_dir / name).exists()]
+        if not missing:
+            return True
+        # [EN] Show dialog offering to download
+        # 弹出对话框提示用户下载
+        box = MessageBox(
+            tr("ref_data_missing_title", "缺少 reference_data"),
+            tr(
+                "ref_data_missing_prompt",
+                "reference_data 目录中缺少必要的数据文件（海岸线、地形等），无法生成网格。\n\n路径：{path}\n\n是否从 GitHub 下载？（约 6.5 GB）",
+            ).format(path=ref_dir),
+            self,
+        )
+        if not box.exec():
+            self.titleBar.raise_()
+            return False
+        self.titleBar.raise_()
+        self._download_reference_data_bg(ref_dir)
+        return False
+
+    def _download_reference_data_bg(self, ref_dir: Path) -> None:
+        """Run reference_data download in background thread with progress logging."""
+        import importlib.util as _ilu
+
+        # [EN] meshgen/ is at project root, which may not be on sys.path
+        # meshgen/ 位于项目根目录，可能不在 sys.path 中
+        _meshgen_mod = _ilu.spec_from_file_location(
+            "get_reference_data",
+            str(Path(get_project_meshgen_path()).parent / "meshgen" / "get_reference_data.py"),
+        )
+        _grd = _ilu.module_from_spec(_meshgen_mod)
+        _meshgen_mod.loader.exec_module(_grd)
+        _download_fn = _grd.download_reference_data_github
+
+        self._grid_button.setEnabled(False)
+        self._grid_button.setText(tr("ref_data_downloading", "📥 正在下载 reference_data..."))
+        self._append_log(tr("ref_data_downloading", "📥 正在下载 reference_data（约 6.5 GB），请耐心等待..."))
+
+        def task():
+            work_dir = ref_dir.parent
+            _download_fn(
+                work_dir, ref_dir, log=lambda msg, **_kw: self._pipeline_updates.post_log(str(msg))
+            )
+            return True
+
+        self._runner.run(task, self._on_ref_data_download_done)
+
+    def _on_ref_data_download_done(self, result: object) -> None:
+        self._grid_button.setText(tr("step2_create_grid", "生成网格"))
+        self._grid_button.setEnabled(True)
+        if result is True:
+            self._append_log(tr("ref_data_download_complete", "✅ reference_data 下载完成！现在可以点击「生成网格」继续。"))
+        elif isinstance(result, Exception):
+            self._show_error(
+                tr("ref_data_download_failed", "❌ reference_data 下载失败：{error}").format(error=result)
+            )
+        elif isinstance(result, dict) and result.get("error"):
+            self._show_error(
+                tr("ref_data_download_failed", "❌ reference_data 下载失败：{error}").format(error=result["error"])
+            )
 
     def _visualize_grid(self) -> None:
         config = self._config_from_current_workdir_params(validation_stage="grid")
