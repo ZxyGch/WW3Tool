@@ -171,7 +171,14 @@ class MapPointPickerDialog(MessageBoxBase):
     def _on_click(self, event) -> None:
         if event.inaxes != self._ax:
             return
-        lon, lat = event.xdata, event.ydata
+        # [EN] The axes projection uses PlateCarree(central_longitude=CL), so
+        # event.xdata/ydata are in projected space (x shifted by -CL).
+        # Recover actual lon/lat from proj4_params.
+        # 投影使用 PlateCarree(central_longitude=CL)，event.xdata 偏移了 -CL，
+        # 通过 proj4_params 还原经纬度。
+        cl = self._ax.projection.proj4_params.get("lon_0", 0)
+        lon = event.xdata + cl
+        lat = event.ydata
         if lon is None or lat is None or np.isnan(lon) or np.isnan(lat):
             return
         b = self._bounds
