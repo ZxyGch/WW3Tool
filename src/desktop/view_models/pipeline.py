@@ -573,7 +573,7 @@ class PipelineViewModel:
         # 仅通过正则修改特定字段，其余内容（包括 desktop 段、注释、顺序）保持不变。
         content = re.sub(
             r"(^workdir:\s*\n  path:\s*).*",
-            rf"\g<1>{workdir}",
+            r"\g<1>" + str(workdir).replace("\\", "\\\\"),
             content, count=1, flags=re.MULTILINE,
         )
         for field in ("wind", "current", "level", "ice"):

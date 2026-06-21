@@ -71,7 +71,7 @@ def ensure_workdir(path: str) -> tuple[Path, bool]:
     content = params_yml.read_text(encoding="utf-8")
     content = re.sub(
         r"(^workdir:\s*\n  path:\s*).*",
-        rf"\g<1>{workdir}",
+        r"\g<1>" + str(workdir).replace("\\", "\\\\"),
         content,
         count=1,
         flags=re.MULTILINE,
