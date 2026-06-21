@@ -122,7 +122,7 @@ class WW3TrncNML(NMLPrimitives):
 
             # [EN] Write to file
             # 写入文件
-            with open(track_file_path, 'w', encoding='utf-8') as f:
+            with open(track_file_path, 'w', encoding='utf-8', newline='\n') as f:
                 f.writelines(lines)
 
             self.log(tr("track_file_generated", "✅ 已生成 track_i.ww3 文件").format(path=track_file_path))
@@ -307,7 +307,7 @@ class WW3TrncNML(NMLPrimitives):
                 i += 1
 
             if modified:
-                with open(ww3_trnc_path, "w", encoding="utf-8") as f:
+                with open(ww3_trnc_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 self.log(tr("step4_ww3_trnc_track_updated", "✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '{start}', TRACK%TIMESTRIDE = '{stride}'").format(start=start_datetime, stride=output_precision))
 

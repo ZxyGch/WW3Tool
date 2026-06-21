@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import posixpath
 import shlex
 import stat
 import sys
@@ -344,12 +345,15 @@ class SshClient:
 
     # ── upload ────────────────────────────────────────────────────────────────
 
-    # Files that must have \r stripped before upload (Windows-edited shell scripts)
+    # Files / extensions that must have \r stripped before upload
+    # (Windows-edited shell scripts, Fortran namelists, and input files)
     _UNIX_EOL_FILES = frozenset({"server.sh", "local.sh", "export.sh", "ww3.slurm", "ww3_ntfy_watch.sh"})
+    _UNIX_EOL_EXTS = frozenset({".nml", ".inp"})
 
     def _put_file(self, sftp, local_file: str, remote_file: str) -> None:
         fname = os.path.basename(local_file)
-        if fname in self._UNIX_EOL_FILES:
+        _, ext = os.path.splitext(fname)
+        if fname in self._UNIX_EOL_FILES or ext.lower() in self._UNIX_EOL_EXTS:
             with open(local_file, "rb") as fh:
                 content = fh.read()
             if b"\r" in content:
@@ -392,7 +396,9 @@ class SshClient:
 
             for root, dirs, files in os.walk(local_dir):
                 rel = os.path.relpath(root, local_dir)
-                remote_path = os.path.join(remote_dir, rel).replace("\\", "/")
+                # [EN] Use posixpath for remote Linux paths; convert Windows-style rel to POSIX
+                rel_posix = rel.replace(os.sep, "/") if os.sep != "/" else rel
+                remote_path = posixpath.join(remote_dir, rel_posix) if rel_posix != "." else remote_dir
                 try:
                     self._ensure_remote_dir(sftp, remote_path)
                 except Exception as exc:
@@ -401,11 +407,11 @@ class SshClient:
 
                 for fname in files:
                     local_file = os.path.join(root, fname)
-                    remote_file = os.path.join(remote_path, fname).replace("\\", "/")
+                    remote_file = posixpath.join(remote_path, fname)
                     try:
                         self._put_file(sftp, local_file, remote_file)
                         uploaded += 1
-                        log(f"  ↑ {os.path.join(rel, fname).replace(os.sep, '/')}  [{uploaded}/{total_files}]")
+                        log(f"  ↑ {posixpath.join(rel_posix, fname) if rel_posix != '.' else fname}  [{uploaded}/{total_files}]")
                     except Exception as exc:
                         log(f"❌ 上传 {fname} 失败: {exc}")
         finally:
@@ -440,14 +446,16 @@ class SshClient:
 
             for root, _dirs, files in walker:
                 rel = os.path.relpath(root, local_dir)
-                remote_path = remote_dir if rel == "." else os.path.join(remote_dir, rel).replace("\\", "/")
+                # [EN] Use posixpath for remote Linux paths; convert Windows-style rel to POSIX
+                rel_posix = rel.replace(os.sep, "/") if os.sep != "/" else rel
+                remote_path = remote_dir if rel_posix == "." else posixpath.join(remote_dir, rel_posix)
                 self._ensure_remote_dir(sftp, remote_path)
                 for fname in files:
-                    rel_file = fname if rel == "." else os.path.join(rel, fname).replace(os.sep, "/")
+                    rel_file = fname if rel_posix == "." else posixpath.join(rel_posix, fname)
                     if not pattern_fn(rel_file):
                         continue
                     local_file = os.path.join(root, fname)
-                    remote_file = os.path.join(remote_path, fname).replace("\\", "/")
+                    remote_file = posixpath.join(remote_path, fname)
                     self._put_file(sftp, local_file, remote_file)
                     uploaded += 1
                     log(f"  ↑ {rel_file}")
@@ -485,7 +493,7 @@ class SshClient:
 
             os.makedirs(local_dir, exist_ok=True)
             for fname in matched:
-                rpath = f"{remote_dir.rstrip('/')}/{fname}"
+                rpath = posixpath.join(remote_dir, fname)
                 lpath = os.path.join(local_dir, fname)
                 try:
                     size = sftp.stat(rpath).st_size or 0

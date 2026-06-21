@@ -150,7 +150,7 @@ Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然
 
 
 
-## 5. 端到端工作流
+## 5. 内部实现逻辑
 
 一次完整流程的典型链路：
 
@@ -182,6 +182,8 @@ flowchart LR
   I --> J[后处理绘图
   波高图 / 谱图 / 检验等]
 ```
+我会在接下来的章节中，详细的和你说明每一步具体在做什么，让你放心的使用这个软件
+
 
 
 ### 5.1 创建工作目录
@@ -204,7 +206,21 @@ python3 run.py workdir [work_dir_name]    # 创建并加载工作目录，默认
 
 打开已有工作目录时，程序自动扫描目录中的 params.yml 配置来恢复 GUI 表单
 
+---
 
+为了防止忘记创建工作目录就直接使用 Shell 或 CLI 指令，我加了一个校验当前目录是否是 WW3Tool 根目录，这样就不会误用根目录 params.yml 或忘记创建工作目录.
+
+```bash
+python3 run.py prepare-forcing 
+    
+---------------------------------------------------------------
+
+Using project virtual environment: /Users/zxy/ocean/Paper/WW3Tool/.venv
+Dependency check passed.
+Parameter error: Cannot use the repository root params.yml directly (it is a template file).
+Please create or load a working directory first:
+  python3 run.py workdir my_workdir
+```
 
 
 
@@ -217,7 +233,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ```
 
 强迫场导入分为两条路径：**风场**走独立的标准化流程（完整重写），**流场/水位场/冰场**走通用的复制+修复流程。
-
+ 
 
 
 #### 风场导入
@@ -261,6 +277,7 @@ python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），`VariableDetector` 会检测所有存在的场类型：
 
 - **自动关联**（`auto_associate=True`，默认）：文件名使用下划线连接所有检测到的场，如 `current_level.nc`、`wind_current_level_ice.nc`，同时多个强迫场槽位指向同一个文件
+
 - **风场特殊处理**：多场文件中如果包含风场，除了复制合并文件外，还会额外提取一个标准化后的 `wind.nc`（仅含风场），因为 `ww3_prnc` 处理风场时需要精确的维度格式
 
 #### 工作目录扫描
@@ -291,21 +308,17 @@ python3 run.py recommend-cfl  [work_dir_name]                 # 推荐 CFL 时�
 
 所有网格生成结果自动缓存到 `meshgen/cache/`，以参数 hash 为 key，避免重复计算。
 
+
+
 #### 结构化矩形网格
-
-
-
-- 调用 `pygridgen` 生成四个文件到工作目录：
-  - `grid.bot` — ASCII 水深数据（单位：米，实际值 = 文件值 / 1000），尺寸 Ny × Nx
-  - `grid.obst` — x/y 方向障碍物值（0-1 之间的比例），尺寸 Ny × Nx
-  - `grid.mask_nobound` — 陆海掩膜（0 = 陆地，1 = 海洋），尺寸 Ny × Nx
-  - `grid.meta` — 网格描述文件（实质是 `ww3_grid.nml` 的子集，包含 NX/NY/SX/SY/X0/Y0 等），Step 4 会同步这些参数到完整的 `ww3_grid.nml`
 
 关于嵌套网格，后续将进行重构，目前存在问题。
 
 - 支持最多两层嵌套网格（coarse 外网格 + fine 内网格），使用 Two-way nesting，收缩系数默认 1.1x（可在设置页面修改）
 
 - 嵌套模式下在工作目录创建 `coarse/` 和 `fine/` 子目录，各自的网格文件存放在对应子目录中
+
+![](public/resource/README-media/grid_structure.png)
 
 
 
@@ -314,10 +327,17 @@ python3 run.py recommend-cfl  [work_dir_name]                 # 推荐 CFL 时�
 
 - 基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
 
+![](public/resource/README-media/grid_unst_bathymetry.png)
+
+![](public/resource/README-media/grid_unst_structure.png)
+
+
 
 #### SMC 网格
 
 基于 SMCGTools 生成
+
+![](public/resource/README-media/grid_smc_bathymetry.png)
 
 ![](public/resource/README-media/grid_smc_structure.png)
 

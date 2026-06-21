@@ -675,7 +675,7 @@ class ServerSh(NMLPrimitives):
                     if "ww3_prnc" in st:
                         lines[i] = exe_prnc
 
-            with open(script_path, "w", encoding="utf-8") as f:
+            with open(script_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(lines)
 
             self.log(tr("script_applied", "✅ 已应用 {selected} 到脚本：{path}").format(selected=selected, path=script_path))

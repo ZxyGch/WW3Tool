@@ -445,7 +445,7 @@ class WW3MultiNML(NMLPrimitives):
 
                 new_lines.append(line)
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             # 构建日志消息

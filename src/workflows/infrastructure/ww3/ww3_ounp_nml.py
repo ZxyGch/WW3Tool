@@ -219,7 +219,7 @@ class WW3OunpNML(NMLPrimitives):
 
             # [EN] Write to file (clear existing content)
             # 写入文件（清空原有内容）
-            with open(points_list_path, "w", encoding="utf-8") as f:
+            with open(points_list_path, "w", encoding="utf-8", newline="\n") as f:
                 for point in points_data:
                     # [EN] Format: longitude latitude 'name'
                     # 格式：经度 纬度 '名称'
@@ -369,7 +369,7 @@ class WW3OunpNML(NMLPrimitives):
                     new_lines.insert(insert_index, f"  POINT%TIMESPLIT        =  {timesplit_value}\n")
 
             if modified_start or modified_stride or modified_split or removed_spectra_type:
-                with open(ww3_ounp_path, "w", encoding="utf-8") as f:
+                with open(ww3_ounp_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 if removed_spectra_type:
                     self.log(tr("step4_ww3_ounp_drop_spectra_type", "✅ 已按 WW3 {ver} 从 ww3_ounp.nml 移除不支持的 SPECTRA%TYPE 行").format(ver=ww3_version))

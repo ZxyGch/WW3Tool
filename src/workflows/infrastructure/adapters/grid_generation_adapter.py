@@ -287,7 +287,7 @@ def _run_pygridgen_subprocess(
         "import json, sys; "
         f"sys.path.insert(0, {json.dumps(str(pygridgen_dir))}); "
         "from create_grid import create_grid; "
-        f"create_grid(**json.load(open({json.dumps(cfg_path)})))"
+        f"create_grid(**json.load(open({json.dumps(cfg_path)}, encoding='utf-8')))"
     )
     try:
         _run_subprocess([sys.executable, "-c", runner], out_dir, logger, log_command=False)

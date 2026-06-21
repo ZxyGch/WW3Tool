@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 import tempfile
 from datetime import datetime
@@ -830,6 +831,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _server_path_with_workdir(self, base_path: str) -> str:
         # [EN] Append current workdir name to server base path (do not append again if last segment matches).
+        # [EN] Use posixpath since server paths are always Unix-style, even on Windows.
         """在服务器基础路径后追加当前工作目录名（末段相同时不重复追加）。"""
         if not base_path:
             return base_path
@@ -839,10 +841,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if workdir:
             name = os.path.basename(os.path.normpath(workdir))
             if name:
-                base_name = os.path.basename(base_path.rstrip("/"))
+                base_name = posixpath.basename(base_path.rstrip("/"))
                 if base_name == name:
                     return base_path.rstrip("/")
-                return base_path.rstrip("/") + "/" + name
+                return posixpath.join(base_path.rstrip("/"), name)
         return base_path
 
     def _refresh_server_path(self) -> None:

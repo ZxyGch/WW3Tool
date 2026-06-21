@@ -113,7 +113,7 @@ class WW3OunfNML(NMLPrimitives):
                     # 在 / 之前插入 FIELD%TIMESPLIT
                     new_lines.insert(insert_index, f"  FIELD%TIMESPLIT        =  {timesplit_value}\n")
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""

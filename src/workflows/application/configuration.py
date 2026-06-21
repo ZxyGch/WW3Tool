@@ -1208,9 +1208,13 @@ server:
 # [EN] External tool and data directory paths (migrated from config.json, managed per workspace)
 # 外部工具与数据目录路径（从 config.json 迁移，按工作区管理）
 paths:
-  matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
-  ww3bin_path: /Users/zxy/ocean/WW3/build/ST2/bin
-  jason_path: /Users/zxy/ocean/Paper/WW3Tool/jason3
-  ndbc_path: /Users/zxy/ocean/Paper/WW3Tool/ndbc
+  matlab_path:              # [EN] Path to MATLAB executable (e.g. /usr/local/MATLAB/R2024a/bin/matlab)
+                            # MATLAB 可执行文件路径
+  ww3bin_path:              # [EN] Directory containing WW3 ST binaries (e.g. ~/WW3/build/ST2/bin)
+                            # WW3 ST 可执行文件目录
+  jason_path:               # [EN] Local storage for Jason-3 data (auto-created under project jason3/ when empty)
+                            # Jason-3 本地存储目录（为空时自动在项目 jason3/ 下创建）
+  ndbc_path:                # [EN] Local storage for NDBC data (auto-created under project ndbc/ when empty)
+                            # NDBC 本地存储目录（为空时自动在项目 ndbc/ 下创建）
   jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
 """

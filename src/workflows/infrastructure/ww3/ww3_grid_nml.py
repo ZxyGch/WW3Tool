@@ -113,7 +113,7 @@ class WW3GridNML(NMLPrimitives):
                 out.append(line)
                 i += 1
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(out)
         except Exception as e:
             self.log(
@@ -553,7 +553,7 @@ class WW3GridNML(NMLPrimitives):
             # 上面已把模板里的 DEPTH_NML 文档块注释掉，这里追加一个生效的块强制 SF=-1。
             out.append("\n&DEPTH_NML\n  DEPTH%SF        = -1.0\n/\n")
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(out)
             for aux in ("grid_iside.dat", "grid_jside.dat", "grid_subtr.dat"):
                 ap = os.path.join(work_dir, aux)
@@ -591,7 +591,7 @@ class WW3GridNML(NMLPrimitives):
                     )
                 else:
                     new_lines.append(line)
-            with open(namelists_path, "w", encoding="utf-8") as f:
+            with open(namelists_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
         except Exception as e:
             self.log(
@@ -734,7 +734,7 @@ class WW3GridNML(NMLPrimitives):
 
                 new_lines.append(line)
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
@@ -815,7 +815,7 @@ class WW3GridNML(NMLPrimitives):
 
                 new_lines.append(line)
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             if clos != "NONE":

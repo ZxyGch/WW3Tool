@@ -290,7 +290,7 @@ class WW3PrncNML(NMLPrimitives):
                 new_lines.append(line)
 
             # 写入文件
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
@@ -395,7 +395,7 @@ class WW3PrncNML(NMLPrimitives):
                     # 不在 FORCING_NML 块中的行直接添加
                     new_lines.append(line)
 
-            with open(nml_path, "w", encoding="utf-8") as f:
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
@@ -688,7 +688,7 @@ class WW3PrncNML(NMLPrimitives):
                         new_lines.append(line)
 
                     # 写回文件
-                    with open(output_path, "w", encoding="utf-8") as f:
+                    with open(output_path, "w", encoding="utf-8", newline="\n") as f:
                         f.writelines(new_lines)
 
                     grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""

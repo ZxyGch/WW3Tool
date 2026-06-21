@@ -157,7 +157,7 @@ class NamelistsNML(NMLPrimitives):
                 new_lines.append(line)
 
             if modified:
-                with open(namelists_path, "w", encoding="utf-8") as f:
+                with open(namelists_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 self.log(tr("step4_namelists_e3d_updated", "✅ 已修改 namelists.nml：将 &OUTS 中的 E3D 设为 1"))
                 return True

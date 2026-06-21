@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import shlex
 import hashlib
 import re
@@ -82,15 +83,15 @@ def _resolve_remote_dir(config: PipelineConfig) -> str:
                 tr("remote_dir_missing", "❌ server.remote_dir 和 server.default_remote_dir 均未配置。请在 params.yml 的 server: 段填写远程工作目录。")
             )
         if workdir_name:
-            tail = os.path.basename(base.rstrip("/"))
-            remote_dir = base.rstrip("/") if tail == workdir_name else base.rstrip("/") + "/" + workdir_name
+            tail = posixpath.basename(base.rstrip("/"))
+            remote_dir = base.rstrip("/") if tail == workdir_name else posixpath.join(base.rstrip("/"), workdir_name)
         else:
             remote_dir = base
     elif workdir_name:
         # remote_dir 非空但未包含工作目录名 → 自动追加
-        tail = os.path.basename(remote_dir.rstrip("/"))
+        tail = posixpath.basename(remote_dir.rstrip("/"))
         if tail != workdir_name:
-            remote_dir = remote_dir.rstrip("/") + "/" + workdir_name
+            remote_dir = posixpath.join(remote_dir.rstrip("/"), workdir_name)
 
     if config.server.user and (remote_dir == "~" or remote_dir.startswith("~/")):
         remote_dir = f"/home/{config.server.user}{remote_dir[1:]}"

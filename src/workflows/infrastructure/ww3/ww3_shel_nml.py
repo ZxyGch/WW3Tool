@@ -49,7 +49,7 @@ class WW3ShelNML(NMLPrimitives):
                     else:
                         new_lines.append(line)
                 if modified:
-                    with open(ww3_shel_path, "w", encoding="utf-8") as f:
+                    with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                         f.writelines(new_lines)
                     modified_any = True
             except Exception:
@@ -72,7 +72,7 @@ class WW3ShelNML(NMLPrimitives):
                     else:
                         new_lines.append(line)
                 if modified:
-                    with open(ww3_ounf_path, "w", encoding="utf-8") as f:
+                    with open(ww3_ounf_path, "w", encoding="utf-8", newline="\n") as f:
                         f.writelines(new_lines)
                     modified_any = True
             except Exception:
@@ -187,7 +187,7 @@ class WW3ShelNML(NMLPrimitives):
 
                 new_lines.append(line)
 
-            with open(path, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             # 检查是否是谱空间逐点计算模式，如果是则合并日志
@@ -352,7 +352,7 @@ class WW3ShelNML(NMLPrimitives):
                 new_lines.append("/\n")
 
             # 写入文件
-            with open(ww3_shel_path, "w", encoding="utf-8") as f:
+            with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
@@ -452,7 +452,7 @@ class WW3ShelNML(NMLPrimitives):
                 i += 1
 
             if modified_point_file:
-                with open(ww3_shel_path, "w", encoding="utf-8") as f:
+                with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 if not silent:
                     log_msg = tr("step4_ww3_shel_type_point_only", "✅ 已修改 ww3_shel.nml：添加 TYPE%POINT%FILE = 'points.list'")
@@ -584,7 +584,7 @@ class WW3ShelNML(NMLPrimitives):
                 i += 1
 
             if modified:
-                with open(ww3_shel_path, "w", encoding="utf-8") as f:
+                with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 if not silent:
                     self.log(tr("step4_ww3_shel_date_updated", "✅ 已修改 ww3_shel.nml：添加 DATE%POINT 和 DATE%BOUNDARY（谱空间逐点计算模式）"))
@@ -728,7 +728,7 @@ class WW3ShelNML(NMLPrimitives):
                 i += 1
 
             if modified:
-                with open(ww3_shel_path, "w", encoding="utf-8") as f:
+                with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 self.log(tr("step4_ww3_shel_date_track_updated", "✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（航迹模式）"))
             else:

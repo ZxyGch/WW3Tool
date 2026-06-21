@@ -218,7 +218,7 @@ class StepFourServiceMixin:
                         new_lines.append(line)
                 
                 if modified:
-                    with open(ww3_shel_path, "w", encoding="utf-8") as f:
+                    with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                         f.writelines(new_lines)
                     success_count += 1
                 else:
@@ -251,7 +251,7 @@ class StepFourServiceMixin:
                         new_lines.append(line)
                 
                 if modified:
-                    with open(ww3_ounf_path, "w", encoding="utf-8") as f:
+                    with open(ww3_ounf_path, "w", encoding="utf-8", newline="\n") as f:
                         f.writelines(new_lines)
                     success_count += 1
                 else:
