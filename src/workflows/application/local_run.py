@@ -1,12 +1,12 @@
 """本地运行用例：执行 local.sh 与 ww3_ounf/ounp/trnc。
 
 从 ``PipelineConfig`` 取工作目录、从 ``config.json`` 取 ``WW3BIN_PATH``，调用
-``LocalRunService``。``local.sh`` 缺失时回退仓库 ``public/ww3/local.sh``。
+``LocalRunService``。``local.sh`` 缺失时回退 NML 模板目录中的 ``local.sh``。
 
 [EN] Local run use case: execute local.sh and ww3_ounf/ounp/trnc.
 
 Takes the workdir from ``PipelineConfig`` and ``WW3BIN_PATH`` from ``config.json``,
-calls ``LocalRunService``. Falls back to repository ``public/ww3/local.sh`` when
+calls ``LocalRunService``. Falls back to NML template directory's ``local.sh`` when
 ``local.sh`` is missing.
 """
 
@@ -38,7 +38,7 @@ def _bin_dir(config: Optional[PipelineConfig] = None, override: Optional[str] = 
 
 
 def _fallback_script() -> str:
-    return str(Path(runtime_config.get_project_root()) / "public" / "ww3" / "local.sh")
+    return str(Path(runtime_config.get_nml_template_dir()) / "local.sh")
 
 
 def run_local(

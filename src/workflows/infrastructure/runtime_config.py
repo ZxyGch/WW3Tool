@@ -1282,26 +1282,39 @@ def get_default_workdir(create_if_not_exists=True):
     返回:
         成功时为绝对路径字符串；无法创建或配置无效时为 None
     """
+    fallback = DEFAULT_CONFIG.get("DEFAULT_WORKDIR", os.path.join(PROJECT_ROOT, "workSpace"))
+
     # 从根 params.yml 的 workdir.default_workspace 读取（已从 desktop 段移到 workdir 段）。
     raw = (_read_root_params().get("workdir") or {}).get("default_workspace")
     workdir = str(raw).strip() if raw else ""
 
     # 如果配置中的路径为空或无效，使用默认值
     if not workdir:
-        workdir = DEFAULT_CONFIG.get("DEFAULT_WORKDIR", os.path.join(PROJECT_ROOT, "workSpace"))
-    
+        workdir = fallback
+
     # 规范化路径
     workdir = os.path.normpath(workdir.strip())
-    
+
     # 如果目录不存在，尝试创建
     if not os.path.exists(workdir):
         if create_if_not_exists:
             try:
                 os.makedirs(workdir, exist_ok=True)
             except Exception as e:
+                # [EN] Cross-platform fallback: the configured path (e.g. macOS /Volumes/...)
+                # cannot be created on the current OS; try PROJECT_ROOT/workSpace instead.
+                # 跨平台回退：配置的路径（如 macOS 的 /Volumes/...）在当前系统无法创建，
+                # 改用 PROJECT_ROOT/workSpace。
                 print(f"无法创建默认工作目录 {workdir}: {e}")
-                return None
+                workdir = os.path.normpath(fallback)
+                if not os.path.exists(workdir):
+                    try:
+                        os.makedirs(workdir, exist_ok=True)
+                    except Exception as e2:
+                        print(f"无法创建回退工作目录 {workdir}: {e2}")
+                        return None
+                return workdir
         else:
             return None
-    
+
     return workdir

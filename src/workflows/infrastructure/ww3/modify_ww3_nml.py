@@ -47,7 +47,7 @@ from __future__ import annotations
 import os
 import shutil
 
-from ..runtime_config import PUBLIC_DIR
+from ..runtime_config import PUBLIC_DIR, get_nml_template_dir
 from ...support.translations import tr
 from .nml_primitives import NMLPrimitives
 from .ww3_grid_nml import WW3GridNML
@@ -328,13 +328,13 @@ class ModifyWW3NML(
             self._modify_ww3_trnc_track()
 
     def copy_public_and_meta_to_grid(self):
-        """复制 public/ww3 模板并按网格类型初始化 ww3_grid.nml（普通网格专用入口）。
+        """复制 NML 模板并按网格类型初始化 ww3_grid.nml（普通网格专用入口）。
 
         嵌套网格时由 ``_apply_all_params_nested`` 接管，此处直接返回。
         普通网格流程：复制 public 文件 → 按非结构 / SMC / RECT 分支改写 ww3_grid.nml
         并同步 grid.meta 或设置 namelists.nml 标志位。
 
-        [EN] Copy public/ww3 templates and initialize ww3_grid.nml by grid type
+        [EN] Copy NML templates and initialize ww3_grid.nml by grid type
         (entry point for normal grids only).
 
         For nested grids, ``_apply_all_params_nested`` takes over; this method returns directly.
@@ -395,9 +395,9 @@ class ModifyWW3NML(
 
         [EN] Copy public files (server.sh, ww3_multi.nml, local.sh) to working directory.
         """
-        # [EN] Get the public/ww3 path under the project root directory
-        # 获取项目根目录下的 public/ww3 路径
-        src_dir = os.path.join(PUBLIC_DIR, "ww3")
+        # [EN] Get the NML template directory
+        # 获取 NML 模板目录路径
+        src_dir = get_nml_template_dir()
         scripts_dir = os.path.join(PUBLIC_DIR, "scripts")
         if not os.path.exists(src_dir):
             self.log(tr("directory_not_found", "⚠️ 未找到目录：{path}").format(path=src_dir))

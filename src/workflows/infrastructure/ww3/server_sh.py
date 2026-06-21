@@ -6,7 +6,7 @@ import re
 import shutil
 
 from ...support.translations import tr
-from ..runtime_config import PUBLIC_DIR, load_full_config
+from ..runtime_config import PUBLIC_DIR, get_nml_template_dir, load_full_config
 from .nml_primitives import NMLPrimitives
 
 
@@ -409,7 +409,7 @@ class ServerSh(NMLPrimitives):
         # 获取 server.sh 的默认模板路径（优先使用 public/scripts/server.sh）
         server_script_path = os.path.normpath(os.path.join(PUBLIC_DIR, "scripts", "server.sh"))
         if not os.path.exists(server_script_path):
-            server_script_path = os.path.normpath(os.path.join(PUBLIC_DIR, "ww3", "server.sh"))
+            server_script_path = os.path.normpath(os.path.join(get_nml_template_dir(), "server.sh"))
 
         # [EN] If server.sh is not in the working directory, copy it there
         # 如果 server.sh 不在工作目录，复制到工作目录
