@@ -910,6 +910,29 @@ _ROOT_PATH_PARAMS_DEFAULT = (
 )
 
 
+def _is_local_path_compatible(path: str) -> bool:
+    """检查本地路径是否与当前操作系统兼容。
+
+    用于检测跨平台残留路径（如 Windows 上的 macOS 路径 /Volumes/...、
+    /Users/...，或 POSIX 上的 C:\\... 路径）。
+
+    [EN] Detect paths left over from another OS (e.g. macOS /Volumes/...
+    on Windows, or C:\\... on POSIX).
+    """
+    if not path:
+        return True
+    path = path.strip()
+    if os.name == "nt":
+        # Windows: POSIX 绝对路径（/Users/、/Volumes/、/Applications/ 等）不兼容
+        if path.startswith("/") and not path.startswith("//"):
+            return False
+    else:
+        # POSIX: Windows 驱动器路径（C:\、D:\）不兼容
+        if len(path) >= 2 and path[1] == ":" and path[0].isalpha():
+            return False
+    return True
+
+
 def sanitize_root_params_paths() -> list[str]:
     """校验根 params.yml 的本地路径参数（shell/CLI 启动时调用）。
 
@@ -930,7 +953,10 @@ def sanitize_root_params_paths() -> list[str]:
         if not isinstance(sec, dict):
             continue
         val = sec.get(key)
-        if isinstance(val, str) and val.strip() and not os.path.exists(os.path.expanduser(val.strip())):
+        if isinstance(val, str) and val.strip() and (
+            not os.path.exists(os.path.expanduser(val.strip()))
+            or not _is_local_path_compatible(val)
+        ):
             sec[key] = None
             changed.append(f"{section}.{key}=null")
 
@@ -941,8 +967,13 @@ def sanitize_root_params_paths() -> list[str]:
             root[section] = sec
         val = sec.get(key)
         is_str = isinstance(val, str) and val.strip()
-        # 为空，或指向不存在路径 → 回填默认（已是默认值则不动，保证幂等）
-        if (not is_str) or (not os.path.exists(os.path.expanduser(val.strip()))):
+        # 为空、指向不存在路径、或跨平台不兼容 → 回填默认（已是默认值则不动，保证幂等）
+        needs_reset = (
+            (not is_str)
+            or (not os.path.exists(os.path.expanduser(val.strip())))
+            or (not _is_local_path_compatible(val))
+        )
+        if needs_reset:
             if sec.get(key) != default:
                 sec[key] = default
                 changed.append(f"{section}.{key}={default}")
@@ -1288,8 +1319,8 @@ def get_default_workdir(create_if_not_exists=True):
     raw = (_read_root_params().get("workdir") or {}).get("default_workspace")
     workdir = str(raw).strip() if raw else ""
 
-    # 如果配置中的路径为空或无效，使用默认值
-    if not workdir:
+    # 如果配置中的路径为空、跨平台不兼容、或无效，使用默认值
+    if not workdir or not _is_local_path_compatible(workdir):
         workdir = fallback
 
     # 规范化路径
