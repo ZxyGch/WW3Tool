@@ -21,6 +21,8 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
+from ...support.translations import tr
+
 LogCallback = Callable[[str], None]
 
 # 各工具运行前需存在的输出文件（任一即可）。
@@ -289,9 +291,9 @@ class LocalRunService:
 
         elapsed = time.time() - start_t
         if rc == 0:
-            log(f"✅ 本地 WW3 运行完成 ({elapsed:.1f}s)")
+            log(tr("step5_workflow_done", "✅ 本地 WW3 运行完成 ({elapsed:.1f}s)").format(elapsed=elapsed))
         else:
-            log(f"❌ 本地 WW3 运行失败 (rc={rc}, {elapsed:.1f}s)")
+            log(tr("step5_workflow_failed", "❌ 本地 WW3 运行失败 (rc={rc}, {elapsed:.1f}s)").format(rc=rc, elapsed=elapsed))
         return rc
 
     # ---- regular grid workflow ----

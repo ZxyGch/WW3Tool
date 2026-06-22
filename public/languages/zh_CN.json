@@ -649,6 +649,8 @@
   "step5_output_read_failed": "⚠️ 输出读取失败：{error}",
   "step5_local_run_completed": "✅ 本地 WW3 运行已完成",
   "step5_local_run_failed": "❌ 本地 WW3 运行失败（返回码 {code}）",
+  "step5_workflow_done": "✅ 本地 WW3 运行完成 ({elapsed:.1f}s)",
+  "step5_workflow_failed": "❌ 本地 WW3 运行失败 (rc={rc}, {elapsed:.1f}s)",
   "step5_bash_not_found": "❌ 找不到 bash 命令，无法执行脚本",
   "step5_local_run_error": "❌ 本地 WW3 运行出错：{error}",
   "step5_output_files_missing_point_or_grid": "❌ 当前文件夹未找到输出文件：out_pnt.ww3 或 out_grd.ww3",

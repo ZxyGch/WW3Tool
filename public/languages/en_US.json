@@ -660,6 +660,8 @@
   "step5_output_read_failed": "⚠️ Failed to read output: {error}",
   "step5_local_run_completed": "✅ Local WW3 run completed",
   "step5_local_run_failed": "❌ Local WW3 run failed (code {code})",
+  "step5_workflow_done": "✅ Local WW3 run completed ({elapsed:.1f}s)",
+  "step5_workflow_failed": "❌ Local WW3 run failed (rc={rc}, {elapsed:.1f}s)",
   "step5_bash_not_found": "❌ Bash not found; cannot execute script",
   "step5_local_run_error": "❌ Local WW3 run error: {error}",
   "step5_output_files_missing_point_or_grid": "❌ Output files not found: out_pnt.ww3 or out_grd.ww3",

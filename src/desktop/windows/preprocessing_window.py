@@ -1925,7 +1925,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _on_local_run_done(self, result: object) -> None:
         self._local_run_panel.local_run_button.setText(tr("step5_local_run", "本地运行"))
         self._local_run_panel.local_run_button.setEnabled(True)
-        self._on_job_done(result)
+        # [EN] No InfoBar for local runs — all output is already in the log.
+        self._set_busy(False)
+        self._sync_step5_if_needed()
 
     def _local_stop(self) -> None:
         if self._local_vm.stop():
