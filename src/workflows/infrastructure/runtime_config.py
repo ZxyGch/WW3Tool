@@ -676,6 +676,8 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#     dx / dy – cell size in degrees (structured) or base spacing.\n"
      "#     lon     – [west, east] longitude bounds in degrees.\n"
      "#     lat     – [south, north] latitude bounds in degrees.\n"
+     "#   inner     – inner (nested) high-res domain (grid_type='nested');\n"
+     "#               same dx/dy/lon/lat fields as outer.\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("  structured:",
      "  # Structured grid options:\n"

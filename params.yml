@@ -212,6 +212,8 @@ forcing:
 #     dx / dy – cell size in degrees (structured) or base spacing.
 #     lon     – [west, east] longitude bounds in degrees.
 #     lat     – [south, north] latitude bounds in degrees.
+#   inner     – inner (nested) high-res domain (grid_type='nested');
+#               same dx/dy/lon/lat fields as outer.
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -228,6 +230,15 @@ grid:
     lat:
     - 10.0
     - 30.0
+  inner:
+    dx: 0.025
+    dy: 0.025
+    lon:
+    - 115.0
+    - 125.0
+    lat:
+    - 15.0
+    - 25.0
   # Structured grid options:
   #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
   #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).

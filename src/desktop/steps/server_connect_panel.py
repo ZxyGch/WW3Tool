@@ -436,7 +436,14 @@ class ServerConnectPanel:
         selected = self.cpu_combo.currentText().strip()
         self.cpu_combo.clear()
         self.cpu_combo.addItems(deduped)
-        self.cpu_combo.setCurrentText(selected if selected in deduped else deduped[0])
+        # 解析到的 CPU 中若含默认 CPU 则优先选中默认 CPU；否则保留原选择，再否则取第一个
+        default_cpu = getattr(self, "_default_cpu", "")
+        if default_cpu and default_cpu in deduped:
+            self.cpu_combo.setCurrentText(default_cpu)
+        elif selected in deduped:
+            self.cpu_combo.setCurrentText(selected)
+        else:
+            self.cpu_combo.setCurrentText(deduped[0])
 
     def update_queue_table(self, lines: list) -> None:
         # [EN] Update task queue display. lines: squeue output lines.
