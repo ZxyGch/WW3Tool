@@ -2,6 +2,20 @@
 
 set -o pipefail
 
+# Treat the directory containing this script as the case directory, even when
+# local.sh is launched through an absolute path from another working directory.
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_ROOT" || exit 1
+
+# All output goes to run.log; on completion drop an empty 'success' or 'fail'
+# marker file (run.log itself is never renamed).
+LOG="$SCRIPT_ROOT/run.log"
+SUCCESS_MARK="$SCRIPT_ROOT/success"
+FAIL_MARK="$SCRIPT_ROOT/fail"
+rm -f "$LOG" "$SUCCESS_MARK" "$FAIL_MARK"
+
+exec > >(tee -a "$LOG") 2>&1
+
 ulimit -Sv 24000000
 
 # MPI process count for local run:
@@ -23,17 +37,7 @@ case "$MPI_NPROCS" in
         ;;
 esac
 
-# Treat current directory as script root (assumes running in case directory)
-SCRIPT_ROOT="$(pwd)"
-
-# All output goes to run.log; on completion drop an empty 'success' or 'fail'
-# marker file (run.log itself is never renamed).
-LOG="$SCRIPT_ROOT/run.log"
-SUCCESS_MARK="$SCRIPT_ROOT/success"
-FAIL_MARK="$SCRIPT_ROOT/fail"
-rm -f "$LOG" "$SUCCESS_MARK" "$FAIL_MARK"
-
-echo "Using MPI_NPROCS=$MPI_NPROCS" | tee -a "$LOG"
+echo "Using MPI_NPROCS=$MPI_NPROCS"
 
 # Abort the run: drop a 'fail' marker (keep run.log) and exit with the given code
 fail_exit() {
@@ -46,12 +50,12 @@ fail_exit() {
 run_step() {
     local label="$1"; shift
     echo -e "
-============================== Running $label ==============================" | tee -a "$LOG"
-    "$@" 2>&1 | tee -a "$LOG"
-    local rc=${PIPESTATUS[0]}
+============================== Running $label =============================="
+    "$@"
+    local rc=$?
     if [ "$rc" -ne 0 ]; then
         echo -e "
-============================== $label failed (exit $rc); aborting ==============================" | tee -a "$LOG"
+============================== $label failed (exit $rc); aborting =============================="
         fail_exit "$rc"
     fi
 }
@@ -96,25 +100,25 @@ run_prnc_with_fields() {
 # ww3_shel: try MPI first, fall back to a direct (non-MPI) run before failing
 run_ww3_shel_with_fallback() {
     echo -e "
-============================== Running mpirun ww3_shel ==============================" | tee -a "$LOG"
-    mpirun -n $MPI_NPROCS ww3_shel 2>&1 | tee -a "$LOG"
-    rc_mpi=${PIPESTATUS[0]}
+============================== Running mpirun ww3_shel =============================="
+    mpirun -n $MPI_NPROCS ww3_shel
+    rc_mpi=$?
     if [ $rc_mpi -eq 0 ]; then
         return 0
     fi
 
     echo -e "
-============================== mpirun ww3_shel failed with exit code $rc_mpi; retrying direct ww3_shel ==============================" | tee -a "$LOG"
-    ww3_shel 2>&1 | tee -a "$LOG"
-    rc_direct=${PIPESTATUS[0]}
+============================== mpirun ww3_shel failed with exit code $rc_mpi; retrying direct ww3_shel =============================="
+    ww3_shel
+    rc_direct=$?
     if [ $rc_direct -eq 0 ]; then
         echo -e "
-============================== direct ww3_shel succeeded after mpirun failure ==============================" | tee -a "$LOG"
+============================== direct ww3_shel succeeded after mpirun failure =============================="
         return 0
     fi
 
     echo -e "
-============================== direct ww3_shel also failed with exit code $rc_direct ==============================" | tee -a "$LOG"
+============================== direct ww3_shel also failed with exit code $rc_direct =============================="
     return $rc_direct
 }
 
@@ -123,7 +127,7 @@ GRID_TYPE="$(grep -m1 -E '^[[:space:]]*grid_type:' "$SCRIPT_ROOT/params.yml" 2>/
 if [ -z "$GRID_TYPE" ]; then
     if [ -d "coarse" ] && [ -d "fine" ]; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
 fi
-echo "Grid type (from params.yml): $GRID_TYPE" | tee -a "$LOG"
+echo "Grid type (from params.yml): $GRID_TYPE"
 
 if [ "$GRID_TYPE" = "nested" ]; then
     ######################################
@@ -163,9 +167,9 @@ if [ "$GRID_TYPE" = "nested" ]; then
     # Run MPI program (nested grid mode)
     ######################################
     echo -e "
-============================== Running mpirun ww3_multi ==============================" | tee -a "$LOG"
-    mpirun -n $MPI_NPROCS ww3_multi 2>&1 | tee -a "$LOG"
-    rc_mpi=${PIPESTATUS[0]}
+============================== Running mpirun ww3_multi =============================="
+    mpirun -n $MPI_NPROCS ww3_multi
+    rc_mpi=$?
     if [ $rc_mpi -ne 0 ]; then
         fail_exit $rc_mpi
     fi
