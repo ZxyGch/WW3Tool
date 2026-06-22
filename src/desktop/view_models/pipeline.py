@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import posixpath
 import re
 from typing import Any, Callable, List, Optional
 
@@ -368,6 +369,18 @@ class PipelineViewModel:
         """
         source_path = Path(params_path).expanduser().resolve()
         raw = self._form_raw(source_path, **overrides)
+        # [EN] Auto-fill server.remote_dir when empty:
+        # default_remote_dir + workdir name, persisted so downstream
+        # reads see the resolved value instead of relying on runtime fallback.
+        server = raw.get("server") or {}
+        if not (server.get("remote_dir") or "").strip():
+            base = (server.get("default_remote_dir") or "").strip()
+            workdir_path = (raw.get("workdir") or {}).get("path") or ""
+            workdir_name = Path(workdir_path).name if workdir_path else ""
+            if base and workdir_name:
+                tail = posixpath.basename(base.rstrip("/"))
+                server["remote_dir"] = base.rstrip("/") if tail == workdir_name else posixpath.join(base.rstrip("/"), workdir_name)
+                raw["server"] = server
         parse_pipeline_config(
             raw, base_dir=source_path.parent, source_path=source_path, validation_stage=validation_stage
         )
