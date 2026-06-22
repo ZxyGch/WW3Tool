@@ -243,12 +243,14 @@ class SettingsInterface(QWidget):
         view_model: SettingsViewModel | None = None,
         on_language_changed: Callable[[str], None] | None = None,
         on_run_mode_changed: Callable[[str], None] | None = None,
+        on_config_changed: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("settings_interface")
         self._vm = view_model or SettingsViewModel()
         self._on_language_changed_callback = on_language_changed
         self._on_run_mode_changed_callback = on_run_mode_changed
+        self._on_config_changed_callback = on_config_changed
         self._config = self._vm.load()
         self._fields: dict[str, LineEdit] = {}
         self._combos: dict[str, ComboBox] = {}
@@ -948,6 +950,7 @@ class SettingsInterface(QWidget):
             versions = self._st_rows() + [dlg.value]
             self._vm.save_st_versions(versions, self._vm.default_st())
             self._reload_st_table()
+            self._notify_config_changed("st_versions")
 
     def _st_edit(self) -> None:
         r = self._st_table.currentRow()
@@ -960,6 +963,7 @@ class SettingsInterface(QWidget):
             versions[r - 1] = dlg.value
             self._vm.save_st_versions(versions, self._vm.default_st())
             self._reload_st_table()
+            self._notify_config_changed("st_versions")
 
     def _st_delete(self) -> None:
         r = self._st_table.currentRow()
@@ -969,6 +973,7 @@ class SettingsInterface(QWidget):
         del versions[r - 1]
         self._vm.save_st_versions(versions, self._vm.default_st())
         self._reload_st_table()
+        self._notify_config_changed("st_versions")
 
     # ── 本地 ST 版本管理 ─────────────────────────────────────────────────────────
 
@@ -1019,6 +1024,7 @@ class SettingsInterface(QWidget):
             versions = self._local_st_rows() + [dlg.value]
             self._vm.save_local_st_versions(versions, self._vm.default_local_st())
             self._reload_local_st_table()
+            self._notify_config_changed("local_st_versions")
 
     def _local_st_edit(self) -> None:
         r = self._local_st_table.currentRow()
@@ -1031,6 +1037,7 @@ class SettingsInterface(QWidget):
             versions[r - 1] = dlg.value
             self._vm.save_local_st_versions(versions, self._vm.default_local_st())
             self._reload_local_st_table()
+            self._notify_config_changed("local_st_versions")
 
     def _local_st_delete(self) -> None:
         r = self._local_st_table.currentRow()
@@ -1040,6 +1047,7 @@ class SettingsInterface(QWidget):
         del versions[r - 1]
         self._vm.save_local_st_versions(versions, self._vm.default_local_st())
         self._reload_local_st_table()
+        self._notify_config_changed("local_st_versions")
 
     # ── 谱分区输出方案 ────────────────────────────────────────────────────────
 
@@ -1126,6 +1134,7 @@ class SettingsInterface(QWidget):
             if self._scheme_combo.findText(name) < 0:
                 self._scheme_combo.addItem(name)
             self._scheme_combo.setCurrentText(name)
+            self._notify_config_changed("output_schemes")
             self._toast(tr("set_scheme_created","已新建方案"))
 
     def _scheme_save(self) -> None:
@@ -1134,6 +1143,7 @@ class SettingsInterface(QWidget):
             return
         self._schemes[name] = self._checked_vars()
         self._vm.save_output_schemes(self._schemes)
+        self._notify_config_changed("output_schemes")
         self._toast(tr("set_scheme_saved","已保存方案"))
 
     def _scheme_confirm(self) -> None:
@@ -1146,6 +1156,7 @@ class SettingsInterface(QWidget):
         if self._scheme_combo.findText(name) < 0:
             self._scheme_combo.addItem(name)
         self._scheme_combo.setCurrentText(name)
+        self._notify_config_changed("output_schemes")
         self._toast(tr("set_scheme_saved","已保存方案"))
 
     def _scheme_delete(self) -> None:
@@ -1156,7 +1167,12 @@ class SettingsInterface(QWidget):
         self._vm.save_output_schemes(self._schemes)
         idx = self._scheme_combo.currentIndex()
         self._scheme_combo.removeItem(idx)
+        self._notify_config_changed("output_schemes")
         self._toast(tr("set_scheme_deleted","已删除方案"))
+
+    def _notify_config_changed(self, section: str) -> None:
+        if self._on_config_changed_callback is not None:
+            self._on_config_changed_callback(section)
 
     # ── 保存（config.json + 网格 JSON）─────────────────────────────────────────
 

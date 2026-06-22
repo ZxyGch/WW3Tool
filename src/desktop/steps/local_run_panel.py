@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QWidget
+from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -31,48 +31,24 @@ class LocalRunPanel:
         stop: Callable[[], None],
     ) -> None:
         group, layout = create_header_card(parent, tr("step5_local_title", "本地运行"))
+        self._layout = layout
+        self._create_button = create_button
+        self._input_style = input_style
 
         # [EN] Check if local ST versions are configured
         # 检查是否已配置本地 ST 版本
         local_st_versions = self._load_local_st_versions()
         self._local_st_versions = local_st_versions
+        self.st_combo: ComboBox | None = None
+        self.bin_edit: LineEdit | None = None
+        self._st_row_widget: QWidget | None = None
+        self._bin_row_widget: QWidget | None = None
 
         if local_st_versions:
-            # [EN] Show dropdown with configured versions
-            # 显示已配置的版本下拉框
-            st_row = QHBoxLayout()
-            st_row.setSpacing(8)
-            st_row.addWidget(QLabel(tr("step5_local_st_version", "ST 版本：")))
-            self.st_combo = ComboBox()
-            self.st_combo.setStyleSheet(styles.combo_style())
-            left_align_combo_text(self.st_combo)
-            for ver in local_st_versions:
-                self.st_combo.addItem(ver["name"])
-            # [EN] Select default
-            default_name = runtime_config.load_full_config().get("DEFAULT_LOCAL_ST", "")
-            if default_name:
-                for i in range(self.st_combo.count()):
-                    if self.st_combo.itemText(i) == default_name:
-                        self.st_combo.setCurrentIndex(i)
-                        break
-            st_row.addWidget(self.st_combo, 1)
-            layout.addLayout(st_row)
-            self.bin_edit = None  # [EN] No manual path field when versions are configured
+            self._ensure_st_row()
         else:
-            # [EN] No versions configured: show path selection
-            # 没有配置版本时显示路径选择
-            self.st_combo = None
-            bin_row = QHBoxLayout()
-            bin_row.setSpacing(8)
-            bin_row.addWidget(QLabel(tr("step5_ww3bin_path", "WW3 bin 路径:")))
-            self.bin_edit = LineEdit()
-            self.bin_edit.setStyleSheet(input_style())
-            self.bin_edit.setText(_default_bin())
-            self.bin_edit.setPlaceholderText(tr("step5_path_placeholder", "为空则使用系统 PATH"))
-            bin_row.addWidget(self.bin_edit, 1)
-            choose = create_button(tr("select", "选择"), self._choose_bin)
-            bin_row.addWidget(choose)
-            layout.addLayout(bin_row)
+            self._ensure_bin_row()
+        self.refresh_st_versions()
 
         self.local_run_button = create_button(tr("step5_local_run", "本地运行"), local_run)
         self.stop_button = create_button(tr("step5_stop_shel", "停止执行"), stop)
@@ -82,6 +58,71 @@ class LocalRunPanel:
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
         self.widget = group
+
+    def _insert_selector_widget(self, widget: QWidget) -> None:
+        if isinstance(self._layout, QVBoxLayout):
+            self._layout.insertWidget(0, widget)
+        else:
+            self._layout.addWidget(widget)
+
+    def _ensure_st_row(self) -> None:
+        if self._st_row_widget is not None and self.st_combo is not None:
+            return
+        row_widget = QWidget()
+        row = QHBoxLayout(row_widget)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(QLabel(tr("step5_local_st_version", "ST 版本：")))
+        self.st_combo = ComboBox()
+        self.st_combo.setStyleSheet(styles.combo_style())
+        left_align_combo_text(self.st_combo)
+        row.addWidget(self.st_combo, 1)
+        self._st_row_widget = row_widget
+        self._insert_selector_widget(row_widget)
+
+    def _ensure_bin_row(self) -> None:
+        if self._bin_row_widget is not None and self.bin_edit is not None:
+            return
+        row_widget = QWidget()
+        row = QHBoxLayout(row_widget)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(QLabel(tr("step5_ww3bin_path", "WW3 bin 路径:")))
+        self.bin_edit = LineEdit()
+        self.bin_edit.setStyleSheet(self._input_style())
+        self.bin_edit.setText(_default_bin())
+        self.bin_edit.setPlaceholderText(tr("step5_path_placeholder", "为空则使用系统 PATH"))
+        row.addWidget(self.bin_edit, 1)
+        choose = self._create_button(tr("select", "选择"), self._choose_bin)
+        row.addWidget(choose)
+        self._bin_row_widget = row_widget
+        self._insert_selector_widget(row_widget)
+
+    def refresh_st_versions(self) -> None:
+        versions = self._load_local_st_versions()
+        self._local_st_versions = versions
+        if versions:
+            self._ensure_st_row()
+            if self._st_row_widget is not None:
+                self._st_row_widget.show()
+            if self._bin_row_widget is not None:
+                self._bin_row_widget.hide()
+            current = self.st_combo.currentText().strip() if self.st_combo is not None else ""
+            names = [version["name"] for version in versions]
+            default_name = str(runtime_config.load_full_config().get("DEFAULT_LOCAL_ST", "") or "")
+            selected = current if current in names else (default_name if default_name in names else names[0])
+            if self.st_combo is not None:
+                self.st_combo.blockSignals(True)
+                self.st_combo.clear()
+                self.st_combo.addItems(names)
+                self.st_combo.setCurrentText(selected)
+                self.st_combo.blockSignals(False)
+        else:
+            self._ensure_bin_row()
+            if self._st_row_widget is not None:
+                self._st_row_widget.hide()
+            if self._bin_row_widget is not None:
+                self._bin_row_widget.show()
 
     @staticmethod
     def _load_local_st_versions() -> list[dict[str, str]]:

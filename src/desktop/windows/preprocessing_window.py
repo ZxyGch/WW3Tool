@@ -423,6 +423,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._settings_interface = SettingsInterface(
             on_language_changed=self._restart_for_language_change,
             on_run_mode_changed=self._on_run_mode_changed_from_settings,
+            on_config_changed=self._on_settings_config_changed,
         )
         self.left_stacked.addWidget(self._settings_interface)  # [EN] index 1: settings page (shares right-side log)
         # index 1：设置页（共享右侧日志）
@@ -472,6 +473,54 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 mode=mode_names.get(run_mode, tr("unknown", "未知"))
             )
         )
+
+    def _on_settings_config_changed(self, section: str) -> None:
+        try:
+            from workflows.infrastructure import runtime_config
+
+            config = runtime_config.load_full_config()
+        except Exception:
+            return
+
+        if section in {"st_versions", "output_schemes"}:
+            self._refresh_home_st_and_output_options(config)
+        if section == "local_st_versions" and hasattr(self, "_local_run_panel"):
+            self._local_run_panel.refresh_st_versions()
+
+    def _refresh_home_st_and_output_options(self, config: dict) -> None:
+        st_names = self._server_st_names(config)
+        default_st = str(config.get("DEFAULT_ST", "") or "")
+        if hasattr(self, "_ww3_panel"):
+            current = self._ww3_panel.st_combo.currentText().strip()
+            selected = current if current in st_names else (default_st if default_st in st_names else (st_names[0] if st_names else ""))
+            self._ww3_panel._replace_combo_items(self._ww3_panel.st_combo, st_names, selected)
+
+            schemes = config.get("OUTPUT_VARS_SCHEMES", {})
+            scheme_names = sorted(str(name) for name in schemes) if isinstance(schemes, dict) else []
+            current_scheme = self._ww3_panel.output_scheme_combo.currentText().strip()
+            selected_scheme = current_scheme if current_scheme in scheme_names else (scheme_names[0] if scheme_names else "")
+            self._ww3_panel._replace_combo_items(self._ww3_panel.output_scheme_combo, scheme_names, selected_scheme)
+
+        if hasattr(self, "_server_connect_panel"):
+            current = self._server_connect_panel.st_combo.currentText().strip()
+            selected = current if current in st_names else (default_st if default_st in st_names else (st_names[0] if st_names else ""))
+            self._server_connect_panel._replace_combo_items(self._server_connect_panel.st_combo, st_names, selected)
+
+    @staticmethod
+    def _server_st_names(config: dict) -> list[str]:
+        versions = config.get("ST_VERSIONS")
+        if isinstance(versions, list):
+            names = [
+                str(item.get("name", "")).strip()
+                for item in versions
+                if isinstance(item, dict) and str(item.get("name", "")).strip()
+            ]
+            if names:
+                return names
+        options = config.get("ST_OPTIONS")
+        if isinstance(options, list):
+            return [str(item).strip() for item in options if str(item).strip()]
+        return []
 
     def _update_run_mode_visibility(self, run_mode: str | None = None) -> None:
         # [EN] Show/hide local run / server steps and Step 4 Slurm config based on RUN_MODE (aligned with src).
