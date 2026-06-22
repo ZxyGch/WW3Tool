@@ -11,7 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from netCDF4 import Dataset
+from netCDF4 import Dataset, num2date
 from datetime import datetime, timedelta
 from ...support.translations import tr
 from .photo_output import SUBDIR_JASON3_FIT, SUBDIR_JASON3_SATELLITE, prepare_photo_subdir
@@ -134,7 +134,8 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
                 log_queue.put("__DONE__")
                 result_queue.put(None)
                 return
-            time_ww3 = nc.variables['time'][:].astype(float)
+            time_var_obj = nc.variables['time']
+            time_ww3 = time_var_obj[:].astype(float)
 
             # 检查波高变量（尝试多个可能的变量名）
             wave_height_var = None
@@ -182,8 +183,16 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
         log(f"WW3 time steps: {len(time_ww3)}")
         log(f"WW3 collocation points per step: {hs_nt_n.shape[1]}")
 
-        reference_date = datetime(1990, 1, 1, 0, 0, 0)
-        timesec = [reference_date + timedelta(days=float(t)) for t in time_ww3]
+        _units = getattr(time_var_obj, 'units', 'days since 1990-01-01')
+        _cal = getattr(time_var_obj, 'calendar', 'standard')
+        _decoded = num2date(time_ww3, _units, calendar=_cal,
+                            only_use_cftime_datetimes=False, only_use_python_datetimes=False)
+        timesec = [
+            datetime(dt.year, dt.month, dt.day,
+                     getattr(dt, "hour", 0), getattr(dt, "minute", 0),
+                     getattr(dt, "second", 0))
+            for dt in _decoded
+        ]
         T = np.array([dt.strftime('%Y%m%d%H%M%S') for dt in timesec])
         log(f"WW3 time range: {timesec[0]} to {timesec[-1]}")
 

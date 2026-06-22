@@ -208,13 +208,16 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
 
         WW3_time_var = ds.variables["time"]
 
-        # 时间
-        try:
-            WW3_datetime = num2date(WW3_time_var[:], WW3_time_var.units)
-            WW3_datetime = np.array([datetime.utcfromtimestamp(dt.timestamp()) for dt in WW3_datetime])
-        except Exception:
-            ref = datetime(1990, 1, 1)
-            WW3_datetime = np.array([ref + timedelta(days=float(t)) for t in WW3_time_var[:]])
+        # 时间：按 CF 约定解析 units + calendar
+        _cal = getattr(WW3_time_var, "calendar", "standard")
+        _decoded = num2date(WW3_time_var[:], WW3_time_var.units, calendar=_cal,
+                            only_use_cftime_datetimes=False, only_use_python_datetimes=False)
+        WW3_datetime = np.array([
+            datetime(dt.year, dt.month, dt.day,
+                     getattr(dt, "hour", 0), getattr(dt, "minute", 0),
+                     getattr(dt, "second", 0))
+            for dt in _decoded
+        ])
         nt = len(WW3_datetime)
 
         WW3_lon = np.array(ds.variables[lon_name][:])
@@ -922,12 +925,15 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
             return
 
         WW3_time_var = ds.variables["time"]
-        try:
-            WW3_datetime = num2date(WW3_time_var[:], WW3_time_var.units)
-            WW3_datetime = np.array([datetime.utcfromtimestamp(dt.timestamp()) for dt in WW3_datetime])
-        except Exception:
-            ref = datetime(1990, 1, 1)
-            WW3_datetime = np.array([ref + timedelta(days=float(t)) for t in WW3_time_var[:]])
+        _cal = getattr(WW3_time_var, "calendar", "standard")
+        _decoded = num2date(WW3_time_var[:], WW3_time_var.units, calendar=_cal,
+                            only_use_cftime_datetimes=False, only_use_python_datetimes=False)
+        WW3_datetime = np.array([
+            datetime(dt.year, dt.month, dt.day,
+                     getattr(dt, "hour", 0), getattr(dt, "minute", 0),
+                     getattr(dt, "second", 0))
+            for dt in _decoded
+        ])
         nt = len(WW3_datetime)
 
         WW3_lon = np.array(ds.variables[lon_name][:])

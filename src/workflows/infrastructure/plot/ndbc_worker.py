@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import requests
 from matplotlib import font_manager
-from netCDF4 import Dataset
+from netCDF4 import Dataset, num2date
 
 from ..runtime_config import load_config
 from ...support.translations import tr
@@ -222,7 +222,8 @@ def _match_ww3_ndbc_worker(
 
             ww3_lon = nc.variables[lon_name][:]
             ww3_lat = nc.variables[lat_name][:]
-            time_ww3 = nc.variables["time"][:].astype(float)
+            ww3_time_var = nc.variables["time"]
+            time_ww3 = ww3_time_var[:].astype(float)
 
             wave_height_var = None
             for var_name in ["hs", "swh", "wave_height", "HS", "SWH"]:
@@ -250,8 +251,16 @@ def _match_ww3_ndbc_worker(
         hs_nt_n = np.asarray(hs_nt_n, dtype=float)
         hs_nt_n[(hs_nt_n < 0) | (hs_nt_n > 50)] = np.nan
 
-        ww3_ref = datetime(1990, 1, 1, 0, 0, 0)
-        ww3_times = np.array([ww3_ref + timedelta(days=float(t)) for t in time_ww3], dtype=object)
+        _units = getattr(ww3_time_var, 'units', 'days since 1990-01-01')
+        _cal = getattr(ww3_time_var, 'calendar', 'standard')
+        _decoded = num2date(time_ww3, _units, calendar=_cal,
+                            only_use_cftime_datetimes=False, only_use_python_datetimes=False)
+        ww3_times = np.array([
+            datetime(dt.year, dt.month, dt.day,
+                     getattr(dt, "hour", 0), getattr(dt, "minute", 0),
+                     getattr(dt, "second", 0))
+            for dt in _decoded
+        ], dtype=object)
 
         log(f"WW3 lon range: [{ww3_bounds[0]:.2f}, {ww3_bounds[1]:.2f}]")
         log(f"WW3 lat range: [{ww3_bounds[2]:.2f}, {ww3_bounds[3]:.2f}]")

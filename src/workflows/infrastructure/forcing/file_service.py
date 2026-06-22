@@ -10,19 +10,19 @@ it to the working directory and performing only the necessary WW3-compatible fix
 on the copy, including:
 
 - 坐标变量名标准化（``lon`` → ``longitude``、``lat`` → ``latitude``、``valid_time`` → ``time`` 等）；
-- 时间单位统一转换为 ``seconds since 1970-01-01``；
 - 将 ``wndewd/wndnwd`` 重命名为 ``u10/v10``（部分再分析产品使用旧名）；
 - 一维纬度坐标递减时翻转为递增，避免 ``ww3_prnc`` 在规则经纬网下报错；
 - 一维经度坐标递减时明确拒绝，不静默改写经度闭合关系；
+- 保留原始时间轴单位与日历属性；
 - 扫描工作目录，按文件名规则或变量检测恢复 Step 1 四类场路径。
 
 [EN] - Standardizing coordinate variable names (``lon`` → ``longitude``, ``lat`` → ``latitude``, etc.);
-- Converting time units to ``seconds since 1970-01-01``;
 - Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
 - Flipping descending 1-D latitude coordinates to ascending order to avoid
   ``ww3_prnc`` failures on regular lat/lon grids;
 - Rejecting descending 1-D longitude coordinates instead of silently rewriting
   longitude closure;
+- Preserving original time axis units and calendar attributes;
 - Scanning the working directory to recover Step 1 field paths via filename rules or variable detection.
 """
 import os

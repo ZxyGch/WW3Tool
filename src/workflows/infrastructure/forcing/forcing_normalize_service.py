@@ -9,14 +9,14 @@ WW3 ``ww3_prnc``-readable format. Main processing includes:
 
 - 经纬度变量名标准化，必要时翻转纬度递增方向；经度递减统一拒绝；
 - 强迫场变量统一命名为标准名（u10/v10、uo/vo、zos、siconc）；
-- 时间轴转为 ``seconds since 1970-01-01``；
+- 保留原始时间轴单位与日历属性（WW3 ww3_prnc 按 CF 约定自行解析）；
 - 保留源文件中所有变量，仅重命名坐标和强迫场变量；
 - 大文件分块或并行变换以控制内存占用。
 
 [EN] - Standardizing lat/lon variable names, flipping latitude when necessary;
       descending longitude is always rejected;
 - Renaming forcing variables to standard names (u10/v10, uo/vo, zos, siconc);
-- Converting time axis to ``seconds since 1970-01-01``;
+- Preserving original time axis units and calendar attributes (WW3 ww3_prnc parses them via CF conventions);
 - Preserving all source variables, only renaming coordinates and forcing variables;
 - Chunking or parallel transformation for large files to control memory usage.
 """
@@ -26,11 +26,10 @@ from __future__ import annotations
 import multiprocessing
 import os
 from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
-from netCDF4 import Dataset, num2date
+from netCDF4 import Dataset
 
 from ...support.translations import tr
 
@@ -332,9 +331,6 @@ class ForcingNormalizeService:
             or time_name.lower() != "time"
             or any(std != info["src_name"] for std, info in forcing_var_map.items())
         )
-        time_units_standard = bool(original_time_units) and (
-            original_time_units.strip().lower() == "seconds since 1970-01-01"
-        )
 
         try:
             same_target_file = os.path.samefile(source_file, output_file)
@@ -345,7 +341,6 @@ class ForcingNormalizeService:
             same_target_file
             and not lat_needs_flip
             and not needs_rename
-            and time_units_standard
         ):
             self._emit(log, tr("forcing_already_normalized", "✅ 文件已是标准格式: {path}").format(path=output_file))
             return True
@@ -502,33 +497,9 @@ class ForcingNormalizeService:
                 lon_var[:] = longitude
                 lat_var[:] = latitude
 
-                # 时间单位转换
-                if original_time_units:
-                    target_units = "seconds since 1970-01-01"
-                    if original_time_units.strip().lower() == target_units.lower():
-                        time_var[:] = time_data
-                    else:
-                        try:
-                            time_datetimes = num2date(time_data, original_time_units, calendar=original_time_calendar)
-                            if hasattr(time_datetimes, "compressed"):
-                                time_datetimes = time_datetimes.compressed()
-                            epoch = datetime(1970, 1, 1)
-                            time_seconds = [(dt - epoch).total_seconds() for dt in time_datetimes]
-                            time_var[:] = time_seconds
-                            self._emit(
-                                log,
-                                tr("log_time_units_convert", "🔄 时间单位已从 '{old}' 转换为 'seconds since 1970-01-01'").format(
-                                    old=original_time_units
-                                ),
-                            )
-                        except Exception as exc:
-                            time_var[:] = time_data
-                            self._emit(
-                                log,
-                                tr("log_time_units_convert_failed", "⚠️ 时间单位转换失败，使用原始值: {error}").format(error=exc),
-                            )
-                else:
-                    time_var[:] = time_data
+                # 时间：保留原始值与单位（WW3 ww3_prnc 按 CF 约定自行解析）
+                # [EN] Time: preserve original values and units (WW3 ww3_prnc parses via CF conventions)
+                time_var[:] = time_data
 
                 # ── 写入数据变量 ────────────────────────────────────────
                 # 对每个数据变量构建读取切片
@@ -660,13 +631,10 @@ class ForcingNormalizeService:
 
                 time_var.standard_name = "time"
                 time_var.long_name = "time"
-                time_var.units = "seconds since 1970-01-01"
-                time_var.reference_time = 1647349200
-                time_var.reference_time_type = 1
-                time_var.reference_date = "2022.03.15 21:00:00 UTC"
-                time_var.time_step_setting = "auto"
-                time_var.time_step = 0
-                time_var.calendar = "standard"
+                if original_time_units:
+                    time_var.units = original_time_units
+                if original_time_calendar:
+                    time_var.calendar = original_time_calendar
 
                 # 设置强迫场变量属性
                 _VAR_ATTRS = {
