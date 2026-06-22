@@ -335,7 +335,7 @@ class ForcingNormalizeService:
             lon_name.lower() != "longitude"
             or lat_name.lower() != "latitude"
             or time_name.lower() != "time"
-            or any(std != info["src_name"] for std, info in forcing_var_map.items())
+            or any(std_name != src_name for std_name, (src_name, _field_type) in forcing_var_map.items())
         )
 
         try:
