@@ -180,6 +180,19 @@ GUI 模式下，你填写的表单，程序会先在内存中保存参数，然�
 每次打开工作目录，GUI 程序会自动读取 params.yml ，恢复表单，让你能方便的知道当前工作目录的配置。
 
 而在 Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然后使用 Shell 和 CLI  的指令执行。
+
+
+
+### 校验 params.yml
+
+每次执行指令都会自动校验一遍 params.yml ，检查是否存在格式问题。
+
+在 Shell 和 CLI 模式下，有一个专门的指令用于校验 params.yml 。
+
+```sh
+python run.py validate [work_dir_name] 
+```
+
  
 ### 路径验证
 
@@ -189,7 +202,17 @@ GUI 模式下，你填写的表单，程序会先在内存中保存参数，然�
 python3 run.py prepare-forcing [work_dir_name]
 ```
 
-都会自动校验
+都会自动校验带有路径的参数有效性，比如 
+
+```swift
+paths:
+	matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
+	jason_path: /Users/zxy/ocean/Paper/WW3Tool/jason3
+	ndbc_path: null 
+	jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
+```
+
+如果发现某个参数为空或者路径不存在，那么会自动填写为 WW3Tool/ndbc ，WW3Tool/jason 等等类似的，在程序内部都有相关的规定默认的路径是什么。
 
 
 
@@ -231,6 +254,12 @@ flowchart LR
 
 ### 5.1 创建工作目录
 
+> 工作目录是什么？
+> 
+> 想象一个场景：我们现在想要对 110E ~ 130E，10N~30N 的区域进行海浪模拟，先使用 gridgen 生成了网格文件，然后下载了 2025 年 1 月 3 号到   2025 年 1 月 5 号的 ERA5 再分析风场数据做强迫场，配置了相关的 WW3 NML 文件，这一大堆文件都需要一个存放的位置：工作目录。
+
+创建工作目录的 CLI  指令：
+
 ```sh
 python3 run.py workdir [work_dir_name]    # 创建并加载工作目录，默认在 WW3Tool/workSpace 内创建
 ```
@@ -264,10 +293,19 @@ path 是工作目录的路径
 
 default_workspace 是新建工作目录默认的存放路径
 
+```sh
+python run.py workdir [work_dir_name]
+```
+
+这条指令中 work_dir_name 可以是一个绝对路径，也可以是一个名字，如果对应的目录不存在则会自动创建一个工作目录，自动复制根目录的 params.yml 到新工作目录，并替换工作目录的  params.yml 的 workdir.path 为工作目录路径。
+
+
 
 #### 根目录校验
 
 为了防止忘记创建工作目录就直接使用 Shell 或 CLI 指令，我加了一个校验当前目录是否是 WW3Tool 根目录，这样就不会误用根目录 params.yml 或忘记创建工作目录.
+
+在 CLI 模式中，尝试不指定工作目录：
 
 ```bash
 python3 run.py prepare-forcing 
@@ -281,6 +319,14 @@ Please create or load a working directory first:
   python3 run.py workdir my_workdir
 ```
 
+在 shll 模式下不使用 workdir 指令，你是无法进行任何操作的。
+
+```sh
+ww3>  config  
+⚠ No configuration loaded. Use 'workdir <path>' first.
+ww3> queue-status
+⚠ No configuration loaded. Use 'workdir <path>' first.
+```
 
 
 
@@ -290,45 +336,34 @@ Please create or load a working directory first:
 python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 ```
 
-强迫场导入根据文件内容自动分为两条路径：**纯风场文件**走完整的标准化重写（`WindNormalizeService`），**流场/水位场/冰场及多场组合文件**走复制 + 逐项修复流程（`FileService.copy_and_fix_forcing_file`）。判断依据是 `VariableDetector` 对 NetCDF 内部变量名的检测（纯名称匹配，不读取数据）：
+所有强迫场（风场、流场、水位场、冰场）统一走同一条处理路径：复制/移动到工作目录后，由 `ForcingNormalizeService` 单遍读写完成全部标准化。`VariableDetector` 对 NetCDF 内部变量名做纯名称匹配（不读取数据）来检测场类型：
 
 - **风场**：存在 `u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd` 任一对（大小写均匹配）
 - **流场**：存在 `uo/vo`
 - **水位场**：存在 `zos`
 - **冰场**：存在 `siconc`
 
-#### 纯风场文件 — 完整重写
+#### 单遍归一化（ForcingNormalizeService）
 
-纯风场文件（仅包含风场变量，不含流场/水位/冰场）通过 `WindNormalizeService.normalize()` 生成全新的 NetCDF，**不保留源文件中除风场以外的任何变量**。输出只包含 `longitude`、`latitude`、`time`、`u10`、`v10` 五个变量/维度，具体处理：
+所有强迫场文件统一通过 `ForcingNormalizeService.normalize()` 处理，从源文件读取后一次性写出标准化 NetCDF，保留源文件中的所有变量（不限于强迫场变量）。具体处理：
 
-1. **变量名检测**：支持多种命名（`u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd`、`eastward_wind/northward_wind` 等），统一输出为 `u10/v10`，带 `units="m/s"`、`level="10m"` 属性
-2. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
-3. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
-4. **纬度翻转**：纬度从大到小排列时自动翻转为从小到大
-5. **经度翻转**：经度从大到小排列时同样自动翻转为从小到大（与通用路径**不对称**——通用路径对递减经度直接拒绝）
+1. **变量名检测与重命名**：自动识别各类命名变体（如 `wndewd/wndnwd` → `u10/v10`、`uo/vo` 保持、`zos` 保持、`siconc` 保持），统一输出为标准变量名，并设置对应的 `units`、`level` 等属性
+2. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体），同步重命名维度和引用该维度的所有变量
+3. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算，保留 `calendar` 属性
+4. **纬度翻转**：纬度从大到小排列时自动翻转为从小到大（避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`）
+5. **经度递减拒绝**：经度从大到小排列时**拒绝导入并记录错误**——经度闭合和 `0~360` / `-180~180` 范围关系不能安全猜测
+
+目标文件名由 `FilePathManager.generate_forcing_filename()` 按固定顺序 `wind_current_level_ice` 拼接生成（如 `wind.nc`、`current.nc`、`current_level.nc`、`wind_current_level_ice.nc`）。文件写入方式由 `forcing.process_mode` 控制，支持 `copy`（`shutil.copy2`，保留元数据）和 `move`（`shutil.move`）。
 
 大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（目标 ~16MB 块大小）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96、网格点 ≤ 30 万时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再 `os.replace` 原子替换。
 
-#### 非风场 / 多场文件 — 复制 + 逐项修复
-
-流场、水位场、冰场，以及包含多种强迫场的组合文件，走复制（或移动）+ 逐项修复流程。目标文件名由 `FilePathManager.generate_forcing_filename()` 按固定顺序 `wind_current_level_ice` 拼接生成（如 `current.nc`、`current_level.nc`、`wind_current_level_ice.nc`）。文件写入方式由 `forcing.process_mode` 控制，支持 `copy`（`shutil.copy2`，保留元数据）和 `move`（`shutil.move`）。
-
-修复项按以下顺序依次执行，每一项都是独立的临时文件全量重写（先写临时文件再 `os.replace`）：
-
-1. **坐标变量名标准化**：`lon`→`longitude`、`lat`→`latitude`、`valid_time`→`time` 等，同步重命名维度和引用该维度的所有变量
-2. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算，保留 `calendar` 属性
-3. **风变量名修复**：如果文件中有旧风变量 `wndewd/wndnwd` 且没有 `u10/v10`，重写 NetCDF 并改名为 `u10/v10`，同时保留全局属性、维度、压缩设置和 `_FillValue`
-4. **纬度翻转**：一维纬度坐标递减时，翻转该纬度维度上的所有变量使纬度递增（避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`）
-5. **经度递减拒绝**：一维经度坐标递减时，**拒绝导入并记录错误**——经度闭合和 `0~360` / `-180~180` 范围关系不能安全猜测
-
-通用修复**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
+归一化**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
 
 #### 多场文件与自动关联
 
 如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），`VariableDetector` 会检测所有存在的场类型：
 
 - **自动关联**（`auto_associate=True`，默认）：文件名使用下划线连接所有检测到的场，如 `current_level.nc`、`wind_current_level_ice.nc`，同时多个强迫场槽位指向同一个文件
-- **风场特殊处理**：多场文件中如果包含风场，除了按通用路径复制修复合并文件外，还会**额外**通过 `WindNormalizeService` 提取生成一个独立的标准化 `wind.nc`（仅含风场变量），因为 `ww3_prnc` 处理风场时需要精确的维度格式
 
 #### 工作目录扫描
 
@@ -349,33 +384,92 @@ python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 ```sh
 python3 run.py generate-grid  [work_dir_name]                 # 生成网格
 python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网格间距
-python3 run.py recommend-cfl  [work_dir_name]                 # 推荐 CFL 时间步长
 ```
 
-在生成网格前，我们需要下载水深数据、海岸边界数据，我已经把下载功能集成到 WW3Tool 了，你只需点击生成网格就会自动提示你下载。
+关于网格生成器 WW3Tool/meshgen，他们的详细说明可以查看 meshgen/README.md ，这里不再赘述。
 
-关于网格生成器，他们的详细说明可以查看 meshgen/README.md ，这里不再赘述。
+在生成网格前，我们需要下载水深数据、海岸边界数据 reference_data，我已经把下载功能集成到 WW3Tool 了，你只需点击生成网格就会自动提示你下载。
 
-所有网格生成结果自动缓存到 `meshgen/cache/`，以参数 hash 为 key，避免重复计算。
+每次网格生成的文件都会自动缓存到 `meshgen/cache/`，以参数 hash 为 key，避免重复计算。
 
+我们生成的网格文件最终会被 WAVEWATCH III 编译出来的程序：ww3_grid 处理。
 
 
 #### 结构化矩形网格
 
-关于嵌套网格，后续将进行重构，目前存在问题。
+> 关于嵌套网格，后续将进行重构，目前存在问题，请不要使用！
 
-- 支持最多两层嵌套网格（coarse 外网格 + fine 内网格），使用 Two-way nesting，收缩系数默认 1.1x（可在设置页面修改）
+![](public/resource/README-media/grid_bathymetry.png)
 
-- 嵌套模式下在工作目录创建 `coarse/` 和 `fine/` 子目录，各自的网格文件存放在对应子目录中
+![](public/resource/README-media/grid_obstruction_x.png)
+
+![](public/resource/README-media/grid_obstruction_y.png)
 
 ![](public/resource/README-media/grid_structure.png)
 
+结构化矩形网格是由 gridgen 生成的，输出 grid.obst、grid.bot、grid.mask_nobound、grid.meta 文件
+
+```swift
+grid.bot
+  - 格式：ASCII 文本文件
+  - 内容：网格水深数据(来)
+  - 单位：来(实际值 = 文件值 / 1000)
+  - 尺寸：Ny × Nx
+grid.mask_nobound
+  - 格式：ASCII 文本文件
+  - 内容：陆海掩膜
+  - 值：0 = 陆地，1 = 海洋
+  - 尺寸：Ny × Nx
+grid.obst
+  - 格式：ASCII 文本文件
+  - 内容：x 和 y 方向的障碍物值
+  - 单位：0-1 之间的比例(实际值 = 文件值 / 100)
+  - 尺寸：Ny × Nx(x 方向)，Ny × Nx(y 方向)
+grid.meta (实际上是 ww3_grid.nml，用于同步一些配置)
+  - 格式：ASCII 文本文件
+  - 内容：供 WAVEWATCH III `ww3_grid` 使用的网格描述
+  - 包含：网格尺寸、分辨率、范围等信息
+```
 
 
 
 #### 三角形非结构化网格
 
-- 基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
+基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
+
+```yaml
+# Unstructured (triangular) grid spacing parameters:
+# hmax – maximum element spacing in deep water (km).
+# hmin – minimum allowed spacing everywhere (km).
+# hshr – target spacing near shorelines (km).
+# nwav – number of wavelengths per element for resolution.
+# dhdx – rate of spacing change with depth gradient.
+# deep_ocean_threshold_m – depth (m) above which hmax applies.
+# margin_deg – buffer margin around domain boundary (degrees).
+# edge_segments – number of segments along coastlines.
+# options.data – optional mask / exclusion file.
+# options.command_line_args – extra JIGSAW CLI flags.
+# options.regional – stereographic projection centre (stereo_lon/lat).
+
+unstructured:
+	hmax: 100
+	hmin: 2
+	hshr: 20
+	nwav: 400
+	dhdx: 0.05
+	deep_ocean_threshold_m: 4000
+	margin_deg: 1
+	edge_segments: 64
+	options:
+	data:
+	mask_file: ''
+	command_line_args:
+	black_sea: 3
+	regional:
+	stereo_lon: 120.0
+	stereo_lat: 20.0
+```
+
 
 ![](public/resource/README-media/grid_unst_bathymetry.png)
 
@@ -386,6 +480,47 @@ python3 run.py recommend-cfl  [work_dir_name]                 # 推荐 CFL 时�
 #### SMC 网格
 
 基于 SMCGTools 生成
+
+```yml
+# SMC (Spherical Multi-Cell) grid options:
+#   bathymetry       – dataset name (see presets.smc_bathymetry).
+#   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).
+#   n_levels         – number of cell-size refinement levels.
+#   wlevel           – water-level reference index.
+#   depmin           – minimum depth below which cells are excluded (m).
+#   dshalw           – shallow-water depth threshold for extra refinement (m).
+#   generate_boundary_cells – whether to create open-boundary ghost cells.
+#   msea             – minimum cell count across straits.
+#   options.input    – low-level input pre-processing (auto-flip, tolerances).
+#   options.grid     – grid identity & projection (global, arctic, origin).
+#   options.output   – output file naming and formatting.
+smc:
+  bathymetry: ETOPO2
+  bathy_convention: elevation
+  n_levels: 2
+  wlevel: 0
+  depmin: 0
+  dshalw: -150
+  generate_boundary_cells: true
+  msea: 1
+  options:
+    input:
+      auto_flip_lat: true
+      auto_flip_lon: true
+      coord_spacing_rtol: 0.001
+      coord_spacing_atol: 1.0e-08
+      nan_fill_value: 1000.0
+    grid:
+      name: grid
+      global: false
+      arctic: false
+      glb_arc_lat: 84.4
+      origin:
+        lon0: 0.0
+        lat0: -90.0
+    output:
+      file_prefix: ''
+```
 
 ![](public/resource/README-media/grid_smc_bathymetry.png)
 
