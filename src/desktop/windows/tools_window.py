@@ -468,6 +468,9 @@ def delete_all_under(workdir: str) -> tuple[int, list[str]]:
     removed = 0
     for root, dirs, files in os.walk(workdir, topdown=False, followlinks=False):
         for name in files:
+            # [EN] Skip macOS AppleDouble resource fork files (._prefix)
+            if name.startswith("._"):
+                continue
             path = os.path.join(root, name)
             try:
                 os.remove(path)
@@ -489,6 +492,9 @@ def delete_run_artifacts_under(workdir: str) -> tuple[int, list[str]]:
     removed = 0
     for root, _dirs, files in os.walk(workdir, topdown=True, followlinks=False):
         for name in files:
+            # [EN] Skip macOS AppleDouble resource fork files (._prefix)
+            if name.startswith("._"):
+                continue
             if not should_remove_run_artifact(name):
                 continue
             path = os.path.join(root, name)
