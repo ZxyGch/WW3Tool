@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QSizePolicy
-from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import CheckBox, ComboBox, EditableComboBox, LineEdit, PrimaryPushButton
 
 # [EN] Step 4 "spectrum parameters / numerical integration timestep" groups.
 # Step 4「频谱参数 / 数值积分时间步长」分组。
@@ -107,8 +107,7 @@ class WW3StepPanel:
         self.st_label = self._field_label(tr("step4_st_version", "ST 版本："))
         grid.addWidget(self.st_label, 0, 0)
         grid.addWidget(self.st_combo, 0, 1)
-        self.cpu_combo = ComboBox()
-        self.cpu_combo.addItems(_cpu_group_options())
+        self.cpu_combo = EditableComboBox()
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
         self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
@@ -202,7 +201,7 @@ class WW3StepPanel:
         self.nml_version_combo.blockSignals(False)
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._replace_combo_items(self.output_scheme_combo, sorted(config.presets.output_scheme), ww3.output_scheme)
-        self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
+        self._replace_combo_items(self.cpu_combo, [config.slurm.cpu] if config.slurm.cpu else [], config.slurm.cpu or "")
         params = config.ww3_grid.parameters
         for grid_key, edit in {**self._spectrum_fields, **self._timesteps_fields}.items():
             edit.setText(str(params.get(grid_key, "")))
@@ -399,12 +398,3 @@ class WW3StepPanel:
         combo.clear()
         combo.addItems(values)
         combo.setCurrentText(selected)
-
-
-def _cpu_group_options() -> list[str]:
-    from workflows.infrastructure.runtime_config import PARAMS_FILE, _read_root_params
-    root = _read_root_params()
-    group = (root.get("slurm") or {}).get("cpu_group")
-    if isinstance(group, list) and group:
-        return list(group)
-    return []

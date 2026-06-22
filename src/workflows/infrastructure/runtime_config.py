@@ -70,7 +70,6 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "KERNEL_NUM": "slurm.cores",
     "NODE_NUM": "slurm.nodes",
     "DEFAULT_CPU": "slurm.cpu",
-    "CPU_GROUP": "slurm.cpu_group",
     "SERVER_HOST": "server.host",
     "SERVER_PORT": "server.port",
     "SERVER_USER": "server.user",
@@ -754,7 +753,6 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# SLURM job-scheduler settings for HPC cluster submissions.\n"
      "#   job_name  – Slurm job name written to #SBATCH -J; null uses workdir name.\n"
      "#   cpu       – default CPU model identifier.\n"
-     "#   cpu_group – list of acceptable CPU models for job placement.\n"
      "#   nodes     – number of compute nodes to request.\n"
      "#   cores     – CPU cores per node.\n"
      "# ────────────────────────────────────────────────────────────────────"),

@@ -899,7 +899,6 @@ def parse_pipeline_config(
     slurm = SlurmConfig(
         job_name=str(slurm_raw.get("job_name") or "").strip() or workdir_path.name,
         cpu=str(slurm_raw.get("cpu") or ""),
-        cpu_group=list(slurm_raw.get("cpu_group") or []),
         nodes=str(slurm_raw.get("nodes") or ""),
         cores=str(slurm_raw.get("cores") or ""),
         server_st=_slurm_server_st,
@@ -1154,10 +1153,6 @@ slurm:
   job_name: null                 # [EN] Slurm job name (#SBATCH -J); null uses workdir name
                                   # Slurm 作业名（#SBATCH -J）；null 使用工作目录名
   cpu: CPU6240R
-  cpu_group:                # [EN] Available CPU partition list (for UI dropdown)
-                            # 可用 CPU 分区列表（供 UI 下拉选择）
-  - CPU6240R
-  - CPU6336Y
   nodes: "1"
   cores: "48"
   server_st: ST2                  # [EN] Select one path name from presets.server_st

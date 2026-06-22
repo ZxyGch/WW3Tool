@@ -354,7 +354,6 @@ class SlurmConfig:
     关键字段：
     - ``job_name``：Slurm 作业名，写入 ``server.sh`` 的 ``#SBATCH -J``
     - ``cpu`` / ``nodes`` / ``cores``：分区与并行规模
-    - ``cpu_group``：可用的 CPU 分区列表（供 UI 下拉选择）
     - ``server_st``：服务器上选择的 ST 版本名称（对应 presets.server_st 的键）
 
     [EN] Remote SLURM job resources (corresponds to YAML ``slurm:`` section).
@@ -362,13 +361,11 @@ class SlurmConfig:
     Key fields:
     - ``job_name``: Slurm job name, written to ``#SBATCH -J`` in ``server.sh``
     - ``cpu`` / ``nodes`` / ``cores``: partition and parallelism scale
-    - ``cpu_group``: list of available CPU partitions (for UI dropdown)
     - ``server_st``: selected ST version name (key from presets.server_st)
     """
 
     job_name: Optional[str] = None
     cpu: Optional[str] = None
-    cpu_group: Optional[List[str]] = None
     nodes: Optional[str] = None
     cores: Optional[str] = None
     server_st: Optional[str] = None

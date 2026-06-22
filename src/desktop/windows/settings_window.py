@@ -578,11 +578,7 @@ class SettingsInterface(QWidget):
         grid = self._card(tr("slurm_config", "Slurm 配置"))
         self._text(grid, 0, 0, tr("set_kernel_num", "核数："), "KERNEL_NUM")
         self._text(grid, 1, 0, tr("set_node_num", "节点数："), "NODE_NUM")
-        button = PrimaryPushButton(tr("cpu_manage", "CPU 管理"))
-        button.setStyleSheet(styles.button_style())
-        button.clicked.connect(self._manage_cpu_group)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        grid.addWidget(button, 2, 0, 1, 4)
+        self._text(grid, 2, 0, tr("set_default_cpu", "默认 CPU："), "DEFAULT_CPU")
 
     def _build_ww3_card(self) -> None:
         grid = self._card(tr("ww3_config_card", "WW3 配置"))
@@ -832,20 +828,6 @@ class SettingsInterface(QWidget):
             if key in self._fields:
                 self._fields[key].setText(value)
         self._save_config_now()
-
-    def _manage_cpu_group(self) -> None:
-        dialog = _CpuGroupDialog(self.window(), _as_list(self._config.get("CPU_GROUP")))
-        if not dialog.exec():
-            return
-        cpu_group = dialog.value
-        if not cpu_group:
-            InfoBar.warning(title="", content=tr("set_cpu_list_empty","CPU 列表不能为空"), duration=2000, parent=self.window())
-            return
-        updates = {"CPU_GROUP": cpu_group}
-        if str(self._config.get("DEFAULT_CPU", "") or "") not in cpu_group:
-            updates["DEFAULT_CPU"] = cpu_group[0]
-        self._vm.save(updates)
-        self._config = self._vm.load()
 
     def _build_unst_card(self) -> None:
         grid = self._card(tr("unst_mesh_config_card", "非结构化三角网格配置"))
@@ -1191,8 +1173,6 @@ class SettingsInterface(QWidget):
             updates[key] = data if data is not None else combo.currentText()
         for key, check in self._checks.items():
             updates[key] = check.isChecked()
-        if hasattr(self, "_cpu_group_edit"):
-            updates["CPU_GROUP"] = [s.strip() for s in self._cpu_group_edit.text().split(",") if s.strip()]
         if hasattr(self, "_server_login_mode_combo"):
             mode = self._server_login_mode()
             if mode == _SERVER_LOGIN_MODE_SSH_CONFIG:
@@ -1343,43 +1323,6 @@ class _NamePathDialog(MessageBoxBase):
             InfoBar.warning(title="", content=tr("set_name_empty","名称不能为空"), duration=2000, parent=self)
             return False
         self.value = {"name": name, "path": self._path.text().strip() if self._path else ""}
-        return True
-
-
-class _CpuGroupDialog(MessageBoxBase):
-    """编辑可选 CPU 分区列表。"""
-
-    def __init__(self, parent=None, cpu_group: list[str] | None = None) -> None:
-        super().__init__(parent)
-        self.value: list[str] = []
-        cpu_group = cpu_group or ["CPU6240R", "CPU6336Y"]
-        self.setWindowTitle(tr("cpu_manage", "CPU 管理"))
-        if getattr(self, "yesButton", None):
-            self.yesButton.setText(tr("confirm", "确定"))
-        if getattr(self, "cancelButton", None):
-            self.cancelButton.setText(tr("cancel", "取消"))
-
-        layout = QVBoxLayout()
-        layout.setSpacing(14)
-        layout.addWidget(QLabel(tr("set_cpu_list_label", "CPU 列表（每行一个）：")))
-
-        self._text = TextEdit()
-        self._text.setPlaceholderText(tr("set_cpu_list_ph", "输入 CPU 名称，每行一个..."))
-        self._text.setPlainText("\n".join(cpu_group))
-        self._text.setStyleSheet(styles.input_style())
-        self._text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._text.setMinimumHeight(max(150, len(cpu_group) * 25 + 20))
-        layout.addWidget(self._text)
-
-        self.viewLayout.addLayout(layout)
-        self.widget.setMinimumWidth(360)
-
-    def validate(self) -> bool:
-        self.value = [line.strip() for line in self._text.toPlainText().splitlines() if line.strip()]
-        if not self.value:
-            InfoBar.warning(title="", content=tr("set_cpu_list_empty","CPU 列表不能为空"), duration=2000, parent=self.window())
-            return False
         return True
 
 

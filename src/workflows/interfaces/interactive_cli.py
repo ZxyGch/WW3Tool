@@ -370,8 +370,6 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
     print(_config_field(tr("icli_slurm_cpu", "CPU：{}"), cfg.slurm.cpu or not_cfg))
     print(_config_field(tr("icli_slurm_cores", "核数：{}"), cfg.slurm.cores))
     print(_config_field(tr("icli_slurm_nodes", "节点：{}"), cfg.slurm.nodes))
-    if cfg.slurm.cpu_group:
-        print(_config_field(tr("icli_slurm_cpu_group", "CPU 组：{}"), cfg.slurm.cpu_group))
 
     print(f"\n  {_section(tr('icli_config_server', '服务器'))}")
     if cfg.server.ssh_config_host:

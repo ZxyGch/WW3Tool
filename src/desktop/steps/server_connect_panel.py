@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import ComboBox, EditableComboBox, LineEdit, PrimaryPushButton
 
 from ..components import styles
 from ..components.combo_box import left_align_combo_text
@@ -202,7 +202,7 @@ class ServerConnectPanel:
         slurm_grid.addWidget(self.st_label, 0, 0)
         slurm_grid.addWidget(self.st_combo, 0, 1)
         self._text_line(slurm_grid, 1, tr("step5_slurm_job_name", "作业名："), "slurm_job_name")
-        self.cpu_combo = ComboBox()
+        self.cpu_combo = EditableComboBox()
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
         self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
@@ -390,7 +390,7 @@ class ServerConnectPanel:
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
-        self._replace_combo_items(self.cpu_combo, config.slurm.cpu_group, config.slurm.cpu)
+        self._replace_combo_items(self.cpu_combo, [config.slurm.cpu] if config.slurm.cpu else [], config.slurm.cpu or "")
 
     def ww3_overrides(self) -> dict[str, str]:
         return {}
