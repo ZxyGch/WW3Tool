@@ -86,7 +86,7 @@ def _run_log_callback(workdir: Path, log: LogCallback) -> LogCallback:
     try:
         run_log.touch(exist_ok=True)
     except Exception as exc:
-        log(f"⚠️ 无法写入 run.log：{exc}")
+        log(tr("local_run_log_write_failed", "⚠️ 无法写入 run.log：{error}").format(error=exc))
         return log
 
     def write(message: str) -> None:
@@ -154,17 +154,17 @@ class LocalRunService:
         if not script.is_file() and fallback_script and Path(fallback_script).is_file():
             script = Path(fallback_script)
         if not script.is_file():
-            log(f"❌ 找不到本地脚本：{script}")
+            log(tr("local_script_not_found", "❌ 找不到本地脚本：{path}").format(path=script))
             return -1
-        log("▶️ 开始执行本地 WW3 运行...")
+        log(tr("local_run_start", "▶️ 开始执行本地 WW3 运行..."))
         bash = _find_bash()
         if bash is None:
-            log("❌ 找不到 bash（请安装 Git for Windows 并确保 bash 在 PATH 中）")
+            log(tr("local_run_bash_not_found", "❌ 找不到 bash（请安装 Git for Windows 并确保 bash 在 PATH 中）"))
             return -1
         try:
             return self._stream([bash, str(script)], str(workdir), bin_dir, log)
         except FileNotFoundError:
-            log(f"❌ 无法启动 bash：{bash}")
+            log(tr("local_run_bash_start_failed", "❌ 无法启动 bash：{path}").format(path=bash))
             return -1
 
     def run_tool(self, tool: str, workdir: str, bin_dir: str, log: LogCallback) -> int:
@@ -175,7 +175,7 @@ class LocalRunService:
         log = _run_log_callback(Path(workdir), log)
         checks = _TOOL_PRECHECK.get(tool, [])
         if checks and not any((Path(workdir) / name).exists() for name in checks):
-            log(f"❌ 未找到输出文件 {' 或 '.join(checks)}，跳过 {tool}")
+            log(tr("local_run_output_file_missing", "❌ 未找到输出文件 {files}，跳过 {tool}").format(files=" 或 ".join(checks), tool=tool))
             return -1
         # [EN] On Windows, look for .exe variant
         exe_name = _tool_exe(tool)
@@ -187,11 +187,11 @@ class LocalRunService:
             if os.path.isfile(alt_path) and os.access(alt_path, os.X_OK):
                 cmd_path = alt_path
                 use_abs = True
-        log(f"▶️ 开始执行：{tool}")
+        log(tr("local_run_tool_start", "▶️ 开始执行：{tool}").format(tool=tool))
         try:
             return self._stream([cmd_path] if use_abs else [exe_name], str(workdir), bin_dir, log)
         except FileNotFoundError:
-            log(f"❌ 找不到命令：{exe_name}，请填写 WW3 bin 路径或设置 PATH")
+            log(tr("local_run_cmd_not_found", "❌ 找不到命令：{cmd}，请填写 WW3 bin 路径或设置 PATH").format(cmd=exe_name))
             return -1
 
     def _resolve_tool(self, tool: str, bin_dir: str) -> str:
@@ -210,7 +210,7 @@ class LocalRunService:
         try:
             return self._stream([cmd], workdir, bin_dir, log)
         except FileNotFoundError:
-            log(f"❌ 找不到命令：{cmd}")
+            log(tr("local_run_cmd_not_found", "❌ 找不到命令：{cmd}，请填写 WW3 bin 路径或设置 PATH").format(cmd=cmd))
             return -1
 
     # ---- WW3 workflow steps (Python-native, no bash) ----
@@ -224,12 +224,12 @@ class LocalRunService:
         )
         if not has_multi:
             log("")
-            log("=" * 30 + " Running ww3_prnc " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_prnc", "运行 ww3_prnc") + " " + "=" * 30)
             return self._run_tool_in("ww3_prnc", workdir, bin_dir, log)
 
         # 1) default ww3_prnc.nml (wind)
         log("")
-        log("=" * 30 + " Running ww3_prnc (wind) " + "=" * 30)
+        log("=" * 30 + " " + tr("local_run_step_prnc_wind", "运行 ww3_prnc (wind)") + " " + "=" * 30)
         rc = self._run_tool_in("ww3_prnc", workdir, bin_dir, log)
         if rc != 0:
             return rc
@@ -245,7 +245,7 @@ class LocalRunService:
             if not tag_nml.exists():
                 continue
             log("")
-            log("=" * 30 + f" Running ww3_prnc ({tag}) " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_prnc_tag", "运行 ww3_prnc ({tag})").format(tag=tag) + " " + "=" * 30)
             tag_nml.rename(wp / "ww3_prnc.nml")
             rc = self._run_tool_in("ww3_prnc", workdir, bin_dir, log)
             (wp / "ww3_prnc.nml").rename(tag_nml)
@@ -264,21 +264,21 @@ class LocalRunService:
         mpi = shutil.which("mpirun") or shutil.which("mpiexec")
         if mpi:
             log("")
-            log("=" * 30 + f" Running {os.path.basename(mpi)} -n {nprocs} ww3_shel " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_mpi_shel", "运行 {mpi} -n {nprocs} ww3_shel").format(mpi=os.path.basename(mpi), nprocs=nprocs) + " " + "=" * 30)
             try:
                 rc = self._stream([mpi, "-n", str(nprocs), shel], workdir, bin_dir, log)
             except FileNotFoundError:
                 rc = -1
             if rc == 0:
                 return 0
-            log(f"⚠️ mpirun ww3_shel failed (rc={rc}), retrying direct ww3_shel")
+            log(tr("local_run_mpi_fallback", "⚠️ mpirun ww3_shel 失败 (rc={rc})，回退到直接运行 ww3_shel").format(rc=rc))
 
         log("")
-        log("=" * 30 + " Running ww3_shel (direct) " + "=" * 30)
+        log("=" * 30 + " " + tr("local_run_step_shel_direct", "运行 ww3_shel (direct)") + " " + "=" * 30)
         try:
             return self._stream([shel], workdir, bin_dir, log)
         except FileNotFoundError:
-            log(f"❌ 找不到 ww3_shel")
+            log(tr("local_run_shel_not_found", "❌ 找不到 ww3_shel"))
             return -1
 
     def run_workflow(self, workdir: str, bin_dir: str, log: LogCallback) -> int:
@@ -300,7 +300,7 @@ class LocalRunService:
         except Exception:
             pass
         log = _run_log_callback(wp, log)
-        log("▶️ 开始执行本地 WW3 运行...")
+        log(tr("local_run_start", "▶️ 开始执行本地 WW3 运行..."))
         start_t = time.time()
 
         # MPI process count
@@ -310,7 +310,7 @@ class LocalRunService:
                 nprocs = os.cpu_count() or 1
             except Exception:
                 nprocs = 1
-        log(f"Using MPI_NPROCS={nprocs}")
+        log(tr("local_run_mpi_nprocs", "使用 MPI_NPROCS={nprocs}").format(nprocs=nprocs))
 
         nested = (wp / "coarse").is_dir() and (wp / "fine").is_dir()
 
@@ -339,7 +339,7 @@ class LocalRunService:
     def _workflow_regular(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
         wd = str(wp)
         log("")
-        log("=" * 30 + " Running ww3_grid " + "=" * 30)
+        log("=" * 30 + " " + tr("local_run_step_grid", "运行 ww3_grid") + " " + "=" * 30)
         rc = self._run_tool_in("ww3_grid", wd, bin_dir, log)
         if rc != 0:
             return rc
@@ -349,7 +349,7 @@ class LocalRunService:
             return rc
 
         log("")
-        log("=" * 30 + " Running ww3_strt " + "=" * 30)
+        log("=" * 30 + " " + tr("local_run_step_strt", "运行 ww3_strt") + " " + "=" * 30)
         rc = self._run_tool_in("ww3_strt", wd, bin_dir, log)
         if rc != 0:
             return rc
@@ -368,7 +368,7 @@ class LocalRunService:
 
         for label, sub in [("coarse", coarse), ("fine", fine)]:
             log("")
-            log("=" * 30 + f" Running ww3_grid ({label}) " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_grid_label", "运行 ww3_grid ({label})").format(label=label) + " " + "=" * 30)
             rc = self._run_tool_in("ww3_grid", sub, bin_dir, log)
             if rc != 0:
                 return rc
@@ -376,7 +376,7 @@ class LocalRunService:
             if rc != 0:
                 return rc
             log("")
-            log("=" * 30 + f" Running ww3_strt ({label}) " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_strt_label", "运行 ww3_strt ({label})").format(label=label) + " " + "=" * 30)
             rc = self._run_tool_in("ww3_strt", sub, bin_dir, log)
             if rc != 0:
                 return rc
@@ -402,15 +402,15 @@ class LocalRunService:
         mpi = shutil.which("mpirun") or shutil.which("mpiexec")
         if mpi:
             log("")
-            log("=" * 30 + f" Running {os.path.basename(mpi)} -n {nprocs} ww3_multi " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_mpi_multi", "运行 {mpi} -n {nprocs} ww3_multi").format(mpi=os.path.basename(mpi), nprocs=nprocs) + " " + "=" * 30)
             rc = self._stream([mpi, "-n", str(nprocs), multi], str(wp), bin_dir, log)
         else:
             log("")
-            log("=" * 30 + " Running ww3_multi (direct) " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_multi_direct", "运行 ww3_multi (direct)") + " " + "=" * 30)
             try:
                 rc = self._stream([multi], str(wp), bin_dir, log)
             except FileNotFoundError:
-                log("❌ 找不到 ww3_multi")
+                log(tr("local_run_multi_not_found", "❌ 找不到 ww3_multi"))
                 return -1
         if rc != 0:
             return rc
@@ -430,21 +430,21 @@ class LocalRunService:
         rc = 0
         if (wp / "points.list").exists():
             log("")
-            log("=" * 30 + " Running ww3_ounp " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_ounp", "运行 ww3_ounp") + " " + "=" * 30)
             rc = self._run_tool_in("ww3_ounp", workdir, bin_dir, log)
             if rc != 0:
                 return rc
 
         if rc == 0 and (wp / "track_i.ww3").exists():
             log("")
-            log("=" * 30 + " Running ww3_trnc " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_trnc", "运行 ww3_trnc") + " " + "=" * 30)
             rc = self._run_tool_in("ww3_trnc", workdir, bin_dir, log)
             if rc != 0:
                 return rc
 
         if rc == 0:
             log("")
-            log("=" * 30 + " Running ww3_ounf " + "=" * 30)
+            log("=" * 30 + " " + tr("local_run_step_ounf", "运行 ww3_ounf") + " " + "=" * 30)
             rc = self._run_tool_in("ww3_ounf", workdir, bin_dir, log)
         return rc
 
