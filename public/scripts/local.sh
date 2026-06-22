@@ -34,63 +34,65 @@ rm -f "$LOG" "$SUCCESS_LOG" "$FAIL_LOG"
 
 echo "Using MPI_NPROCS=$MPI_NPROCS" | tee -a "$LOG"
 
-# Run ww3_prnc for multiple forcing files
+# Abort the run: archive the log as fail.log and exit with the given code
+fail_exit() {
+    [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
+    exit "$1"
+}
+
+# Run one step; abort immediately if it fails (no point continuing).
+#   run_step <label> <command> [args...]
+run_step() {
+    local label="$1"; shift
+    echo -e "
+============================== Running $label ==============================" | tee -a "$LOG"
+    "$@" 2>&1 | tee -a "$LOG"
+    local rc=${PIPESTATUS[0]}
+    if [ "$rc" -ne 0 ]; then
+        echo -e "
+============================== $label failed (exit $rc); aborting ==============================" | tee -a "$LOG"
+        fail_exit "$rc"
+    fi
+}
+
+# Run ww3_prnc for one or many forcing files (each step aborts on failure)
 run_prnc_with_fields() {
-    # Check for multiple forcing files
     if [ -f "ww3_prnc_current.nml" ] || [ -f "ww3_prnc_level.nml" ] || [ -f "ww3_prnc_ice.nml" ] || [ -f "ww3_prnc_ice1.nml" ]; then
         # Multiple forcing files found; process sequentially
-
-        # 1) Run ww3_prnc once (default ww3_prnc.nml, usually wind)
-        echo -e "
-============================== Running ww3_prnc (wind) ==============================" | tee -a "$LOG"
-        ww3_prnc 2>&1 | tee -a "$LOG"
-
-        # 2) Rename ww3_prnc.nml -> ww3_prnc_wind.nml
+        run_step "ww3_prnc (wind)" ww3_prnc
         mv ww3_prnc.nml ww3_prnc_wind.nml
 
-        # 3) Process other forcing files
         if [ -f "ww3_prnc_current.nml" ]; then
-            echo -e "
-============================== Running ww3_prnc (current) ==============================" | tee -a "$LOG"
             mv ww3_prnc_current.nml ww3_prnc.nml
-            ww3_prnc 2>&1 | tee -a "$LOG"
+            run_step "ww3_prnc (current)" ww3_prnc
             mv ww3_prnc.nml ww3_prnc_current.nml
         fi
 
         if [ -f "ww3_prnc_level.nml" ]; then
-            echo -e "
-============================== Running ww3_prnc (level) ==============================" | tee -a "$LOG"
             mv ww3_prnc_level.nml ww3_prnc.nml
-            ww3_prnc 2>&1 | tee -a "$LOG"
+            run_step "ww3_prnc (level)" ww3_prnc
             mv ww3_prnc.nml ww3_prnc_level.nml
         fi
 
         if [ -f "ww3_prnc_ice.nml" ]; then
-            echo -e "
-============================== Running ww3_prnc (ice) ==============================" | tee -a "$LOG"
             mv ww3_prnc_ice.nml ww3_prnc.nml
-            ww3_prnc 2>&1 | tee -a "$LOG"
+            run_step "ww3_prnc (ice)" ww3_prnc
             mv ww3_prnc.nml ww3_prnc_ice.nml
         fi
 
         if [ -f "ww3_prnc_ice1.nml" ]; then
-            echo -e "
-============================== Running ww3_prnc (ice1) ==============================" | tee -a "$LOG"
             mv ww3_prnc_ice1.nml ww3_prnc.nml
-            ww3_prnc 2>&1 | tee -a "$LOG"
+            run_step "ww3_prnc (ice1)" ww3_prnc
             mv ww3_prnc.nml ww3_prnc_ice1.nml
         fi
 
-        # 4) Restore ww3_prnc_wind.nml -> ww3_prnc.nml
         mv ww3_prnc_wind.nml ww3_prnc.nml
     else
-        # Only one ww3_prnc.nml; run directly
-        echo -e "
-============================== Running ww3_prnc ==============================" | tee -a "$LOG"
-        ww3_prnc 2>&1 | tee -a "$LOG"
+        run_step "ww3_prnc" ww3_prnc
     fi
 }
 
+# ww3_shel: try MPI first, fall back to a direct (non-MPI) run before failing
 run_ww3_shel_with_fallback() {
     echo -e "
 ============================== Running mpirun ww3_shel ==============================" | tee -a "$LOG"
@@ -115,29 +117,27 @@ run_ww3_shel_with_fallback() {
     return $rc_direct
 }
 
-# Detect nested grid mode
-if [ -d "coarse" ] && [ -d "fine" ]; then
+# Determine grid type from params.yml (fall back to the on-disk layout)
+GRID_TYPE="$(grep -m1 -E '^[[:space:]]*grid_type:' "$SCRIPT_ROOT/params.yml" 2>/dev/null | sed -E 's/.*grid_type:[[:space:]]*//; s/[[:space:]]*$//')"
+if [ -z "$GRID_TYPE" ]; then
+    if [ -d "coarse" ] && [ -d "fine" ]; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
+fi
+echo "Grid type (from params.yml): $GRID_TYPE" | tee -a "$LOG"
+
+if [ "$GRID_TYPE" = "nested" ]; then
     ######################################
     # Nested grid mode
     ######################################
-    echo -e "
-============================== Running ww3_grid (coarse) ==============================" | tee -a "$LOG"
     cd coarse
-    ww3_grid 2>&1 | tee -a "$LOG"
+    run_step "ww3_grid (coarse)" ww3_grid
     run_prnc_with_fields
-    echo -e "
-============================== Running ww3_strt (coarse) ==============================" | tee -a "$LOG"
-    ww3_strt 2>&1 | tee -a "$LOG"
+    run_step "ww3_strt (coarse)" ww3_strt
     cd ..
 
-    echo -e "
-============================== Running ww3_grid (fine) ==============================" | tee -a "$LOG"
     cd fine
-    ww3_grid 2>&1 | tee -a "$LOG"
+    run_step "ww3_grid (fine)" ww3_grid
     run_prnc_with_fields
-    echo -e "
-============================== Running ww3_strt (fine) ==============================" | tee -a "$LOG"
-    ww3_strt 2>&1 | tee -a "$LOG"
+    run_step "ww3_strt (fine)" ww3_strt
     cd ..
 
     # Coarse grid file handling
@@ -166,8 +166,7 @@ if [ -d "coarse" ] && [ -d "fine" ]; then
     mpirun -n $MPI_NPROCS ww3_multi 2>&1 | tee -a "$LOG"
     rc_mpi=${PIPESTATUS[0]}
     if [ $rc_mpi -ne 0 ]; then
-        [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
-        exit $rc_mpi
+        fail_exit $rc_mpi
     fi
 
     [ -f out_grd.fine ] && mv out_grd.fine fine/out_grd.ww3
@@ -178,44 +177,18 @@ if [ -d "coarse" ] && [ -d "fine" ]; then
     # Export results (nested grid mode)
     ######################################
     cd fine
-    rc_export=0
-    if [ -f points.list ]; then
-        echo -e "
-============================== Running ww3_ounp (fine) ==============================" | tee -a "$LOG"
-        ww3_ounp 2>&1 | tee -a "$LOG"
-        rc_export=$?
-    fi
-
-    if [ $rc_export -eq 0 ] && [ -f track_i.ww3 ]; then
-        echo -e "
-============================== Running ww3_trnc (fine) ==============================" | tee -a "$LOG"
-        ww3_trnc 2>&1 | tee -a "$LOG"
-        rc_export=$?
-    fi
-
-    if [ $rc_export -eq 0 ]; then
-        echo -e "
-============================== Running ww3_ounf (fine) ==============================" | tee -a "$LOG"
-        ww3_ounf 2>&1 | tee -a "$LOG"
-        rc_export=$?
-    fi
+    [ -f points.list ] && run_step "ww3_ounp (fine)" ww3_ounp
+    [ -f track_i.ww3 ] && run_step "ww3_trnc (fine)" ww3_trnc
+    run_step "ww3_ounf (fine)" ww3_ounf
     cd ..
-    if [ $rc_export -ne 0 ]; then
-        [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
-        exit $rc_export
-    fi
     [ -f "$LOG" ] && mv "$LOG" "$SUCCESS_LOG"
 else
     ######################################
     # Regular grid mode
     ######################################
-    echo -e "
-============================== Running ww3_grid ==============================" | tee -a "$LOG"
-    ww3_grid 2>&1 | tee -a "$LOG"
+    run_step "ww3_grid" ww3_grid
     run_prnc_with_fields
-    echo -e "
-============================== Running ww3_strt ==============================" | tee -a "$LOG"
-    ww3_strt 2>&1 | tee -a "$LOG"
+    run_step "ww3_strt" ww3_strt
 
     ######################################
     # Run MPI program (regular grid mode)
@@ -223,37 +196,14 @@ else
     run_ww3_shel_with_fallback
     rc_shel=$?
     if [ $rc_shel -ne 0 ]; then
-        [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
-        exit $rc_shel
+        fail_exit $rc_shel
     fi
 
     ######################################
     # Export results (regular grid mode)
     ######################################
-    rc_export=0
-    if [ -f points.list ]; then
-        echo -e "
-============================== Running ww3_ounp ==============================" | tee -a "$LOG"
-        ww3_ounp 2>&1 | tee -a "$LOG"
-        rc_export=$?
-    fi
-
-    if [ $rc_export -eq 0 ] && [ -f track_i.ww3 ]; then
-        echo -e "
-============================== Running ww3_trnc ==============================" | tee -a "$LOG"
-        ww3_trnc 2>&1 | tee -a "$LOG"
-        rc_export=$?
-    fi
-
-    if [ $rc_export -eq 0 ]; then
-        echo -e "
-============================== Running ww3_ounf ==============================" | tee -a "$LOG"
-        ww3_ounf 2>&1 | tee -a "$LOG"
-        rc_export=$?
-    fi
-    if [ $rc_export -ne 0 ]; then
-        [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
-        exit $rc_export
-    fi
+    [ -f points.list ] && run_step "ww3_ounp" ww3_ounp
+    [ -f track_i.ww3 ] && run_step "ww3_trnc" ww3_trnc
+    run_step "ww3_ounf" ww3_ounf
     [ -f "$LOG" ] && mv "$LOG" "$SUCCESS_LOG"
 fi
