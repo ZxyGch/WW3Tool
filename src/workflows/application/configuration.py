@@ -144,6 +144,20 @@ def _resolve_path(value: Any, base_dir: Path, *, required: bool = False) -> Opti
             raise ConfigError("路径不能为空")
         return None
     raw = os.path.expandvars(os.path.expanduser(str(value).strip()))
+    # [EN] Cross-platform guard: reject POSIX paths on Windows and vice versa.
+    # Without this, "/Users/zxy/..." on Windows is treated as a relative path
+    # or silently normalised to "C:\Users\zxy\...", masking the real issue.
+    _incompatible = False
+    if os.name == "nt" and raw.startswith("/") and not raw.startswith("//"):
+        _incompatible = True
+    if os.name != "nt" and len(raw) >= 2 and raw[1] == ":" and raw[0].isalpha():
+        _incompatible = True
+    if _incompatible:
+        if required:
+            raise ConfigError(
+                f"路径与当前操作系统不兼容：{raw}（请在 params.yml 中修正为本地路径）"
+            )
+        return None
     path = Path(raw)
     if not path.is_absolute():
         path = base_dir / path

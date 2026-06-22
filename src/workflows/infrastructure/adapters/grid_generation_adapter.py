@@ -70,11 +70,36 @@ def _reference_dir(config: GridConfig) -> Path:
 def _check_reference_data(ref_dir: Path) -> None:
     missing = [name for name in REFERENCE_DATA_REQUIRED_FILES if not (ref_dir / name).exists()]
     if missing:
+        # [EN] Provide diagnostic info to help locate misplaced files
+        # 提供诊断信息帮助定位文件位置
+        diag_lines: list[str] = []
+        if ref_dir.is_dir():
+            contents = list(ref_dir.iterdir())
+            diag_lines.append(f"目录内容（{len(contents)} 项）：")
+            for item in contents[:15]:
+                size_info = ""
+                if item.is_file():
+                    size_mb = item.stat().st_size / (1024 * 1024)
+                    size_info = f" ({size_mb:.0f} MB)"
+                elif item.is_dir():
+                    sub_count = len(list(item.iterdir()))
+                    size_info = f" (子文件 {sub_count} 个)"
+                diag_lines.append(f"  {'📁' if item.is_dir() else '📄'} {item.name}{size_info}")
+            if len(contents) > 15:
+                diag_lines.append(f"  …及其他 {len(contents) - 15} 项")
+            # Check if files are in a nested reference_data/ subdirectory
+            inner = ref_dir / "reference_data"
+            if inner.is_dir():
+                inner_files = [f.name for f in inner.iterdir() if f.is_file()]
+                diag_lines.append(f"⚠️ 发现嵌套子目录 reference_data/，含 {len(inner_files)} 个文件")
+        else:
+            diag_lines.append(f"目录不存在：{ref_dir}")
         raise RuntimeError(
             "reference_data 缺失，无法生成网格："
             + ", ".join(missing[:5])
             + (f" 等 {len(missing)} 个文件" if len(missing) > 5 else "")
-            + f"；目录：{ref_dir}"
+            + f"\n目录：{ref_dir}"
+            + "\n" + "\n".join(diag_lines)
         )
 
 
