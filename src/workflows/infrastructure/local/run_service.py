@@ -80,6 +80,30 @@ def _move_if(src: Path, dst: Path) -> None:
         shutil.move(str(src), str(dst))
 
 
+def _run_log_callback(workdir: Path, log: LogCallback, *, reset: bool = False) -> LogCallback:
+    """Return a log callback that mirrors messages to ``workdir/run.log``."""
+    run_log = workdir / "run.log"
+    try:
+        if reset:
+            run_log.write_text("", encoding="utf-8")
+        else:
+            run_log.touch(exist_ok=True)
+    except Exception as exc:
+        log(f"⚠️ 无法写入 run.log：{exc}")
+        return log
+
+    def write(message: str) -> None:
+        text = str(message)
+        try:
+            with run_log.open("a", encoding="utf-8") as fh:
+                fh.write(text + "\n")
+        except Exception:
+            pass
+        log(text)
+
+    return write
+
+
 class LocalRunService:
     """运行本地 WW3 脚本/工具并支持停止（持有当前子进程）。
 
@@ -151,6 +175,7 @@ class LocalRunService:
 
         [EN] Run ww3_ounf/ounp/trnc (pre-checks output files). Returns exit code (-1 = skipped/command not found).
         """
+        log = _run_log_callback(Path(workdir), log)
         checks = _TOOL_PRECHECK.get(tool, [])
         if checks and not any((Path(workdir) / name).exists() for name in checks):
             log(f"❌ 未找到输出文件 {' 或 '.join(checks)}，跳过 {tool}")
@@ -270,6 +295,14 @@ class LocalRunService:
         import time
 
         wp = Path(workdir)
+        success_mark = wp / "success"
+        fail_mark = wp / "fail"
+        try:
+            success_mark.unlink(missing_ok=True)
+            fail_mark.unlink(missing_ok=True)
+        except Exception:
+            pass
+        log = _run_log_callback(wp, log, reset=True)
         log("▶️ 开始执行本地 WW3 运行...")
         start_t = time.time()
 
@@ -292,8 +325,16 @@ class LocalRunService:
         elapsed = time.time() - start_t
         if rc == 0:
             log(tr("step5_workflow_done", "✅ 本地 WW3 运行完成 ({elapsed:.1f}s)").format(elapsed=elapsed))
+            try:
+                success_mark.touch()
+            except Exception:
+                pass
         else:
             log(tr("step5_workflow_failed", "❌ 本地 WW3 运行失败 (rc={rc}, {elapsed:.1f}s)").format(rc=rc, elapsed=elapsed))
+            try:
+                fail_mark.touch()
+            except Exception:
+                pass
         return rc
 
     # ---- regular grid workflow ----
