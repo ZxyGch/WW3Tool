@@ -45,6 +45,7 @@ class PipelineViewModel:
         self._on_log = on_log
         self._on_state_change = on_state_change
         self.state = PipelineStepState()
+        self._run_log_path: Optional[Path] = None
 
     def load_config(self, params_path: str | Path, *, validation_stage: str = "full") -> PipelineConfig:
         # [EN] Load workdir params.yml; empty values auto-fall-back to root params.yml defaults.
@@ -625,13 +626,36 @@ class PipelineViewModel:
     def _handle_log(self, message: str) -> None:
         text = str(message)
         self.state.messages.append(text)
+        if self._run_log_path is not None:
+            try:
+                with self._run_log_path.open("a", encoding="utf-8") as fh:
+                    fh.write(text + "\n")
+            except Exception:
+                pass
         if self._on_log is not None:
             self._on_log(text)
 
     def _set_state(self, state: PipelineStepState) -> None:
         self.state = state
+        # 操作日志落盘到工作目录的 run.log；success.log / fail.log 的重命名
+        # 只由 server.sh / local.sh 负责，应用层不碰。
+        if state.is_running and state.workdir:
+            self._begin_run_log(state.workdir)
         if self._on_state_change is not None:
             self._on_state_change(state)
+
+    def _begin_run_log(self, workdir: str) -> None:
+        """操作开始：在工作目录创建一个新的 run.log（不触碰 success/fail.log）。"""
+        self._run_log_path = None
+        try:
+            d = Path(workdir)
+            if not d.is_dir():
+                return
+            run_log = d / "run.log"
+            run_log.write_text("", encoding="utf-8")
+            self._run_log_path = run_log
+        except Exception:
+            self._run_log_path = None
 
 
 def _as_dict(value: object) -> dict:
