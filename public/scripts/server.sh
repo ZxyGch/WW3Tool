@@ -32,14 +32,14 @@ CASENAME=202501
 # Save script root directory
 SCRIPT_ROOT="$(pwd)"
 
-# All output goes to run.log; on completion drop an empty 'success' or 'fail'
-# marker file (run.log itself is never renamed).
+# All output appends to run.log; on completion drop an empty 'success' or 'fail'
+# marker file (run.log itself is never renamed or cleared).
 LOG="$SCRIPT_ROOT/run.log"
 SUCCESS_MARK="$SCRIPT_ROOT/success"
 FAIL_MARK="$SCRIPT_ROOT/fail"
 
-# Clean old log and markers
-rm -f "$LOG" "$SUCCESS_MARK" "$FAIL_MARK"
+# Clean old markers only; keep earlier preparation/submission logs.
+rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
 # Abort the run: drop a 'fail' marker (keep run.log) and exit with the given code
 fail_exit() {
