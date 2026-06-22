@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QSizePolicy
-from qfluentwidgets import CheckBox, ComboBox, EditableComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
 # [EN] Step 4 "spectrum parameters / numerical integration timestep" groups.
 # Step 4「频谱参数 / 数值积分时间步长」分组。
@@ -107,7 +107,8 @@ class WW3StepPanel:
         self.st_label = self._field_label(tr("step4_st_version", "ST 版本："))
         grid.addWidget(self.st_label, 0, 0)
         grid.addWidget(self.st_combo, 0, 1)
-        self.cpu_combo = EditableComboBox()
+        self.cpu_combo = ComboBox()
+        self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到 CPU 分区"))
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
         self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))

@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import ComboBox, EditableComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components import styles
 from ..components.combo_box import left_align_combo_text
@@ -202,7 +202,8 @@ class ServerConnectPanel:
         slurm_grid.addWidget(self.st_label, 0, 0)
         slurm_grid.addWidget(self.st_combo, 0, 1)
         self._text_line(slurm_grid, 1, tr("step5_slurm_job_name", "作业名："), "slurm_job_name")
-        self.cpu_combo = EditableComboBox()
+        self.cpu_combo = ComboBox()
+        self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到 CPU 分区"))
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
         self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
@@ -417,6 +418,9 @@ class ServerConnectPanel:
     def replace_cpu_options_if_changed(self, values: list[str]) -> None:
         server_values = [str(value).strip() for value in values if str(value).strip()]
         if not server_values:
+            # 服务器未解析到 CPU 分区：清空下拉框，由占位文本提示
+            if self.cpu_combo.count():
+                self.cpu_combo.clear()
             return
         deduped = list(dict.fromkeys(server_values))
         current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
