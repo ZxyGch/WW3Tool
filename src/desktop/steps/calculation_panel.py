@@ -257,13 +257,10 @@ class CalculationStepPanel:
             self._notify(tr("step3_map_picker_unavailable", "地图选点不可用（缺少 matplotlib/cartopy）：{error}").format(error=exc))
             return
         if dialog.exec() and dialog.selected_points:
-            added = 0
             for point in dialog.selected_points:
                 if self._is_duplicate(kind, point):
                     continue
                 self._append_point(kind, point)
-                added += 1
-            self._notify(tr("step3_points_added_from_map", "已从地图添加 {count} 个点位").format(count=added))
 
     def _delete(self, kind: str) -> None:
         row = self._selected_data_row(kind)
