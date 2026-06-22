@@ -80,14 +80,11 @@ def _move_if(src: Path, dst: Path) -> None:
         shutil.move(str(src), str(dst))
 
 
-def _run_log_callback(workdir: Path, log: LogCallback, *, reset: bool = False) -> LogCallback:
+def _run_log_callback(workdir: Path, log: LogCallback) -> LogCallback:
     """Return a log callback that mirrors messages to ``workdir/run.log``."""
     run_log = workdir / "run.log"
     try:
-        if reset:
-            run_log.write_text("", encoding="utf-8")
-        else:
-            run_log.touch(exist_ok=True)
+        run_log.touch(exist_ok=True)
     except Exception as exc:
         log(f"⚠️ 无法写入 run.log：{exc}")
         return log
@@ -302,7 +299,7 @@ class LocalRunService:
             fail_mark.unlink(missing_ok=True)
         except Exception:
             pass
-        log = _run_log_callback(wp, log, reset=True)
+        log = _run_log_callback(wp, log)
         log("▶️ 开始执行本地 WW3 运行...")
         start_t = time.time()
 

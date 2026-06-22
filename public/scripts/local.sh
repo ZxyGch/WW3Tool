@@ -7,12 +7,12 @@ set -o pipefail
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_ROOT" || exit 1
 
-# All output goes to run.log; on completion drop an empty 'success' or 'fail'
-# marker file (run.log itself is never renamed).
+# All output appends to run.log; on completion drop an empty 'success' or 'fail'
+# marker file (run.log itself is never renamed or cleared).
 LOG="$SCRIPT_ROOT/run.log"
 SUCCESS_MARK="$SCRIPT_ROOT/success"
 FAIL_MARK="$SCRIPT_ROOT/fail"
-rm -f "$LOG" "$SUCCESS_MARK" "$FAIL_MARK"
+rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
 exec > >(tee -a "$LOG") 2>&1
 
