@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import traceback
 from concurrent.futures import ProcessPoolExecutor
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -239,10 +240,15 @@ class ForcingNormalizeService:
                     def _snapshot_filters(var_obj):
                         try:
                             if hasattr(var_obj, "filters"):
-                                return var_obj.filters()
+                                result = var_obj.filters()
+                                if isinstance(result, dict):
+                                    return result
+                                # [EN] Some netCDF4 versions may return non-dict; convert if possible
+                                if isinstance(result, (list, tuple)):
+                                    return dict(result)
                         except Exception:
                             pass
-                        return None
+                        return {}
 
                     data_var_infos.append({
                         "std_name": std_name,
@@ -462,8 +468,10 @@ class ForcingNormalizeService:
                 # 创建数据变量
                 def _build_var_kwargs(filters, chunksizes):
                     kwargs = {"fill_value": -32767.0}
+                    if not isinstance(filters, dict):
+                        return kwargs
                     try:
-                        if filters and filters.get("zlib"):
+                        if filters.get("zlib"):
                             kwargs["zlib"] = True
                             if filters.get("complevel") is not None:
                                 kwargs["complevel"] = filters["complevel"]
@@ -666,7 +674,7 @@ class ForcingNormalizeService:
                     os.remove(temp_output_path)
             except Exception:
                 pass
-            self._emit(log, tr("log_write_file_failed", "❌ 写入新文件失败") + f": {exc}")
+            self._emit(log, tr("log_write_file_failed", "❌ 写入新文件失败") + f": {exc}\n{traceback.format_exc()}")
             return False
 
     @staticmethod
