@@ -51,6 +51,18 @@ RTOPO_ZIP_URL = (
     "RTopo_2_0_4_GEBCO_v2023_60sec_pixel.zip"
 )
 
+# Files that MUST exist after a successful download (same list as grid_generation_adapter).
+REQUIRED_REFERENCE_FILES = [
+    "coastal_bound_full.mat",
+    "coastal_bound_high.mat",
+    "coastal_bound_inter.mat",
+    "coastal_bound_low.mat",
+    "coastal_bound_coarse.mat",
+    "etopo1.nc",
+    "etopo2.nc",
+    "gebco.nc",
+]
+
 # Same ``reference_data.zip`` as the GitHub release bundle; for manual download if GitHub is slow.
 REFERENCE_DATA_MIRROR_YDRAY = (
     "https://ydray.com/get/t/u17741446196277XguE91036edeefddAV"
@@ -153,6 +165,39 @@ def _zip_normalized_roots(namelist: list[str]) -> set[str]:
     return roots
 
 
+def _safe_extractall(zf: zipfile.ZipFile, target: Path, log=print) -> None:
+    """Extract zip to *target*, handling Windows long-path limits.
+
+    On Windows, ``ZipFile.extractall`` silently skips entries whose full path
+    exceeds 260 characters.  We extract member-by-member and fall back to a
+    short-path workaround (``\\?\\`` prefix) when needed.
+    """
+    import os as _os
+
+    members = [m for m in zf.infolist() if not m.is_dir()]
+    for member in members:
+        # Normalise to forward slashes then resolve relative to target
+        rel = member.filename.replace("\\", "/")
+        dest = target / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with zf.open(member) as src, open(dest, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+        except (OSError, SystemError) as exc:
+            # Windows path-length or permission issue — try long-path prefix
+            if _os.name == "nt":
+                long_dest = Path("\\\\?\\" + str(dest.resolve()))
+                long_dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with zf.open(member) as src, open(long_dest, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    log(f"  (long-path ok) {rel}", flush=True)
+                    continue
+                except Exception:
+                    pass
+            log(f"  ⚠️ Failed to extract: {rel} ({exc})", flush=True)
+
+
 def flatten_nested_reference_data_dir(ref_dir: Path, log=print) -> None:
     """
     If data ended up as ``reference_data/reference_data/...`` (wrong extract target
@@ -250,13 +295,46 @@ def download_reference_data_github(
         if not file_members:
             raise OSError("No valid files in reference_data.zip")
         top_roots = _zip_normalized_roots(names)
+        log(f"  Zip top-level roots: {top_roots}", flush=True)
+        log(f"  Zip file count: {len(file_members)}", flush=True)
         if len(top_roots) == 1 and next(iter(top_roots)).lower() == "reference_data":
             # Layout: reference_data/coastal_bound_....mat → work_dir/reference_data/
-            zf.extractall(work_dir)
+            _safe_extractall(zf, work_dir, log=log)
         else:
             # Flat archive: drop files straight into ref_dir
-            zf.extractall(ref_dir)
+            _safe_extractall(zf, ref_dir, log=log)
         flatten_nested_reference_data_dir(ref_dir, log=log)
+
+    # --- Post-extraction verification ---
+    missing = [f for f in REQUIRED_REFERENCE_FILES if not (ref_dir / f).is_file()]
+    if missing:
+        # [EN] Attempt to locate the files elsewhere under work_dir (e.g. deeper nesting)
+        # 尝试在工作目录下查找文件（可能解压到了更深的层级）
+        log("", flush=True)
+        log(f"  ⚠️ {len(missing)} required files missing after extraction:", flush=True)
+        for f in missing[:5]:
+            log(f"    - {f}", flush=True)
+        # Try to find and move misplaced files
+        import glob as _glob
+        for f in missing:
+            found = list(_glob.glob(str(work_dir / "**" / f), recursive=True))
+            if found:
+                src = Path(found[0])
+                dst = ref_dir / f
+                log(f"  Found at {src}, moving to {dst}…", flush=True)
+                shutil.move(str(src), str(dst))
+        # Re-check
+        still_missing = [f for f in REQUIRED_REFERENCE_FILES if not (ref_dir / f).is_file()]
+        if still_missing:
+            actual = list(ref_dir.iterdir()) if ref_dir.is_dir() else []
+            log(f"  ⚠️ Still missing {len(still_missing)} files after recovery.", flush=True)
+            log(f"  Directory contents ({len(actual)} items):", flush=True)
+            for item in actual[:20]:
+                log(f"    {item.name}", flush=True)
+            raise OSError(
+                f"reference_data extraction incomplete: "
+                f"{len(still_missing)} files still missing in {ref_dir}"
+            )
 
     # Remove split parts and merged zip to save disk space
     for pname in REFERENCE_DATA_PART_NAMES:
