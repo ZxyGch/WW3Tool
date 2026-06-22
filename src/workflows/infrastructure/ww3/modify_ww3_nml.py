@@ -463,16 +463,6 @@ class ModifyWW3NML(
                     )
                     copied_files.append("local.sh")
 
-            watcher_path = os.path.join(scripts_dir, "ww3_ntfy_watch.sh")
-            if os.path.isfile(watcher_path):
-                dst_path = os.path.join(self.selected_folder, "ww3_ntfy_watch.sh")
-                shutil.copy2(watcher_path, dst_path)
-                try:
-                    os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
-                except OSError:
-                    pass
-                copied_files.append("ww3_ntfy_watch.sh")
-
             if copied_files:
                 files_str = ', '.join(copied_files)
                 self.log(tr("step4_special_files_copied", "✅ 已复制 {files} 到当前工作目录").format(files=files_str))

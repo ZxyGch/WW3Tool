@@ -343,7 +343,7 @@ python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 - **水位场**：存在 `zos`
 - **冰场**：存在 `siconc`
 
-#### 单遍归一化（ForcingNormalizeService）
+#### 单遍归一化
 
 所有强迫场文件统一通过 `ForcingNormalizeService.normalize()` 处理，从源文件读取后一次性写出标准化 NetCDF，保留源文件中的所有变量（不限于强迫场变量）。具体处理：
 
@@ -359,11 +359,14 @@ python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 
 归一化**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
 
+
+
 #### 多场文件与自动关联
 
 如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），`VariableDetector` 会检测所有存在的场类型：
 
 - **自动关联**（`auto_associate=True`，默认）：文件名使用下划线连接所有检测到的场，如 `current_level.nc`、`wind_current_level_ice.nc`，同时多个强迫场槽位指向同一个文件
+
 
 #### 工作目录扫描
 
