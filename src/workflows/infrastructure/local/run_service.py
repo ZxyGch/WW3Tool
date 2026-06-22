@@ -1,21 +1,20 @@
-"""本地 WW3 执行服务：在工作目录运行 ``local.sh`` 与 ww3_ounf/ounp/trnc，可停止。
+"""本地 WW3 执行服务：Python 直驱 WW3 可执行文件，跨平台支持，可停止。
 
-迁移自 src ``home_local_run``：``bash local.sh``（WW3 bin 目录加入 ``PATH``，新会话便于整树
-停止），逐行回调日志；ww3_ounf/ounp/trnc 运行前检查 out_grd.ww3 / out_pnt.ww3。
-``stop()`` 通过 ``killpg`` 结束当前进程组。
+``run_workflow()`` 完整复刻 ``local.sh`` 逻辑，用 Python 直接调用 ww3_grid / ww3_prnc /
+ww3_strt / ww3_shel / ww3_multi / ww3_ounp / ww3_trnc / ww3_ounf，无需 bash。
+``run_tool()`` 用于单独运行后处理工具。``stop()`` 终止当前进程树。
 
-[EN] Local WW3 execution service: runs ``local.sh`` and ww3_ounf/ounp/trnc in the working
-directory, with stop support.
+[EN] Local WW3 execution service: Python-native WW3 workflow driver, cross-platform.
 
-Migrated from src ``home_local_run``: ``bash local.sh`` (WW3 bin directory added to ``PATH``,
-new session for easy tree termination), line-by-line log callback; ww3_ounf/ounp/trnc check
-for out_grd.ww3 / out_pnt.ww3 before running. ``stop()`` terminates the current process
-group via ``killpg``.
+``run_workflow()`` replicates ``local.sh`` logic, directly invoking WW3 executables via
+Python subprocess — no bash needed. ``run_tool()`` runs individual post-processing tools.
+``stop()`` terminates the current process tree.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -32,6 +31,52 @@ _TOOL_PRECHECK = {
     "ww3_trnc": ["out_grd.ww3"],
 }
 
+_IS_WIN = os.name == "nt"
+
+
+def _find_bash() -> str | None:
+    """Locate a usable ``bash`` executable on the current platform.
+
+    Search order (Windows):
+    1. ``bash`` on ``PATH`` (e.g. Git Bash added to PATH, MSYS2, Cygwin)
+    2. Git for Windows default install paths
+    3. WSL ``bash.exe``
+
+    On POSIX, simply return ``"bash"`` (assumed available).
+    """
+    if not _IS_WIN:
+        return "bash"
+    # 1. Already on PATH?
+    found = shutil.which("bash")
+    if found:
+        return found
+    # 2. Git for Windows default locations
+    for candidate in (
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe"),
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    # 3. WSL
+    wsl_bash = shutil.which("wsl")
+    if wsl_bash:
+        return None  # caller should use [wsl, bash, ...] — handled separately
+    return None
+
+
+def _tool_exe(tool: str) -> str:
+    """Return the platform-appropriate executable name (append ``.exe`` on Windows)."""
+    if _IS_WIN and not tool.lower().endswith(".exe"):
+        return tool + ".exe"
+    return tool
+
+
+def _move_if(src: Path, dst: Path) -> None:
+    """Move *src* to *dst* if *src* exists."""
+    if src.is_file():
+        shutil.move(str(src), str(dst))
+
 
 class LocalRunService:
     """运行本地 WW3 脚本/工具并支持停止（持有当前子进程）。
@@ -47,17 +92,21 @@ class LocalRunService:
         env = os.environ.copy()
         if bin_dir:
             env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
-        proc = subprocess.Popen(
-            cmd,
+        popen_kwargs: dict = dict(
             cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             env=env,
-            close_fds=True,
-            start_new_session=True,
         )
+        if _IS_WIN:
+            # [EN] On Windows, use CREATE_NEW_PROCESS_GROUP for stop support
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["close_fds"] = True
+            popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **popen_kwargs)
         with self._lock:
             self._proc = proc
         try:
@@ -85,10 +134,14 @@ class LocalRunService:
             log(f"❌ 找不到本地脚本：{script}")
             return -1
         log("▶️ 开始执行本地 WW3 运行...")
+        bash = _find_bash()
+        if bash is None:
+            log("❌ 找不到 bash（请安装 Git for Windows 并确保 bash 在 PATH 中）")
+            return -1
         try:
-            return self._stream(["bash", str(script)], str(workdir), bin_dir, log)
+            return self._stream([bash, str(script)], str(workdir), bin_dir, log)
         except FileNotFoundError:
-            log("❌ 找不到 bash 命令，无法执行脚本")
+            log(f"❌ 无法启动 bash：{bash}")
             return -1
 
     def run_tool(self, tool: str, workdir: str, bin_dir: str, log: LogCallback) -> int:
@@ -100,14 +153,260 @@ class LocalRunService:
         if checks and not any((Path(workdir) / name).exists() for name in checks):
             log(f"❌ 未找到输出文件 {' 或 '.join(checks)}，跳过 {tool}")
             return -1
-        cmd_path = os.path.join(bin_dir, tool) if bin_dir else tool
+        # [EN] On Windows, look for .exe variant
+        exe_name = _tool_exe(tool)
+        cmd_path = os.path.join(bin_dir, exe_name) if bin_dir else exe_name
         use_abs = bool(bin_dir) and os.path.isfile(cmd_path) and os.access(cmd_path, os.X_OK)
+        if not use_abs and bin_dir:
+            # [EN] Fallback: try without .exe (might be a script or symlink)
+            alt_path = os.path.join(bin_dir, tool)
+            if os.path.isfile(alt_path) and os.access(alt_path, os.X_OK):
+                cmd_path = alt_path
+                use_abs = True
         log(f"▶️ 开始执行：{tool}")
         try:
-            return self._stream([cmd_path] if use_abs else [tool], str(workdir), bin_dir, log)
+            return self._stream([cmd_path] if use_abs else [exe_name], str(workdir), bin_dir, log)
         except FileNotFoundError:
-            log(f"❌ 找不到命令：{tool}，请填写 WW3 bin 路径或设置 PATH")
+            log(f"❌ 找不到命令：{exe_name}，请填写 WW3 bin 路径或设置 PATH")
             return -1
+
+    def _resolve_tool(self, tool: str, bin_dir: str) -> str:
+        """Return absolute path or plain name for *tool*, handling ``.exe`` on Windows."""
+        exe = _tool_exe(tool)
+        if bin_dir:
+            for name in (exe, tool):  # try .exe first, then bare
+                full = os.path.join(bin_dir, name)
+                if os.path.isfile(full):
+                    return full
+        return exe  # rely on PATH
+
+    def _run_tool_in(self, tool: str, workdir: str, bin_dir: str, log: LogCallback) -> int:
+        """Run a single WW3 tool in *workdir*. Returns exit code."""
+        cmd = self._resolve_tool(tool, bin_dir)
+        try:
+            return self._stream([cmd], workdir, bin_dir, log)
+        except FileNotFoundError:
+            log(f"❌ 找不到命令：{cmd}")
+            return -1
+
+    # ---- WW3 workflow steps (Python-native, no bash) ----
+
+    def _run_prnc_fields(self, workdir: str, bin_dir: str, log: LogCallback) -> int:
+        """Run ``ww3_prnc`` for all forcing namelists present. Returns last non-zero rc or 0."""
+        wp = Path(workdir)
+        has_multi = any(
+            (wp / n).exists()
+            for n in ("ww3_prnc_current.nml", "ww3_prnc_level.nml", "ww3_prnc_ice.nml", "ww3_prnc_ice1.nml")
+        )
+        if not has_multi:
+            log("")
+            log("=" * 30 + " Running ww3_prnc " + "=" * 30)
+            return self._run_tool_in("ww3_prnc", workdir, bin_dir, log)
+
+        # 1) default ww3_prnc.nml (wind)
+        log("")
+        log("=" * 30 + " Running ww3_prnc (wind) " + "=" * 30)
+        rc = self._run_tool_in("ww3_prnc", workdir, bin_dir, log)
+        if rc != 0:
+            return rc
+        # rename to _wind
+        wind_nml = wp / "ww3_prnc.nml"
+        wind_bak = wp / "ww3_prnc_wind.nml"
+        if wind_nml.exists():
+            wind_nml.rename(wind_bak)
+
+        # 2) process extra forcing files
+        for tag in ("current", "level", "ice", "ice1"):
+            tag_nml = wp / f"ww3_prnc_{tag}.nml"
+            if not tag_nml.exists():
+                continue
+            log("")
+            log("=" * 30 + f" Running ww3_prnc ({tag}) " + "=" * 30)
+            tag_nml.rename(wp / "ww3_prnc.nml")
+            rc = self._run_tool_in("ww3_prnc", workdir, bin_dir, log)
+            (wp / "ww3_prnc.nml").rename(tag_nml)
+            if rc != 0:
+                break
+
+        # 3) restore wind nml
+        if wind_bak.exists():
+            wind_bak.rename(wp / "ww3_prnc.nml")
+        return rc
+
+    def _run_shel_with_fallback(self, workdir: str, bin_dir: str, log: LogCallback, nprocs: int) -> int:
+        """Run ``mpirun ww3_shel`` with direct fallback. Returns exit code."""
+        shel = self._resolve_tool("ww3_shel", bin_dir)
+        # try mpirun
+        mpi = shutil.which("mpirun") or shutil.which("mpiexec")
+        if mpi:
+            log("")
+            log("=" * 30 + f" Running {os.path.basename(mpi)} -n {nprocs} ww3_shel " + "=" * 30)
+            try:
+                rc = self._stream([mpi, "-n", str(nprocs), shel], workdir, bin_dir, log)
+            except FileNotFoundError:
+                rc = -1
+            if rc == 0:
+                return 0
+            log(f"⚠️ mpirun ww3_shel failed (rc={rc}), retrying direct ww3_shel")
+
+        log("")
+        log("=" * 30 + " Running ww3_shel (direct) " + "=" * 30)
+        try:
+            return self._stream([shel], workdir, bin_dir, log)
+        except FileNotFoundError:
+            log(f"❌ 找不到 ww3_shel")
+            return -1
+
+    def run_workflow(self, workdir: str, bin_dir: str, log: LogCallback) -> int:
+        """Execute the full WW3 workflow in Python (no bash needed).
+
+        Replicates ``local.sh``: ww3_grid → ww3_prnc → ww3_strt → ww3_shel →
+        ww3_ounp/trnc/ounf, with nested-grid support.
+
+        [EN] Python-native WW3 workflow driver — replaces ``bash local.sh``.
+        """
+        import time
+
+        wp = Path(workdir)
+        log("▶️ 开始执行本地 WW3 运行...")
+        start_t = time.time()
+
+        # MPI process count
+        nprocs = int(os.environ.get("WW3_MPI_NPROCS", "0") or 0)
+        if nprocs <= 0:
+            try:
+                nprocs = os.cpu_count() or 1
+            except Exception:
+                nprocs = 1
+        log(f"Using MPI_NPROCS={nprocs}")
+
+        nested = (wp / "coarse").is_dir() and (wp / "fine").is_dir()
+
+        if nested:
+            rc = self._workflow_nested(wp, bin_dir, log, nprocs)
+        else:
+            rc = self._workflow_regular(wp, bin_dir, log, nprocs)
+
+        elapsed = time.time() - start_t
+        if rc == 0:
+            log(f"✅ 本地 WW3 运行完成 ({elapsed:.1f}s)")
+        else:
+            log(f"❌ 本地 WW3 运行失败 (rc={rc}, {elapsed:.1f}s)")
+        return rc
+
+    # ---- regular grid workflow ----
+
+    def _workflow_regular(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
+        wd = str(wp)
+        log("")
+        log("=" * 30 + " Running ww3_grid " + "=" * 30)
+        rc = self._run_tool_in("ww3_grid", wd, bin_dir, log)
+        if rc != 0:
+            return rc
+
+        rc = self._run_prnc_fields(wd, bin_dir, log)
+        if rc != 0:
+            return rc
+
+        log("")
+        log("=" * 30 + " Running ww3_strt " + "=" * 30)
+        rc = self._run_tool_in("ww3_strt", wd, bin_dir, log)
+        if rc != 0:
+            return rc
+
+        rc = self._run_shel_with_fallback(wd, bin_dir, log, nprocs)
+        if rc != 0:
+            return rc
+
+        return self._run_post_processing(wd, bin_dir, log)
+
+    # ---- nested grid workflow ----
+
+    def _workflow_nested(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
+        coarse = str(wp / "coarse")
+        fine = str(wp / "fine")
+
+        for label, sub in [("coarse", coarse), ("fine", fine)]:
+            log("")
+            log("=" * 30 + f" Running ww3_grid ({label}) " + "=" * 30)
+            rc = self._run_tool_in("ww3_grid", sub, bin_dir, log)
+            if rc != 0:
+                return rc
+            rc = self._run_prnc_fields(sub, bin_dir, log)
+            if rc != 0:
+                return rc
+            log("")
+            log("=" * 30 + f" Running ww3_strt ({label}) " + "=" * 30)
+            rc = self._run_tool_in("ww3_strt", sub, bin_dir, log)
+            if rc != 0:
+                return rc
+
+        # Move files
+        _move_if(wp / "coarse" / "mod_def.ww3", wp / "mod_def.coarse")
+        _move_if(wp / "coarse" / "restart.ww3", wp / "restart.coarse")
+        _move_if(wp / "coarse" / "wind.ww3", wp / "wind.coarse")
+        _move_if(wp / "coarse" / "current.ww3", wp / "current.coarse")
+        _move_if(wp / "coarse" / "level.ww3", wp / "level.coarse")
+        _move_if(wp / "coarse" / "ice.ww3", wp / "ice.coarse")
+        _move_if(wp / "coarse" / "ice1.ww3", wp / "ice1.coarse")
+        _move_if(wp / "fine" / "mod_def.ww3", wp / "mod_def.fine")
+        _move_if(wp / "fine" / "restart.ww3", wp / "restart.fine")
+        _move_if(wp / "fine" / "wind.ww3", wp / "wind.fine")
+        _move_if(wp / "fine" / "current.ww3", wp / "current.fine")
+        _move_if(wp / "fine" / "level.ww3", wp / "level.fine")
+        _move_if(wp / "fine" / "ice.ww3", wp / "ice.fine")
+        _move_if(wp / "fine" / "ice1.ww3", wp / "ice1.fine")
+
+        # Run ww3_multi
+        multi = self._resolve_tool("ww3_multi", bin_dir)
+        mpi = shutil.which("mpirun") or shutil.which("mpiexec")
+        if mpi:
+            log("")
+            log("=" * 30 + f" Running {os.path.basename(mpi)} -n {nprocs} ww3_multi " + "=" * 30)
+            rc = self._stream([mpi, "-n", str(nprocs), multi], str(wp), bin_dir, log)
+        else:
+            log("")
+            log("=" * 30 + " Running ww3_multi (direct) " + "=" * 30)
+            try:
+                rc = self._stream([multi], str(wp), bin_dir, log)
+            except FileNotFoundError:
+                log("❌ 找不到 ww3_multi")
+                return -1
+        if rc != 0:
+            return rc
+
+        # Move results
+        _move_if(wp / "out_grd.fine", wp / "fine" / "out_grd.ww3")
+        _move_if(wp / "mod_def.fine", wp / "fine" / "mod_def.ww3")
+        _move_if(wp / "out_pnt.fine", wp / "fine" / "out_pnt.ww3")
+
+        # Post-processing in fine dir
+        return self._run_post_processing(str(wp / "fine"), bin_dir, log)
+
+    # ---- post-processing ----
+
+    def _run_post_processing(self, workdir: str, bin_dir: str, log: LogCallback) -> int:
+        wp = Path(workdir)
+        rc = 0
+        if (wp / "points.list").exists():
+            log("")
+            log("=" * 30 + " Running ww3_ounp " + "=" * 30)
+            rc = self._run_tool_in("ww3_ounp", workdir, bin_dir, log)
+            if rc != 0:
+                return rc
+
+        if rc == 0 and (wp / "track_i.ww3").exists():
+            log("")
+            log("=" * 30 + " Running ww3_trnc " + "=" * 30)
+            rc = self._run_tool_in("ww3_trnc", workdir, bin_dir, log)
+            if rc != 0:
+                return rc
+
+        if rc == 0:
+            log("")
+            log("=" * 30 + " Running ww3_ounf " + "=" * 30)
+            rc = self._run_tool_in("ww3_ounf", workdir, bin_dir, log)
+        return rc
 
     def is_running(self) -> bool:
         with self._lock:
@@ -123,7 +422,14 @@ class LocalRunService:
         if proc is None:
             return False
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            if _IS_WIN:
+                # [EN] On Windows, terminate the process tree via taskkill
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                )
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except Exception:
             try:
                 proc.terminate()

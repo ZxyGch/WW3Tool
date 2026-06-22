@@ -1,23 +1,21 @@
-"""本地运行用例：执行 local.sh 与 ww3_ounf/ounp/trnc。
+"""本地运行用例：Python 直驱 WW3 可执行文件（无需 bash）。
 
-从 ``PipelineConfig`` 取工作目录、从 ``config.json`` 取 ``WW3BIN_PATH``，调用
-``LocalRunService``。``local.sh`` 缺失时回退 NML 模板目录中的 ``local.sh``。
+从 ``PipelineConfig`` 取工作目录、从 ST 版本配置或 ``config.json`` 取 bin 路径，调用
+``LocalRunService.run_workflow()``。跨平台支持 Windows / macOS / Linux。
 
-[EN] Local run use case: execute local.sh and ww3_ounf/ounp/trnc.
+[EN] Local run use case: Python-native WW3 workflow driver (no bash needed).
 
-Takes the workdir from ``PipelineConfig`` and ``WW3BIN_PATH`` from ``config.json``,
-calls ``LocalRunService``. Falls back to NML template directory's ``local.sh`` when
-``local.sh`` is missing.
+Takes the workdir from ``PipelineConfig`` and bin path from ST version config or
+``config.json``, calls ``LocalRunService.run_workflow()``. Cross-platform support
+for Windows / macOS / Linux.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import List, Optional
 
 from ..domain.config_models import PipelineConfig
-from ..infrastructure import runtime_config
 from ..infrastructure.local.run_service import LocalRunService
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
@@ -37,10 +35,6 @@ def _bin_dir(config: Optional[PipelineConfig] = None, override: Optional[str] = 
     return ""
 
 
-def _fallback_script() -> str:
-    return str(Path(runtime_config.get_nml_template_dir()) / "local.sh")
-
-
 def run_local(
     config: PipelineConfig,
     service: LocalRunService,
@@ -48,16 +42,12 @@ def run_local(
     *,
     bin_dir: Optional[str] = None,
 ) -> LocalRunResult:
-    """运行工作目录下的 ``local.sh``（流式日志，可经 ``service.stop()`` 停止）。
+    """Python 直驱 WW3 完整工作流（无需 bash / local.sh）。
 
-    [EN] Run ``local.sh`` in the workdir (streaming logs, can be stopped via ``service.stop()``).
+    [EN] Run the full WW3 workflow in Python (no bash / local.sh needed).
     """
     logger = CoreLogger(callback=log)
-    ret = service.run_script(str(config.workdir.path), _bin_dir(config, bin_dir), logger.log, fallback_script=_fallback_script())
-    if ret == 0:
-        logger.log(tr("step5_local_run_completed", "✅ 本地 WW3 运行已完成"))
-    elif ret not in (0, -1):
-        logger.log(tr("step5_local_run_failed", "❌ 本地 WW3 运行失败（返回码 {code}）").format(code=ret))
+    ret = service.run_workflow(str(config.workdir.path), _bin_dir(config, bin_dir), logger.log)
     return LocalRunResult(success=(ret == 0), messages=list(logger.messages))
 
 
