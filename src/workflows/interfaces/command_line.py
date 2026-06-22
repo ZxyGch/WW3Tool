@@ -354,7 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("cli_help_nested_download", "Download from the remote fine/ subdirectory (nested grid)"),
     )
 
-    p_log = sub.add_parser("download-log", help=tr("cli_help_download_log", "[workdir] Download success.log / fail.log from remote server"))
+    p_log = sub.add_parser("download-log", help=tr("cli_help_download_log", "[workdir] Download run.log and success/fail markers from remote server"))
     p_log.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_clear = sub.add_parser(

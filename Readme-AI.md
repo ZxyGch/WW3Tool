@@ -626,7 +626,7 @@ python3 run.py upload --confirm work_dir_name       # 上传工作目录到服�
 python3 run.py submit work_dir_name                 # 提交 server.sh 到 Slurm
 python3 run.py check-status work_dir_name           # 检查远程任务状态
 python3 run.py download-results work_dir_name       # 下载结果（嵌套模式仅下载 fine/）
-python3 run.py download-log work_dir_name           # 下载 success.log / fail.log
+python3 run.py download-log work_dir_name           # 下载 run.log 及 success/fail 标记
 python3 run.py cancel-job 12345 work_dir_name       # 取消 SLURM 任务
 python3 run.py clear-remote --confirm work_dir_name # 清空远程工作目录
 python3 run.py local-run work_dir_name              # 本地执行 local.sh
@@ -638,7 +638,7 @@ python3 run.py local-run work_dir_name              # 本地执行 local.sh
 1. 通过 SSH 将工作目录上传到服务器指定路径（`upload_matching_files` 自动处理 Windows `\r\n` → Unix `\n` 转换）
 2. 在登录节点执行 `server.sh`（通过 `sbatch` 提交 Slurm 作业）
 3. 服务器端 WW3 各程序依次运行（`ww3_grid` → `ww3_prnc` × N → `ww3_strt` → `ww3_shel` / `ww3_multi` → `ww3_ounf` / `ww3_ounp` / `ww3_trnc`）
-4. 全部成功后在服务器工作目录生成 `success.log`（含所有 WW3 执行日志）；任一步骤失败则生成 `fail.log`；运行中为 `run.log`
+4. 所有 WW3 执行日志始终写入 `run.log`；全部成功后在工作目录创建空标记文件 `success`，任一步骤失败则创建空标记文件 `fail`（`run.log` 不改名）
 5. 通过 `check-status` 检测完成状态，`download-results` 下载结果（嵌套模式下只下载 `fine/` 内的输出）
 
 ### 5.8 ntfy 通知系统

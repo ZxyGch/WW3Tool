@@ -21,7 +21,7 @@ Options:
   --label TEXT          label shown in the message
   --mode once|all       once: exit after watched targets finish; all: keep watching forever
   --jobs "ID ..."       Slurm job IDs to watch; once mode captures current user jobs when empty
-  --workdirs "DIR ..."  Work directories to inspect for success.log/fail.log
+  --workdirs "DIR ..."  Work directories to inspect for success/fail markers
   --interval SEC        Poll interval, default: 60
   --timeout-hours N     once mode timeout; 0 means no timeout
 EOF
@@ -140,11 +140,11 @@ job_state() {
 
 workdir_state() {
     dir="$1"
-    if [ -f "$dir/fail.log" ]; then
+    if [ -f "$dir/fail" ]; then
         echo "FAILED"
         return
     fi
-    if [ -f "$dir/success.log" ]; then
+    if [ -f "$dir/success" ]; then
         echo "COMPLETED"
         return
     fi
@@ -155,9 +155,9 @@ workdir_state() {
     while IFS= read -r child; do
         [ -n "$child" ] || continue
         child_count=$((child_count + 1))
-        if [ -f "$child/fail.log" ]; then
+        if [ -f "$child/fail" ]; then
             failed_count=$((failed_count + 1))
-        elif [ -f "$child/success.log" ]; then
+        elif [ -f "$child/success" ]; then
             completed_count=$((completed_count + 1))
         else
             active_count=$((active_count + 1))

@@ -961,15 +961,15 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 ![](public/resource/README-media/2026-03-30%2016.41.08.png)
 
-提交计算任务就是在服务器执行了 server.sh 这个脚本，如果运行成功(所有指令正常运行)，会在服务器工作目录生成一个 success.log，包含所有的 WW3执行 Log，如果失败，则会生成一个 fail.log 同样包含所有的 WW3 执行 log，如果没有完成，还在执行，这个 log 文件的名字是 run.log
+提交计算任务就是在服务器执行 server.sh 脚本。所有 WW3 执行日志始终写入 `run.log`；运行成功后在工作目录创建一个空标记文件 `success`，失败则创建空标记文件 `fail`（`run.log` 不改名）。判断是否完成：看 `success` 或 `fail` 标记是否存在，两者都没有则仍在运行，`run.log` 为实时日志
 
-因此检查是否已完成可以检测是否存在 success.log 或 fail.log，如果是 run. log 说明服务器还在执行。
+因此检查是否已完成可以检测是否存在 success 或 fail 标记，两者都没有说明服务器还在执行（run.log 为实时日志）。
 
 清空文件夹就是清空当前服务器工作目录文件夹
 
 下载结果到本地会自动下载所有 ww3.nc 文件，如果是嵌套网格模式，只会下载 fine 内的结果文件。
 
-下载 log 文件就是下载 success.log 或 fail.log
+下载 log 就是下载 run.log 及 success/fail 标记
 
 
 

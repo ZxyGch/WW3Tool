@@ -26,17 +26,18 @@ esac
 # Treat current directory as script root (assumes running in case directory)
 SCRIPT_ROOT="$(pwd)"
 
-# Write run.log during execution; rename to success.log or fail.log at the end
+# All output goes to run.log; on completion drop an empty 'success' or 'fail'
+# marker file (run.log itself is never renamed).
 LOG="$SCRIPT_ROOT/run.log"
-SUCCESS_LOG="$SCRIPT_ROOT/success.log"
-FAIL_LOG="$SCRIPT_ROOT/fail.log"
-rm -f "$LOG" "$SUCCESS_LOG" "$FAIL_LOG"
+SUCCESS_MARK="$SCRIPT_ROOT/success"
+FAIL_MARK="$SCRIPT_ROOT/fail"
+rm -f "$LOG" "$SUCCESS_MARK" "$FAIL_MARK"
 
 echo "Using MPI_NPROCS=$MPI_NPROCS" | tee -a "$LOG"
 
-# Abort the run: archive the log as fail.log and exit with the given code
+# Abort the run: drop a 'fail' marker (keep run.log) and exit with the given code
 fail_exit() {
-    [ -f "$LOG" ] && mv "$LOG" "$FAIL_LOG"
+    touch "$FAIL_MARK"
     exit "$1"
 }
 
@@ -181,7 +182,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     [ -f track_i.ww3 ] && run_step "ww3_trnc (fine)" ww3_trnc
     run_step "ww3_ounf (fine)" ww3_ounf
     cd ..
-    [ -f "$LOG" ] && mv "$LOG" "$SUCCESS_LOG"
+    touch "$SUCCESS_MARK"
 else
     ######################################
     # Regular grid mode
@@ -205,5 +206,5 @@ else
     [ -f points.list ] && run_step "ww3_ounp" ww3_ounp
     [ -f track_i.ww3 ] && run_step "ww3_trnc" ww3_trnc
     run_step "ww3_ounf" ww3_ounf
-    [ -f "$LOG" ] && mv "$LOG" "$SUCCESS_LOG"
+    touch "$SUCCESS_MARK"
 fi

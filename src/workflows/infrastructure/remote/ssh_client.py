@@ -518,7 +518,7 @@ class SshClient:
     # ── status checks ─────────────────────────────────────────────────────────
 
     def check_completion(self, remote_dir: str, *, log: LogFn = _noop) -> str:
-        """根据远程目录中的 ``success.log`` / ``fail.log`` 判断任务状态。
+        """根据远程目录中的 ``success`` / ``fail`` 标记文件判断任务状态。
 
         返回 ``success``、``failed`` 或 ``running``。
         """
@@ -530,9 +530,9 @@ class SshClient:
             raise RuntimeError(f"无法访问远程目录 {remote_dir}: {exc}") from exc
         finally:
             sftp.close()
-        if "success.log" in files:
+        if "success" in files:
             return "success"
-        if "fail.log" in files:
+        if "fail" in files:
             return "failed"
         return "running"
 

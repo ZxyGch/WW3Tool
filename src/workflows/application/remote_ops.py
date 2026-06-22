@@ -24,6 +24,7 @@ import posixpath
 import shlex
 import hashlib
 import re
+import base64
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -596,7 +597,7 @@ def run_check_status(
     *,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """检查远程作业是否已完成（检测 ``success.log`` / ``fail.log``）。
+    """检查远程作业是否已完成（检测 ``success`` / ``fail`` 标记文件）。
 
     Args:
         config: 流水线配置。
@@ -613,8 +614,8 @@ def run_check_status(
             c.connect(log=logger.log)
         status = c.check_completion(remote_dir, log=logger.log)
         msg_map = {
-            "success": tr("remote_status_success", "✅ 检测到 success.log，计算已完成"),
-            "failed": tr("remote_status_failed", "❌ 检测到 fail.log，计算失败"),
+            "success": tr("remote_status_success", "✅ 检测到 success 标记，计算已完成"),
+            "failed": tr("remote_status_failed", "❌ 检测到 fail 标记，计算失败"),
             "running": tr("remote_status_running", "⏳ 未检测到结束标志，计算仍在进行"),
         }
         logger.log(msg_map.get(status, status))
@@ -804,16 +805,14 @@ def run_inject_ntfy_listener(
             )
         if owns:
             c.connect(log=logger.log)
+        # [EN] Write the script directly to remote /tmp via base64 (no SFTP upload, no workdir copy).
         logger.log(
-            tr("ntfy_uploading_watcher", "📤 正在注入 ntfy 监听脚本到 {path}").format(path=remote_dir)
+            tr("ntfy_deploying_watcher", "📤 正在部署 ntfy 监听脚本到远程 /tmp")
         )
-        c.upload_matching_files(
-            scripts_dir,
-            remote_dir,
-            lambda relpath: relpath == "ww3_ntfy_watch.sh",
-            recursive=False,
-            log=logger.log,
-        )
+        with open(watcher, "rb") as f:
+            b64_payload = base64.b64encode(f.read()).decode("ascii")
+        remote_script = "/tmp/ww3_ntfy_watch.sh"
+        q_script = shlex.quote(remote_script)
         q_remote = shlex.quote(remote_dir)
         q_topic = shlex.quote(topic)
         q_label = shlex.quote(label)
@@ -829,8 +828,9 @@ def run_inject_ntfy_listener(
         q_log_file = shlex.quote(log_file)
         q_mode_file = shlex.quote(mode_file)
         command = (
+            f"echo '{b64_payload}' | base64 -d > {q_script} && "
+            f"chmod +x {q_script} && "
             f"cd {q_remote} && "
-            "chmod +x ww3_ntfy_watch.sh && "
             f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null "
             f"&& [ \"$(cat {q_mode_file} 2>/dev/null)\" = {q_mode} ]; then "
             f"echo \"ntfy watcher already running: $(cat {q_pid_file})\"; "
@@ -838,7 +838,7 @@ def run_inject_ntfy_listener(
             f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null; then "
             f"kill $(cat {q_pid_file}) 2>/dev/null || true; "
             "fi; "
-            f"nohup ./ww3_ntfy_watch.sh --topic {q_topic} --label {q_label} --mode {q_mode} "
+            f"nohup {q_script} --topic {q_topic} --label {q_label} --mode {q_mode} "
             f"--jobs {q_jobs} --workdirs {q_workdirs} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
             f"> {q_log_file} 2>&1 & echo $! > {q_pid_file}; disown; "
             f"printf '%s\\n' {q_mode} > {q_mode_file}; "
@@ -1272,14 +1272,14 @@ def run_download_log(
     *,
     client: Optional[SshClient] = None,
 ) -> RemoteResult:
-    """从远程服务器下载 ``success.log`` 和/或 ``fail.log``。
+    """从远程服务器下载运行日志 ``run.log`` 及 ``success`` / ``fail`` 标记文件。
 
     Args:
         config: 流水线配置。
         log: 可选日志回调。
 
     Returns:
-        ``data`` 字段为已下载日志文件的本地路径列表。
+        ``data`` 字段为已下载文件的本地路径列表。
     """
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
@@ -1290,7 +1290,7 @@ def run_download_log(
             c.connect(log=logger.log)
 
         def _is_log(name: str) -> bool:
-            return name in ("success.log", "fail.log")
+            return name in ("run.log", "success", "fail")
 
         files = c.download_files(remote_dir, local_dir, _is_log, log=logger.log)
         return RemoteResult(success=True, data=files, messages=list(logger.messages))

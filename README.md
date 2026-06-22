@@ -936,9 +936,9 @@ Upload working directory uploads the current directory to the server working dir
 
 ![](public/resource/README-media/2026-03-30%2016.15.39.png)
 
-Submit job runs the `server.sh` script on the server. If successful (all commands run normally), it will create `success.log` in the server working directory with all WW3 logs. If it fails, it creates `fail.log` with all logs. If it is still running, the log file is `run.log`.
+Submit job runs the `server.sh` script on the server. All WW3 logs are always written to `run.log`. On success it creates an empty marker file `success` in the working directory; on failure it creates an empty marker file `fail` (`run.log` is never renamed).
 
-So to check completion, see if `success.log` or `fail.log` exists. If `run.log` exists, the server is still running.
+So to check completion, see if the `success` or `fail` marker exists. While neither exists, the job is still running and `run.log` holds the live log.
 
 ![](public/resource/README-media/2026-03-30%2015.59.30.png)
 
@@ -946,7 +946,7 @@ Clear folder clears the current server working directory.
 
 Download results downloads all `ww3.nc` files. In nested mode, it only downloads results under `fine`.
 
-Download log file downloads `success.log` or `fail.log`.
+Download log downloads `run.log` plus the `success` / `fail` markers.
 
 
 

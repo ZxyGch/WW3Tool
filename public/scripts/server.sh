@@ -32,18 +32,18 @@ CASENAME=202501
 # Save script root directory
 SCRIPT_ROOT="$(pwd)"
 
-# Log files (absolute paths so subdirectories work correctly)
-RUN_LOG="$SCRIPT_ROOT/mpirun.log"
-ALL_LOG="$SCRIPT_ROOT/all.log"
-FAIL_LOG="$SCRIPT_ROOT/fail.log"
-SUCCESS_LOG="$SCRIPT_ROOT/success.log"
+# All output goes to run.log; on completion drop an empty 'success' or 'fail'
+# marker file (run.log itself is never renamed).
+LOG="$SCRIPT_ROOT/run.log"
+SUCCESS_MARK="$SCRIPT_ROOT/success"
+FAIL_MARK="$SCRIPT_ROOT/fail"
 
-# Clean old markers
-rm -f "$FAIL_LOG" "$SUCCESS_LOG" "$ALL_LOG"
+# Clean old log and markers
+rm -f "$LOG" "$SUCCESS_MARK" "$FAIL_MARK"
 
-# Abort the run: archive the log as fail.log and exit with the given code
+# Abort the run: drop a 'fail' marker (keep run.log) and exit with the given code
 fail_exit() {
-    cat "$ALL_LOG" > "$FAIL_LOG"
+    touch "$FAIL_MARK"
     exit "$1"
 }
 
@@ -52,12 +52,12 @@ fail_exit() {
 run_step() {
     local label="$1"; shift
     echo -e "
-============================== Running $label ==============================" >> "$ALL_LOG"
-    "$@" >> "$ALL_LOG" 2>&1
+============================== Running $label ==============================" >> "$LOG"
+    "$@" >> "$LOG" 2>&1
     local rc=$?
     if [ "$rc" -ne 0 ]; then
         echo -e "
-============================== $label failed (exit $rc); aborting ==============================" >> "$ALL_LOG"
+============================== $label failed (exit $rc); aborting ==============================" >> "$LOG"
         fail_exit "$rc"
     fi
 }
@@ -102,27 +102,25 @@ run_prnc_with_fields() {
 # ww3_shel: try MPI first, fall back to a direct (non-MPI) run before failing
 run_ww3_shel_with_fallback() {
     echo -e "
-============================== Running mpirun ww3_shel ==============================" >> "$ALL_LOG"
-    mpirun -n $MPI_NPROCS ww3_shel --casename=$CASENAME > "$RUN_LOG" 2>&1
+============================== Running mpirun ww3_shel ==============================" >> "$LOG"
+    mpirun -n $MPI_NPROCS ww3_shel --casename=$CASENAME >> "$LOG" 2>&1
     rc_mpi=$?
-    cat "$RUN_LOG" >> "$ALL_LOG"
     if [ $rc_mpi -eq 0 ]; then
         return 0
     fi
 
     echo -e "
-============================== mpirun ww3_shel failed with exit code $rc_mpi; retrying direct ww3_shel ==============================" >> "$ALL_LOG"
-    ww3_shel --casename=$CASENAME > "$RUN_LOG" 2>&1
+============================== mpirun ww3_shel failed with exit code $rc_mpi; retrying direct ww3_shel ==============================" >> "$LOG"
+    ww3_shel --casename=$CASENAME >> "$LOG" 2>&1
     rc_direct=$?
-    cat "$RUN_LOG" >> "$ALL_LOG"
     if [ $rc_direct -eq 0 ]; then
         echo -e "
-============================== direct ww3_shel succeeded after mpirun failure ==============================" >> "$ALL_LOG"
+============================== direct ww3_shel succeeded after mpirun failure ==============================" >> "$LOG"
         return 0
     fi
 
     echo -e "
-============================== direct ww3_shel also failed with exit code $rc_direct ==============================" >> "$ALL_LOG"
+============================== direct ww3_shel also failed with exit code $rc_direct ==============================" >> "$LOG"
     return $rc_direct
 }
 
@@ -131,7 +129,7 @@ GRID_TYPE="$(grep -m1 -E '^[[:space:]]*grid_type:' "$SCRIPT_ROOT/params.yml" 2>/
 if [ -z "$GRID_TYPE" ]; then
     if [ -d "coarse" ] && [ -d "fine" ]; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
 fi
-echo "Grid type (from params.yml): $GRID_TYPE" >> "$ALL_LOG"
+echo "Grid type (from params.yml): $GRID_TYPE" >> "$LOG"
 
 if [ "$GRID_TYPE" = "nested" ]; then
     # Nested grid mode
@@ -169,10 +167,9 @@ if [ "$GRID_TYPE" = "nested" ]; then
     # Run MPI program (nested grid mode)
     ######################################
     echo -e "
-============================== Running mpirun ww3_multi ==============================" >> "$ALL_LOG"
-    mpirun -n $MPI_NPROCS ww3_multi --casename=$CASENAME > "$RUN_LOG" 2>&1
+============================== Running mpirun ww3_multi ==============================" >> "$LOG"
+    mpirun -n $MPI_NPROCS ww3_multi --casename=$CASENAME >> "$LOG" 2>&1
     rc_mpi=$?
-    cat "$RUN_LOG" >> "$ALL_LOG"
 
     if [ $rc_mpi -ne 0 ]; then
         fail_exit $rc_mpi
@@ -194,7 +191,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     ######################################
     # All done (nested grid mode)
     ######################################
-    cat "$ALL_LOG" > "$SUCCESS_LOG"
+    touch "$SUCCESS_MARK"
 else
     # Regular grid mode
     run_step "ww3_grid" ww3_grid
@@ -221,5 +218,5 @@ else
     ######################################
     # All done (regular grid mode)
     ######################################
-    cat "$ALL_LOG" > "$SUCCESS_LOG"
+    touch "$SUCCESS_MARK"
 fi

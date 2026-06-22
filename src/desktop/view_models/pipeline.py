@@ -637,29 +637,24 @@ class PipelineViewModel:
 
     def _set_state(self, state: PipelineStepState) -> None:
         self.state = state
-        # 操作日志落盘到工作目录的 run.log；success.log / fail.log 的重命名
-        # 只由 server.sh / local.sh 负责，应用层不碰。
+        # 应用操作日志追加到工作目录的 run.log；成败标记 success / fail（空文件）
+        # 只由 local.sh / server.sh 创建，应用层不碰。
         if state.is_running and state.workdir:
             self._begin_run_log(state.workdir)
         if self._on_state_change is not None:
             self._on_state_change(state)
 
     def _begin_run_log(self, workdir: str) -> None:
-        """选定要追加写入的日志文件：优先用现有的 run/success/fail.log，
-        三者都不存在时才默认创建 run.log。应用层只追加，不新建覆盖、不改名
-        （run.log→success/fail.log 的改名由 local.sh / server.sh 负责）。"""
+        """应用操作日志追加到工作目录的 run.log（不存在则创建，不截断）。
+        成败标记文件 success / fail 只由 local.sh / server.sh 创建，应用层不碰。"""
         self._run_log_path = None
         try:
             d = Path(workdir)
             if not d.is_dir():
                 return
-            for name in ("run.log", "success.log", "fail.log"):
-                existing = d / name
-                if existing.exists():
-                    self._run_log_path = existing
-                    return
             run_log = d / "run.log"
-            run_log.touch()
+            if not run_log.exists():
+                run_log.touch()
             self._run_log_path = run_log
         except Exception:
             self._run_log_path = None
