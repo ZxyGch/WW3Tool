@@ -645,14 +645,21 @@ class PipelineViewModel:
             self._on_state_change(state)
 
     def _begin_run_log(self, workdir: str) -> None:
-        """操作开始：在工作目录创建一个新的 run.log（不触碰 success/fail.log）。"""
+        """选定要追加写入的日志文件：优先用现有的 run/success/fail.log，
+        三者都不存在时才默认创建 run.log。应用层只追加，不新建覆盖、不改名
+        （run.log→success/fail.log 的改名由 local.sh / server.sh 负责）。"""
         self._run_log_path = None
         try:
             d = Path(workdir)
             if not d.is_dir():
                 return
+            for name in ("run.log", "success.log", "fail.log"):
+                existing = d / name
+                if existing.exists():
+                    self._run_log_path = existing
+                    return
             run_log = d / "run.log"
-            run_log.write_text("", encoding="utf-8")
+            run_log.touch()
             self._run_log_path = run_log
         except Exception:
             self._run_log_path = None
