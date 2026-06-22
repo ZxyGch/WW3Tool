@@ -40,10 +40,10 @@ _DESKTOP_LEGACY_TO_YAML = {v: k for k, v in _DESKTOP_YAML_TO_LEGACY.items()}
 # 设置页管线参数：扁平键名 → params.yml 嵌套路径（供 settings 视图模型读写）
 # 根 params.yml 是基础模板，设置页直接读写顶层路径；CLI/GUI 必须先复制到工作目录再操作
 _SETTINGS_KEY_TO_YAML_PATH = {
-    "DX": "grid.outer.dx",
-    "DY": "grid.outer.dy",
-    "NESTED_OUTER_DX": "grid.outer.dx",
-    "NESTED_OUTER_DY": "grid.outer.dy",
+    "DX": "grid.structured.nested.outer.dx",
+    "DY": "grid.structured.nested.outer.dy",
+    "NESTED_OUTER_DX": "grid.structured.nested.outer.dx",
+    "NESTED_OUTER_DY": "grid.structured.nested.outer.dy",
     "GRIDGEN_VERSION": "grid.gridgen_version",
     "REFERENCE_DATA_PATH": "grid.reference_data_path",
     "NESTED_CONTRACTION_COEFFICIENT": "grid.nested_contraction_coefficient",
@@ -672,12 +672,11 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#                          null = auto-detect from project defaults.\n"
      "#   nested_contraction_coefficient – size ratio between outer and\n"
      "#                          inner grid cells for nested grids (≥ 1).\n"
-     "#   outer     – outer (or only) grid domain definition:\n"
-     "#     dx / dy – cell size in degrees (structured) or base spacing.\n"
-     "#     lon     – [west, east] longitude bounds in degrees.\n"
-     "#     lat     – [south, north] latitude bounds in degrees.\n"
-     "#   inner     – inner (nested) high-res domain (grid_type='nested');\n"
-     "#               same dx/dy/lon/lat fields as outer.\n"
+     "#   lon       – [west, east] longitude bounds of the main domain (deg).\n"
+     "#   lat       – [south, north] latitude bounds of the main domain (deg).\n"
+     "#   structured.nested.outer / .inner – per-level grid cells for nested\n"
+     "#               grids: each with dx/dy (deg) and own lon/lat bounds;\n"
+     "#               outer bounds default to the main grid.lon / grid.lat.\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("  structured:",
      "  # Structured grid options:\n"

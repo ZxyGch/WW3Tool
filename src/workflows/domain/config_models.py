@@ -203,6 +203,8 @@ class GridConfig:
 
     mesh_type: Optional[str] = None
     grid_type: Optional[str] = None
+    lon: Optional[List[float]] = None
+    lat: Optional[List[float]] = None
     outer: Optional[GridRegion] = None
     inner: Optional[GridRegion] = None
     gridgen_version: Optional[str] = None

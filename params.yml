@@ -208,12 +208,11 @@ forcing:
 #                          null = auto-detect from project defaults.
 #   nested_contraction_coefficient – size ratio between outer and
 #                          inner grid cells for nested grids (≥ 1).
-#   outer     – outer (or only) grid domain definition:
-#     dx / dy – cell size in degrees (structured) or base spacing.
-#     lon     – [west, east] longitude bounds in degrees.
-#     lat     – [south, north] latitude bounds in degrees.
-#   inner     – inner (nested) high-res domain (grid_type='nested');
-#               same dx/dy/lon/lat fields as outer.
+#   lon       – [west, east] longitude bounds of the main domain (deg).
+#   lat       – [south, north] latitude bounds of the main domain (deg).
+#   structured.nested.outer / .inner – per-level grid cells for nested
+#               grids: each with dx/dy (deg) and own lon/lat bounds;
+#               outer bounds default to the main grid.lon / grid.lat.
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -221,24 +220,12 @@ grid:
   gridgen_version: Python
   reference_data_path: /Users/zxy/ocean/Paper/WW3Tool/meshgen/reference_data
   nested_contraction_coefficient: 1.3
-  outer:
-    dx: 0.05
-    dy: 0.05
-    lon:
-    - 110.0
-    - 130.0
-    lat:
-    - 10.0
-    - 30.0
-  inner:
-    dx: 0.025
-    dy: 0.025
-    lon:
-    - 115.0
-    - 125.0
-    lat:
-    - 15.0
-    - 25.0
+  lon:
+  - 110.0
+  - 130.0
+  lat:
+  - 10.0
+  - 30.0
   # Structured grid options:
   #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
   #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).
@@ -249,6 +236,25 @@ grid:
   #   split_lim        – split-cell limit: 0 = disabled.
   #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.
   structured:
+    nested:
+      outer:
+        dx: 0.05
+        dy: 0.05
+        lon:
+        - 110.0
+        - 130.0
+        lat:
+        - 10.0
+        - 30.0
+      inner:
+        dx: 0.025
+        dy: 0.025
+        lon:
+        - 115.0
+        - 125.0
+        lat:
+        - 15.0
+        - 25.0
     bathymetry: GEBCO
     coastline_precision: full
     min_dist: 20

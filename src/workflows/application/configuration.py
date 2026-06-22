@@ -713,14 +713,23 @@ def parse_pipeline_config(
     )
     if nested_contraction <= 0:
         raise ConfigError("grid.nested_contraction_coefficient 必须大于 0")
-    outer_region = _region(_as_dict(grid_raw.get("outer"), "grid.outer"), "grid.outer")
+    structured_raw = _as_dict(grid_raw.get("structured"), "grid.structured")
+    nested_raw = _as_dict(structured_raw.get("nested"), "grid.structured.nested")
+    grid_lon = grid_raw.get("lon")
+    grid_lat = grid_raw.get("lat")
+    outer_data = dict(_as_dict(nested_raw.get("outer"), "grid.structured.nested.outer"))
+    # grid.lon / grid.lat 为主域边界，覆盖 outer 的 lon/lat
+    if grid_lon is not None:
+        outer_data["lon"] = grid_lon
+    if grid_lat is not None:
+        outer_data["lat"] = grid_lat
+    outer_region = _region(outer_data, "grid.structured.nested.outer")
     inner_region = None
     if grid_type == "nested":
-        inner_data = _as_dict(grid_raw.get("inner"), "grid.inner")
+        inner_data = _as_dict(nested_raw.get("inner"), "grid.structured.nested.inner")
         if not inner_data:
             inner_data = _contract_region(outer_region, nested_contraction)
-        inner_region = _region(inner_data, "grid.inner")
-    structured_raw = _as_dict(grid_raw.get("structured"), "grid.structured")
+        inner_region = _region(inner_data, "grid.structured.nested.inner")
     legacy_options = _as_dict(grid_raw.get("options"), "grid.options")
     structured = StructuredGridSettings(
         bathymetry=str(structured_raw.get("bathymetry") or "").upper(),
@@ -794,6 +803,8 @@ def parse_pipeline_config(
     grid = GridConfig(
         mesh_type=mesh_type,
         grid_type=grid_type,
+        lon=list(outer_region.lon),
+        lat=list(outer_region.lat),
         outer=outer_region,
         inner=inner_region,
         gridgen_version=str(grid_raw.get("gridgen_version") or ""),

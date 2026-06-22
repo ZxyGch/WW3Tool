@@ -516,13 +516,26 @@ class PipelineViewModel:
         }
         if grid_overrides:
             grid_raw = {**_as_dict(raw.get("grid"))}
+            structured_raw = {**_as_dict(grid_raw.get("structured"))}
+            nested_raw = {**_as_dict(structured_raw.get("nested"))}
             for key, value in grid_overrides.items():
-                if key in {"outer", "inner", "unstructured", "smc"} and isinstance(value, dict):
-                    grid_raw[key] = {**_as_dict(grid_raw.get(key)), **value}
+                if key in {"outer", "inner"} and isinstance(value, dict):
+                    # outer/inner 隶属于 structured.nested
+                    nested_raw[key] = {**_as_dict(nested_raw.get(key)), **value}
+                    # outer 的边界同步为主域 grid.lon / grid.lat
+                    if key == "outer":
+                        if "lon" in value:
+                            grid_raw["lon"] = value["lon"]
+                        if "lat" in value:
+                            grid_raw["lat"] = value["lat"]
                 elif key == "inner" and value is None:
-                    grid_raw.pop("inner", None)
+                    nested_raw.pop("inner", None)
+                elif key in {"unstructured", "smc"} and isinstance(value, dict):
+                    grid_raw[key] = {**_as_dict(grid_raw.get(key)), **value}
                 else:
                     grid_raw[key] = value
+            structured_raw["nested"] = nested_raw
+            grid_raw["structured"] = structured_raw
             raw["grid"] = grid_raw
         if calc_mode or calc_points is not None or calc_track_points is not None:
             calc_raw = {**_as_dict(raw.get("calc"))}
@@ -675,8 +688,14 @@ _REGION_KEYS = ("outer", "inner")
 
 
 def _normalize_params_scalar_types(raw: dict) -> None:
+    grid = _as_dict(raw.get("grid"))
+    nested = _as_dict(_as_dict(grid.get("structured")).get("nested"))
     for key in _REGION_KEYS:
-        _coerce_region(_as_dict(_as_dict(raw.get("grid")).get(key)))
+        _coerce_region(_as_dict(nested.get(key)))
+    for key in ("lon", "lat"):  # 主域 grid.lon / grid.lat
+        seq = grid.get(key)
+        if isinstance(seq, list):
+            grid[key] = [_coerce_number(item) for item in seq]
     for path in _INT_PARAM_PATHS:
         _coerce_dotted(raw, path, integer=True)
     for path in _NUMERIC_PARAM_PATHS:
