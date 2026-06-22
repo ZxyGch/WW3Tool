@@ -210,9 +210,6 @@ forcing:
 #                          inner grid cells for nested grids (≥ 1).
 #   lon       – [west, east] longitude bounds of the main domain (deg).
 #   lat       – [south, north] latitude bounds of the main domain (deg).
-#   structured.nested.outer / .inner – per-level grid cells for nested
-#               grids: each with dx/dy (deg) and own lon/lat bounds;
-#               outer bounds default to the main grid.lon / grid.lat.
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured

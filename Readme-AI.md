@@ -276,9 +276,6 @@ python3 run.py workdir [work_dir_name]    # 创建并加载工作目录，默认
 
 4. 读取 params.yml 填充 UI 的默认值。
 
-工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响根 params.yml (除了 GUI 的设置修改，修改设置会修改根 params.yml ，设置用来提供表单默认值)。
-
-
 
 
 #### yml 对应参数
@@ -336,46 +333,44 @@ ww3> queue-status
 python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 ```
 
-所有强迫场（风场、流场、水位场、冰场）统一走同一条处理路径：复制/移动到工作目录后，由 `ForcingNormalizeService` 单遍读写完成全部标准化。`VariableDetector` 对 NetCDF 内部变量名做纯名称匹配（不读取数据）来检测场类型：
+第一步对所有导入的强迫场（风场、流场、水位场、冰场）文件进行标准化处理。
+
+
+#### 判断强迫场类型
+
+检测 NetCDF 内部变量名来判断强迫场类型：
 
 - **风场**：存在 `u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd` 任一对（大小写均匹配）
 - **流场**：存在 `uo/vo`
 - **水位场**：存在 `zos`
 - **冰场**：存在 `siconc`
 
-#### 单遍归一化
 
-所有强迫场文件统一通过 `ForcingNormalizeService.normalize()` 处理，从源文件读取后一次性写出标准化 NetCDF，保留源文件中的所有变量（不限于强迫场变量）。具体处理：
+#### 强迫场标准化处理
 
-1. **变量名检测与重命名**：自动识别各类命名变体（如 `wndewd/wndnwd` → `u10/v10`、`uo/vo` 保持、`zos` 保持、`siconc` 保持），统一输出为标准变量名，并设置对应的 `units`、`level` 等属性
-2. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体），同步重命名维度和引用该维度的所有变量
-3. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算，保留 `calendar` 属性
-4. **纬度翻转**：纬度从大到小排列时自动翻转为从小到大（避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`）
-5. **经度递减拒绝**：经度从大到小排列时**拒绝导入并记录错误**——经度闭合和 `0~360` / `-180~180` 范围关系不能安全猜测
+1. 自动识别各类命名变体（如 `wndewd/wndnwd` → `u10/v10`，`uo/vo` 、`zos` 、`siconc` 保持），统一输出为标准变量名，并设置对应的 `units`、`level` 等属性
 
-目标文件名由 `FilePathManager.generate_forcing_filename()` 按固定顺序 `wind_current_level_ice` 拼接生成（如 `wind.nc`、`current.nc`、`current_level.nc`、`wind_current_level_ice.nc`）。文件写入方式由 `forcing.process_mode` 控制，支持 `copy`（`shutil.copy2`，保留元数据）和 `move`（`shutil.move`）。
+这是为了方便在第四步不需要根据强迫场变量名修改 ww3_prnc.nml
 
-大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（目标 ~16MB 块大小）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96、网格点 ≤ 30 万时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再 `os.replace` 原子替换。
+2. 坐标变量统一命名为 `longitude` / `latitude` / `time`（不论源文件用的是 `lon` / `lat` / `valid_time` 还是其他变体），同步重命名维度和引用该维度的所有变量 (原因同上)
 
-归一化**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
+3. 重命名为标准名字：wind.nc、current.nc、level.nc、ice.nc (原因同上)
+
+4. 纬度从大到小排列时自动翻转为从小到大（避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`）
 
 
 
-#### 多场文件与自动关联
+#### 多场文件自动关联
 
-如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），`VariableDetector` 会检测所有存在的场类型：
+如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），程序会检测所有存在的场类型，把转换后的强迫场进行自动关联处理，即 `current_level.nc`、`wind_current_level_ice.nc`，同时 GUI 多个强迫场槽位指向同一个文件。
 
-- **自动关联**（`auto_associate=True`，默认）：文件名使用下划线连接所有检测到的场，如 `current_level.nc`、`wind_current_level_ice.nc`，同时多个强迫场槽位指向同一个文件
+自动关联在 params.yml 中定义为 forcing.auto_associate，为 true 的时候开启。
 
 
 #### 工作目录扫描
 
-打开已有工作目录时，`FileService.scan_forcing_files` 三阶段检测：
-1. 先查标准名（`wind.nc`、`current.nc` 等）
-2. 再解析合并文件名（如 `current_level.nc` → 映射到 current 和 level）
-3. 最后用变量检测兜底（打开 `.nc` 文件检查内部变量）
+打开工作目录时，会自动检测是否存在已经标准化处理过的强迫场文件，GUI 模式下会自动填充选择强迫场的对应按钮。
 
-独立工具 `merge-forcing` 可脱离工作目录，直接校验并合并多个强迫场 NetCDF（按时间拼接 + 变量合并），支持 `--time-range` 和 `--bbox` 裁剪。
 
 
 
@@ -398,9 +393,85 @@ python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网�
 我们生成的网格文件最终会被 WAVEWATCH III 编译出来的程序：ww3_grid 处理。
 
 
+#### 网格 yml 参数
+
+```yml
+# ────────────────────────────────────────────────────────────────────
+# Grid generation settings (structured / SMC / unstructured).
+#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
+#   grid_type – 'normal' (single domain) or 'nested' (two-level
+#               refinement with inner high-resolution patch).
+#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').
+#   reference_data_path – path to bathymetry / coastline data bundle;
+#                          null = auto-detect from project defaults.
+#   nested_contraction_coefficient – size ratio between outer and
+#                          inner grid cells for nested grids (≥ 1).
+#   lon       – [west, east] longitude bounds of the main domain (deg).
+#   lat       – [south, north] latitude bounds of the main domain (deg).
+# ────────────────────────────────────────────────────────────────────
+grid:
+  mesh_type: structured
+  grid_type: normal
+  gridgen_version: Python
+  reference_data_path: /Users/zxy/ocean/Paper/WW3Tool/meshgen/reference_data
+  nested_contraction_coefficient: 1.3
+  lon:
+  - 110.0
+  - 130.0
+  lat:
+  - 10.0
+  - 30.0
+```
+
+
 #### 结构化矩形网格
 
 > 关于嵌套网格，后续将进行重构，目前存在问题，请不要使用！
+
+
+##### yml 参数
+
+```yml
+# Structured grid options:
+#   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
+#   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).
+#   min_dist         – minimum distance filter between adjacent grid points (km).
+#   cut_off          – land-sea mask cut-off: 0 = keep all sea points.
+#   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).
+#   lim_val          – masking threshold for cell classification (0–1).
+#   split_lim        – split-cell limit: 0 = disabled.
+#   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.
+structured:
+  nested:
+    outer:
+      dx: 0.05
+      dy: 0.05
+      lon:
+      - 110.0
+      - 130.0
+      lat:
+      - 10.0
+      - 30.0
+    inner:
+      dx: 0.025
+      dy: 0.025
+      lon:
+      - 115.0
+      - 125.0
+      lat:
+      - 15.0
+      - 25.0
+  bathymetry: GEBCO
+  coastline_precision: full
+  min_dist: 20
+  cut_off: 0
+  lim_bathy: 0.4
+  lim_val: 0.5
+  split_lim: 0
+  lake_tol: 50
+```
+
+##### 网格可视化
 
 ![](public/resource/README-media/grid_bathymetry.png)
 
@@ -410,9 +481,13 @@ python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网�
 
 ![](public/resource/README-media/grid_structure.png)
 
+
+
+##### 网格文件
+
 结构化矩形网格是由 gridgen 生成的，输出 grid.obst、grid.bot、grid.mask_nobound、grid.meta 文件
 
-```swift
+```sh
 grid.bot
   - 格式：ASCII 文本文件
   - 内容：网格水深数据(来)
@@ -439,6 +514,9 @@ grid.meta (实际上是 ww3_grid.nml，用于同步一些配置)
 #### 三角形非结构化网格
 
 基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
+
+
+##### yml 参数
 
 ```yaml
 # Unstructured (triangular) grid spacing parameters:
@@ -474,6 +552,20 @@ unstructured:
 ```
 
 
+##### 网格文件
+
+| 文件                    | 说明                                                                            |
+| --------------------- | ----------------------------------------------------------------------------- |
+| grid_cell.dat         | SMC 内部单元                                                                      |
+| grid_boundary.dat     | 仅当 `grid.global` 为 false 且 `boundary.generate_boundary_cells` 为 true 时生成开边界带。 |
+| grid_arctic_cells.dat | 仅当 `grid.global` 为 **true** 且 **`grid.arctic`** 为 **true** 时生成北极单元。           |
+| grid_subtr.dat        | WW3 SMCG 子网格阻障文件（`create_grid.py` 写 **全零** = 无阻挡）。                            |
+| grid.json             | 网格生成配置                                                                        |
+
+
+
+##### 网格可视化
+
 ![](public/resource/README-media/grid_unst_bathymetry.png)
 
 ![](public/resource/README-media/grid_unst_structure.png)
@@ -483,6 +575,9 @@ unstructured:
 #### SMC 网格
 
 基于 SMCGTools 生成
+
+
+##### yml 参数
 
 ```yml
 # SMC (Spherical Multi-Cell) grid options:
@@ -525,6 +620,9 @@ smc:
       file_prefix: ''
 ```
 
+
+##### 网格可视化
+
 ![](public/resource/README-media/grid_smc_bathymetry.png)
 
 ![](public/resource/README-media/grid_smc_structure.png)
@@ -545,7 +643,7 @@ smc:
 
 打开工作目录时，程序会自动检测 `points.list` 或 `track_i.ww3` 并切换对应模式。
 
-### 5.5 Step 4 — WW3 配置（namelist 与脚本生成）
+### 5.5 Step 4 — WW3 配置
 
 ```sh
 python3 run.py prepare-ww3 work_dir_name      # 仅生成 namelist 和脚本
@@ -936,9 +1034,7 @@ work_dir_name/
 ├── server.sh               # Slurm 提交脚本
 ├── local.sh                # 本地运行脚本
 ├── points.list             # 谱点坐标列表（如有）
-├── track_i.ww3             # 航迹坐标列表（如有）
-├── coarse/                 # 外网格文件（嵌套模式）
-└── fine/                   # 内网格文件（嵌套模式）
+└── track_i.ww3             # 航迹坐标列表（如有）
 ```
 
 打开工作目录时，程序自动扫描已有文件来恢复状态（只读取，不修改）：
@@ -952,7 +1048,7 @@ work_dir_name/
 - 从 `ww3_shel.nml` 读取 `TYPE%FIELD%LIST` → 恢复谱分区输出方案
 - 从 `grid.bot` / `grid.meta` → 读取网格范围和精度，填充网格面板
 
----
+
 
 ## 8. 翻译系统
 
@@ -965,7 +1061,7 @@ work_dir_name/
 
 翻译文件约 2300+ 行，覆盖 GUI 标签、CLI 帮助、日志消息、错误提示等。
 
----
+
 
 ## 9. 远程操作
 
@@ -982,16 +1078,5 @@ ntfy 监听脚本 `ww3_ntfy_watch.sh`（约 350 行）的关键机制：
 - 维护状态目录 `.ntfy_watch_state_{mode}/` 记录已知作业状态
 - 对已完成但首次发现的作业（UNKNOWN_DONE），设置宽限期避免误报
 
----
 
-## 10. 关键设计模式
 
-**配置驱动**：所有行为由 `params.yml` 驱动，GUI 编辑通过 override 机制写回 YAML，CLI 直接读取 YAML。
-
-**Override 合并**：GUI 面板的 `ww3_overrides()` / `slurm_overrides()` 返回字典，由 pipeline 合并到 YAML 对应段落后保存，再重新加载整个配置。这避免了部分更新导致的状态不一致。
-
-**缓存机制**：网格生成结果按参数 hash 缓存，相同参数的重复生成直接使用缓存。
-
-**向后兼容**：配置解析保留对旧字段名的兼容（如 `ww3.st` 作为 `slurm.server_st` 的 fallback），避免升级时破坏已有配置。
-
-**分层解耦**：interfaces → application → domain ← infrastructure，业务逻辑不依赖具体框架，GUI 和 CLI 仅是不同的入口适配器。
