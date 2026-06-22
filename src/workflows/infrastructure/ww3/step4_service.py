@@ -475,6 +475,12 @@ class StepFourServiceMixin:
                         continue
                     dst_path = os.path.join(scripts_target_dir, item)
                     shutil.copy2(src_path, dst_path)
+                    if item in {"server.sh", "local.sh"}:
+                        self.log(
+                            tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
+                                name=item, src=src_path, dst=dst_path
+                            )
+                        )
                     if item.endswith(".sh"):
                         try:
                             os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
