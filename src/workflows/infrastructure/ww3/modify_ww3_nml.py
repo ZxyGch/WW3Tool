@@ -421,6 +421,11 @@ class ModifyWW3NML(
             if os.path.isfile(server_script_path):
                 dst_path = os.path.join(self.selected_folder, "server.sh")
                 shutil.copy2(server_script_path, dst_path)
+                self.log(
+                    tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
+                        name="server.sh", src=server_script_path, dst=dst_path
+                    )
+                )
                 copied_files.append("server.sh")
                 # [EN] Clean up \\r
                 # 清理 \r
@@ -451,6 +456,11 @@ class ModifyWW3NML(
                 if os.path.isfile(local_sh_path):
                     dst_path = os.path.join(self.selected_folder, "local.sh")
                     shutil.copy2(local_sh_path, dst_path)
+                    self.log(
+                        tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
+                            name="local.sh", src=local_sh_path, dst=dst_path
+                        )
+                    )
                     copied_files.append("local.sh")
 
             watcher_path = os.path.join(scripts_dir, "ww3_ntfy_watch.sh")
