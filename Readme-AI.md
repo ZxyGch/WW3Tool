@@ -135,17 +135,61 @@ GUI 模式和 Shell 模式最终都调用 `src/workflows/application/` 中的用
 
 ## 4. 配置系统：params.yml
 
-`params.yml` 是描述一次算例全部参数的核心载体。根目录的 `params.yml` (即 WW3Tool/params.yml) 只是模板；实际运行前须用 `workdir` 命令创建独立工作目录，再编辑该目录下的 `params.yml`。
+`params.yml` 是描述一次计算任务的全部参数。
 
-根 params.yml 的参数用于提供默认值，但是在创建工作目录并复制过去的时候，会自动清除一些常用的参数。因为这些参数在 GUI 在打开的时候会自动读取并填充表单，这是为了让用户能够清晰的查看工作目录曾经的参数历史。
+比如我现在想要对 110E ~ 130E，10N~30N 的区域进行海浪模拟，使用 2025 年 1 月 3 号到   2025 年 1 月 5 号的 ERA5 再分析风场数据做强迫场，这次模拟就可以认为是一个计算任务，常用的 WW3 NML 配置参数都会在 params.yml 中设置。
 
-例如你生成了指定参数的网格，再次打开软件，你不需要查看 params.yml  就可以直接知道当初是用什么参数生成的。
+ww3_grid.nml 常用的数值积分参数
 
-GUI 模式下，你填写的表单，程序在执行中都是先修改工作目录的 params.yml 然后执行 src/workflows 的代码。
+```swift
+&SPECTRUM_NML
+	SPECTRUM%XFR   = 1.1
+	SPECTRUM%FREQ1 = 0.04118
+	SPECTRUM%NK    = 32
+	SPECTRUM%NTH   = 24
+/
 
-Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然后使用 Shell 和 CLI  的指令执行，Shell 和 CLI 的指令几乎是完全相同的。
+&TIMESTEPS_NML
+	TIMESTEPS%DTMAX = 900
+	TIMESTEPS%DTXY = 320
+	TIMESTEPS%DTKTH = 300
+	TIMESTEPS%DTMIN = 15
+/
+```
+
+在 params.yml 描述为
+
+```swift
+ww3_grid:
+	SPECTRUM%XFR: 1.1
+	SPECTRUM%FREQ1: 0.04118
+	SPECTRUM%NK: 32
+	SPECTRUM%NTH: 24
+	TIMESTEPS%DTMAX: 900
+	TIMESTEPS%DTXY: 320
+	TIMESTEPS%DTKTH: 300
+	TIMESTEPS%DTMIN: 15
+```
+
+根目录的 `params.yml` (即 WW3Tool/params.yml) 只是模板，用于提供默认参数；实际的运行时候，我们会创建独立的工作目录，再编辑该目录下的 `params.yml`。
+
+工作目录中的 params.yml 描述了一次计算任务的全部参数。
+
+GUI 模式下，你填写的表单，程序会先在内存中保存参数，然后把根 params.yml 复制覆盖当前工作目录 yml 然后覆盖相应的参数，这么做是为了始终保持工作目录的 params.yml 和根 params.yml  的结构一致。
+
+每次打开工作目录，GUI 程序会自动读取 params.yml ，恢复表单，让你能方便的知道当前工作目录的配置。
+
+而在 Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然后使用 Shell 和 CLI  的指令执行。
  
+### 路径验证
 
+执行每个步骤的功能的时候，例如 
+
+```swift
+python3 run.py prepare-forcing [work_dir_name]
+```
+
+都会自动校验
 
 
 
@@ -155,15 +199,14 @@ Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然
 一次完整流程的典型链路：
 
 ```
-[创建或加载工作目录] 自动复制根 params.yml 到工作目录
-  → [Step 1 强迫场准备] 校验、修复、复制/移动强迫场数据到工作目录
-  → [Step 2 网格生成] 调用 meshgen 生成网格文件
-  → [Step 3 计算模式] 选择 region / spectral_point / track
-  → [Step 4 WW3 配置] 生成全套 namelist 和脚本（含 server.sh）
-  → [连接服务器] SSH 连接、配置 Slurm 参数与 ST 版本
-  → [上传与运行] 上传工作目录、提交 server.sh / Slurm
-  → WW3 模式输出 (ww3.YYYY.nc 等)
-  → [后处理] 波高图、谱图、卫星/浮标验证
+→ [创建或加载工作目录]  自动复制根 params.yml 到工作目录
+→ [Step 1 强迫场准备] 校验、修复、复制/移动强迫场数据到工作目录
+→ [Step 2 网格生成] 调用 meshgen 生成网格文件
+→ [Step 3 计算模式] 选择 区域计算 / 二维谱点计算 / 航迹计算
+→ [Step 4 WW3 配置] 配置 nml 文件参数
+→ [Step 5 连接服务器] SSH 连接、配置 Slurm 参数、选择服务器 WW3 版本
+→ [Step 6 上传与运行] 上传工作目录、提交到 Slurm 作业系统
+→ [Step 7 最终] WW3 模式输出结果 (ww3.*.nc 等)
 ```
 
 ```mermaid
@@ -194,19 +237,35 @@ python3 run.py workdir [work_dir_name]    # 创建并加载工作目录，默认
 
 ![](public/resource/README-media/截屏2026-06-18%2013.02.46.png)
 
-创建工作目录时，程序会执行以下操作：
+创建工作目录时，程序会自动执行以下操作：
 
 1. 在 `WW3Tool/workSpace/` 下创建新文件夹，默认名称为当前时间戳（如 `2026-06-17_19-37-01`）
 
 2. 将根目录 `params.yml` 原样复制到工作目录
 
-3. 用正则替换工作目录路径、清空强迫场文件路径、清空日期范围和 `remote_dir` ——这些是算例特有值，需要用户自行填写 （在 GUI 中你填写表单就会自动填写，除非你使用 shell 或 cli）
+3. 对工作目录 `params.yml` 执行：替换工作目录路径、清空强迫场文件路径、清空日期范围和 `remote_dir` ，这是防止每次自动恢复主页表单值的时候错误使用了根  params.yml  的值
+
+4. 读取 params.yml 填充 UI 的默认值。
 
 工作目录创建后，所有后续步骤（强迫场、网格、namelist 生成等）都在该目录中操作，不会影响根 params.yml (除了 GUI 的设置修改，修改设置会修改根 params.yml ，设置用来提供表单默认值)。
 
-打开已有工作目录时，程序自动扫描目录中的 params.yml 配置来恢复 GUI 表单
 
----
+
+
+#### yml 对应参数
+
+```swift
+workdir:
+	path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
+	default_workspace: /Volumes/Zxy's Disk/WW3Tool_workSpace/
+```
+
+path 是工作目录的路径
+
+default_workspace 是新建工作目录默认的存放路径
+
+
+#### 根目录校验
 
 为了防止忘记创建工作目录就直接使用 Shell 或 CLI 指令，我加了一个校验当前目录是否是 WW3Tool 根目录，这样就不会误用根目录 params.yml 或忘记创建工作目录.
 
@@ -229,56 +288,47 @@ Please create or load a working directory first:
 
 ```sh
 python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
-python3 run.py merge-forcing a.nc b.nc -o merged.nc    # 独立合并工具
 ```
 
-强迫场导入分为两条路径：**风场**走独立的标准化流程（完整重写），**流场/水位场/冰场**走通用的复制+修复流程。
- 
+强迫场导入根据文件内容自动分为两条路径：**纯风场文件**走完整的标准化重写（`WindNormalizeService`），**流场/水位场/冰场及多场组合文件**走复制 + 逐项修复流程（`FileService.copy_and_fix_forcing_file`）。判断依据是 `VariableDetector` 对 NetCDF 内部变量名的检测（纯名称匹配，不读取数据）：
 
+- **风场**：存在 `u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd` 任一对（大小写均匹配）
+- **流场**：存在 `uo/vo`
+- **水位场**：存在 `zos`
+- **冰场**：存在 `siconc`
 
-#### 风场导入
+#### 纯风场文件 — 完整重写
 
-风场文件不是简单复制，而是经过完整的标准化重写，输出 WW3 `ww3_prnc` 所需的精确格式：
+纯风场文件（仅包含风场变量，不含流场/水位/冰场）通过 `WindNormalizeService.normalize()` 生成全新的 NetCDF，**不保留源文件中除风场以外的任何变量**。输出只包含 `longitude`、`latitude`、`time`、`u10`、`v10` 五个变量/维度，具体处理：
 
-1. **变量检测**：打开 NetCDF 检测风场变量，支持多种命名（`u10` / `v10`、`wndewd` / `wndnwd`、`uwnd` / `vwnd`、`eastward_wind` 等），全部改为 u10/v10 便于 ww3_prnc 处理
+1. **变量名检测**：支持多种命名（`u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd`、`eastward_wind/northward_wind` 等），统一输出为 `u10/v10`，带 `units="m/s"`、`level="10m"` 属性
 2. **坐标标准化**：坐标变量统一命名为 `longitude`/`latitude`/`time`（不论源文件用的是 `lon`/`lat`/`valid_time` 还是其他变体）
 3. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算
-4. **纬度翻转**：如果纬度从大到小排列（ERA5 默认），自动翻转为从小到大
-5. **经度翻转**：经度若从大到小排列，同样自动翻转为从小到大（与通用路径**不对称**——通用路径对递减经度直接拒绝，风场路径因完整重写而直接翻转）
-6. **输出变量名**：固定为 `u10`/`v10`，带 `units="m/s"`、`level="10m"` 属性
+4. **纬度翻转**：纬度从大到小排列时自动翻转为从小到大
+5. **经度翻转**：经度从大到小排列时同样自动翻转为从小到大（与通用路径**不对称**——通用路径对递减经度直接拒绝）
 
-大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（最多 256 个时间步/块）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96 时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再原子替换，保证完整性。
+大文件采用**自适应内存策略**：根据可用内存和数据量自动选择全量加载、分块处理（目标 ~16MB 块大小）、或多进程并行（文件 ≥ 2GB、时间步 ≥ 96、网格点 ≤ 30 万时启用 `ProcessPoolExecutor`）。写入先输出到临时文件再 `os.replace` 原子替换。
 
+#### 非风场 / 多场文件 — 复制 + 逐项修复
 
+流场、水位场、冰场，以及包含多种强迫场的组合文件，走复制（或移动）+ 逐项修复流程。目标文件名由 `FilePathManager.generate_forcing_filename()` 按固定顺序 `wind_current_level_ice` 拼接生成（如 `current.nc`、`current_level.nc`、`wind_current_level_ice.nc`）。文件写入方式由 `forcing.process_mode` 控制，支持 `copy`（`shutil.copy2`，保留元数据）和 `move`（`shutil.move`）。
 
+修复项按以下顺序依次执行，每一项都是独立的临时文件全量重写（先写临时文件再 `os.replace`）：
 
-#### 流场/水位场/冰场导入
+1. **坐标变量名标准化**：`lon`→`longitude`、`lat`→`latitude`、`valid_time`→`time` 等，同步重命名维度和引用该维度的所有变量
+2. **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算，保留 `calendar` 属性
+3. **风变量名修复**：如果文件中有旧风变量 `wndewd/wndnwd` 且没有 `u10/v10`，重写 NetCDF 并改名为 `u10/v10`，同时保留全局属性、维度、压缩设置和 `_FillValue`
+4. **纬度翻转**：一维纬度坐标递减时，翻转该纬度维度上的所有变量使纬度递增（避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`）
+5. **经度递减拒绝**：一维经度坐标递减时，**拒绝导入并记录错误**——经度闭合和 `0~360` / `-180~180` 范围关系不能安全猜测
 
-非风场强迫场采用复制+修复模式，但通用处理已同步了坐标标准化和时间单位转换：
-
-#### 通用强迫场导入
-
-流场、水位场、海冰场，以及包含非风场的组合文件，走通用复制/移动 + 必要修复流程：
-
-- 目标文件名由 `FilePathManager.generate_forcing_filename()` 生成。单场通常是 `current.nc`、`level.nc`、`ice.nc`；自动关联多场时使用固定顺序组合，如 `wind_current_level_ice.nc`。
-- 文件写入方式由 `forcing.process_mode` 控制，支持 `copy` 和 `move`。
-- 通用修复流程：
-  - **坐标变量名标准化**：`lon`→`longitude`、`lat`→`latitude`、`valid_time`→`time` 等，同步重命名维度和引用该维度的所有变量。
-  - **时间单位转换**：统一转换为 `"seconds since 1970-01-01"`，使用 `num2date` 做精确换算，保留 `calendar` 属性。
-  - 如果文件中有旧风变量 `wndewd/wndnwd` 且没有 `u10/v10`，重写 NetCDF 并改名为 `u10/v10`，同时保留全局属性、维度、压缩设置和 `_FillValue`。
-  - 如果一维纬度坐标递减，则翻转该纬度维度上的所有变量，使纬度递增，避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`。
-  - 如果一维经度坐标递减，则拒绝导入并记录错误；不会静默翻转经度，因为经度闭合和 `0~360` / `-180~180` 范围关系不能安全猜测。
-- 通用修复**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
-
-
+通用修复**不强制**变量维度顺序。WW3 的 `ww3_prnc` 按维度名匹配变量维度，namelist 中通过 `FILE%LONGITUDE` / `FILE%LATITUDE` 指定维度名。
 
 #### 多场文件与自动关联
 
 如果一个 NetCDF 文件同时包含多种强迫场（如流场+水位场），`VariableDetector` 会检测所有存在的场类型：
 
 - **自动关联**（`auto_associate=True`，默认）：文件名使用下划线连接所有检测到的场，如 `current_level.nc`、`wind_current_level_ice.nc`，同时多个强迫场槽位指向同一个文件
-
-- **风场特殊处理**：多场文件中如果包含风场，除了复制合并文件外，还会额外提取一个标准化后的 `wind.nc`（仅含风场），因为 `ww3_prnc` 处理风场时需要精确的维度格式
+- **风场特殊处理**：多场文件中如果包含风场，除了按通用路径复制修复合并文件外，还会**额外**通过 `WindNormalizeService` 提取生成一个独立的标准化 `wind.nc`（仅含风场变量），因为 `ww3_prnc` 处理风场时需要精确的维度格式
 
 #### 工作目录扫描
 
@@ -370,7 +420,7 @@ python3 run.py run-workflow work_dir_name     # 完整预处理（Step 1~4 一�
 
 #### 5.5.1 复制模板文件
 
-从 `public/ww3/` 复制全套模板到工作目录，包含：`ww3_grid.nml`、`ww3_prnc.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`ww3_ounp.nml`、`ww3_trnc.nml`、`namelists.nml`、`server.sh`、`local.sh` 等。这些模板文件是后续所有修改的基础，修改只在模板上定点替换，不会重写整个文件。
+从 `public/{version}_nml/`（如 `public/6.07_nml/` 或 `public/7.14_nml/`，由 `ww3.version` 决定）复制全套模板到工作目录，包含：`ww3_grid.nml`、`ww3_prnc.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`ww3_ounp.nml`、`ww3_trnc.nml`、`namelists.nml`、`server.sh`、`local.sh` 等。这些模板文件是后续所有修改的基础，修改只在模板上定点替换，不会重写整个文件。
 
 #### 5.5.2 同步网格参数到 ww3_grid.nml
 
