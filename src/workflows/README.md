@@ -75,10 +75,10 @@ flowchart LR
 | 文件 | 说明 |
 |---|---|
 | `file_path_manager.py` | 计算 workdir 内 wind.nc / current.nc 等目标路径 |
-| `file_service.py` | 文件复制 / 移动 / 软链接 |
+| `file_service.py` | 文件复制 / 移动，调用归一化服务完成单遍标准化 |
 | `variable_detector.py` | 检测 NetCDF 文件中的变量类型（u/v 风场、SWH 等） |
-| `wind_normalize_service.py` | 将不同格式的风场归一化为 WW3 所需的 u/v 分量 |
-| `use_cases.py` | `ImportForcingFileUseCase` / `ImportWindForcingUseCase`：组合上面四个类，完成单个场文件的导入 |
+| `forcing_normalize_service.py` | 单遍归一化所有强迫场（坐标、变量名、时间单位）为 WW3 标准格式 |
+| `use_cases.py` | `ImportForcingFileUseCase`：统一入口，组合上面几个类完成任意场文件的导入 |
 
 > **注意**：`use_cases.py` 位于 infrastructure 层而非 application 层，因为它直接封装了文件 I/O 操作，不包含流程判断。
 
@@ -218,7 +218,7 @@ plot 层的 worker 函数接收 `log_queue`/`result_queue` 而非 Qt 信号，De
 **③ `forcing/use_cases.py` 命名** ✅ 已改善
 
 文件顶部说明了 "UseCase" 是历史命名遗留，并在末尾提供了符合基础设施惯例的别名：
-`ForcingAutoAssociator`、`ForcingFileImporter`、`WindForcingImporter`、`WorkdirForcingScanner`。
+`ForcingAutoAssociator`、`ForcingFileImporter`、`WorkdirForcingScanner`。
 旧名称保留以维持与 Desktop 层的向后兼容。
 
 **④ `grid_tools.py` 注释误导** ✅ 已修正

@@ -32,9 +32,8 @@ from ..domain.forcing_fields import ForcingField, Step1Files
 from ..domain.config_models import PipelineConfig
 from ..infrastructure.forcing.file_path_manager import FilePathManager
 from ..infrastructure.forcing.file_service import FileService
-from ..infrastructure.forcing.use_cases import AutoAssociateUseCase, ImportForcingFileUseCase, ImportWindForcingUseCase
+from ..infrastructure.forcing.use_cases import AutoAssociateUseCase, ImportForcingFileUseCase
 from ..infrastructure.forcing.variable_detector import VariableDetector
-from ..infrastructure.forcing.wind_normalize_service import WindNormalizeService
 from ..support.logging import CoreLogger
 from ..support.translations import tr
 
@@ -46,18 +45,13 @@ def _forcing_import_error_message(result) -> str:
     reason = str(result.invalid_reason or "")
     field = getattr(result.field, "value", None) or ""
     if reason == "missing_variables":
-        if field == "wind":
-            return tr(
-                "wind_file_missing_vars_msg",
-                "❌ 文件不包含风场变量（u10/v10），请选择正确的风场文件",
-            )
         return tr(
             "step1_field_missing_vars",
             "{field} 文件缺少所需变量，请检查 NetCDF 内容",
         ).format(field=field)
     if reason:
         return reason
-    return tr("step1_wind_import_failed", "❌ 风场导入失败")
+    return tr("step1_forcing_import_failed", "❌ 强迫场导入失败").format()
 
 
 def prepare_forcing(
@@ -104,43 +98,25 @@ def prepare_forcing(
     path_manager = FilePathManager()
     file_service = FileService(logger=logger)
     auto = AutoAssociateUseCase()
-    import_regular = ImportForcingFileUseCase(
+    importer = ImportForcingFileUseCase(
         variable_detector=variable_detector,
         path_manager=path_manager,
         file_service=file_service,
-        auto_associate_use_case=auto,
-        log=logger.log,
-    )
-    import_wind = ImportWindForcingUseCase(
-        variable_detector=variable_detector,
-        path_manager=path_manager,
-        file_service=file_service,
-        normalizer=WindNormalizeService(),
         auto_associate_use_case=auto,
         log=logger.log,
     )
 
     files = Step1Files()
-    if ForcingField.WIND in requested_fields and config.forcing.wind:
-        result = import_wind.execute(
-            str(config.forcing.wind),
-            str(workdir),
-            config.forcing.auto_associate,
-            config.forcing.process_mode,
-        )
-        if not result.success:
-            raise RuntimeError(_forcing_import_error_message(result))
-        files = _merge(files, result.files_patch)
-
-    regular = [
+    all_fields = [
+        (ForcingField.WIND, config.forcing.wind),
         (ForcingField.CURRENT, config.forcing.current),
         (ForcingField.LEVEL, config.forcing.level),
         (ForcingField.ICE, config.forcing.ice),
     ]
-    for field, path in regular:
+    for field, path in all_fields:
         if field not in requested_fields or path is None:
             continue
-        result = import_regular.execute(
+        result = importer.execute(
             field,
             str(path),
             str(workdir),

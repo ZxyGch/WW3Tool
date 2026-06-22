@@ -35,6 +35,7 @@ from typing import Optional
 from ...domain.forcing_fields import ForcingField, Step1Files
 from ...support.translations import tr
 from .file_path_manager import FilePathManager
+from .forcing_normalize_service import ForcingNormalizeService
 from .variable_detector import VariableDetector
 
 
@@ -50,20 +51,23 @@ class FileService:
         logger: Optional logger object, must implement ``log`` method or Qt ``log_signal``.
     """
     
-    def __init__(self, logger=None):
+    def __init__(self, logger=None, normalizer: Optional[ForcingNormalizeService] = None):
         """
         初始化文件服务
 
         [EN] Initialize the file service.
-        
+
         参数:
             logger: 日志记录器（需要包含 log 方法）
+            normalizer: 强迫场归一化服务（默认自动创建）
 
         [EN] Parameters:
             logger: Logger (must have a log method)
+            normalizer: Forcing normalize service (auto-created if not provided)
         """
         self.logger = logger
         self.path_manager = FilePathManager()
+        self._normalizer = normalizer or ForcingNormalizeService()
     
     def log(self, msg: str):
         """记录日志
@@ -407,11 +411,11 @@ class FileService:
 
     def copy_and_fix_forcing_file(self, source_file: str, target_file: str, process_mode: str = "copy") -> Optional[str]:
         """
-        复制或移动强迫场文件到工作目录，并执行必要兼容性修复。
+        复制或移动强迫场文件到工作目录，并通过 ForcingNormalizeService 单遍标准化。
 
-        [EN] Copy or move a forcing file to the working directory, and apply necessary
-        compatibility fixes.
-        
+        [EN] Copy or move a forcing file to the working directory, then normalize
+        in a single pass via ForcingNormalizeService.
+
         参数:
             source_file: 源文件路径
             target_file: 目标文件路径
@@ -421,7 +425,7 @@ class FileService:
             source_file: Source file path
             target_file: Target file path
             process_mode: Processing mode, "copy" or "move"
-        
+
         返回:
             目标文件路径，如果失败返回 None
 
@@ -429,103 +433,36 @@ class FileService:
             Target file path, or None if failed.
         """
         try:
-            # 如果目标文件已存在且与源文件相同，不需要再次处理
-            # [EN] If the target file already exists and is the same as the source, skip processing
-            if os.path.exists(target_file):
-                try:
-                    if os.path.samefile(source_file, target_file):
-                        return target_file
-                except OSError:
-                    # 如果无法比较（例如跨文件系统），继续处理
-                    # [EN] If comparison fails (e.g. cross-filesystem), continue processing
-                    pass
+            # 如果目标文件已存在且与源文件相同，直接归一化
+            # [EN] If target already exists and is the same as source, normalize directly
+            try:
+                if os.path.samefile(source_file, target_file):
+                    ok = self._normalizer.normalize(source_file, target_file, log=self.log)
+                    return target_file if ok else None
+            except OSError:
+                pass
 
-            # 1. 复制或移动文件到工作目录
-            # [EN] 1. Copy or move the file to the working directory
-            if not os.path.exists(os.path.dirname(target_file)):
-                os.makedirs(os.path.dirname(target_file), exist_ok=True)
+            # 1. 复制或移动文件
+            # [EN] 1. Copy or move the file
+            target_dir = os.path.dirname(target_file)
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
 
             if process_mode == "move":
                 shutil.move(source_file, target_file)
             else:
                 shutil.copy2(source_file, target_file)
 
-            # 2. 坐标变量名标准化（lon→longitude, lat→latitude, valid_time→time 等）
-            # [EN] 2. Standardize coordinate variable names
-            self._standardize_coordinate_names(target_file)
-
-            # 3. 时间单位转换（→ seconds since 1970-01-01）
-            # [EN] 3. Convert time units
-            self._standardize_time_units(target_file)
-
-            # 4. 检查其他必要兼容性。WW3 源码按维度名读取；
-            # 规则经纬网下纬度递减会被 ww3_prnc 硬拒绝。
-            # [EN] 4. Check remaining compatibility. WW3 reads by dimension name;
-            # descending latitude is rejected by ww3_prnc for regular lat/lon grids.
-            needs_fix_wind_vars = False
-            has_wndewd = False
-            has_wndnwd = False
-            lat_flip_dimension = None
-
-            with Dataset(target_file, "r") as f:
-                # 检查是否需要修复风场变量名（wndewd/wndnwd -> u10/v10）
-                # [EN] Check if wind variable names need fixing (wndewd/wndnwd -> u10/v10)
-                if "wndewd" in f.variables or "WNDEWD" in f.variables:
-                    has_wndewd = True
-                if "wndnwd" in f.variables or "WNDNWD" in f.variables:
-                    has_wndnwd = True
-                
-                # 如果存在 wndewd/wndnwd 且不存在 u10/v10，需要修复
-                # [EN] If wndewd/wndnwd exist and u10/v10 do not, fixing is needed
-                if has_wndewd and has_wndnwd:
-                    if "u10" not in f.variables and "v10" not in f.variables:
-                        needs_fix_wind_vars = True
-
-                lat_name = self._find_coord_name(f.variables.keys(), self._LAT_NAMES)
-                lon_name = self._find_coord_name(f.variables.keys(), self._LON_NAMES)
-                if lat_name:
-                    lat_flip_dimension = self._decreasing_1d_coord_dimension(
-                        f.variables[lat_name], "纬度"
-                    )
-                if lon_name:
-                    lon_flip_dimension = self._decreasing_1d_coord_dimension(
-                        f.variables[lon_name], "经度"
-                    )
-                    if lon_flip_dimension:
-                        raise ValueError(
-                            tr(
-                                "log_lon_descending_not_supported",
-                                "经度坐标为递减顺序，WW3 插值假设经度递增；请先将经度调整为递增后再导入",
-                            )
-                        )
-
-            # 5. 如果需要修复风场变量名，需要重新创建文件（因为 netCDF4 不支持删除变量）
-            # [EN] 5. If wind variable names need fixing, recreate the file (netCDF4 does not support deleting variables)
-            if needs_fix_wind_vars:
-                try:
-                    with Dataset(target_file, "r") as src:
-                        # 确定变量名（处理大小写）
-                        # [EN] Determine variable names (handle case)
-                        wndewd_name = "wndewd" if "wndewd" in src.variables else "WNDEWD"
-                        wndnwd_name = "wndnwd" if "wndnwd" in src.variables else "WNDNWD"
-                    self._rewrite_wind_vars_to_u10_v10(target_file, wndewd_name, wndnwd_name)
-                    self.log(tr("log_wind_vars_fixed", "✅ 已修复风场变量名：wndewd/wndnwd -> u10/v10"))
-                except Exception as e:
-                    # 记录详细错误信息
-                    # [EN] Log detailed error message
-                    self.log(tr("log_wind_vars_fix_failed", "⚠️ 修复风场变量名失败: {error}").format(error=str(e)))
-                    # 不抛出异常，继续处理，让调用者决定如何处理
-                    # [EN] Do not raise; continue processing and let the caller decide how to handle
-
-            if lat_flip_dimension:
-                self._flip_dimension_in_place(target_file, lat_flip_dimension)
-                self.log(tr("log_lat_flipped", "✅ 已翻转纬度坐标方向（递减→递增）"))
+            # 2. 单遍归一化（坐标标准化 + 时间转换 + 纬度翻转 + 变量重命名）
+            # [EN] 2. Single-pass normalization (coord standardization + time conversion
+            #        + lat flip + variable renaming)
+            ok = self._normalizer.normalize(target_file, target_file, log=self.log)
+            if not ok:
+                return None
 
             return target_file
 
         except Exception as e:
-            # 修复失败时记录但不中断流程
-            # [EN] Log but do not interrupt the workflow if fixing fails
             self.log(f"{tr('log_copy_fix_failed', '❌ 复制或修复文件失败')}: {e}")
             return None
 

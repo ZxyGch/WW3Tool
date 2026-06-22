@@ -33,7 +33,6 @@ from ...support.translations import tr
 from .file_path_manager import FilePathManager
 from .file_service import FileService
 from .variable_detector import VariableDetector
-from .wind_normalize_service import WindNormalizeService
 
 
 def _merge_forcing_files(target: Step1Files, patch: Step1Files) -> None:
@@ -60,7 +59,6 @@ class ForcingImportResult:
         error: 用户可读错误信息
         target_filename: 写入工作目录的目标文件名
         actual_file_path: 实际使用的源/目标绝对路径
-        normalized_wind_path: 风场归一化后的 ``wind.nc`` 路径（仅风场流程）
         display_log_path: 日志中展示给用户的路径
         detected_fields: 文件中检测到的场字典
         files_patch: 需合并进 Step 1 状态的路径补丁
@@ -72,7 +70,6 @@ class ForcingImportResult:
         error: User-readable error message
         target_filename: Target filename written to the working directory
         actual_file_path: Actual source/target absolute path used
-        normalized_wind_path: Path to normalized ``wind.nc`` (wind-only workflow)
         display_log_path: Path displayed to the user in logs
         detected_fields: Dictionary of fields detected in the file
         files_patch: Path patch to merge into Step 1 state
@@ -83,7 +80,6 @@ class ForcingImportResult:
     error: Optional[str] = None
     target_filename: str = ""
     actual_file_path: Optional[str] = None
-    normalized_wind_path: Optional[str] = None
     display_log_path: Optional[str] = None
     detected_fields: dict[str, bool] = dataclass_field(default_factory=dict)
     files_patch: Step1Files = dataclass_field(default_factory=Step1Files)
@@ -130,9 +126,14 @@ class AutoAssociateUseCase:
 
 
 class ImportForcingFileUseCase:
-    """导入流场/水位场/海冰场 NetCDF 到工作目录（Step 1 非风场分支）。
+    """导入强迫场 NetCDF 到工作目录（Step 1 统一入口，支持所有场类型）。
 
-    [EN] Import current/level/ice NetCDF files to the working directory (Step 1 non-wind branch).
+    [EN] Import forcing NetCDF to the working directory (Step 1 unified entry,
+    supports all field types: wind, current, level, ice).
+
+    所有场类型统一走 ``FileService.copy_and_fix_forcing_file()``，
+    内部通过 ``ForcingNormalizeService`` 单遍完成坐标标准化、时间转换、
+    纬度翻转和变量重命名。
     """
 
     def __init__(
@@ -276,192 +277,6 @@ class ImportForcingFileUseCase:
             self._log(message)
 
 
-class ImportWindForcingUseCase:
-    """导入并归一化风场 NetCDF（Step 1 风场专用分支）。
-
-    [EN] Import and normalize wind NetCDF (Step 1 wind-specific branch).
-
-    纯风场文件走 ``WindNormalizeService`` 直接写出；多场合并文件先复制修复，
-    再额外生成标准 ``wind.nc`` 供 WW3 ``ww3_prnc`` 使用。
-
-    [EN] Pure wind files go directly through ``WindNormalizeService`` for output; multi-field
-    merged files are first copied and fixed, then a standard ``wind.nc`` is additionally
-    generated for WW3 ``ww3_prnc`` use.
-    """
-
-    def __init__(
-        self,
-        variable_detector: VariableDetector,
-        path_manager: FilePathManager,
-        file_service: FileService,
-        normalizer: WindNormalizeService,
-        auto_associate_use_case: AutoAssociateUseCase,
-        log: Optional[Callable[[str], None]] = None,
-    ) -> None:
-        self._variable_detector = variable_detector
-        self._path_manager = path_manager
-        self._file_service = file_service
-        self._normalizer = normalizer
-        self._auto_associate_use_case = auto_associate_use_case
-        self._log = log
-
-    def execute(
-        self,
-        file_path: str,
-        selected_folder: str,
-        auto_associate: bool,
-        process_mode: str,
-    ) -> ForcingImportResult:
-        """执行风场导入：检测变量、复制/归一化并可选自动关联其他场。
-
-        [EN] Execute wind import: detect variables, copy/normalize, and optionally auto-associate other fields.
-
-        参数:
-            file_path: 源 NetCDF 绝对路径
-            selected_folder: WW3 工作目录
-            auto_associate: 是否根据文件内变量自动关联其他场
-            process_mode: ``copy`` 或 ``move``
-
-        [EN] Parameters:
-            file_path: Source NetCDF absolute path
-            selected_folder: WW3 working directory
-            auto_associate: Whether to auto-associate other fields based on file variables
-            process_mode: ``copy`` or ``move``
-
-        返回:
-            ``ForcingImportResult``，成功时 ``normalized_wind_path`` 指向标准风场文件
-
-        [EN] Returns:
-            ``ForcingImportResult``; on success ``normalized_wind_path`` points to the standard wind file.
-        """
-        src = Path(file_path)
-        if not src.is_file():
-            return ForcingImportResult(
-                success=False,
-                field=ForcingField.WIND,
-                error=tr("cfg_wind_path_not_exists", "❌ 风场文件不存在：{path}").format(path=src),
-            )
-
-        inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
-        detected_fields = inspect_result.get("detected", {}) or {}
-        fields = inspect_result.get("fields", []) or []
-        if not detected_fields.get("wind", False):
-            return ForcingImportResult(
-                success=False,
-                field=ForcingField.WIND,
-                invalid_reason="missing_variables",
-                error=tr(
-                    "wind_file_missing_vars_msg",
-                    "❌ 文件不包含风场变量（u10/v10），请选择正确的风场文件",
-                ),
-            )
-
-        if not fields:
-            fields = ["wind"]
-
-        if auto_associate:
-            target_filename = self._path_manager.generate_forcing_filename(fields, auto_associate=True)
-        else:
-            target_filename = self._path_manager.generate_forcing_filename(["wind"], auto_associate=False)
-        target_file = os.path.join(selected_folder, target_filename)
-
-        if auto_associate and len(fields) > 1:
-            self._emit(
-                tr("log_detected_multi_forcing", "ℹ️ 检测到文件包含多个强迫场: {fields}").format(
-                    fields=", ".join(fields)
-                )
-            )
-            self._emit(
-                tr("log_file_will_save_as", "📁 文件将保存为: {filename}").format(filename=target_filename)
-            )
-
-        need_process = True
-        if os.path.exists(target_file):
-            try:
-                if os.path.samefile(file_path, target_file):
-                    self._emit(
-                        tr(
-                            "log_file_exists_same",
-                            "ℹ️ 文件已存在于工作目录且与源文件相同: {filename}",
-                        ).format(filename=target_filename)
-                    )
-                    need_process = False
-                else:
-                    self._emit(
-                        tr("log_target_exists_overwrite", "ℹ️ 目标文件已存在，将覆盖: {filename}").format(
-                            filename=target_filename
-                        )
-                    )
-            except OSError:
-                self._emit(
-                    tr("log_target_exists_overwrite", "ℹ️ 目标文件已存在，将覆盖: {filename}").format(
-                        filename=target_filename
-                    )
-                )
-
-        wind_only_direct = detected_fields.get("wind", False) and not any(
-            detected_fields.get(name, False) for name in ("current", "level", "ice")
-        )
-
-        if wind_only_direct:
-            normalize_ok = self._normalizer.normalize(file_path, target_file, log=self._log)
-            if not normalize_ok:
-                return ForcingImportResult(
-                    success=False,
-                    field=ForcingField.WIND,
-                    error=tr("log_write_file_failed", "❌ 写入新文件失败"),
-                )
-            actual_file_path = target_file
-            normalized_wind_path = target_file
-            same_source_target = False
-            try:
-                if os.path.exists(target_file):
-                    same_source_target = os.path.samefile(file_path, target_file)
-            except OSError:
-                same_source_target = False
-            if process_mode == "move" and not same_source_target and os.path.exists(file_path):
-                os.remove(file_path)
-        else:
-            if need_process:
-                copied_file = self._file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)
-                if not copied_file:
-                    return ForcingImportResult(
-                        success=False,
-                        field=ForcingField.WIND,
-                        error=tr("log_copy_fix_failed", "❌ 复制或修复文件失败"),
-                    )
-
-            actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path
-            normalized_wind_path = os.path.join(selected_folder, "wind.nc")
-            normalize_ok = self._normalizer.normalize(actual_file_path, normalized_wind_path, log=self._log)
-            if not normalize_ok:
-                return ForcingImportResult(
-                    success=False,
-                    field=ForcingField.WIND,
-                    error=tr("log_write_file_failed", "❌ 写入新文件失败"),
-                )
-
-        files_patch = Step1Files()
-        files_patch.set(ForcingField.WIND, actual_file_path)
-        if auto_associate:
-            _merge_forcing_files(files_patch, self._auto_associate_use_case.execute(detected_fields, actual_file_path))
-
-        return ForcingImportResult(
-            success=True,
-            field=ForcingField.WIND,
-            target_filename=target_filename,
-            actual_file_path=actual_file_path,
-            normalized_wind_path=normalized_wind_path,
-            display_log_path=os.path.normpath(actual_file_path),
-            detected_fields=detected_fields,
-            files_patch=files_patch,
-        )
-
-    def _emit(self, message: str) -> None:
-        if self._log is not None:
-            self._log(message)
-
-
 class ScanWorkdirForcingUseCase:
     """从已有工作目录恢复 Step 1 强迫场文件列表。
 
@@ -486,5 +301,4 @@ class ScanWorkdirForcingUseCase:
 # (legacy UseCase names retained for desktop-side compatibility)
 ForcingAutoAssociator = AutoAssociateUseCase
 ForcingFileImporter = ImportForcingFileUseCase
-WindForcingImporter = ImportWindForcingUseCase
 WorkdirForcingScanner = ScanWorkdirForcingUseCase
