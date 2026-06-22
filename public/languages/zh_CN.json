@@ -57,7 +57,7 @@
   "node_num": "计算节点数量:",
   "compute_precision": "计算精度（秒）:",
   "output_precision": "输出精度（秒）:",
-  "set_default_cpu": "默认 CPU：",
+  "set_default_cpu": "CPU：",
   "cpu_no_partition": "未从服务器解析到 CPU 分区",
   "manage_cpu": "管理",
   "st_version_config": "ST 版本配置",

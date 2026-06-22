@@ -391,7 +391,8 @@ class ServerConnectPanel:
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
-        self._replace_combo_items(self.cpu_combo, [config.slurm.cpu] if config.slurm.cpu else [], config.slurm.cpu or "")
+        self._default_cpu = str(config.slurm.cpu or "").strip()
+        self._replace_combo_items(self.cpu_combo, [self._default_cpu] if self._default_cpu else [], self._default_cpu)
 
     def ww3_overrides(self) -> dict[str, str]:
         return {}
@@ -418,9 +419,15 @@ class ServerConnectPanel:
     def replace_cpu_options_if_changed(self, values: list[str]) -> None:
         server_values = [str(value).strip() for value in values if str(value).strip()]
         if not server_values:
-            # 服务器未解析到 CPU 分区：清空下拉框，由占位文本提示
-            if self.cpu_combo.count():
+            # 服务器连不上或未解析到 CPU 分区：回退到默认 CPU
+            default_cpu = getattr(self, "_default_cpu", "")
+            target = [default_cpu] if default_cpu else []
+            current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
+            if current != target:
                 self.cpu_combo.clear()
+                if default_cpu:
+                    self.cpu_combo.addItem(default_cpu)
+                    self.cpu_combo.setCurrentText(default_cpu)
             return
         deduped = list(dict.fromkeys(server_values))
         current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]

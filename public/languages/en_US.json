@@ -57,7 +57,7 @@
   "node_num": "Nodes:",
   "compute_precision": "Compute Precision (seconds):",
   "output_precision": "Output Precision (seconds):",
-  "set_default_cpu": "Default CPU:",
+  "set_default_cpu": "CPU:",
   "cpu_no_partition": "No CPU partition resolved from server",
   "manage_cpu": "Manage",
   "st_version_config": "Server ST Version Management",
