@@ -1755,6 +1755,8 @@
   "download_file_complete": "✅ {name} 下载完成",
   "clear_remote_failed": "❌ 清空失败：{error}",
   "cancel_job_failed": "❌ 取消任务失败：{error}",
+  "cancel_job_success": "✅ 已取消任务 {job_id}",
+  "cancel_job_failed_detail": "❌ 取消任务 {job_id} 失败: {error}",
   "plotting_ndbc_data_folder_missing": "plot.ndbc.data_folder 未配置",
   "plotting_ww3_output_nc_not_found": "未在 {folder} 找到 WW3 输出 nc 文件",
   "plotting_ndbc_match_generated": "NDBC 匹配结果已生成至：{path}",

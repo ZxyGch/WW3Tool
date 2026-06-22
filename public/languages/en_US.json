@@ -1755,6 +1755,8 @@
   "download_file_complete": "✅ {name} downloaded",
   "clear_remote_failed": "❌ Clear failed: {error}",
   "cancel_job_failed": "❌ Cancel job failed: {error}",
+  "cancel_job_success": "✅ Job {job_id} cancelled",
+  "cancel_job_failed_detail": "❌ Failed to cancel job {job_id}: {error}",
   "plotting_ndbc_data_folder_missing": "plot.ndbc.data_folder is not configured",
   "plotting_ww3_output_nc_not_found": "No WW3 output nc file found in {folder}",
   "plotting_ndbc_match_generated": "NDBC match results generated at: {path}",

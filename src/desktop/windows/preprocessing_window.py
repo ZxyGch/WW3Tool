@@ -1971,7 +1971,20 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not job_id:
             self._show_error(tr("step5_cancel_empty_jobid", "请填写要取消的任务 ID"))
             return
-        self._run_job(lambda c: self._remote_vm.cancel_job(c, job_id))
+        # [EN] Lightweight: run scancel in background without blocking UI.
+        # 轻量操作：后台执行 scancel，不阻塞 UI。
+        params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
+        if params_path is None:
+            return
+        try:
+            config = self._pipeline_vm.load_config(params_path, validation_stage="plot")
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        self._runner.run(
+            lambda: self._remote_vm.cancel_job(config, job_id),
+            self._on_job_done,
+        )
 
     # [EN] ── Server status auto-polling (cluster jobs + idle resources + task queue) ──
     # ── 服务器状态自动轮询（集群作业 + 空闲资源 + 任务队列）────────────────────────────

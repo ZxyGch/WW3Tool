@@ -548,9 +548,9 @@ class SshClient:
         quoted_job_id = shlex.quote(str(job_id))
         out, err, code = self.exec_command(f"scancel {quoted_job_id}", log=log)
         if code == 0:
-            log(f"✅ 已取消任务 {job_id}")
+            log(tr("cancel_job_success", "✅ 已取消任务 {job_id}").format(job_id=job_id))
         else:
-            log(f"❌ 取消任务 {job_id} 失败: {err or out}")
+            log(tr("cancel_job_failed_detail", "❌ 取消任务 {job_id} 失败: {error}").format(job_id=job_id, error=err or out))
 
     def clear_remote_dir(self, remote_dir: str, *, log: LogFn = _noop) -> None:
         """清空 ``remote_dir`` 内所有文件与子目录（保留目录本身）。"""
