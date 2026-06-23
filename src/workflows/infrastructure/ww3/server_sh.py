@@ -133,14 +133,12 @@ class ServerSh(NMLPrimitives):
             coarse_dir = os.path.join(self.selected_folder, "coarse")
             fine_dir = os.path.join(self.selected_folder, "fine")
             is_nested_grid = (os.path.isdir(coarse_dir) and os.path.isdir(fine_dir))
+            start_date = None
+            end_date = None
 
             if is_nested_grid:
-                # [EN] Nested grid mode: read precision values for outer and inner grids separately
-                # 嵌套网格模式：分别读取外网格和内网格的精度值
-                # [EN] Read output precision and compute precision for outer grid (coarse)
-                # 读取外网格（coarse）的输出精度和计算精度
+                # 嵌套网格模式：从外网格读取输出步长与时间范围
                 coarse_output_precision = None
-                coarse_compute_precision = None
                 coarse_ounf_path = os.path.join(coarse_dir, "ww3_ounf.nml")
                 coarse_shel_path = os.path.join(coarse_dir, "ww3_shel.nml")
 
@@ -171,78 +169,18 @@ class ServerSh(NMLPrimitives):
                             if "DATE%FIELD" in line and "=" in line:
                                 match = re.search(r"DATE%FIELD\s*=\s*['\"](\d{8})\s+\d{6}['\"]\s+['\"](\d+)['\"]\s+['\"](\d{8})\s+\d{6}['\"]", line, re.IGNORECASE)
                                 if match:
-                                    # [EN] Use outer grid start date
-                                    start_date = match.group(1)  # 使用外网格的起始日期
-                                    coarse_compute_precision = match.group(2)
-                                    # [EN] Use outer grid end date
-                                    end_date = match.group(3)  # 使用外网格的结束日期
+                                    start_date = match.group(1)
+                                    if not coarse_output_precision:
+                                        coarse_output_precision = match.group(2)
+                                    end_date = match.group(3)
                                     break
                     except:
                         pass
 
-                # [EN] Read output precision and compute precision for inner grid (fine)
-                # 读取内网格（fine）的输出精度和计算精度
-                fine_output_precision = None
-                fine_compute_precision = None
-                fine_ounf_path = os.path.join(fine_dir, "ww3_ounf.nml")
-                fine_shel_path = os.path.join(fine_dir, "ww3_shel.nml")
-
-                if os.path.exists(fine_ounf_path):
-                    try:
-                        with open(fine_ounf_path, "r", encoding="utf-8") as f:
-                            ounf_lines = f.readlines()
-                        for line in ounf_lines:
-                            line_stripped = line.strip()
-                            if line_stripped.startswith("!") or line_stripped.startswith("#"):
-                                continue
-                            if "FIELD%TIMESTRIDE" in line and "=" in line:
-                                match = re.search(r"FIELD%TIMESTRIDE\s*=\s*['\"](\d+)['\"]", line, re.IGNORECASE)
-                                if match:
-                                    fine_output_precision = match.group(1)
-                                    break
-                    except:
-                        pass
-
-                if os.path.exists(fine_shel_path):
-                    try:
-                        with open(fine_shel_path, "r", encoding="utf-8") as f:
-                            shel_lines = f.readlines()
-                        for line in shel_lines:
-                            line_stripped = line.strip()
-                            if line_stripped.startswith("!") or line_stripped.startswith("#"):
-                                continue
-                            if "DATE%FIELD" in line and "=" in line:
-                                match = re.search(r"DATE%FIELD\s*=\s*['\"](\d{8})\s+\d{6}['\"]\s+['\"](\d+)['\"]\s+['\"](\d{8})\s+\d{6}['\"]", line, re.IGNORECASE)
-                                if match:
-                                    # [EN] Inner grid date range is usually same as outer grid, but here only read compute precision
-                                    # 内网格的日期范围通常与外网格相同，但这里只读取计算精度
-                                    fine_compute_precision = match.group(2)
-                                    break
-                    except:
-                        pass
-
-                # [EN] Update outer grid output precision and compute precision
-                # 更新外网格的输出精度和计算精度
                 if coarse_output_precision and hasattr(self, 'output_precision_edit') and self.output_precision_edit:
                     self.output_precision_edit.setText(coarse_output_precision)
                     updated = True
 
-                if coarse_compute_precision and hasattr(self, 'shel_step_edit') and self.shel_step_edit:
-                    self.shel_step_edit.setText(coarse_compute_precision)
-                    updated = True
-
-                # [EN] Update inner grid output precision and compute precision
-                # 更新内网格的输出精度和计算精度
-                if fine_output_precision and hasattr(self, 'inner_output_precision_edit') and self.inner_output_precision_edit:
-                    self.inner_output_precision_edit.setText(fine_output_precision)
-                    updated = True
-
-                if fine_compute_precision and hasattr(self, 'inner_shel_step_edit') and self.inner_shel_step_edit:
-                    self.inner_shel_step_edit.setText(fine_compute_precision)
-                    updated = True
-
-                # [EN] Update start and end dates (using outer grid dates)
-                # 更新起始和结束日期（使用外网格的日期）
                 if start_date and hasattr(self, 'shel_start_edit') and self.shel_start_edit:
                     self.shel_start_edit.setText(start_date)
                     updated = True
@@ -280,9 +218,7 @@ class ServerSh(NMLPrimitives):
                     except:
                         pass
 
-                # [EN] Read ww3_shel.nml to get compute precision and time range
-                # 读取 ww3_shel.nml 获取计算精度和时间范围
-                compute_precision = None
+                # 读取 ww3_shel.nml 获取时间范围；输出步长优先取自 ww3_ounf.nml
                 start_date = None
                 end_date = None
                 shel_path = os.path.join(self.selected_folder, "ww3_shel.nml")
@@ -293,34 +229,21 @@ class ServerSh(NMLPrimitives):
 
                         for line in shel_lines:
                             line_stripped = line.strip()
-                            # [EN] Skip comment lines
-                            # 跳过注释行
                             if line_stripped.startswith("!") or line_stripped.startswith("#"):
                                 continue
-                            # [EN] Parse DATE%FIELD = '20250103 000000' '1800' '20250105 235959'
-                            # 解析 DATE%FIELD = '20250103 000000' '1800' '20250105 235959'
                             if "DATE%FIELD" in line and "=" in line:
-                                # [EN] Match format: DATE%FIELD = '20250103 000000' '1800' '20250105 235959'
-                                # 匹配格式：DATE%FIELD = '20250103 000000' '1800' '20250105 235959'
                                 match = re.search(r"DATE%FIELD\s*=\s*['\"](\d{8})\s+\d{6}['\"]\s+['\"](\d+)['\"]\s+['\"](\d{8})\s+\d{6}['\"]", line, re.IGNORECASE)
                                 if match:
-                                    start_date = match.group(1)  # '20250103'
-                                    compute_precision = match.group(2)  # '1800'
-                                    end_date = match.group(3)  # '20250105'
+                                    start_date = match.group(1)
+                                    if not output_precision:
+                                        output_precision = match.group(2)
+                                    end_date = match.group(3)
                                     break
                     except:
                         pass
 
-                # [EN] Update output precision
-                # 更新输出精度
                 if output_precision and hasattr(self, 'output_precision_edit') and self.output_precision_edit:
                     self.output_precision_edit.setText(output_precision)
-                    updated = True
-
-                # [EN] Update compute precision
-                # 更新计算精度
-                if compute_precision and hasattr(self, 'shel_step_edit') and self.shel_step_edit:
-                    self.shel_step_edit.setText(compute_precision)
                     updated = True
 
                 # [EN] Update start date
@@ -339,17 +262,9 @@ class ServerSh(NMLPrimitives):
                 st_info = f", {tr('step4_st_version_label', 'ST版本')}={st_version}" if st_version else ""
                 ww3_info = ""
                 if is_nested_grid:
-                    # [EN] Nested grid mode: display inner/outer grid precision info
-                    # 嵌套网格模式：显示内外网格的精度信息
                     ww3_parts = []
                     if coarse_output_precision:
                         ww3_parts.append(tr("step4_outer_output_precision_value", "外网格输出精度={precision}s").format(precision=coarse_output_precision))
-                    if coarse_compute_precision:
-                        ww3_parts.append(tr("step4_outer_compute_precision_value", "外网格计算精度={precision}s").format(precision=coarse_compute_precision))
-                    if fine_output_precision:
-                        ww3_parts.append(tr("step4_inner_output_precision_value", "内网格输出精度={precision}s").format(precision=fine_output_precision))
-                    if fine_compute_precision:
-                        ww3_parts.append(tr("step4_inner_compute_precision_value", "内网格计算精度={precision}s").format(precision=fine_compute_precision))
                     if start_date:
                         ww3_parts.append(tr("step4_start_date_value", "起始日期={date}").format(date=start_date))
                     if end_date:
@@ -357,14 +272,10 @@ class ServerSh(NMLPrimitives):
                     if ww3_parts:
                         ww3_info = f", {', '.join(ww3_parts)}"
                 else:
-                    # [EN] Normal grid mode: display normal precision info
-                    # 普通网格模式：显示普通精度信息
-                    if output_precision or compute_precision or start_date or end_date:
+                    if output_precision or start_date or end_date:
                         ww3_parts = []
                         if output_precision:
                             ww3_parts.append(tr("step4_output_precision_value", "输出精度={precision}s").format(precision=output_precision))
-                        if compute_precision:
-                            ww3_parts.append(tr("step4_compute_precision_value", "计算精度={precision}s").format(precision=compute_precision))
                         if start_date:
                             ww3_parts.append(tr("step4_start_date_value", "起始日期={date}").format(date=start_date))
                         if end_date:
@@ -418,8 +329,8 @@ class ServerSh(NMLPrimitives):
             if os.path.exists(server_script_path):
                 shutil.copy2(server_script_path, workdir_server_sh)
                 self.log(
-                    tr("scripts_copied_to_workdir", "✅ 已复制运行脚本：{entries}").format(
-                        entries=f"server.sh: {server_script_path} → {workdir_server_sh}"
+                    tr("scripts_copied_to_workdir", "✅ 已复制 {entries} 到当前工作目录").format(
+                        entries="server.sh"
                     )
                 )
             else:

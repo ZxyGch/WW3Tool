@@ -477,7 +477,7 @@ class StepFourServiceMixin:
                     dst_path = os.path.join(scripts_target_dir, item)
                     shutil.copy2(src_path, dst_path)
                     if item in {"server.sh", "local.sh"}:
-                        script_copy_entries.append(f"{item}: {src_path} → {dst_path}")
+                        script_copy_entries.append(item)
                     if item.endswith(".sh"):
                         try:
                             os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
@@ -486,8 +486,8 @@ class StepFourServiceMixin:
                     scripts_copied += 1
                 if script_copy_entries:
                     self.log(
-                        tr("scripts_copied_to_workdir", "✅ 已复制运行脚本：{entries}").format(
-                            entries="; ".join(script_copy_entries)
+                        tr("scripts_copied_to_workdir", "✅ 已复制 {entries} 到当前工作目录").format(
+                            entries=", ".join(script_copy_entries)
                         )
                     )
             else:

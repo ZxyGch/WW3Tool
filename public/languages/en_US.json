@@ -639,7 +639,7 @@
   "step4_outer_grid_start": "🔄 【Outer Grid】Starting to process outer grid...",
   "step4_inner_grid_start": "🔄 【Inner Grid】Starting to process inner grid...",
   "step4_special_files_copied": "✅ Copied {files} to the current work directory",
-  "scripts_copied_to_workdir": "✅ Copied run scripts: {entries}",
+  "scripts_copied_to_workdir": "✅ Copied {entries} to the current work directory",
   "step4_ww3_multi_updated": "✅ Updated ww3_multi.nml: start={start}, end={end}, compute precision={precision}s",
   "step2_grid_visualization_complete": "✅ {grid_name} visualization completed, images saved to: {photo_dir}",
   "step2_grid_viz_done": "✅ Grid visualization generated.",

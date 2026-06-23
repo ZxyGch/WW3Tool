@@ -422,7 +422,7 @@ class ModifyWW3NML(
             if os.path.isfile(server_script_path):
                 dst_path = os.path.join(self.selected_folder, "server.sh")
                 shutil.copy2(server_script_path, dst_path)
-                script_copy_entries.append(f"server.sh: {server_script_path} → {dst_path}")
+                script_copy_entries.append("server.sh")
                 copied_files.append("server.sh")
                 # [EN] Clean up \\r
                 # 清理 \r
@@ -453,13 +453,13 @@ class ModifyWW3NML(
                 if os.path.isfile(local_sh_path):
                     dst_path = os.path.join(self.selected_folder, "local.sh")
                     shutil.copy2(local_sh_path, dst_path)
-                    script_copy_entries.append(f"local.sh: {local_sh_path} → {dst_path}")
+                    script_copy_entries.append("local.sh")
                     copied_files.append("local.sh")
 
             if script_copy_entries:
                 self.log(
-                    tr("scripts_copied_to_workdir", "✅ 已复制运行脚本：{entries}").format(
-                        entries="; ".join(script_copy_entries)
+                    tr("scripts_copied_to_workdir", "✅ 已复制 {entries} 到当前工作目录").format(
+                        entries=", ".join(script_copy_entries)
                     )
                 )
             if copied_files:
