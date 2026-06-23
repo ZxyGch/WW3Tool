@@ -272,6 +272,8 @@ class WW3MultiNML(NMLPrimitives):
 
                             if not has_alltype_point_file:
                                 new_lines.append(f"  ALLTYPE%POINT%FILE     = './{finest_name}/points.list'\n")
+                                # 统一点输出命名为最细层 → out_pnt.<finest>，与运行脚本一致
+                                new_lines.append(f"  ALLTYPE%POINT%NAME     = '{finest_name}'\n")
                                 modified_alltype_point_file = True
                         # 如果是嵌套网格模式且还没有 ALLTYPE%FIELD%LIST，添加它
                         if is_nested_grid and not modified_alltype_field_list and alltype_field_list_value:
