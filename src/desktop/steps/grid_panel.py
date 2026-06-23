@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -37,7 +37,8 @@ class _LevelCard(QWidget):
         self.fields: dict[str, LineEdit] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
+        # 左右不内缩，使卡片字段与上方 level0 网格参数左右对齐；仅留上下间距
+        root.setContentsMargins(0, 6, 0, 6)
         root.setSpacing(8)
 
         self.title_label = QLabel()
@@ -45,7 +46,7 @@ class _LevelCard(QWidget):
         root.addWidget(self.title_label)
 
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(10)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         self._line(grid, 0, 0, tr("step2_dx", "DX:"), "dx", on_changed)
@@ -268,10 +269,15 @@ class GridStepPanel:
         self.recommend_button = create_button(tr("step2_recommend_params", "推荐参数"), recommend_params)
         self.grid_button = create_button(tr("step2_create_grid", "生成网格"), generate_grid)
         self.visualize_button = create_button(tr("step2_visualize_grid", "网格可视化"), visualize_grid)
+        layout.addWidget(self.load_bounds_button)
+        # 添加/删除层并排一行
+        level_btn_row = QHBoxLayout()
+        level_btn_row.setContentsMargins(0, 0, 0, 0)
+        level_btn_row.setSpacing(10)
+        level_btn_row.addWidget(self.add_level_button)
+        level_btn_row.addWidget(self.delete_level_button)
+        layout.addLayout(level_btn_row)
         for button in (
-            self.load_bounds_button,
-            self.add_level_button,
-            self.delete_level_button,
             self.telescope_button,
             self.map_button,
             self.recommend_button,
