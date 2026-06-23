@@ -562,8 +562,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             section_title=self._section_title,
             nested_factor=self._nested_factor,
             load_bounds=self._load_wind_bounds,
-            setup_outer_grid=self._setup_outer_grid,
-            setup_inner_grid=self._setup_inner_grid,
             view_map=self._view_region_map,
             generate_grid=self._generate_grid,
             visualize_grid=self._visualize_grid,
@@ -571,14 +569,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
         self._display_fields.update(self._grid_panel.fields)
         self._outer_grid_title = self._grid_panel.outer_grid_title
-        self._inner_grid_widget = self._grid_panel.inner_grid_widget
         self._grid_type_combo = self._grid_panel.grid_type_combo
         self._mesh_type_combo = self._grid_panel.mesh_type_combo
         self._grid_type_label = self._grid_panel.grid_type_label
         self._skip_grid = self._grid_panel.skip_grid
         self._load_bounds_button = self._grid_panel.load_bounds_button
-        self._setup_outer_button = self._grid_panel.setup_outer_button
-        self._setup_inner_button = self._grid_panel.setup_inner_button
         self._map_button = self._grid_panel.map_button
         self._grid_button = self._grid_panel.grid_button
         self._visualize_button = self._grid_panel.visualize_button
@@ -1254,12 +1249,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         bounds = result.result
         if bounds is None:
             return
-        for prefix in ("grid", "grid_inner") if self._grid_panel.is_nested else ("grid",):
-            self._grid_panel.set_bounds(
-                prefix,
-                (bounds.lon_min, bounds.lon_max),
-                (bounds.lat_min, bounds.lat_max),
-            )
+        # wind.nc 的范围即整个计算域 = level0（最外层）；内层由用户在层卡中自定义
+        self._grid_panel.set_bounds(
+            "grid",
+            (bounds.lon_min, bounds.lon_max),
+            (bounds.lat_min, bounds.lat_max),
+        )
 
     def _load_wind_time_range(self) -> None:
         if self._busy:
@@ -1350,21 +1345,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             raise ValueError(tr("nested_factor_must_positive", "❌ 嵌套收缩系数必须大于 0"))
         return factor
 
-    def _setup_inner_grid(self) -> None:
-        if not self._grid_panel.is_nested:
-            self._show_error(tr("step2_not_nested_mode", "当前不是嵌套网格模式"))
-            return
-        try:
-            factor = self._nested_factor()
-            inner = self._pipeline_vm.scaled_nested_region(
-                self._grid_panel.input_region("grid"), factor, expand=False
-            )
-        except ValueError as exc:
-            self._show_error(str(exc))
-            return
-        self._grid_panel.set_region_bounds("grid_inner", inner)
-        self._append_log(tr("step2_inner_grid_set_short", "已根据嵌套收缩系数 N={n} 设置内网格范围").format(n=f"{factor:g}"))
-
     def _recommend_grid_params(self) -> None:
         ok, summary = self._grid_panel.apply_recommendations()
         if not ok:
@@ -1384,21 +1364,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
         self.titleBar.raise_()
 
-    def _setup_outer_grid(self) -> None:
-        if not self._grid_panel.is_nested:
-            self._show_error(tr("step2_not_nested_mode", "当前不是嵌套网格模式"))
-            return
-        try:
-            factor = self._nested_factor()
-            outer = self._pipeline_vm.scaled_nested_region(
-                self._grid_panel.input_region("grid_inner"), factor, expand=True
-            )
-        except ValueError as exc:
-            self._show_error(str(exc))
-            return
-        self._grid_panel.set_region_bounds("grid", outer)
-        self._append_log(tr("step2_outer_grid_set_short", "已根据嵌套收缩系数 N={n} 设置外网格范围").format(n=f"{factor:g}"))
-
     def _view_region_map(self) -> None:
         config = self._config_from_current_workdir_params(validation_stage="grid", log=False)
         if config is None or self._busy:
@@ -1406,10 +1371,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         # Calculate map aspect ratio from grid extent so the dialog sizes correctly
         import numpy as np
-        outer = config.grid.outer
-        inner = config.grid.inner if config.grid.grid_type == "nested" else None
-        all_lon = list(outer.lon) + (list(inner.lon) if inner else [])
-        all_lat = list(outer.lat) + (list(inner.lat) if inner else [])
+        # 取所有嵌套层的并集（level0 最外即已覆盖全部，但稳妥起见汇总各层）
+        levels = config.grid.nested_levels or [config.grid.outer]
+        all_lon = [v for lv in levels for v in lv.lon]
+        all_lat = [v for lv in levels for v in lv.lat]
         lat_center = (min(all_lat) + max(all_lat)) / 2.0
         lon_span = max(max(all_lon) - min(all_lon), 1e-6)
         lat_span = max(max(all_lat) - min(all_lat), 1e-6)

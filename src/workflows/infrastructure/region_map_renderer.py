@@ -32,10 +32,10 @@ def render_region_map_png(grid: GridConfig, output_path: Path) -> None:
     import matplotlib.pyplot as plt
 
     _configure_chinese_font(matplotlib)
-    outer = grid.outer
-    inner = grid.inner if grid.grid_type == "nested" else None
-    all_lon = list(outer.lon) + (list(inner.lon) if inner else [])
-    all_lat = list(outer.lat) + (list(inner.lat) if inner else [])
+    # 逐层（level0 最粗 … levelN 最细）；normal 时只有一层
+    levels = grid.nested_levels or [grid.outer]
+    all_lon = [v for lv in levels for v in lv.lon]
+    all_lat = [v for lv in levels for v in lv.lat]
     # 以域中心为投影中央经线、并把经度钳制到 [-180,180]，避免贴/跨 180°E 时的回绕
     central_lon = 0.5 * (min(all_lon) + max(all_lon))
     extent = [
@@ -69,9 +69,13 @@ def render_region_map_png(grid: GridConfig, output_path: Path) -> None:
     axis.coastlines(resolution="10m", linewidth=0.5)
 
     transform = ccrs.PlateCarree()
-    _draw_rectangle(axis, outer.lon, outer.lat, "red", "外网格" if inner else "网格范围", transform)
-    if inner is not None:
-        _draw_rectangle(axis, inner.lon, inner.lat, "blue", "内网格", transform)
+    from matplotlib import cm
+    n_levels = len(levels)
+    for i, lv in enumerate(levels):
+        # 由粗到细颜色渐变；单层时标“网格范围”，多层时标 levelI
+        color = cm.rainbow(i / max(n_levels - 1, 1))
+        label = "网格范围" if n_levels == 1 else f"level{i}"
+        _draw_rectangle(axis, lv.lon, lv.lat, color, label, transform)
     axis.legend(loc="upper right", fontsize=10)
 
     lines = axis.gridlines(draw_labels=True, linewidth=0.8, color="gray", alpha=0.7, linestyle="--")

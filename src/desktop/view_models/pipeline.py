@@ -532,24 +532,11 @@ class PipelineViewModel:
             grid_raw = {**_as_dict(raw.get("grid"))}
             structured_raw = {**_as_dict(grid_raw.get("structured"))}
             nested_raw = {**_as_dict(structured_raw.get("nested"))}
-            # 嵌套层列表：GUI 两层映射到 outer=levels[0]、inner=levels[-1]
-            levels = nested_raw.get("levels")
-            levels = list(levels) if isinstance(levels, list) else []
+            # GUI 直接回传 levels 列表（level0…levelN，粗 → 细）
+            levels = None
             for key, value in grid_overrides.items():
-                if key == "outer" and isinstance(value, dict):
-                    if not levels:
-                        levels.append({})
-                    levels[0] = {**_as_dict(levels[0]), **value}
-                    if "lon" in value:  # level0 边界同步为主域 grid.lon/lat
-                        grid_raw["lon"] = value["lon"]
-                    if "lat" in value:
-                        grid_raw["lat"] = value["lat"]
-                elif key == "inner" and isinstance(value, dict):
-                    while len(levels) < 2:
-                        levels.append({})
-                    levels[-1] = {**_as_dict(levels[-1]), **value}
-                elif key == "inner" and value is None:
-                    levels = levels[:1]  # 退回单层
+                if key == "levels" and isinstance(value, list):
+                    levels = [_as_dict(lv) for lv in value]
                 elif key in {"unstructured", "smc"} and isinstance(value, dict):
                     grid_raw[key] = {**_as_dict(grid_raw.get(key)), **value}
                 else:
@@ -558,6 +545,11 @@ class PipelineViewModel:
                 nested_raw["levels"] = levels
                 nested_raw.pop("outer", None)  # 清掉旧键，避免与 levels 并存
                 nested_raw.pop("inner", None)
+                # level0 边界同步为主域 grid.lon / grid.lat
+                if levels[0].get("lon") is not None:
+                    grid_raw["lon"] = levels[0]["lon"]
+                if levels[0].get("lat") is not None:
+                    grid_raw["lat"] = levels[0]["lat"]
             structured_raw["nested"] = nested_raw
             grid_raw["structured"] = structured_raw
             raw["grid"] = grid_raw
