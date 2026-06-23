@@ -717,19 +717,44 @@ def parse_pipeline_config(
     nested_raw = _as_dict(structured_raw.get("nested"), "grid.structured.nested")
     grid_lon = grid_raw.get("lon")
     grid_lat = grid_raw.get("lat")
-    outer_data = dict(_as_dict(nested_raw.get("outer"), "grid.structured.nested.outer"))
-    # grid.lon / grid.lat 为主域边界，覆盖 outer 的 lon/lat
-    if grid_lon is not None:
-        outer_data["lon"] = grid_lon
-    if grid_lat is not None:
-        outer_data["lat"] = grid_lat
-    outer_region = _region(outer_data, "grid.structured.nested.outer")
-    inner_region = None
+
+    # 嵌套层列表 grid.structured.nested.levels（粗 → 细，level0 最粗）；
+    # 兼容旧结构：无 levels 时退回 [outer, inner]。
+    levels_raw = nested_raw.get("levels")
+    if levels_raw is None:
+        levels_raw = [lv for lv in (nested_raw.get("outer"), nested_raw.get("inner")) if lv]
+    levels_raw = list(levels_raw or [])
+    if not levels_raw:
+        levels_raw = [_as_dict(nested_raw.get("outer"), "grid.structured.nested.outer")]
+
+    MAX_NRGRD = 99  # WW3 ww3_multi 硬上限（w3nmlmultimd.F90 MAX_NRGRD）
     if grid_type == "nested":
-        inner_data = _as_dict(nested_raw.get("inner"), "grid.structured.nested.inner")
-        if not inner_data:
-            inner_data = _contract_region(outer_region, nested_contraction)
-        inner_region = _region(inner_data, "grid.structured.nested.inner")
+        if len(levels_raw) < 2:
+            raise ConfigError("嵌套网格 grid.structured.nested.levels 至少需要 2 层")
+        if len(levels_raw) > MAX_NRGRD:
+            raise ConfigError(f"嵌套层数 {len(levels_raw)} 超过 WW3 上限 {MAX_NRGRD}")
+
+    nested_levels: List[GridRegion] = []
+    for idx, lv in enumerate(levels_raw):
+        data = dict(_as_dict(lv, f"grid.structured.nested.levels[{idx}]"))
+        if idx == 0:  # 最外层（level0）边界缺省取主域 grid.lon / grid.lat
+            if grid_lon is not None:
+                data["lon"] = grid_lon
+            if grid_lat is not None:
+                data["lat"] = grid_lat
+        nested_levels.append(_region(data, f"grid.structured.nested.levels[{idx}]"))
+
+    if grid_type == "nested":  # 逐层加密 + 套娃（每层 ⊂ 上一层）
+        for k in range(1, len(nested_levels)):
+            prev, cur = nested_levels[k - 1], nested_levels[k]
+            if not (cur.dx < prev.dx and cur.dy < prev.dy):
+                raise ConfigError(f"嵌套第 {k} 层（level{k}）dx/dy 必须比 level{k-1} 更细")
+            if not (prev.lon[0] <= cur.lon[0] and cur.lon[1] <= prev.lon[1]
+                    and prev.lat[0] <= cur.lat[0] and cur.lat[1] <= prev.lat[1]):
+                raise ConfigError(f"嵌套第 {k} 层（level{k}）必须完全落在 level{k-1} 范围内")
+
+    outer_region = nested_levels[0]
+    inner_region = nested_levels[-1] if grid_type == "nested" else None
     legacy_options = _as_dict(grid_raw.get("options"), "grid.options")
     structured = StructuredGridSettings(
         bathymetry=str(structured_raw.get("bathymetry") or "").upper(),
@@ -807,6 +832,7 @@ def parse_pipeline_config(
         lat=list(outer_region.lat),
         outer=outer_region,
         inner=inner_region,
+        nested_levels=nested_levels,
         gridgen_version=str(grid_raw.get("gridgen_version") or ""),
         reference_data_path=_resolve_path(grid_raw.get("reference_data_path"), base_dir),
         nested_contraction_coefficient=nested_contraction,

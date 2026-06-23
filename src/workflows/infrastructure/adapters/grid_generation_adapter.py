@@ -348,13 +348,16 @@ def _generate_structured(config: PipelineConfig, logger: CoreLogger, *, use_cach
     ref_dir = _reference_dir(config.grid)
     _check_reference_data(ref_dir)
 
-    targets = [(config.workdir.path, config.grid.outer)]
     if config.grid.grid_type == "nested":
-        assert config.grid.inner is not None
+        # 逐层生成 level0(最粗) … levelN(最细)
+        levels = config.grid.nested_levels or [config.grid.outer, config.grid.inner]
         targets = [
-            (config.workdir.path / "coarse", config.grid.outer),
-            (config.workdir.path / "fine", config.grid.inner),
+            (config.workdir.path / f"level{i}", region)
+            for i, region in enumerate(levels)
+            if region is not None
         ]
+    else:
+        targets = [(config.workdir.path, config.grid.outer)]
 
     pygridgen_dir = _pygridgen_dir()
     for out_dir, region in targets:

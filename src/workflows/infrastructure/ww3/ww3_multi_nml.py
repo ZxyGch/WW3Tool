@@ -99,6 +99,38 @@ class WW3MultiNML(NMLPrimitives):
             return None
         return None
 
+    def _compute_level_resources(self):
+        """列出工作目录里的 level0..N 各层，按计算量(点数/DTXY)分配 COMM_FRAC。
+
+        返回 ``[(name, rank, frac_lo, frac_hi), ...]``：name 为目录名 ``levelI``，
+        rank 从 1 起（level0=rank 1，越细 rank 越大），frac 为累积进程区间。
+        细网格 DTXY 更小、步数更多、每点更贵，故按 点数/DTXY 加权。
+        """
+        folder = getattr(self, "selected_folder", None)
+        if not folder or not os.path.isdir(folder):
+            return []
+        dirs = []
+        for d in os.listdir(folder):
+            if os.path.isdir(os.path.join(folder, d)) and re.match(r"^level\d+$", d):
+                dirs.append((int(d[5:]), d))
+        dirs.sort()
+        if not dirs:
+            return []
+        costs = []
+        for _, name in dirs:
+            nml = os.path.join(folder, name, "ww3_grid.nml")
+            nx, ny = self._read_grid_nx_ny_from_nml(nml)
+            dtxy = self._read_grid_dtxy_from_nml(nml) or 1.0
+            costs.append(((nx or 1) * (ny or 1)) / dtxy)
+        total = sum(costs) or 1.0
+        out, acc, n = [], 0.0, len(dirs)
+        for i, ((_, name), c) in enumerate(zip(dirs, costs)):
+            lo = acc
+            acc += c / total
+            hi = 1.0 if i == n - 1 else acc
+            out.append((name, i + 1, round(lo, 4), round(hi, 4)))
+        return out
+
     def _modify_ww3_multi_nml(self, nml_path):
         """修改 ww3_multi.nml 的起始时间和强迫场配置"""
         if not os.path.exists(nml_path):
@@ -128,43 +160,8 @@ class WW3MultiNML(NMLPrimitives):
         if has_ice:
             has_ice_param1 = self._check_ice_param1_variable(self.selected_ice_file)
 
-        # 读取内外网格的 ww3_grid.nml 以计算进程比例
-        coarse_nx, coarse_ny = None, None
-        fine_nx, fine_ny = None, None
-        coarse_ratio = 0.50  # 默认值
-        fine_ratio = 0.50    # 默认值
-
-        if hasattr(self, 'selected_folder') and self.selected_folder:
-            coarse_grid_nml = os.path.join(self.selected_folder, "coarse", "ww3_grid.nml")
-            fine_grid_nml = os.path.join(self.selected_folder, "fine", "ww3_grid.nml")
-
-            coarse_nx, coarse_ny = self._read_grid_nx_ny_from_nml(coarse_grid_nml)
-            fine_nx, fine_ny = self._read_grid_nx_ny_from_nml(fine_grid_nml)
-
-            if coarse_nx is not None and coarse_ny is not None and fine_nx is not None and fine_ny is not None:
-                points_coarse = coarse_nx * coarse_ny
-                points_fine = fine_nx * fine_ny
-
-                # 进程按各网格的计算量分配，而不是仅按网格点数。
-                # 计算量 ≈ 网格点数 × 总步数 = 点数 ×（1/DTXY）：细网格 DTXY 更小、
-                # 步数更多、每点更贵。读各网格自身的 DTXY（CFL 传播步）作权重。
-                dtxy_coarse = self._read_grid_dtxy_from_nml(coarse_grid_nml) or 1.0
-                dtxy_fine = self._read_grid_dtxy_from_nml(fine_grid_nml) or 1.0
-                cost_coarse = points_coarse / dtxy_coarse
-                cost_fine = points_fine / dtxy_fine
-                total_cost = cost_coarse + cost_fine
-
-                if total_cost > 0:
-                    coarse_ratio = cost_coarse / total_cost
-                    # 限幅到 [0.05, 0.95]，避免任一网格分到 0 进程（不再 +5% 偏向、
-                    # 也不再硬封顶 0.60——细网格往往才是计算大头）。
-                    coarse_ratio = max(0.05, min(coarse_ratio, 0.95))
-                    fine_ratio = 1.0 - coarse_ratio
-            #         self.log(tr("grid_points_info", "📊 网格点数：coarse={coarse} ({coarse_nx}x{coarse_ny}), fine={fine} ({fine_nx}x{fine_ny}), 基础比例：coarse={base_ratio:.2f}, 调整后比例：coarse={coarse_ratio:.2f}, fine={fine_ratio:.2f}").format(coarse=points_coarse, coarse_nx=coarse_nx, coarse_ny=coarse_ny, fine=points_fine, fine_nx=fine_nx, fine_ny=fine_ny, base_ratio=base_coarse_ratio, coarse_ratio=coarse_ratio, fine_ratio=fine_ratio))
-            #     else:
-            #         self.log(tr("grid_points_zero", "⚠️ 总网格点数为0，使用默认比例"))
-            # else:
-            #     self.log(tr("grid_size_read_failed", "⚠️ 无法读取网格尺寸，使用默认比例"))
+        # 计算各嵌套层(level0..N)的进程分配 COMM_FRAC，按计算量 点数/DTXY 加权
+        level_resources = self._compute_level_resources()
 
         try:
             with open(nml_path, "r", encoding="utf-8") as f:
@@ -228,6 +225,9 @@ class WW3MultiNML(NMLPrimitives):
                     continue
 
                 if in_domain:
+                    if re.search(r"DOMAIN%NRGRD", line) and level_resources:
+                        new_lines.append(self._format_domain_line("DOMAIN%NRGRD", str(len(level_resources))))
+                        continue
                     if re.search(r"DOMAIN%START", line):
                         new_lines.append(self._format_domain_line("DOMAIN%START", f"'{start_date} 000000'"))
                         continue
@@ -393,67 +393,36 @@ class WW3MultiNML(NMLPrimitives):
                         new_lines.append(line)
                         continue
 
-                # MODEL_GRID_NML
+                # MODEL_GRID_NML — 按 level_resources 重新生成 N 个 MODEL 块
                 if "&MODEL_GRID_NML" in line:
                     in_model_grid = True
                     new_lines.append(line)
+                    if level_resources:
+                        forcing = [
+                            ("WINDS", "'native'" if has_wind else "'no'"),
+                            ("CURRENTS", "'native'" if has_current else "'no'"),
+                            ("WATER_LEVELS", "'native'" if has_level else "'no'"),
+                            ("ICE_CONC", "'native'" if has_ice else "'no'"),
+                            ("ICE_PARAM1", "'native'" if (has_ice and has_ice_param1) else "'no'"),
+                        ]
+                        for name, rank, lo, hi in level_resources:
+                            new_lines.append("\n")
+                            new_lines.append(self._format_input_model_line(f"MODEL({rank})%NAME", f"'{name}'"))
+                            for fkey, fval in forcing:
+                                new_lines.append(self._format_input_model_line(f"MODEL({rank})%FORCING%{fkey}", fval))
+                            new_lines.append(self._format_input_model_line(
+                                f"MODEL({rank})%RESOURCE", f"{rank} 1 {lo:.2f} {hi:.2f} F"))
                     continue
 
                 if in_model_grid:
-                    # 检测 MODEL(1) 或 MODEL(2)
-                    model_match = re.search(r"MODEL\((\d+)\)", line)
-                    if model_match:
-                        model_index = int(model_match.group(1))
-
-                    # 处理 MODEL(1) 和 MODEL(2) 的强迫场设置
-                    if model_index in [1, 2]:
-                        # WINDS
-                        if re.search(rf"MODEL\({model_index}\)%FORCING%WINDS", line):
-                            value = "'native'" if has_wind else "'no'"
-                            new_lines.append(self._format_input_model_line(f"MODEL({model_index})%FORCING%WINDS", value))
-                            continue
-                        # CURRENTS
-                        if re.search(rf"MODEL\({model_index}\)%FORCING%CURRENTS", line):
-                            value = "'native'" if has_current else "'no'"
-                            new_lines.append(self._format_input_model_line(f"MODEL({model_index})%FORCING%CURRENTS", value))
-                            continue
-                        # WATER_LEVELS
-                        if re.search(rf"MODEL\({model_index}\)%FORCING%WATER_LEVELS", line):
-                            value = "'native'" if has_level else "'no'"
-                            new_lines.append(self._format_input_model_line(f"MODEL({model_index})%FORCING%WATER_LEVELS", value))
-                            continue
-                        # ICE_CONC
-                        if re.search(rf"MODEL\({model_index}\)%FORCING%ICE_CONC", line):
-                            value = "'native'" if has_ice else "'no'"
-                            new_lines.append(self._format_input_model_line(f"MODEL({model_index})%FORCING%ICE_CONC", value))
-                            continue
-                        # ICE_PARAM1
-                        if re.search(rf"MODEL\({model_index}\)%FORCING%ICE_PARAM1", line):
-                            value = "'native'" if (has_ice and has_ice_param1) else "'no'"
-                            new_lines.append(self._format_input_model_line(f"MODEL({model_index})%FORCING%ICE_PARAM1", value))
-                            continue
-                        # RESOURCE - 根据网格点数动态计算
-                        if re.search(rf"MODEL\({model_index}\)%RESOURCE", line):
-                            if model_index == 1:
-                                # MODEL(1)%RESOURCE = 1 1 0.00 {coarse_ratio:.2f} T
-                                resource_value = f"1 1 0.00 {coarse_ratio:.2f} F"
-                            elif model_index == 2:
-                                # MODEL(2)%RESOURCE = 2 1 {coarse_ratio:.2f} 1.00 F
-                                resource_value = f"2 1 {coarse_ratio:.2f} 1.00 F"
-                            else:
-                                resource_value = None
-
-                            if resource_value:
-                                new_lines.append(self._format_input_model_line(f"MODEL({model_index})%RESOURCE", resource_value))
-                            else:
-                                new_lines.append(line)
-                            continue
-
-                    if "/" in line:
+                    # 已重新生成；跳过模板原有 MODEL 行，仅在结束标记 / 处收尾
+                    if line.strip() == "/":
                         in_model_grid = False
-                        model_index = 0
                         new_lines.append(line)
                         continue
+                    if not level_resources:
+                        new_lines.append(line)  # 没读到层信息时保留模板原样
+                    continue
 
                 new_lines.append(line)
 

@@ -207,6 +207,8 @@ class GridConfig:
     lat: Optional[List[float]] = None
     outer: Optional[GridRegion] = None
     inner: Optional[GridRegion] = None
+    # 嵌套各层（粗 → 细，level0 最粗）；normal 时只有 1 层。outer=levels[0]、inner=levels[-1]。
+    nested_levels: Optional[List[GridRegion]] = None
     gridgen_version: Optional[str] = None
     reference_data_path: Optional[Path] = None
     nested_contraction_coefficient: Optional[float] = None
