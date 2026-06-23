@@ -107,11 +107,19 @@ class LocalRunPanel:
                 self.st_combo.clear()
                 self.st_combo.addItems(names)
                 self.st_combo.setCurrentText(selected)
+                self.st_combo.setEnabled(True)
                 self.st_combo.blockSignals(False)
         else:
+            self._ensure_st_row()
             self._ensure_bin_row()
             if self._st_row_widget is not None:
-                self._st_row_widget.hide()
+                self._st_row_widget.show()
+            if self.st_combo is not None:
+                self.st_combo.blockSignals(True)
+                self.st_combo.clear()
+                self.st_combo.addItem(tr("step5_local_st_not_configured", "未配置本地 ST"))
+                self.st_combo.setEnabled(False)
+                self.st_combo.blockSignals(False)
             if self._bin_row_widget is not None:
                 self._bin_row_widget.show()
 
@@ -147,7 +155,7 @@ class LocalRunPanel:
     def bin_dir(self) -> str:
         # [EN] If using ST version dropdown, look up the path from config
         # 如果使用 ST 版本下拉框，从配置中查找路径
-        if self.st_combo is not None:
+        if self.st_combo is not None and self._local_st_versions:
             selected = self.st_combo.currentText().strip()
             for ver in self._local_st_versions:
                 if ver["name"] == selected:
