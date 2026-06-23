@@ -251,7 +251,7 @@ class SshClient:
         [EN] Automatically reconnect if the connection has been dropped.
         """
         if not self.is_alive():
-            log("⚠️ SSH 连接已断开，尝试重新连接...")
+            log(tr("ssh_connection_lost_reconnect", "⚠️ SSH 连接已断开，尝试重新连接..."))
             self.connect(log=log)
 
     def close(self) -> None:
@@ -402,7 +402,7 @@ class SshClient:
                 try:
                     self._ensure_remote_dir(sftp, remote_path)
                 except Exception as exc:
-                    log(f"⚠️ 无法创建远程目录 {remote_path}: {exc}")
+                    log(tr("ssh_remote_mkdir_failed", "⚠️ 无法创建远程目录 {path}: {error}").format(path=remote_path, error=exc))
                     continue
 
                 for fname in files:
@@ -413,7 +413,7 @@ class SshClient:
                         uploaded += 1
                         log(f"  ↑ {posixpath.join(rel_posix, fname) if rel_posix != '.' else fname}  [{uploaded}/{total_files}]")
                     except Exception as exc:
-                        log(f"❌ 上传 {fname} 失败: {exc}")
+                        log(tr("ssh_upload_file_failed", "❌ 上传 {name} 失败: {error}").format(name=fname, error=exc))
         finally:
             sftp.close()
         log(tr("upload_complete", "✅ 上传完成，共 {count} 个文件 → {path}").format(count=uploaded, path=remote_dir))
@@ -488,7 +488,7 @@ class SshClient:
 
             matched = [f for f in all_files if pattern_fn(f)]
             if not matched:
-                log("⚠️ 远程目录未找到匹配的文件")
+                log(tr("ssh_remote_no_matching_files", "⚠️ 远程目录未找到匹配的文件"))
                 return downloaded
 
             os.makedirs(local_dir, exist_ok=True)
@@ -510,7 +510,7 @@ class SshClient:
                     downloaded.append(lpath)
                     log(tr("download_file_complete", "✅ {name} 下载完成").format(name=fname))
                 except Exception as exc:
-                    log(f"❌ 下载 {fname} 失败: {exc}")
+                    log(tr("ssh_download_file_failed", "❌ 下载 {name} 失败: {error}").format(name=fname, error=exc))
         finally:
             sftp.close()
         return downloaded
@@ -540,7 +540,7 @@ class SshClient:
         """执行 ``squeue -l`` 并返回标准输出文本。"""
         out, err, _ = self.exec_command("squeue -l", log=log, timeout=10)
         if err:
-            log(f"⚠️ squeue 错误: {err}")
+            log(tr("ssh_squeue_error", "⚠️ squeue 错误: {error}").format(error=err))
         return out
 
     def cancel_job(self, job_id: str, *, log: LogFn = _noop) -> None:

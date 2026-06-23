@@ -1619,7 +1619,9 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
                     # 每生成10张图片或完成时更新进度
                     if current_count % 10 == 0 or current_count == total_count:
-                        log(f"📊 进度：{current_count}/{total_count} ({success_count} 成功)")
+                        log(tr("plotting_progress_all_spectrum", "📊 进度：{current}/{total} ({success} 成功)").format(
+                            current=current_count, total=total_count, success=success_count,
+                        ))
 
                 except Exception as e:
                     log(tr("plotting_generate_timestep_failed", "❌ 生成时间步 {timestep} 失败：{error}").format(timestep=itime+1, error=e))

@@ -297,15 +297,17 @@ class WW3GridNML(NMLPrimitives):
             return wr
         wr2 = self._infer_smc_ww3_rect_from_bathy(work_dir)
         if wr2:
-            self.log(
+            self.log(tr(
+                "step4_smc_rect_inferred_from_bathy",
                 "ℹ️ SMC：grid.json 无 ww3_rect，已从 bathymetry_file 推断 &RECT_NML；"
-                "建议重新运行 smc_generator/create_grid.py 以便写入 ww3_rect。"
-            )
+                "建议重新运行 smc_generator/create_grid.py 以便写入 ww3_rect。",
+            ))
         else:
-            self.log(
+            self.log(tr(
+                "step4_smc_rect_parse_failed",
                 "⚠️ SMC：无法从 grid.json（ww3_rect 或 bathymetry_file）解析底网格，"
-                "&RECT_NML 可能仍为模板值（如 NX=301），ww3_grid 会报 SMC longitude 越界。"
-            )
+                "&RECT_NML 可能仍为模板值（如 NX=301），ww3_grid 会报 SMC longitude 越界。",
+            ))
         return wr2
 
     def _smc_patch_rect_content_line(self, line: str, wr: dict) -> str:

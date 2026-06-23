@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 
+from workflows.support.translations import tr
 
 # ==================== 配置文件路径设置 ====================
 # 获取当前脚本所在目录的绝对路径
@@ -521,7 +522,7 @@ def swap_ww3_version(new_version: str) -> bool:
 
     target_dir = _nml_template_dir(new_version)
     if not os.path.isdir(target_dir):
-        print(f"切换 WW3 版本失败：模板目录 {target_dir} 不存在")
+        print(tr("runtime_swap_ww3_version_template_missing", "切换 WW3 版本失败：模板目录 {path} 不存在").format(path=target_dir))
         return False
 
     root = _read_root_params()
@@ -883,7 +884,7 @@ def _write_root_params(data: dict) -> bool:
             f.write(text)
         return True
     except Exception as e:
-        print(f"保存 params.yml 失败: {e}")
+        print(tr("runtime_save_params_failed", "保存 params.yml 失败: {error}").format(error=e))
         return False
 
 
@@ -1350,13 +1351,13 @@ def get_default_workdir(create_if_not_exists=True):
                 # cannot be created on the current OS; try PROJECT_ROOT/workSpace instead.
                 # 跨平台回退：配置的路径（如 macOS 的 /Volumes/...）在当前系统无法创建，
                 # 改用 PROJECT_ROOT/workSpace。
-                print(f"无法创建默认工作目录 {workdir}: {e}")
+                print(tr("runtime_workdir_create_failed", "无法创建默认工作目录 {path}: {error}").format(path=workdir, error=e))
                 workdir = os.path.normpath(fallback)
                 if not os.path.exists(workdir):
                     try:
                         os.makedirs(workdir, exist_ok=True)
                     except Exception as e2:
-                        print(f"无法创建回退工作目录 {workdir}: {e2}")
+                        print(tr("runtime_workdir_fallback_create_failed", "无法创建回退工作目录 {path}: {error}").format(path=workdir, error=e2))
                         return None
                 return workdir
         else:
