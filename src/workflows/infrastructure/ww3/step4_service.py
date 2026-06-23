@@ -425,9 +425,7 @@ class StepFourServiceMixin:
         is_spectral_mode = (calc_mode == spectral_text or calc_mode == "谱空间逐点计算")
         is_track_mode = (calc_mode == track_text or calc_mode == "航迹模式")
 
-        # 如果是嵌套网格模式，server.sh 和 ww3_multi.nml 应该复制到工作目录而不是子文件夹
-        workdir_for_special = self.selected_folder if is_nested_grid and hasattr(self, 'selected_folder') else target_dir
-        # 需要复制到工作目录的文件列表（嵌套网格模式下）
+        # 嵌套网格模式下需复制到工作目录（而非各 level 子目录）的特殊文件
         special_files = ["server.sh", "ww3_multi.nml"]
 
         # 根据模式决定需要跳过的文件
@@ -466,34 +464,33 @@ class StepFourServiceMixin:
                 dst_path = os.path.join(target_dir, item)
                 shutil.copy2(src_path, dst_path)
                 copied += 1
-            scripts_target_dir = workdir_for_special if is_nested_grid else target_dir
-            scripts_copied = 0
-            script_copy_entries = []
-            if os.path.isdir(scripts_dir):
-                for item in os.listdir(scripts_dir):
-                    src_path = os.path.join(scripts_dir, item)
-                    if not os.path.isfile(src_path):
-                        continue
-                    dst_path = os.path.join(scripts_target_dir, item)
-                    shutil.copy2(src_path, dst_path)
-                    if item in {"server.sh", "local.sh"}:
-                        script_copy_entries.append(item)
-                    if item.endswith(".sh"):
-                        try:
-                            os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
-                        except OSError:
-                            pass
-                    scripts_copied += 1
-                if script_copy_entries:
-                    self.log(
-                        tr("scripts_copied_to_workdir", "✅ 已复制 {entries} 到当前工作目录").format(
-                            entries=", ".join(script_copy_entries)
+            # 脚本(server.sh/local.sh)只在普通网格模式下随 NML 复制到工作目录；
+            # 嵌套模式下脚本已由 _copy_public_special_files_to_workdir 统一复制一次，
+            # 这里不再逐层重复拷贝、也不重复打日志。
+            if not is_nested_grid:
+                if os.path.isdir(scripts_dir):
+                    script_copy_entries = []
+                    for item in os.listdir(scripts_dir):
+                        src_path = os.path.join(scripts_dir, item)
+                        if not os.path.isfile(src_path):
+                            continue
+                        dst_path = os.path.join(target_dir, item)
+                        shutil.copy2(src_path, dst_path)
+                        if item in {"server.sh", "local.sh"}:
+                            script_copy_entries.append(item)
+                        if item.endswith(".sh"):
+                            try:
+                                os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
+                            except OSError:
+                                pass
+                    if script_copy_entries:
+                        self.log(
+                            tr("scripts_copied_to_workdir", "✅ 已复制 {entries} 到当前工作目录").format(
+                                entries=", ".join(script_copy_entries)
+                            )
                         )
-                    )
-            else:
-                self.log(tr("step4_dir_not_found", "⚠️ 未找到目录：{path}").format(path=scripts_dir))
-
-            copied += scripts_copied
+                else:
+                    self.log(tr("step4_dir_not_found", "⚠️ 未找到目录：{path}").format(path=scripts_dir))
 
             if copied > 0:
                 prefix = f"{grid_label} " if grid_label else ""
