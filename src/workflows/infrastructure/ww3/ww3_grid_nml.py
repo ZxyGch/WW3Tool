@@ -620,7 +620,8 @@ class WW3GridNML(NMLPrimitives):
         """
         import os
         import re
-        from workflows.domain.timestep_recommendation import recommend_timesteps
+        from workflows.domain.timestep_recommendation import (
+            recommend_timesteps, max_group_velocity)
 
         nml = os.path.join(grid_dir, "ww3_grid.nml")
         if not os.path.isfile(nml):
@@ -645,7 +646,16 @@ class WW3GridNML(NMLPrimitives):
             if not sx or not sy or not freq1 or y0 is None or not ny:
                 return
             lat_center = y0 + (ny - 1) * sy / 2.0
-            rec = recommend_timesteps(dx_deg=sx, dy_deg=sy, freq1=freq1, lat_deg=lat_center)
+            # 按地形修正：读该网格水深范围，取 FREQ1 波的域内最大群速度作 Cg_max；
+            # 读不到深度文件则回退深水近似。
+            cg_max = None
+            depth_note = tr("cfl_deep_water", "深水近似")
+            depth_range = self._read_grid_depth_range_m(grid_dir, lines)
+            if depth_range is not None:
+                cg_max = max_group_velocity(freq1, depth_range[0], depth_range[1])
+                depth_note = tr("cfl_bathy_corrected", "按地形 Cg={cg:.1f}m/s").format(cg=cg_max)
+            rec = recommend_timesteps(dx_deg=sx, dy_deg=sy, freq1=freq1,
+                                      lat_deg=lat_center, cg_max=cg_max)
             ts_map = {"TIMESTEPS%DTMAX": rec.dtmax, "TIMESTEPS%DTXY": rec.dtxy,
                       "TIMESTEPS%DTKTH": rec.dtkth, "TIMESTEPS%DTMIN": rec.dtmin}
             out = []
@@ -662,10 +672,56 @@ class WW3GridNML(NMLPrimitives):
             prefix = f"[{os.path.basename(grid_dir)}] " if grid_dir else ""
             self.log(prefix + tr(
                 "step4_cfl_timesteps_applied",
-                "✅ 按 CFL 重算时间步：DTXY={dtxy}, DTMAX={dtmax}, DTKTH={dtkth}").format(
-                dtxy=rec.dtxy, dtmax=rec.dtmax, dtkth=rec.dtkth))
+                "✅ 按 CFL 重算时间步：DTXY={dtxy}, DTMAX={dtmax}, DTKTH={dtkth}（{note}）").format(
+                dtxy=rec.dtxy, dtmax=rec.dtmax, dtkth=rec.dtkth, note=depth_note))
         except Exception as e:
             self.log(tr("step4_cfl_timesteps_failed", "⚠️ CFL 时间步重算失败：{error}").format(error=e))
+
+    def _read_grid_depth_range_m(self, grid_dir, lines):
+        """从该网格深度文件读水深范围 (h_min, h_max)（米）；读不到返回 None。
+
+        ww3_grid.nml 的 DEPTH%FILENAME 为海底高程数组、按 DEPTH%SF 缩放；WW3 约定
+        水域高程为负（GRID%ZLIM 为负阈值），故水深 = -高程。排除陆地（高程≥0）与
+        填充值（水深 > 11000 m）。仅适用于此约定的深度文件，否则返回 None 回退深水。
+        """
+        import os
+        import re
+
+        sf = None
+        fname = None
+        for ln in lines:
+            if ln.lstrip().startswith("!"):
+                continue
+            m = re.search(r"DEPTH%SF\s*=\s*([0-9.+\-Ee]+)", ln)
+            if m:
+                sf = float(m.group(1))
+            m = re.search(r"DEPTH%FILENAME\s*=\s*['\"]?([^'\"\s]+)", ln)
+            if m:
+                fname = m.group(1)
+        if sf is None or not fname:
+            return None
+        path = os.path.join(grid_dir, fname)
+        if not os.path.isfile(path):
+            return None
+        h_min = None
+        h_max = None
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                for tok in f.read().split():
+                    try:
+                        h = -(float(tok) * sf)  # 水深 = -海底高程
+                    except ValueError:
+                        continue
+                    if 1.0 <= h <= 11000.0:  # 仅水域，排除陆地与填充值
+                        if h_min is None or h < h_min:
+                            h_min = h
+                        if h_max is None or h > h_max:
+                            h_max = h
+        except Exception:
+            return None
+        if h_min is None or h_max is None:
+            return None
+        return h_min, h_max
 
     def _sync_grid_meta_to_grid_nml_in_dir(self, target_dir, grid_label=""):
         """从 grid.meta 仅同步 GRID%TYPE/COORD/CLOS、RECT%*、DEPTH%SF、OBST%SF 到 ww3_grid.nml（与扁平 meta 一致）。"""

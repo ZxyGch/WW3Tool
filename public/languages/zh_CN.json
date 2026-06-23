@@ -2391,5 +2391,8 @@
   "ref_data_downloading": "📥 正在下载 reference_data（约 6.5 GB），请耐心等待...",
   "ref_data_download_complete": "✅ reference_data 下载完成！现在可以点击「生成网格」继续。",
   "ref_data_download_failed": "❌ reference_data 下载失败：{error}",
-  "step2_delete_level": "删除末层"
+  "step2_delete_level": "删除末层",
+  "step4_cfl_timesteps_applied": "✅ 按 CFL 重算时间步：DTXY={dtxy}, DTMAX={dtmax}, DTKTH={dtkth}（{note}）",
+  "cfl_deep_water": "深水近似",
+  "cfl_bathy_corrected": "按地形 Cg={cg:.1f}m/s"
 }

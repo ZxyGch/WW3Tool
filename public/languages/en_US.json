@@ -2391,5 +2391,8 @@
   "ref_data_downloading": "📥 Downloading reference_data (~6.5 GB), please wait...",
   "ref_data_download_complete": "✅ reference_data downloaded! You can now click 'Generate Grid' to continue.",
   "ref_data_download_failed": "❌ Failed to download reference_data: {error}",
-  "step2_delete_level": "Delete level"
+  "step2_delete_level": "Delete level",
+  "step4_cfl_timesteps_applied": "✅ Recomputed CFL timesteps: DTXY={dtxy}, DTMAX={dtmax}, DTKTH={dtkth} ({note})",
+  "cfl_deep_water": "deep-water approx.",
+  "cfl_bathy_corrected": "bathy Cg={cg:.1f}m/s"
 }

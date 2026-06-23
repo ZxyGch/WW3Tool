@@ -39,12 +39,80 @@ def grid_spacing_meters(dx_deg: float, dy_deg: float, lat_deg: float) -> float:
     return min(dx_m, dy_m)
 
 
-def compute_tcfl(dxy_m: float, freq1: float) -> float:
+def compute_tcfl(dxy_m: float, freq1: float, cg_max: Optional[float] = None) -> float:
+    """CFL 时间 = Δx / Cg_max。
+
+    默认 Cg_max 用深水群速度 ``G/(4π·FREQ1)``（与 ``dxy_m·FREQ1·4π/G`` 等价）；
+    若传入 ``cg_max``（按地形由色散关系算出的域内最大群速度），则用它。
+    """
     if dxy_m <= 0:
         raise ValueError("grid spacing must be positive")
     if freq1 <= 0:
         raise ValueError("FREQ1 must be positive")
+    if cg_max is not None:
+        if cg_max <= 0:
+            raise ValueError("cg_max must be positive")
+        return dxy_m / cg_max
     return dxy_m * freq1 * 4.0 * PI / G
+
+
+def deep_water_cg(freq1: float) -> float:
+    """最低频波的深水群速度（m/s）：Cg = G/(4π·FREQ1)。"""
+    if freq1 <= 0:
+        raise ValueError("FREQ1 must be positive")
+    return G / (4.0 * PI * freq1)
+
+
+def group_velocity(freq: float, depth: float) -> float:
+    """线性波理论群速度（m/s）：频率 ``freq``(Hz) 的波在水深 ``depth``(m) 处的 Cg。
+
+    解色散关系 ``ω² = g·k·tanh(k·h)`` 求 k，再 ``Cg = (C/2)(1 + 2kh/sinh(2kh))``。
+    中等水深的 Cg 会超过深水值（峰值约在 0.2~0.4 倍深水波长处）。
+    """
+    if freq <= 0 or depth <= 0:
+        return 0.0
+    omega = 2.0 * PI * freq
+    k = omega * omega / G  # 深水初值
+    for _ in range(60):
+        kh = k * depth
+        if kh > 50.0:  # 深水：tanh≈1，初值即解
+            break
+        th = math.tanh(kh)
+        f = G * k * th - omega * omega
+        df = G * (th + kh * (1.0 - th * th))
+        if df == 0.0:
+            break
+        k_new = k - f / df
+        if k_new <= 0.0:
+            k_new = 0.5 * k
+        if abs(k_new - k) <= 1e-12 * k_new:
+            k = k_new
+            break
+        k = k_new
+    kh = k * depth
+    c = omega / k
+    ratio = 0.0 if kh > 25.0 else 2.0 * kh / math.sinh(2.0 * kh)
+    return 0.5 * c * (1.0 + ratio)
+
+
+def max_group_velocity(
+    freq1: float, depth_min: float, depth_max: float, samples: int = 80
+) -> float:
+    """域内 FREQ1 波的最大群速度（m/s）：在 [depth_min, depth_max] 上扫描取最大。
+
+    捕捉中等水深处超过深水值的峰值；以深水群速度为下限兜底（全深水域即回到深水值）。
+    """
+    if freq1 <= 0:
+        raise ValueError("FREQ1 must be positive")
+    lo = max(1.0, float(depth_min))
+    hi = max(lo, float(depth_max))
+    best = deep_water_cg(freq1)
+    for i in range(samples + 1):
+        h = lo * (hi / lo) ** (i / samples)  # 对数等距
+        cg = group_velocity(freq1, h)
+        if cg > best:
+            best = cg
+    return best
 
 
 def cfl_spacing_meters(
@@ -87,8 +155,12 @@ def recommend_timesteps(
     has_strong_current: bool = False,
     dtmin: int = 15,
     cfl_factor: float = 0.9,
+    cg_max: Optional[float] = None,
 ) -> TimestepRecommendation:
-    """Return WW3-compatible timestep seconds from a lon/lat grid and FREQ1."""
+    """Return WW3-compatible timestep seconds from a lon/lat grid and FREQ1.
+
+    ``cg_max`` 可选：按地形由色散关系算出的域内最大群速度（见 ``max_group_velocity``）；
+    省略则用深水近似。"""
     dxy_m = grid_spacing_meters(dx_deg, dy_deg, lat_deg)
     return recommend_timesteps_from_spacing(
         dxy_m=dxy_m,
@@ -96,6 +168,7 @@ def recommend_timesteps(
         has_strong_current=has_strong_current,
         dtmin=dtmin,
         cfl_factor=cfl_factor,
+        cg_max=cg_max,
     )
 
 
@@ -106,12 +179,14 @@ def recommend_timesteps_from_spacing(
     has_strong_current: bool = False,
     dtmin: int = 15,
     cfl_factor: float = 0.9,
+    cg_max: Optional[float] = None,
 ) -> TimestepRecommendation:
     """Return WW3-compatible timestep seconds from an explicit min spacing (m).
 
     Mesh-type-agnostic core: callers resolve ``dxy_m`` via ``cfl_spacing_meters``
-    (structured/SMC from degree spacing, unstructured from ``hmin``)."""
-    tcfl = compute_tcfl(dxy_m, freq1)
+    (structured/SMC from degree spacing, unstructured from ``hmin``).
+    ``cg_max`` 可选：按地形修正的最大群速度，省略则用深水近似。"""
+    tcfl = compute_tcfl(dxy_m, freq1, cg_max=cg_max)
     dtxy = max(1, int(round(cfl_factor * tcfl)))
     dtmax = max(1, int(round(3.0 * dtxy)))
     if has_strong_current:
