@@ -139,14 +139,14 @@ class WW3MultiNML(NMLPrimitives):
 
         start_date = self.shel_start_edit.text().strip()
         end_date = self.shel_end_edit.text().strip()
-        compute_precision = self.shel_step_edit.text().strip()
+        output_stride = self.output_precision_edit.text().strip()
 
         if not (start_date.isdigit() and len(start_date) == 8 and end_date.isdigit() and len(end_date) == 8):
             self.log(tr("date_range_format_error", "❌ 起始/结束日期格式错误，应为 YYYYMMDD。"))
             return
 
-        if not compute_precision.isdigit():
-            self.log(tr("compute_precision_must_be_number", "❌ 计算精度必须为数字（秒）。"))
+        if not output_stride.isdigit():
+            self.log(tr("output_precision_must_be_number", "❌ 输出精度必须为数字（秒）。"))
             return
 
         # 检查当前选择的强迫场
@@ -162,6 +162,8 @@ class WW3MultiNML(NMLPrimitives):
 
         # 计算各嵌套层(level0..N)的进程分配 COMM_FRAC，按计算量 点数/DTXY 加权
         level_resources = self._compute_level_resources()
+        # 最细层目录名（谱点输出 points.list 放在最细层）；无 level* 时回退旧 fine
+        finest_name = level_resources[-1][0] if level_resources else "fine"
 
         try:
             with open(nml_path, "r", encoding="utf-8") as f:
@@ -178,6 +180,7 @@ class WW3MultiNML(NMLPrimitives):
             # 跟踪修改状态
             modified_alltype_point_file = False
             modified_alldate_point = False
+            modified_alldate_field = False
             modified_alltype_field_list = False
 
             # 检查是否为嵌套网格模式
@@ -185,11 +188,12 @@ class WW3MultiNML(NMLPrimitives):
             nested_text = tr("step2_grid_type_nested", "嵌套网格")
             is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
-            # 如果通过 grid_type_var 无法确定，检查文件夹结构
+            # 如果通过 grid_type_var 无法确定，检查文件夹结构（level*/ 或旧 coarse+fine）
             if not is_nested_grid and hasattr(self, 'selected_folder') and self.selected_folder:
                 coarse_dir = os.path.join(self.selected_folder, "coarse")
                 fine_dir = os.path.join(self.selected_folder, "fine")
-                is_nested_grid = (os.path.isdir(coarse_dir) and os.path.isdir(fine_dir))
+                is_nested_grid = bool(level_resources) or (
+                    os.path.isdir(coarse_dir) and os.path.isdir(fine_dir))
 
             # 如果是嵌套网格模式，读取 ww3_shel.nml 中的 TYPE%FIELD%LIST 值
             alltype_field_list_value = None
@@ -267,7 +271,7 @@ class WW3MultiNML(NMLPrimitives):
                                     break
 
                             if not has_alltype_point_file:
-                                new_lines.append(f"  ALLTYPE%POINT%FILE     = './fine/points.list'\n")
+                                new_lines.append(f"  ALLTYPE%POINT%FILE     = './{finest_name}/points.list'\n")
                                 modified_alltype_point_file = True
                         # 如果是嵌套网格模式且还没有 ALLTYPE%FIELD%LIST，添加它
                         if is_nested_grid and not modified_alltype_field_list and alltype_field_list_value:
@@ -299,15 +303,30 @@ class WW3MultiNML(NMLPrimitives):
                     continue
 
                 if in_output:
-                    # ALLDATE%FIELD%START/STRIDE/STOP: 只替换 START 为合并格式，跳过 STRIDE 和 STOP
+                    # ALLDATE%FIELD：统一写入 output_precision（输出步长）
                     if re.search(r"ALLDATE%FIELD%START", line, re.IGNORECASE):
-                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
+                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                        modified_alldate_field = True
                         continue
                     if re.search(r"ALLDATE%FIELD%(STRIDE|STOP)", line, re.IGNORECASE):
-                        continue  # 跳过（已合并到 ALLDATE%FIELD）
+                        continue
                     if re.search(r"ALLDATE%FIELD", line) and not re.search(r"ALLDATE%FIELD%", line, re.IGNORECASE):
-                        # 已经是合并格式，直接替换
-                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
+                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                        modified_alldate_field = True
+                        continue
+
+                    # ALLDATE%POINT：谱点模式下同样使用 output_precision
+                    if re.search(r"ALLDATE%POINT%START", line, re.IGNORECASE):
+                        if is_spectral_point and has_spectral_points:
+                            new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_point = True
+                        continue
+                    if re.search(r"ALLDATE%POINT%(STRIDE|STOP)", line, re.IGNORECASE):
+                        continue
+                    if re.search(r"ALLDATE%POINT", line) and not re.search(r"ALLDATE%POINT%", line, re.IGNORECASE):
+                        if is_spectral_point and has_spectral_points:
+                            new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_point = True
                         continue
 
                     # ALLDATE%RESTART%START/STOP: 更新为正确日期，保留 STRIDE
@@ -331,28 +350,16 @@ class WW3MultiNML(NMLPrimitives):
                         new_lines.append(f"  ALLDATE%RESTART        = '{start_date} 000000' '{restart_step_val}' '{end_date} 235959'\n")
                         continue
 
-                    # ALLDATE%POINT%START/STRIDE/STOP: 删除（模板默认 2025 年日期会覆盖正确值）
-                    if re.search(r"ALLDATE%POINT%(START|STRIDE|STOP)", line, re.IGNORECASE):
-                        continue
-
                     if "/" in line:
-                        # 在结束标记之前，如果是谱空间逐点计算模式，添加 ALLDATE%POINT
-                        if is_spectral_point and has_spectral_points:
-                            # 检查是否已有合并格式的 ALLDATE%POINT
-                            has_alldate_point = False
-                            for prev_line in new_lines[-10:]:
-                                if re.search(r'ALLDATE%POINT\s*=', prev_line, re.IGNORECASE) and not re.search(r'ALLDATE%POINT%', prev_line, re.IGNORECASE):
-                                    has_alldate_point = True
-                                    break
-
-                            if not has_alldate_point:
-                                new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
-                                modified_alldate_point = True
+                        if not modified_alldate_field:
+                            new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_field = True
+                        # 谱点模式：若模板无 POINT 行，在结束前补写
+                        if is_spectral_point and has_spectral_points and not modified_alldate_point:
+                            new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_point = True
                         in_output = False
                         new_lines.append(line)
-                        continue
-                    # 跳过已有的合并格式 ALLDATE%POINT 行（后续在 / 处重新添加）
-                    if re.search(r'ALLDATE%POINT', line, re.IGNORECASE) and not re.search(r'ALLDATE%POINT%', line, re.IGNORECASE):
                         continue
                     new_lines.append(line)
                     continue
@@ -431,7 +438,7 @@ class WW3MultiNML(NMLPrimitives):
 
             # 构建日志消息
             log_parts = []
-            log_parts.append(tr("step4_date_range_compute_precision", "起始={start}, 结束={end}, 计算精度={precision}s").format(start=start_date, end=end_date, precision=compute_precision))
+            log_parts.append(tr("step4_date_range_output_step", "起始={start}, 结束={end}, 输出步长={step}s").format(start=start_date, end=end_date, step=output_stride))
 
             # 添加强迫场开关信息
             forcing_fields = []
@@ -452,15 +459,17 @@ class WW3MultiNML(NMLPrimitives):
                 forcing_str = tr("step4_forcing_fields_none", "强迫场=无")
             log_parts.append(forcing_str)
 
-            # 添加计算资源信息
-            resource_str = tr("step4_resource_ratio", "计算资源：coarse={coarse_ratio:.2f}, fine={fine_ratio:.2f}").format(coarse_ratio=coarse_ratio, fine_ratio=fine_ratio)
-            log_parts.append(resource_str)
+            # 添加计算资源信息（各层进程占比）
+            if level_resources:
+                ratios = ", ".join(f"{name}={hi - lo:.2f}" for name, _rank, lo, hi in level_resources)
+                resource_str = tr("step4_resource_ratio", "计算资源：{ratios}").format(ratios=ratios)
+                log_parts.append(resource_str)
 
             if modified_alltype_point_file:
-                log_parts.append(tr("step4_alltype_point_file_value", "ALLTYPE%POINT%FILE = './fine/points.list'"))
+                log_parts.append(tr("step4_alltype_point_file_value", "ALLTYPE%POINT%FILE = '{path}'").format(path=f"./{finest_name}/points.list"))
 
             if modified_alldate_point:
-                log_parts.append(tr("step4_alldate_point_value", "ALLDATE%POINT = '{start} 000000' '{precision}' '{end} 235959'").format(start=start_date, precision=compute_precision, end=end_date))
+                log_parts.append(tr("step4_alldate_point_value", "ALLDATE%POINT = '{start} 000000' '{precision}' '{end} 235959'").format(start=start_date, precision=output_stride, end=end_date))
 
             if modified_alltype_field_list and alltype_field_list_value:
                 log_parts.append(tr("step4_alltype_field_list_set", "ALLTYPE%FIELD%LIST = '{value}' (谱分区输出)").format(value=alltype_field_list_value))
