@@ -46,7 +46,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "NESTED_OUTER_DY": "grid.structured.nested.levels.0.dy",
     "GRIDGEN_VERSION": "grid.gridgen_version",
     "REFERENCE_DATA_PATH": "grid.reference_data_path",
-    "NESTED_CONTRACTION_COEFFICIENT": "grid.nested_contraction_coefficient",
+    "NESTED_CONTRACTION_COEFFICIENT": "grid.structured.nested.nested_contraction_coefficient",
     "BATHYMETRY": "grid.structured.bathymetry",
     "COASTLINE_PRECISION": "grid.structured.coastline_precision",
     "MIN_DIST": "grid.structured.min_dist",
@@ -56,8 +56,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "SPLIT_LIM": "grid.structured.split_lim",
     "LAKE_TOL": "grid.structured.lake_tol",
     "WW3_VERSION": "ww3.version",
-    "COMPUTE_PRECISION": "ww3.compute_precision",
-    "OUTPUT_PRECISION": "ww3.output_precision",
+    "OUTPUT_PRECISION": "ww3.output_step",
     "FILE_SPLIT": "ww3.file_split",
     "FREQ_INC": "ww3_grid.SPECTRUM%XFR",
     "FREQ_START": "ww3_grid.SPECTRUM%FREQ1",
@@ -670,18 +669,13 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').\n"
      "#   reference_data_path – path to bathymetry / coastline data bundle;\n"
      "#                          null = auto-detect from project defaults.\n"
-     "#   nested_contraction_coefficient – size ratio between outer and\n"
-     "#                          inner grid cells for nested grids (≥ 1).\n"
      "#   lon       – [west, east] longitude bounds of the main domain (deg).\n"
      "#   lat       – [south, north] latitude bounds of the main domain (deg).\n"
      "#   structured.nested.levels – ordered list (coarse -> fine) of nested\n"
      "#               grid levels; each with dx/dy (deg) and own lon/lat bounds.\n"
      "#               level0 is coarsest (bounds default to grid.lon/lat); each\n"
      "#               finer level has smaller dx and lies inside the previous\n"
-     "#               one (2 to 99 levels). Each level may also set an optional\n"
-     "#               compute_precision (ww3_shel integration step, sec); omitted\n"
-     "#               falls back to global ww3.compute_precision. Output step is\n"
-     "#               uniform across levels (always global ww3.output_precision).\n"
+     "#               one (2 to 99 levels).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("  structured:",
      "  # Structured grid options:\n"
@@ -692,7 +686,8 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "  #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).\n"
      "  #   lim_val          – masking threshold for cell classification (0–1).\n"
      "  #   split_lim        – split-cell limit: 0 = disabled.\n"
-     "  #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled."),
+     "  #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.\n"
+     "  #   nested.nested_contraction_coefficient – nested level boundary shrink ratio (≥ 1, GUI helper)."),
     ("  smc:",
      "  # SMC (Spherical Multi-Cell) grid options:\n"
      "  #   bathymetry       – dataset name (see presets.smc_bathymetry).\n"
@@ -734,8 +729,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   version           – WW3 version: '6.07' or '7.14'\n"
      "#                          (reads public/{version}_nml template directory).\n"
      "#   start_date / end_date – simulation period (YYYYMMDD).\n"
-     "#   compute_precision – main propagation time-step DTMAX (seconds).\n"
-     "#   output_precision  – output writing interval (seconds).\n"
+     "#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.\n"
      "#   file_split        – output file splitting: none | hour | day | month | year.\n"
      "#   output_scheme     – named preset from presets.output_scheme.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"

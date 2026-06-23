@@ -469,30 +469,10 @@ class ModifyWW3NML(
             self.log(tr("copy_public_files_error", "❌ 复制公共文件时出错：{error}").format(error=e))
 
     def _nested_level_dirs(self):
-        """返回嵌套各层目录 [(dir_path, idx), ...]，按 level 序号排序。
+        """返回嵌套各层目录 [(dir_path, idx), ...]，按 level 序号排序。"""
+        from .nested_level_dirs import list_nested_level_entries
 
-        优先 level0…levelN；找不到时回退旧布局 coarse(idx 0)/fine(idx 1)。
-        """
-        import re as _re
-        folder = self.selected_folder
-        try:
-            names = os.listdir(folder)
-        except OSError:
-            names = []
-        dirs = [
-            (os.path.join(folder, d), int(d[5:]))
-            for d in names
-            if _re.match(r"^level\d+$", d) and os.path.isdir(os.path.join(folder, d))
-        ]
-        if dirs:
-            dirs.sort(key=lambda x: x[1])
-            return dirs
-        legacy = []
-        for i, name in enumerate(("coarse", "fine")):
-            p = os.path.join(folder, name)
-            if os.path.isdir(p):
-                legacy.append((p, i))
-        return legacy
+        return [(str(path), idx) for path, idx in list_nested_level_entries(self.selected_folder)]
 
     def _output_stride(self):
         """全局输出步长（秒），统一用于 ww3_shel / ww3_ounp / ww3_ounf。"""
@@ -501,14 +481,14 @@ class ModifyWW3NML(
     def _apply_all_params_nested(self, has_output_scheme=False):
         """嵌套网格模式：对 level0…levelN 逐层完成全部操作（每层在一条分隔线下）。
 
-        各层输出步统一使用全局 ww3.output_precision；CFL 传播步按各层 dx 自动重算。
+        各层输出步统一使用全局 ww3.output_step；CFL 传播步按各层 dx 自动重算。
 
         [EN] Nested grid mode: process level0..levelN, each under one separator line.
         """
         level_dirs = self._nested_level_dirs()
         if not level_dirs:
             self.log(tr("nested_grid_folders_not_found",
-                        "❌ 未找到 level* / coarse / fine 网格目录，请先生成嵌套网格"))
+                        "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
             return
         output_stride = self._output_stride()
 
@@ -523,6 +503,8 @@ class ModifyWW3NML(
             self._modify_ww3_multi_nml(workdir_multi_nml)
         else:
             self.log(tr("ww3_multi_not_found", "⚠️ 未找到工作目录中的 ww3_multi.nml：{path}，跳过修改").format(path=workdir_multi_nml))
+
+        self._export_points_to_file()
 
         scheme_applied = False
         for dir_path, idx in level_dirs:
@@ -542,6 +524,7 @@ class ModifyWW3NML(
             self._modify_ww3_shel_forcing_inputs_in_dir(dir_path, grid_label="")
             self._apply_spectral_params_to_dir(dir_path, self.shel_start_edit.text().strip(),
                                               self.shel_end_edit.text().strip(), output_stride)
+            self._apply_config_parameters_to_grid_nml_in_dir(dir_path, level_idx=idx)
             # 按各层自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
             self._apply_cfl_timesteps_to_grid_nml(dir_path)
 
@@ -558,7 +541,7 @@ class ModifyWW3NML(
         level_dirs = self._nested_level_dirs()
         if not level_dirs:
             self.log(tr("nested_grid_folders_not_found",
-                        "❌ 未找到 level* / coarse / fine 网格目录，请先生成嵌套网格"))
+                        "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
             return
         output_stride = self._output_stride()
         for dir_path, idx in level_dirs:

@@ -8,9 +8,10 @@ from __future__ import annotations
 import os
 import re
 import glob
+import shutil
 
 from ...support.translations import tr
-from ..runtime_config import PUBLIC_DIR, load_config
+from ..runtime_config import get_nml_template_dir
 from .nml_primitives import NMLPrimitives
 
 
@@ -21,6 +22,50 @@ class WW3ShelNML(NMLPrimitives):
     ``_apply_output_scheme_to_dir`` 同步谱分区变量至 shel 与 ounf namelist。
     """
 
+    def _ensure_ww3_shel_nml(self, target_dir: str) -> str | None:
+        """确保目录中存在 ww3_shel.nml（缺失则从 NML 模板复制）。"""
+        if not target_dir or not isinstance(target_dir, str):
+            return None
+        shel_path = os.path.join(target_dir, "ww3_shel.nml")
+        if os.path.isfile(shel_path):
+            return shel_path
+        template = os.path.join(get_nml_template_dir(), "ww3_shel.nml")
+        if not os.path.isfile(template):
+            return None
+        try:
+            shutil.copy2(template, shel_path)
+            return shel_path
+        except OSError:
+            return None
+
+    def _write_type_field_list_to_shel(self, target_dir: str, var_list_str: str) -> bool:
+        """将谱分区变量列表写入指定目录 ww3_shel.nml 的 TYPE%FIELD%LIST。"""
+        if not var_list_str or not target_dir or not isinstance(target_dir, str):
+            return False
+        shel_path = self._ensure_ww3_shel_nml(target_dir)
+        if not shel_path:
+            return False
+        try:
+            with open(shel_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            new_lines = []
+            modified = False
+            for line in lines:
+                line_stripped = line.lstrip()
+                is_comment = line_stripped.startswith("!")
+                if not is_comment and re.search(r"TYPE%FIELD%LIST", line, re.IGNORECASE) and "=" in line:
+                    new_lines.append(f"  TYPE%FIELD%LIST       = '{var_list_str}'\n")
+                    modified = True
+                else:
+                    new_lines.append(line)
+            if not modified:
+                return False
+            with open(shel_path, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(new_lines)
+            return True
+        except OSError:
+            return False
+
     def _apply_output_scheme_to_dir(self, target_dir):
         """将谱分区输出方案写入指定目录的 ww3_shel.nml 和 ww3_ounf.nml"""
         if not target_dir or not isinstance(target_dir, str):
@@ -30,30 +75,7 @@ class WW3ShelNML(NMLPrimitives):
         if not var_list_str:
             return False
 
-        modified_any = False
-
-        # 更新 ww3_shel.nml 的 TYPE%FIELD%LIST
-        ww3_shel_path = os.path.join(target_dir, "ww3_shel.nml")
-        if os.path.exists(ww3_shel_path):
-            try:
-                with open(ww3_shel_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                new_lines = []
-                modified = False
-                for line in lines:
-                    line_stripped = line.lstrip()
-                    is_comment = line_stripped.startswith('!')
-                    if not is_comment and re.search(r'TYPE%FIELD%LIST', line, re.IGNORECASE) and "=" in line:
-                        new_lines.append(f"  TYPE%FIELD%LIST       = '{var_list_str}'\n")
-                        modified = True
-                    else:
-                        new_lines.append(line)
-                if modified:
-                    with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
-                        f.writelines(new_lines)
-                    modified_any = True
-            except Exception:
-                pass
+        modified_any = self._write_type_field_list_to_shel(target_dir, var_list_str)
 
         # 更新 ww3_ounf.nml 的 FIELD%LIST
         ww3_ounf_path = os.path.join(target_dir, "ww3_ounf.nml")
@@ -84,7 +106,7 @@ class WW3ShelNML(NMLPrimitives):
         return modified_any
 
 
-    def _modify_ww3_shel_times_to_dir(self, target_dir, compute_precision, grid_label=""):
+    def _modify_ww3_shel_times_to_dir(self, target_dir, output_stride, grid_label=""):
         """在指定目录中修改 ww3_shel.nml"""
         if not target_dir or not isinstance(target_dir, str):
             return
@@ -96,7 +118,7 @@ class WW3ShelNML(NMLPrimitives):
 
         start_date = self.shel_start_edit.text().strip()
         end_date = self.shel_end_edit.text().strip()
-        main_step = compute_precision
+        main_step = output_stride
 
         if not (start_date.isdigit() and len(start_date) == 8 and end_date.isdigit() and len(end_date) == 8):
             self.log(tr("date_range_format_error", "❌ 起始/结束日期格式错误，应为 YYYYMMDD。"))
@@ -206,7 +228,7 @@ class WW3ShelNML(NMLPrimitives):
 
                 # 构建合并的日志消息
                 parts = []
-                parts.append(tr("step4_date_range_compute_step", "起始={start}, 结束={end}, 计算步长={step}s").format(start=start_date, end=end_date, step=main_step))
+                parts.append(tr("step4_date_range_output_step", "起始={start}, 结束={end}, 输出步长={step}s").format(start=start_date, end=end_date, step=main_step))
                 if modified_point_file:
                     parts.append(tr("step4_added_type_point_file", "添加 TYPE%POINT%FILE = 'points.list'"))
                 if modified_date_point:
@@ -237,7 +259,7 @@ class WW3ShelNML(NMLPrimitives):
         if not self.selected_folder or not isinstance(self.selected_folder, str):
             self.log(tr("workdir_not_exists", "❌ 当前工作目录不存在！"))
             return
-        self._modify_ww3_shel_times_to_dir(self.selected_folder, self.shel_step_edit.text().strip())
+        self._modify_ww3_shel_times_to_dir(self.selected_folder, self.output_precision_edit.text().strip())
 
     def _modify_ww3_shel_forcing_inputs(self, target_dir=None):
         """修改 ww3_shel.nml 中的 INPUT%FORCING%* 设置，根据选择的强迫场设置为 T 或 F"""
@@ -388,14 +410,10 @@ class WW3ShelNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # 嵌套网格模式：修改 coarse 和 fine 目录下的文件
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
+            from .nested_level_dirs import list_nested_level_paths
 
-            if os.path.isdir(coarse_dir):
-                self._modify_ww3_shel_point_file_in_dir(coarse_dir, silent=silent)
-            if os.path.isdir(fine_dir):
-                self._modify_ww3_shel_point_file_in_dir(fine_dir, silent=silent)
+            for level_dir in list_nested_level_paths(self.selected_folder):
+                self._modify_ww3_shel_point_file_in_dir(str(level_dir), silent=silent)
         else:
             # 普通网格模式：修改工作目录下的文件
             self._modify_ww3_shel_point_file_in_dir(self.selected_folder, silent=silent)
@@ -486,16 +504,16 @@ class WW3ShelNML(NMLPrimitives):
         # 获取时间范围和计算精度
         start_date = self.shel_start_edit.text().strip()
         end_date = self.shel_end_edit.text().strip()
-        compute_precision = self.shel_step_edit.text().strip()
+        output_stride = self.output_precision_edit.text().strip()
 
         if not (start_date.isdigit() and len(start_date) == 8 and end_date.isdigit() and len(end_date) == 8):
             if not silent:
                 self.log(tr("date_format_error_skip_point", "❌ 起始/结束日期格式错误，应为 YYYYMMDD，跳过 DATE%POINT 和 DATE%BOUNDARY 修改"))
             return
 
-        if not compute_precision.isdigit():
+        if not output_stride.isdigit():
             if not silent:
-                self.log(tr("compute_precision_error_skip_point", "❌ 计算精度必须为数字（秒），跳过 DATE%POINT 和 DATE%BOUNDARY 修改"))
+                self.log(tr("output_precision_error_skip_point", "❌ 输出精度必须为数字（秒），跳过 DATE%POINT 和 DATE%BOUNDARY 修改"))
             return
 
         # 检查是否是嵌套网格模式
@@ -504,29 +522,24 @@ class WW3ShelNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # 嵌套网格模式：修改 coarse 和 fine 目录下的文件
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
+            from .nested_level_dirs import list_nested_level_paths
 
-            if os.path.isdir(coarse_dir):
-                self._modify_ww3_shel_date_point_in_dir(coarse_dir, start_date, end_date, compute_precision, silent=silent)
-            if os.path.isdir(fine_dir):
-                # 对于内网格，使用内网格的计算精度
-                inner_shel_step = self.inner_shel_step_edit.text().strip()
-                inner_compute_precision = inner_shel_step if inner_shel_step.isdigit() else compute_precision
-                self._modify_ww3_shel_date_point_in_dir(fine_dir, start_date, end_date, inner_compute_precision, silent=silent)
+            for level_dir in list_nested_level_paths(self.selected_folder):
+                self._modify_ww3_shel_date_point_in_dir(
+                    str(level_dir), start_date, end_date, output_stride, silent=silent
+                )
         else:
             # 普通网格模式：修改工作目录下的文件
-            self._modify_ww3_shel_date_point_in_dir(self.selected_folder, start_date, end_date, compute_precision, silent=silent)
+            self._modify_ww3_shel_date_point_in_dir(self.selected_folder, start_date, end_date, output_stride, silent=silent)
 
-    def _modify_ww3_shel_date_point_in_dir(self, target_dir, start_date, end_date, compute_precision, silent=False):
+    def _modify_ww3_shel_date_point_in_dir(self, target_dir, start_date, end_date, output_stride, silent=False):
         """在指定目录下修改 ww3_shel.nml，在 DATE%FIELD 下一行添加 DATE%POINT 和 DATE%BOUNDARY
 
         参数:
             target_dir: 目标目录
             start_date: 起始日期
             end_date: 结束日期
-            compute_precision: 计算精度
+            output_stride: 输出步长（秒）
             silent: 如果为 True，不输出日志（用于合并日志）
 
         返回:
@@ -576,7 +589,7 @@ class WW3ShelNML(NMLPrimitives):
                             continue
 
                     # 在下一行添加 DATE%POINT 和 DATE%BOUNDARY
-                    new_lines.append(f"  DATE%POINT          = '{start_date} 000000' '{compute_precision}' '{end_date} 235959'\n")
+                    new_lines.append(f"  DATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
                     new_lines.append(f"  DATE%BOUNDARY       = '{start_date} 000000' '86400' '{end_date} 235959'\n")
                     modified = True
                     date_point_added = True
@@ -630,10 +643,10 @@ class WW3ShelNML(NMLPrimitives):
         start_datetime = times[0]  # 格式：YYYYMMDD HHMMSS - 使用最早的时间（第一个点）
         end_datetime = times[-1]   # 格式：YYYYMMDD HHMMSS - 使用最晚的时间（最后一个点）
 
-        # 获取计算步长
-        compute_precision = self.shel_step_edit.text().strip()
-        if not compute_precision.isdigit():
-            self.log(tr("compute_precision_error_skip_track", "❌ 计算精度必须为数字（秒），跳过 DATE%TRACK 修改"))
+        # 获取输出步长
+        output_stride = self.output_precision_edit.text().strip()
+        if not output_stride.isdigit():
+            self.log(tr("output_precision_error_skip_track", "❌ 输出精度必须为数字（秒），跳过 DATE%TRACK 修改"))
             return
 
         # 检查是否是嵌套网格模式
@@ -642,22 +655,17 @@ class WW3ShelNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # 嵌套网格模式：修改 coarse 和 fine 目录下的文件
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
+            from .nested_level_dirs import list_nested_level_paths
 
-            if os.path.isdir(coarse_dir):
-                self._modify_ww3_shel_date_track_in_dir(coarse_dir, start_datetime, compute_precision, end_datetime)
-            if os.path.isdir(fine_dir):
-                # 对于内网格，使用内网格的计算精度
-                inner_shel_step = self.inner_shel_step_edit.text().strip()
-                inner_compute_precision = inner_shel_step if inner_shel_step.isdigit() else compute_precision
-                self._modify_ww3_shel_date_track_in_dir(fine_dir, start_datetime, inner_compute_precision, end_datetime)
+            for level_dir in list_nested_level_paths(self.selected_folder):
+                self._modify_ww3_shel_date_track_in_dir(
+                    str(level_dir), start_datetime, output_stride, end_datetime
+                )
         else:
             # 普通网格模式：修改工作目录下的文件
-            self._modify_ww3_shel_date_track_in_dir(self.selected_folder, start_datetime, compute_precision, end_datetime)
+            self._modify_ww3_shel_date_track_in_dir(self.selected_folder, start_datetime, output_stride, end_datetime)
 
-    def _modify_ww3_shel_date_track_in_dir(self, target_dir, start_datetime, compute_precision, end_datetime):
+    def _modify_ww3_shel_date_track_in_dir(self, target_dir, start_datetime, output_stride, end_datetime):
         """在指定目录下修改 ww3_shel.nml，在 &OUTPUT_DATE_NML 下添加 DATE%TRACK"""
         ww3_shel_path = os.path.join(target_dir, "ww3_shel.nml")
         if not os.path.exists(ww3_shel_path):
@@ -705,7 +713,7 @@ class WW3ShelNML(NMLPrimitives):
                                 i += 1
                                 continue
                         # 在下一行添加 DATE%TRACK
-                        track_line = f"  DATE%TRACK          = '{start_datetime}' '{compute_precision}' '{end_datetime}'\n"
+                        track_line = f"  DATE%TRACK          = '{start_datetime}' '{output_stride}' '{end_datetime}'\n"
                         new_lines.append(track_line)
                         modified = True
                     # 如果遇到结束标记 "/"
@@ -716,7 +724,7 @@ class WW3ShelNML(NMLPrimitives):
                             # 先移除刚添加的结束标记行
                             new_lines.pop()
                             # 添加 DATE%TRACK
-                            track_line = f"  DATE%TRACK          = '{start_datetime}' '{compute_precision}' '{end_datetime}'\n"
+                            track_line = f"  DATE%TRACK          = '{start_datetime}' '{output_stride}' '{end_datetime}'\n"
                             new_lines.append(track_line)
                             # 再添加结束标记
                             new_lines.append(line)

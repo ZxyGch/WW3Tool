@@ -145,16 +145,15 @@ class WW3StepPanel:
         self.nml_version_label = self._field_label(tr("step4_nml_template_version", "NML 模板版本："))
         wave_grid.addWidget(self.nml_version_label, 0, 0)
         wave_grid.addWidget(self.nml_version_combo, 0, 1)
-        self._display_line(wave_grid, 1, 0, tr("step4_compute_precision", "计算精度 (秒):"), "ww3_compute")
-        self._display_line(wave_grid, 2, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
-        self._display_line(wave_grid, 3, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
-        self._display_line(wave_grid, 4, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
+        self._display_line(wave_grid, 1, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
+        self._display_line(wave_grid, 2, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
+        self._display_line(wave_grid, 3, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self.output_scheme_combo = ComboBox()
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
-        wave_grid.addWidget(self.output_scheme_label, 5, 0)
-        wave_grid.addWidget(self.output_scheme_combo, 5, 1)
+        wave_grid.addWidget(self.output_scheme_label, 4, 0)
+        wave_grid.addWidget(self.output_scheme_combo, 4, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -193,8 +192,7 @@ class WW3StepPanel:
         ww3 = config.ww3
         self.set_value("ww3_start", ww3.start_date)
         self.set_value("ww3_end", ww3.end_date)
-        self.set_value("ww3_compute", ww3.compute_precision)
-        self.set_value("ww3_output", ww3.output_precision)
+        self.set_value("ww3_output", ww3.output_step)
         self.set_value("slurm_cores", config.slurm.cores)
         self.set_value("slurm_nodes", config.slurm.nodes)
         self.nml_version_combo.blockSignals(True)
@@ -328,8 +326,7 @@ class WW3StepPanel:
         return {
             "start_date": self.fields["ww3_start"].text().strip(),
             "end_date": self.fields["ww3_end"].text().strip(),
-            "compute_precision": self.fields["ww3_compute"].text().strip(),
-            "output_precision": self.fields["ww3_output"].text().strip(),
+            "output_step": self.fields["ww3_output"].text().strip(),
             "output_scheme": self.output_scheme_combo.currentText().strip(),
         }
 
@@ -358,7 +355,7 @@ class WW3StepPanel:
         field = LineEdit()
         self._style_line_edit(field, self._input_style())
         self._expand_field(field)
-        if key in {"slurm_cores", "slurm_nodes", "ww3_compute", "ww3_output"}:
+        if key in {"slurm_cores", "slurm_nodes", "ww3_output"}:
             field.setValidator(int_validator(1))
         elif key in {"ww3_start", "ww3_end"}:
             field.setValidator(date_yyyymmdd_validator())
@@ -377,7 +374,6 @@ class WW3StepPanel:
             self.cpu_label,
             self.field_labels["slurm_cores"],
             self.field_labels["slurm_nodes"],
-            self.field_labels["ww3_compute"],
             self.field_labels["ww3_output"],
             self.field_labels["ww3_start"],
             self.field_labels["ww3_end"],

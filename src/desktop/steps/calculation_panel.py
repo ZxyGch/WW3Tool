@@ -28,6 +28,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -256,11 +257,20 @@ class CalculationStepPanel:
         except ImportError as exc:
             self._notify(tr("step3_map_picker_unavailable", "地图选点不可用（缺少 matplotlib/cartopy）：{error}").format(error=exc))
             return
-        if dialog.exec() and dialog.selected_points:
-            for point in dialog.selected_points:
-                if self._is_duplicate(kind, point):
-                    continue
-                self._append_point(kind, point)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._replace_points_from_map(kind, dialog.result_points)
+
+    def _replace_points_from_map(self, kind: str, points: list[dict]) -> None:
+        """用地图选点结果覆盖当前点位表（含删除已有/新增）。"""
+        table = self._table(kind)
+        rows: list[list] = []
+        for p in points:
+            if kind == "track":
+                rows.append([p.get("datetime", ""), p["lon"], p["lat"], p.get("name", "")])
+            else:
+                rows.append([p["lon"], p["lat"], p.get("name", "")])
+        self._fill_table(table, kind, rows)
 
     def _delete(self, kind: str) -> None:
         row = self._selected_data_row(kind)

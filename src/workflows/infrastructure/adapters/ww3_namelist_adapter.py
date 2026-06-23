@@ -43,6 +43,8 @@ from .. import runtime_config
 from ..ww3 import modify_ww3_nml as modify_ww3_nml_module
 from ..ww3 import step4_service as step4_service_module
 from ..ww3.modify_ww3_nml import ModifyWW3NML
+from ..ww3.grid_param_write import write_ww3_grid_parameters_to_nml
+from ..ww3.nested_level_dirs import list_nested_level_paths
 from ..ww3.step4_service import StepFourServiceMixin
 from ..ww3.widget_stubs import _Checkbox, _ComboValue, _Table, _TextValue
 
@@ -78,14 +80,9 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
             self.calc_mode_var = "区域尺度计算"
         self.calc_mode_combo = _ComboValue(self.calc_mode_var)
 
-        inner_compute = config.ww3.inner_compute_precision or config.ww3.compute_precision
-        inner_output = config.ww3.inner_output_precision or config.ww3.output_precision
         self.shel_start_edit = _TextValue(config.ww3.start_date)
         self.shel_end_edit = _TextValue(config.ww3.end_date)
-        self.shel_step_edit = _TextValue(config.ww3.compute_precision)
-        self.output_precision_edit = _TextValue(config.ww3.output_precision)
-        self.inner_shel_step_edit = _TextValue(inner_compute)
-        self.inner_output_precision_edit = _TextValue(inner_output)
+        self.output_precision_edit = _TextValue(config.ww3.output_step)
 
         self.num_n_edit = _TextValue(config.slurm.cores)
         self.num_N_edit = _TextValue(config.slurm.nodes)
@@ -237,9 +234,16 @@ def _ww3_grid_paths(config: PipelineConfig) -> List[Path]:
 
     [EN] Return the list of ``ww3_grid.nml`` paths that need spectral/timestep parameters written into them.
     """
+    workdir = config.workdir.path
     if config.grid.grid_type == "nested":
-        return [config.workdir.path / "coarse" / "ww3_grid.nml", config.workdir.path / "fine" / "ww3_grid.nml"]
-    return [config.workdir.path / "ww3_grid.nml"]
+        level_dirs = list_nested_level_paths(workdir)
+        if level_dirs:
+            return [path / "ww3_grid.nml" for path in level_dirs]
+        n = len(config.grid.nested_levels or [])
+        if n >= 1:
+            return [workdir / f"level{i}" / "ww3_grid.nml" for i in range(n)]
+        return []
+    return [workdir / "ww3_grid.nml"]
 
 
 def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None:
@@ -247,51 +251,9 @@ def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None
 
     [EN] Write numeric values from ``ww3_grid.parameters`` back into the corresponding namelist sections of existing ``ww3_grid.nml`` files.
     """
-    parameters = config.ww3_grid.parameters
-    values = {
-        "SPECTRUM_NML": {
-            "SPECTRUM%XFR": f"  SPECTRUM%XFR       =  {parameters['SPECTRUM%XFR']}\n",
-            "SPECTRUM%FREQ1": f"  SPECTRUM%FREQ1     =  {parameters['SPECTRUM%FREQ1']}\n",
-            "SPECTRUM%NK": f"  SPECTRUM%NK        =  {parameters['SPECTRUM%NK']}\n",
-            "SPECTRUM%NTH": f"  SPECTRUM%NTH       =  {parameters['SPECTRUM%NTH']}\n",
-        },
-        "TIMESTEPS_NML": {
-            "TIMESTEPS%DTMAX": f"  TIMESTEPS%DTMAX        =  {parameters['TIMESTEPS%DTMAX']}\n",
-            "TIMESTEPS%DTXY": f"  TIMESTEPS%DTXY         =  {parameters['TIMESTEPS%DTXY']}\n",
-            "TIMESTEPS%DTKTH": f"  TIMESTEPS%DTKTH        =  {parameters['TIMESTEPS%DTKTH']}\n",
-            "TIMESTEPS%DTMIN": f"  TIMESTEPS%DTMIN        =  {parameters['TIMESTEPS%DTMIN']}\n",
-        },
-    }
+    parameters = dict(config.ww3_grid.parameters)
     for path in _ww3_grid_paths(config):
-        if not path.is_file():
-            logger.log(tr("ww3_grid_nml_not_found", "⚠️ 未找到 ww3_grid.nml，跳过频谱与时间步长参数写入"))
-            continue
-        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-        new_lines: List[str] = []
-        active_section: Optional[str] = None
-        changed = False
-        for line in lines:
-            stripped = line.lstrip()
-            upper = stripped.upper()
-            for section in values:
-                if upper.startswith(f"&{section}"):
-                    active_section = section
-                    break
-            if active_section and not stripped.startswith("!"):
-                replacement = next(
-                    (replacement for key, replacement in values[active_section].items() if key in upper),
-                    None,
-                )
-                if replacement is not None:
-                    new_lines.append(replacement)
-                    changed = True
-                    continue
-            new_lines.append(line)
-            if active_section and stripped.startswith("/"):
-                active_section = None
-        if changed:
-            path.write_text("".join(new_lines), encoding="utf-8")
-            logger.log(tr("ww3_grid_params_applied", "✅ 已将频谱参数与时间步长写入 ww3_grid.nml"))
+        write_ww3_grid_parameters_to_nml(path, parameters, logger.log)
 
 
 @contextmanager
@@ -338,8 +300,8 @@ def prepare_ww3_files(
 
     流程:
         1. 构建 ``_WW3Adapter`` 并 patch ``load_config``；
-        2. 调用 ``modify_ww3_file()`` 写出 namelist；
-        3. 将 ``ww3_grid.parameters`` 数值写回 ``ww3_grid.nml``。
+        2. 调用 ``modify_ww3_file()`` 写出 namelist（嵌套网格在逐层循环内写回 ``ww3_grid`` 参数）；
+        3. 普通网格再将 ``ww3_grid.parameters`` 数值写回 ``ww3_grid.nml``。
 
     [EN] Generate WW3 namelist and auxiliary scripts based on the pipeline configuration and Step 1 forcing field paths.
 
@@ -359,7 +321,8 @@ def prepare_ww3_files(
         adapter.modify_server_sh_file = lambda: None
     with _patched_load_config(app_config):
         adapter.modify_ww3_file()
-    _apply_ww3_grid_settings(config, logger)
+    if config.grid.grid_type != "nested":
+        _apply_ww3_grid_settings(config, logger)
 
 
 def update_server_script(config: PipelineConfig, logger: CoreLogger) -> None:

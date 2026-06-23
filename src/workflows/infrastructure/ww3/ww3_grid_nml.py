@@ -610,10 +610,22 @@ class WW3GridNML(NMLPrimitives):
             return
         self._sync_grid_meta_to_grid_nml_in_dir(target_dir)
 
+    def _apply_config_parameters_to_grid_nml_in_dir(self, target_dir, level_idx=None):
+        """将 params.yml 中 ww3_grid 段写入该层 ww3_grid.nml（嵌套时带 level 日志）。"""
+        from .grid_param_write import parameters_from_config, write_ww3_grid_parameters_to_nml
+
+        parameters = parameters_from_config()
+        if len(parameters) < 8:
+            return
+        nml_path = os.path.join(target_dir, "ww3_grid.nml")
+        write_ww3_grid_parameters_to_nml(
+            nml_path, parameters, self.log, level_idx=level_idx
+        )
+
     def _apply_cfl_timesteps_to_grid_nml(self, grid_dir):
         """按该网格自身 dx/dy 与（全局）FREQ1 重算 CFL 时间步并写回 ww3_grid.nml。
 
-        嵌套时 coarse/fine 的传播步 DTXY 必须不同（CFL: DTXY ∝ Δx），否则细网格
+        嵌套时各 level 的传播步 DTXY 必须不同（CFL: DTXY ∝ Δx），否则细网格
         会违反 CFL 而数值不稳定。从已写好的 ww3_grid.nml 读 RECT%SX/SY/Y0/NY 与
         SPECTRUM%FREQ1，调用 recommend_timesteps 重算后替换 TIMESTEPS%DT*（只改活动
         行，跳过模板注释里的占位）。
@@ -669,8 +681,7 @@ class WW3GridNML(NMLPrimitives):
                 out.append(ln)
             with open(nml, "w", encoding="utf-8") as f:
                 f.writelines(out)
-            prefix = f"[{os.path.basename(grid_dir)}] " if grid_dir else ""
-            self.log(prefix + tr(
+            self.log(tr(
                 "step4_cfl_timesteps_applied",
                 "✅ 按 CFL 重算时间步：DTXY={dtxy}, DTMAX={dtmax}, DTKTH={dtkth}（{note}）").format(
                 dtxy=rec.dtxy, dtmax=rec.dtmax, dtkth=rec.dtkth, note=depth_note))

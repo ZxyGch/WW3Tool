@@ -43,7 +43,7 @@ _LOG_PREFIX = "WW3TOOL_VIZ\tLOG\t"
 def generate_grid_images(config: PipelineConfig, logger: CoreLogger) -> list[str]:
     """为当前流水线配置生成网格预览 PNG 路径列表。
 
-    嵌套网格分别对 ``coarse/`` 与 ``fine/`` 调用 worker；普通网格按
+    嵌套网格分别对各 ``level*`` 子目录调用 worker；普通网格按
     ``mesh_type`` 选择 structured/smc/unst 模式。
 
     参数:
@@ -58,7 +58,7 @@ def generate_grid_images(config: PipelineConfig, logger: CoreLogger) -> list[str
 
     [EN] Generate a list of grid preview PNG paths for the current pipeline configuration.
 
-    For nested grids, the worker is invoked separately for ``coarse/`` and ``fine/``;
+    For nested grids, the worker is invoked separately for each ``level*`` subdirectory;
     for regular grids, the structured/smc/unst mode is selected by ``mesh_type``.
 
     Args:
@@ -73,7 +73,11 @@ def generate_grid_images(config: PipelineConfig, logger: CoreLogger) -> list[str
     """
     workdir = config.workdir.path
     if config.grid.grid_type == "nested":
-        requests = [(workdir / "coarse", "structured"), (workdir / "fine", "structured")]
+        from workflows.infrastructure.ww3.nested_level_dirs import list_nested_level_paths
+
+        requests = [(path, "structured") for path in list_nested_level_paths(workdir)]
+        if not requests:
+            raise RuntimeError("未找到 level* 网格目录，请先生成嵌套网格")
     else:
         mode = {"structured": "structured", "smc": "smc", "unstructured": "unst"}[config.grid.mesh_type]
         requests = [(workdir, mode)]

@@ -348,8 +348,7 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
             cfg.ww3.end_date,
         )
     )
-    print(_config_field(tr("icli_compute_precision", "计算精度：{}s"), cfg.ww3.compute_precision or not_set))
-    print(_config_field(tr("icli_output_precision", "输出精度：{}s"), cfg.ww3.output_precision or not_set))
+    print(_config_field(tr("icli_output_precision", "输出精度：{}s"), cfg.ww3.output_step or not_set))
     print(_config_field(tr("icli_output_scheme", "输出方案：{}"), cfg.ww3.output_scheme or not_set))
     print(_config_field(tr("icli_ww3_st", "ST：{}"), cfg.slurm.server_st or not_cfg))
 

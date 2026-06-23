@@ -29,11 +29,11 @@ The program automatically fixes forcing-field issues (latitude ordering, time fi
 
 4. Slurm script configuration (SSH settings, Slurm cores, nodes, CPU)
 
-5. Automatic configuration of `ww3_grid.nml`, `ww3_prnc.nml`, `ww3_shel.nml`, `ww3_ounf.nml`, `ww3_multi.nml`, and related files, including grid file settings, compute precision, output precision, time range, spectral point runs, track runs, spectral partition output, and forcing field configuration
+5. Automatic configuration of ww3_grid.nml, ww3_prnc.nml, ww3_shel.nml, ww3_ounf.nml, ww3_multi.nml, and related files, including grid file settings, compute precision, output precision, time range, spectral point runs, track runs, spectral partition output, and forcing field configuration
 
 6. Wave height plots, wave height videos, contour plots, 2D spectrum plots, JASON3 satellite track plots, 2D spectrum plots
 
-WW3Tool runs on Win/Linux/Mac and is almost entirely Python (the original gridgen Matlab code is retained). The UI supports Chinese and English; the interactive terminal can switch to English with `--lang en_US` (Chinese is the default).
+WW3Tool runs on Win/Linux/Mac and is almost entirely Python (the original gridgen Matlab code is retained). The UI supports Chinese and English; the interactive terminal can switch to English with --lang en_US (Chinese is the default).
 
 You need to install WAVEWATCH III yourself on your local machine or server. This software does not provide an installer yet. Please see the tutorial: [https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
 
@@ -47,7 +47,7 @@ If you find this tool useful, please give it a ⭐️ 🥳
 
 ## Quick Start
 
-`run.py` is the single entry point and exposes three ways to use the tool:
+run.py is the single entry point and exposes three ways to use the tool:
 
 ```sh
 python3 run.py                 # 1. GUI (default)
@@ -71,7 +71,7 @@ Launching with no arguments starts the GUI. This is the most common way to use W
 
 ### 2. Interactive command line
 
-If you prefer the terminal, use `run.py shell` to enter an interactive REPL, load a configuration, and run steps repeatedly:
+If you prefer the terminal, use run.py shell to enter an interactive REPL, load a configuration, and run steps repeatedly:
 
 ```sh
 python3 run.py shell
@@ -81,13 +81,13 @@ python3 run.py shell --lang en_US
 
 Note: it is best to understand the GUI workflow before using shell mode.
 
-Remember to create a working directory first and edit `params.yml` inside it. The repository-root `params.yml` is only a template for shared defaults.
+Remember to create a working directory first and edit params.yml inside it. The repository-root params.yml is only a template for shared defaults.
 
 
 
 ### 3. Headless CLI
 
-Each step can be invoked as a one-shot subcommand. The tool reads `params.yml` from the working directory, runs, and exits:
+Each step can be invoked as a one-shot subcommand. The tool reads params.yml from the working directory, runs, and exits:
 
 ```sh
 python3 run.py workdir my_case              # create or load a working directory
@@ -100,7 +100,7 @@ python3 run.py plot-wave-maps my_case       # plotting
 
 This “one command, one step, no manual interaction” style is well suited to scripting and automation, including AI tools (such as Claude Code): an agent can run these commands directly and use stdout and exit codes to tell whether each step succeeded, without operating the GUI.
 
-See `python3 run.py --help` for the full command list.
+See python3 run.py --help for the full command list.
 
 
 
@@ -122,17 +122,17 @@ WAVEWATCH III is not required locally. Local runs are optional; you only need th
 
 ## Overall Architecture
 
-> Note: you do not need to understand the directories, configuration, and workflow details below. You can simply use the GUI (`python3 run.py`) step by step; the GUI, Shell, and CLI share the same capabilities and none of them is missing features.
+> Note: you do not need to understand the directories, configuration, and workflow details below. You can simply use the GUI (python3 run.py) step by step; the GUI, Shell, and CLI share the same capabilities and none of them is missing features.
 
-WW3Tool is a preprocessing and run-assist tool built around WAVEWATCH III. It handles forcing-field preparation, grid generation, namelist/script generation, optional local or remote job submission, and result plotting and validation. It does not include the WW3 numerical model itself, and it does not replace `ww3_grid`, `ww3_prnc`, `ww3_shel`, and other executables you install locally or on a server.
+WW3Tool is a preprocessing and run-assist tool built around WAVEWATCH III. It handles forcing-field preparation, grid generation, namelist/script generation, optional local or remote job submission, and result plotting and validation. It does not include the WW3 numerical model itself, and it does not replace ww3_grid, ww3_prnc, ww3_shel, and other executables you install locally or on a server.
 
 From a user perspective, the software has three layers:
 
 | Layer | Role | Main location |
 | ----- | ---- | ------------- |
-| Entry | Unified launch, dependency checks, language switching | Repository root `run.py` |
-| Configuration | Describes all parameters for one simulation case | `params.yml` in the working directory |
-| Case data | Grid, forcing, namelists, logs, and results for the current run | Working directory (default under `workSpace/`) |
+| Entry | Unified launch, dependency checks, language switching | Repository root run.py |
+| Configuration | Describes all parameters for one simulation case | params.yml in the working directory |
+| Case data | Grid, forcing, namelists, logs, and results for the current run | Working directory (default under workSpace/) |
 
 
 
@@ -146,7 +146,7 @@ python3 run.py shell        → interactive terminal (repeat steps as needed)
 python3 run.py <subcommand> … → headless CLI (scripting and automation)
 ```
 
-The repository-root `params.yml` is only a template. Before running, create or load a separate working directory with `workdir`, then edit `params.yml` in that directory.
+The repository-root params.yml is only a template. Before running, create or load a separate working directory with workdir, then edit params.yml in that directory.
 
 
 
@@ -171,10 +171,10 @@ flowchart LR
   wave maps / spectra / validation]
 ```
 
-Mapping to `params.yml` sections:
+Mapping to params.yml sections:
 
 - forcing — source paths and processing for wind / currents / water level / sea ice
-- grid — grid type, extent, resolution, and `meshgen` parameters
+- grid — grid type, extent, resolution, and meshgen parameters
 - calc — regional, spectral point, or track calculation mode
 - ww3 / ww3_grid — time range, output precision, spectral discretization, timesteps, etc.
 - slurm / server — SSH and remote jobs (server mode only)
@@ -194,7 +194,7 @@ WW3Tool/
 └── src/                # implementation (GUI, pipeline, grid and namelist adapters, etc.)
 ```
 
-In practice, both GUI mode and shell mode call into `src/workflows`.
+In practice, both GUI mode and shell mode call into src/workflows.
 
 
 
@@ -211,7 +211,7 @@ The default new working directory name is the current time, and up to the 3 most
 
 A working directory is just a folder for files generated during runs, such as grid files, wind field files, and WAVEWATCH III configuration files.
 
-The default path is `WW3Tool/workSpace`, and you can change it in Settings.
+The default path is WW3Tool/workSpace, and you can change it in Settings.
 
 
 
@@ -223,7 +223,7 @@ For other forcing fields I have only tested Copernicus currents, water levels, a
 
 ![](public/resource/README-media/2026-03-29%2012.47.52.png)
 
-I have pre-prepared several forcing files in `WW3Tool/public/forcing`, you can select them directly (for testing only).
+I have pre-prepared several forcing files in WW3Tool/public/forcing, you can select them directly (for testing only).
 
 WAVEWATCH requires latitude to be increasing, but ERA5 wind data latitude is decreasing by default. I added logic to detect and automatically flip if latitude is not increasing.
 
@@ -233,11 +233,11 @@ CFSR wind variables are also automatically renamed to match WW3 requirements.
 
 Copernicus forcing timestamps are also automatically fixed in this process.
 
-Forcing files are automatically copied (you can switch to move in Settings) into the current working directory and renamed to `wind.nc`, `current.nc`, `level.nc`, `ice.nc`. The log on the right will also show forcing file information.
+Forcing files are automatically copied (you can switch to move in Settings) into the current working directory and renamed to wind.nc, current.nc, level.nc, ice.nc. The log on the right will also show forcing file information.
 
 Usually, only wind fields are used, and the software does not allow using other forcing fields without wind.
 
-If a file contains multiple forcing fields, the corresponding buttons will be auto-filled, and the file in the working directory will be named like `current_level.nc`, indicating the included fields.
+If a file contains multiple forcing fields, the corresponding buttons will be auto-filled, and the file in the working directory will be named like current_level.nc, indicating the included fields.
 
 
 
@@ -245,9 +245,9 @@ If a file contains multiple forcing fields, the corresponding buttons will be au
 
 #### reference_data
 
-The `reference_data` package contains gebco, etopo1/2, coastline boundaries, and other files needed for grid generation. Without `reference_data`, grid files cannot be generated.
+The reference_data package contains gebco, etopo1/2, coastline boundaries, and other files needed for grid generation. Without reference_data, grid files cannot be generated.
 
-If `WW3Tool/meshgen/reference_data` does not contain these files, a download window will appear in step 2.
+If WW3Tool/meshgen/reference_data does not contain these files, a download window will appear in step 2.
 
 ![](public/resource/README-media/2026-03-30%2016.02.47.png)
 
@@ -255,7 +255,7 @@ Click Download: the program will download from [GitHub Release](https://github.c
 
 ![](public/resource/README-media/2026-03-30%2016.03.00.png)
 
-If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to `WW3Tool/meshgen/reference_data`.
+If GitHub is too slow or fails, you can download from [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) or [Baidu Netdisk](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48), then extract to WW3Tool/meshgen/reference_data.
 
 
 
@@ -265,36 +265,36 @@ If GitHub is too slow or fails, you can download from [OneDrive](https://tiangon
 
 ![](public/resource/README-media/2026-03-30%2016.04.17.png)
 
-Click Generate Grid to call `meshgen/structured_generator/pygridgen` and generate grid files into the working directory.
+Click Generate Grid to call meshgen/structured_generator/pygridgen and generate grid files into the working directory.
 
 Smaller DX/DY gives higher resolution because DX/DY is the spacing between grid points.
 
-Finally, four files will be created in the working directory: `grid.bot`, `grid.obst`, `grid.meta`, `grid.mask_nobound`.
+Finally, four files will be created in the working directory: grid.bot, grid.obst, grid.meta, grid.mask_nobound.
 
-1. **`grid.bot`**
+1. **grid.bot**
    - Format: ASCII text file
    - Content: bathymetry (depth) data
    - Unit: meters (actual value = file value / 1000)
    - Size: Ny × Nx
 
-2. **`grid.mask_nobound`**
+2. **grid.mask_nobound**
    - Format: ASCII text file
    - Content: land/sea mask
    - Values: 0 = land, 1 = ocean
    - Size: Ny × Nx
 
-3. **`grid.obst`**
+3. **grid.obst**
    - Format: ASCII text file
    - Content: obstacle values in x and y directions
    - Unit: ratio between 0–1 (actual value = file value / 100)
    - Size: Ny × Nx (x direction), Ny × Nx (y direction)
 
-4. **`grid.meta`** (actually `ww3_grid.nml`, used to sync some configuration)
+4. **grid.meta** (actually ww3_grid.nml, used to sync some configuration)
    - Format: ASCII text file
-   - Content: grid description for WAVEWATCH III `ww3_grid`
+   - Content: grid description for WAVEWATCH III ww3_grid
    - Includes: grid size, resolution, ranges, etc.
 
-Generated grids are automatically cached in `WW3Tool/meshgen/cache`.
+Generated grids are automatically cached in WW3Tool/meshgen/cache.
 
 ![](workSpace/2026-03-30_16-06-30/photo/grid/grid_bathymetry.png)
 ![](workSpace/2026-03-30_16-06-30/photo/grid/grid_obstruction_x.png)
@@ -314,9 +314,9 @@ When setting the outer grid, it is automatically expanded based on the inner gri
 
 In nested mode, grid generation runs twice: once for the outer grid and once for the inner grid.
 
-In nested mode, two folders are created in the working directory: `coarse` (outer grid) and `fine` (inner grid).
+In nested mode, two folders are created in the working directory: coarse (outer grid) and fine (inner grid).
 
-When a working directory contains `coarse` and `fine`, opening it automatically switches to nested mode, which affects many later operations. Therefore, if `coarse`/`fine` or other grid files already exist, switching grid types is disabled.
+When a working directory contains coarse and fine, opening it automatically switches to nested mode, which affects many later operations. Therefore, if coarse/fine or other grid files already exist, switching grid types is disabled.
 
 
 
@@ -332,11 +332,11 @@ When a working directory contains `coarse` and `fine`, opening it automatically 
 
 #### Grid cache
 
-To avoid unnecessary computation, each generated grid is cached in `WW3Tool/meshgen/cache`.
+To avoid unnecessary computation, each generated grid is cached in WW3Tool/meshgen/cache.
 
 A key is generated from the grid parameters as the folder name. Each time you generate a grid, the cache is checked first; if it exists, the cached grid files are used directly.
 
-Each cache folder also contains `params.json`:
+Each cache folder also contains params.json:
 
 ```json
 {
@@ -376,11 +376,11 @@ The dashed outline shows the actual map range.
 
 These three modes have similar computational cost, but the outputs differ. Spectral point mode and track mode look like only a few points are computed, but the whole map is still computed.
 
-Regional mode is the standard `ww3_ounf` output.
+Regional mode is the standard ww3_ounf output.
 
-Spectral point mode adds `ww3_ounp`.
+Spectral point mode adds ww3_ounp.
 
-Track mode uses `ww3_trnc`.
+Track mode uses ww3_trnc.
 
 You can see their configuration differences in step 4.
 
@@ -402,7 +402,7 @@ Click points on the map; the blue dashed box is the grid range, and you can only
 
 ![](public/resource/README-media/2026-03-30%2016.07.37.png)
 
-Then, in step 4, a `points.list` file is created in the working directory:
+Then, in step 4, a points.list file is created in the working directory:
 
 ```swift
 117 18 '0'
@@ -413,9 +413,9 @@ Then, in step 4, a `points.list` file is created in the working directory:
 126 18 '5'
 ```
 
-The three columns are longitude, latitude, and point name. If a working directory contains `points.list`, opening it will auto-switch to spectral point mode and load the points.
+The three columns are longitude, latitude, and point name. If a working directory contains points.list, opening it will auto-switch to spectral point mode and load the points.
 
-After WW3 runs, you get `ww3.2025_spec.nc` in the plotting page.
+After WW3 runs, you get ww3.2025_spec.nc in the plotting page.
 
 
 You can plot 2D spectra:
@@ -427,7 +427,7 @@ You can plot 2D spectra:
 
 ![](public/resource/README-media/2026-03-30%2016.08.38.png)
 
-Similar to spectral point mode, but with an extra time column. In step 4 a file is generated: `track_i.ww3`, format:
+Similar to spectral point mode, but with an extra time column. In step 4 a file is generated: track_i.ww3, format:
 
 ```
 WAVEWATCH III TRACK LOCATIONS DATA 
@@ -436,7 +436,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 20250105 000000   126.365   16.356    2
 ```
 
-Finally, `ww3_trnc` outputs `ww3.2025_trck.nc`.
+Finally, ww3_trnc outputs ww3.2025_trck.nc.
 
 
 
@@ -470,7 +470,7 @@ We use track mode. This mode produces more configuration logs than regional mode
 
 #### Regular grid
 
-First, all files under `WW3Tool/public/ww3` are copied to the current working directory.
+First, all files under WW3Tool/public/ww3 are copied to the current working directory.
 
 ```
 ✅ Copied 10 public/ww3 files to current work directory
@@ -488,7 +488,7 @@ Next:
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml
 ```
 
-We sync the `grid.meta` contents:
+We sync the grid.meta contents:
 
 ```
 &GRID_NML
@@ -518,7 +518,7 @@ We sync the `grid.meta` contents:
 /
 ```
 
-to the same positions in `ww3_grid.nml`.
+to the same positions in ww3_grid.nml.
 
 
 ---
@@ -529,7 +529,7 @@ Then we modify the spectral partition output scheme:
 ✅ Modified spectral partition output scheme in ww3_shel and ww3_ounf
 ```
 
-`TYPE%FIELD%LIST` in `ww3_shel.nml`:
+TYPE%FIELD%LIST in ww3_shel.nml:
 
 ```swift
 &OUTPUT_TYPE_NML
@@ -537,7 +537,7 @@ Then we modify the spectral partition output scheme:
 /
 ```
 
-`FIELD%LIST` in `ww3_ounf.nml`:
+FIELD%LIST in ww3_ounf.nml:
 
 ```swift
 &FIELD_NML
@@ -556,7 +556,7 @@ The spectral partition output scheme can be configured in Settings.
 
 ---
 
-Next we update `server.sh`:
+Next we update server.sh:
 
 ```log
 ✅ Updated server.sh: -J=202501, -p=CPU6240R, -n=48, -N=1, MPI_NPROCS=48, CASENAME=202501, ST=ST2
@@ -583,7 +583,7 @@ CASENAME=202501
 ✅ Updated ww3_ounf.nml: FIELD%TIMESTART=20250103, FIELD%TIMESTRIDE=3600 seconds
 ```
 
-We then edit `ww3_ounf.nml` and find:
+We then edit ww3_ounf.nml and find:
 
 ```swift
 &FIELD_NML
@@ -595,7 +595,7 @@ We then edit `ww3_ounf.nml` and find:
 /
 ```
 
-`FIELD%TIMESTART` is the start time, and `FIELD%TIMESTRIDE` is the output interval.
+FIELD%TIMESTART is the start time, and FIELD%TIMESTRIDE is the output interval.
 
 ---
 
@@ -603,7 +603,7 @@ We then edit `ww3_ounf.nml` and find:
 ✅ Updated ww3_shel.nml: DOMAIN%START=20250103, DOMAIN%STOP=20250105, DATE%FIELD%STRIDE=1800s
 ```
 
-We edit `ww3_shel.nml`:
+We edit ww3_shel.nml:
 
 ```swift
 &DOMAIN_NML
@@ -618,9 +618,9 @@ We edit `ww3_shel.nml`:
 /
 ```
 
-The dates are start/stop dates. The `'1800'` in `DATE%FIELD` and `DATE%TRACK` is the timestep.
+The dates are start/stop dates. The '1800' in DATE%FIELD and DATE%TRACK is the timestep.
 
-`DATE%TRACK` is added for track mode; it is absent by default.
+DATE%TRACK is added for track mode; it is absent by default.
 
 ---
 
@@ -630,7 +630,7 @@ The dates are start/stop dates. The `'1800'` in `DATE%FIELD` and `DATE%TRACK` is
 ✅ Copied and modified ww3_prnc_level.nml: FORCING%FIELD%WATER_LEVELS = T
 ```
 
-We change the time range in `ww3_prnc.nml` to constrain the later `ww3_prnc` run:
+We change the time range in ww3_prnc.nml to constrain the later ww3_prnc run:
 
 ```sh
 &FORCING_NML
@@ -645,9 +645,9 @@ We change the time range in `ww3_prnc.nml` to constrain the later `ww3_prnc` run
 /
 ```
 
-We then generate `ww3_prnc_current.nml` and `ww3_prnc_level.nml` based on selected forcing. For sea ice, concentration and thickness are split into `ww3_prnc_ice.nml` and `ww3_prnc_ice1.nml`.
+We then generate ww3_prnc_current.nml and ww3_prnc_level.nml based on selected forcing. For sea ice, concentration and thickness are split into ww3_prnc_ice.nml and ww3_prnc_ice1.nml.
 
-We toggle forcing flags accordingly. Each `ww3_prnc*.nml` can only enable a single `FORCING%FIELD%` (set to `T`). Later we rename each `ww3_prnc_*.nml` to `ww3_prnc.nml`, because `ww3_prnc` always reads `ww3_prnc.nml`.
+We toggle forcing flags accordingly. Each ww3_prnc*.nml can only enable a single FORCING%FIELD% (set to T). Later we rename each ww3_prnc_*.nml to ww3_prnc.nml, because ww3_prnc always reads ww3_prnc.nml.
 
 We also update forcing file names and variable names:
 
@@ -683,7 +683,7 @@ We also update forcing file names and variable names:
 ✅ Modified ww3_shel.nml: Updated INPUT%FORCING%* settings
 ```
 
-Based on selected forcing fields, we update `ww3_shel.nml`:
+Based on selected forcing fields, we update ww3_shel.nml:
 
 ```
 &INPUT_NML
@@ -705,7 +705,7 @@ Based on the track-mode list (or spectral point list), we generate:
 ✅ Generated track_i.ww3 file
 ```
 
-Format of `track_i.ww3`:
+Format of track_i.ww3:
 
 ```
 WAVEWATCH III TRACK LOCATIONS DATA 
@@ -722,7 +722,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ Modified ww3_shel.nml: Added DATE%TRACK (Track Mode)
 ```
 
-We also add to `ww3_shel.nml`:
+We also add to ww3_shel.nml:
 
 ```
 &OUTPUT_DATE_NML
@@ -738,7 +738,7 @@ We also add to `ww3_shel.nml`:
 ✅ Modified ww3_trnc.nml: TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
-We edit `ww3_trnc.nml`:
+We edit ww3_trnc.nml:
 
 ```
 &TRACK_NML
@@ -754,7 +754,7 @@ We edit `ww3_trnc.nml`:
 ✅ Updated namelists.nml: Changed E3D from 0 to 1 (Spectral Point Calculation Mode)
 ```
 
-For spectral point mode, we also modify `namelists.nml`:
+For spectral point mode, we also modify namelists.nml:
 
 ```swift
 &OUTS E3D = 0 /
@@ -766,7 +766,7 @@ For spectral point mode, we also modify `namelists.nml`:
 
 ![](public/resource/README-media/2026-03-30%2016.12.11.png)
 
-We first generate nested grids and create `coarse` and `fine` folders in the working directory, then choose spectral point mode.
+We first generate nested grids and create coarse and fine folders in the working directory, then choose spectral point mode.
 
 
 ```log
@@ -818,9 +818,9 @@ We confirm parameters in step 4 and watch the log output:
 ✅ Copied server.sh, ww3_multi.nml, local.sh to the current work directory
 ```
 
-We first copy `server.sh`, `local.sh`, and `ww3_multi.nml` from `WW3Tool/public/ww3` to the working directory.
+We first copy server.sh, local.sh, and ww3_multi.nml from WW3Tool/public/ww3 to the working directory.
 
-We import `ww3_multi.nml` and modify start time, precision, and forcing fields. This is similar to `ww3_shel.nml`:
+We import ww3_multi.nml and modify start time, precision, and forcing fields. This is similar to ww3_shel.nml:
 
 ```sh
 &INPUT_GRID_NML
@@ -867,13 +867,13 @@ INPUT (I)%FORCING%ICE_PARAM1 = ice thickness
 
 There are still many incomplete parts for sea-ice forcing.
 
-Note `MODEL (2)%FORCING%WINDS = 'native'`, where `native` means enabled and `no` means disabled.
+Note MODEL (2)%FORCING%WINDS = 'native', where native means enabled and no means disabled.
 
-`MODEL (1)%RESOURCE` and `MODEL (2)%RESOURCE` define the compute resource allocation ratio.
+MODEL (1)%RESOURCE and MODEL (2)%RESOURCE define the compute resource allocation ratio.
 
 Other logs are straightforward; we just handle inner/outer grids like normal grids.
 
-Notably, we modify `ww3_prnc.nml`: `FILE%FILENAME = '../wind.nc'` to avoid doubling forcing file size by sharing a reference.
+Notably, we modify ww3_prnc.nml: FILE%FILENAME = '../wind.nc' to avoid doubling forcing file size by sharing a reference.
 
 
 
@@ -895,9 +895,9 @@ In the previous section, these three logs are for spectral point mode, and they 
 
 ![](public/resource/README-media/2026-03-30%2016.14.15.png)
 
-Local run executes `local.sh`.
+Local run executes local.sh.
 
-If you choose local execution, make sure WAVEWATCH III is configured locally, and choose the `bin` directory which should contain:
+If you choose local execution, make sure WAVEWATCH III is configured locally, and choose the bin directory which should contain:
 
 ```
 gx_outf    ww3_bound  ww3_grid   ww3_ounf   ww3_outp   ww3_shel   
@@ -930,35 +930,35 @@ If you submit a Slurm job in step 6, the job queue will also be shown.
 
 ### Server operations
 
-Viewing the job queue runs `squeue -l` on the server.
+Viewing the job queue runs squeue -l on the server.
 
 Upload working directory uploads the current directory to the server working directory (configured in Settings).
 
 ![](public/resource/README-media/2026-03-30%2016.15.39.png)
 
-Submit job runs the `server.sh` script on the server. All WW3 logs are always written to `run.log`. On success it creates an empty marker file `success` in the working directory; on failure it creates an empty marker file `fail` (`run.log` is never renamed).
+Submit job runs the server.sh script on the server. All WW3 logs are always written to run.log. On success it creates an empty marker file success in the working directory; on failure it creates an empty marker file fail (run.log is never renamed).
 
-So to check completion, see if the `success` or `fail` marker exists. While neither exists, the job is still running and `run.log` holds the live log.
+So to check completion, see if the success or fail marker exists. While neither exists, the job is still running and run.log holds the live log.
 
 ![](public/resource/README-media/2026-03-30%2015.59.30.png)
 
 Clear folder clears the current server working directory.
 
-Download results downloads all `ww3.nc` files. In nested mode, it only downloads results under `fine`.
+Download results downloads all ww3.nc files. In nested mode, it only downloads results under fine.
 
-Download log downloads `run.log` plus the `success` / `fail` markers.
+Download log downloads run.log plus the success / fail markers.
 
 
 
 ### Automation
 
-Open a working directory and it will auto-detect converted forcing files (by filename `wind.nc`, `level.nc`, `current.nc`) and auto-fill forcing buttons.
+Open a working directory and it will auto-detect converted forcing files (by filename wind.nc, level.nc, current.nc) and auto-fill forcing buttons.
 
-Auto-read grid range and resolution and fill step 2, detect `coarse` and `fine` folders and switch to nested mode.
+Auto-read grid range and resolution and fill step 2, detect coarse and fine folders and switch to nested mode.
 
-Auto-detect `points.list` to switch to point output mode; detect `track_i.ww3` to switch to track mode and import the points list.
+Auto-detect points.list to switch to point output mode; detect track_i.ww3 to switch to track mode and import the points list.
 
-Auto-read Slurm parameters from `server.sh` to fill step 4, auto-detect `ww3_shel.nml` precision, time range, spectral partition scheme.
+Auto-read Slurm parameters from server.sh to fill step 4, auto-detect ww3_shel.nml precision, time range, spectral partition scheme.
 
 
 
@@ -993,11 +993,11 @@ JASON data path is used for plotting, e.g., comparing simulated results with JAS
 
 WW3 configuration is the default values in step 4 and the Confirm Parameters button.
 
-File splitting is `TIMESPLIT` in `ww3_ounf.nml`, `ww3_ounp.nml`, `ww3_trnc.nml`. If your time range is 3 months, monthly or yearly split is suitable; daily split produces one file per day.
+File splitting is TIMESPLIT in ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml. If your time range is 3 months, monthly or yearly split is suitable; daily split produces one file per day.
 
 ![](public/resource/README-media/2026-03-30%2015.50.52.png)
 
-Spectrum parameters, numerical integration timestep, and nearshore configuration are in `ww3_grid.nml`. Changing them here updates both WW3Tool and the current working directory `ww3_grid.nml` (if it exists).
+Spectrum parameters, numerical integration timestep, and nearshore configuration are in ww3_grid.nml. Changing them here updates both WW3Tool and the current working directory ww3_grid.nml (if it exists).
 
 ```swift
 &SPECTRUM_NML
@@ -1015,7 +1015,7 @@ Spectrum parameters, numerical integration timestep, and nearshore configuration
 /
 ```
 
-Spectral partition output is configured in `ww3_shel.nml`, `ww3_ounf.nml`, `ww3_ounp.nml`.
+Spectral partition output is configured in ww3_shel.nml, ww3_ounf.nml, ww3_ounp.nml.
 
 
 
@@ -1098,7 +1098,7 @@ The image below shows ERA5 download. You must register an account first. When re
 
 [http://tds.hycom.org/thredds/catalog/datasets/force/ncep_cfsv2/netcdf/catalog.html](http://tds.hycom.org/thredds/catalog/datasets/force/ncep_cfsv2/netcdf/catalog.html)
 
-Find `cfsv2-sec2_2025_01hr_uv-10m.nc` (note the `uv-10m` suffix).
+Find cfsv2-sec2_2025_01hr_uv-10m.nc (note the uv-10m suffix).
 
 If you want to download global full-year data, click:
 
@@ -1108,7 +1108,7 @@ If you want a specific region/time range, click NetcdfSubset:
 
 NetcdfSubset: //ncss. hycom. org/thredds/ncss/grid/datasets/force/ncep_cfsv2/netcdf/cfsv2-sec2_2025_01hr_uv-10m.nc
 
-Open it and select the two variables `wndewd` and `wndnwd` on the left, scroll down and choose Output Format: netCDF.
+Open it and select the two variables wndewd and wndnwd on the left, scroll down and choose Output Format: netCDF.
 
 If you cannot input lat/lon, uncheck Disable horizontal subsetting.
 

@@ -6,37 +6,19 @@ import re
 import traceback
 
 from ...support.translations import tr
-from ..runtime_config import load_config, PUBLIC_DIR, get_nml_template_dir
+from ..runtime_config import DEFAULT_OUTPUT_VARS_SCHEME_VARS
 from .nml_primitives import NMLPrimitives
 
 
 class WW3MultiNML(NMLPrimitives):
     """Mixin: ww3_multi.nml operations for nested grid mode."""
 
-    def _read_type_field_list_from_shel(self, shel_path):
-        """从 ww3_shel.nml 读取 TYPE%FIELD%LIST 的值"""
-        if not os.path.exists(shel_path):
-            return None
-
-        try:
-            with open(shel_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-
-            for line in lines:
-                # 检查是否为注释行
-                line_stripped = line.lstrip()
-                is_comment = line_stripped.startswith('!')
-
-                # 查找 TYPE%FIELD%LIST 行（非注释行，不区分大小写）
-                if not is_comment and re.search(r'TYPE%FIELD%LIST', line, re.IGNORECASE) and "=" in line:
-                    # 提取引号内的内容
-                    match = re.search(r"['\"]([^'\"]+)['\"]", line)
-                    if match:
-                        return match.group(1)
-        except Exception:
-            pass
-
-        return None
+    def _resolve_output_field_list_for_multi(self) -> str:
+        """从 params/GUI 当前谱分区方案解析变量列表（供 ww3_multi 与 ww3_shel 写入）。"""
+        var_list = self._get_output_scheme_var_list()
+        if var_list:
+            return var_list
+        return " ".join(DEFAULT_OUTPUT_VARS_SCHEME_VARS)
 
     def _read_grid_nx_ny_from_nml(self, nml_path):
         """从 ww3_grid.nml 文件中读取 RECT%NX 和 RECT%NY 值"""
@@ -194,24 +176,14 @@ class WW3MultiNML(NMLPrimitives):
             if not is_nested_grid and hasattr(self, 'selected_folder') and self.selected_folder:
                 is_nested_grid = bool(level_resources)
 
-            # 如果是嵌套网格模式，读取 ww3_shel.nml 中的 TYPE%FIELD%LIST 值
             alltype_field_list_value = None
             if is_nested_grid:
-                # 优先从当前工作目录的 ww3_shel.nml 读取
-                if hasattr(self, 'selected_folder') and self.selected_folder:
-                    shel_path = os.path.join(self.selected_folder, "ww3_shel.nml")
-                    alltype_field_list_value = self._read_type_field_list_from_shel(shel_path)
-
-                # 如果工作目录中没有，尝试从 NML 模板目录读取
-                if not alltype_field_list_value:
-                    config = load_config()
-                    nml_template_dir = get_nml_template_dir()
-                    shel_path = os.path.join(nml_template_dir, "ww3_shel.nml")
-                    alltype_field_list_value = self._read_type_field_list_from_shel(shel_path)
-
-                # 如果还是找不到，使用默认值（谱分区输出常用变量）
-                if not alltype_field_list_value:
-                    alltype_field_list_value = 'HS LM T02 T0M1 T01 FP DIR SPR DP PHS PTP PLP PDIR PSPR PWS TWS PNR'
+                alltype_field_list_value = self._resolve_output_field_list_for_multi()
+                if hasattr(self, "selected_folder") and self.selected_folder:
+                    self._write_type_field_list_to_shel(
+                        self.selected_folder,
+                        alltype_field_list_value,
+                    )
 
             # 检查是否为谱空间逐点计算模式
             is_spectral_point = self._is_spectral_point_mode()
@@ -249,7 +221,7 @@ class WW3MultiNML(NMLPrimitives):
                     continue
 
                 if in_output_type:
-                    # 处理 ALLTYPE%FIELD%LIST（嵌套网格模式下从 ww3_shel.nml 读取值）
+                    # 处理 ALLTYPE%FIELD%LIST（嵌套网格：与 params 谱分区方案一致）
                     if re.search(r'ALLTYPE%FIELD%LIST', line, re.IGNORECASE):
                         if is_nested_grid and alltype_field_list_value:
                             # 嵌套网格模式：设置为从 ww3_shel.nml 读取的值
@@ -304,7 +276,7 @@ class WW3MultiNML(NMLPrimitives):
                     continue
 
                 if in_output:
-                    # ALLDATE%FIELD：统一写入 output_precision（输出步长）
+                    # ALLDATE%FIELD：统一写入 output_step（输出步长）
                     if re.search(r"ALLDATE%FIELD%START", line, re.IGNORECASE):
                         new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
                         modified_alldate_field = True
@@ -316,7 +288,7 @@ class WW3MultiNML(NMLPrimitives):
                         modified_alldate_field = True
                         continue
 
-                    # ALLDATE%POINT：谱点模式下同样使用 output_precision
+                    # ALLDATE%POINT：谱点模式下同样使用 output_step
                     if re.search(r"ALLDATE%POINT%START", line, re.IGNORECASE):
                         if is_spectral_point and has_spectral_points:
                             new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")

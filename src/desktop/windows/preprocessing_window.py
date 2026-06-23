@@ -1147,28 +1147,27 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _calc_grid_bounds(self) -> dict | None:
         # [EN] Read grid lon/lat bounding box from params.yml (config.grid) for step 3 point validation.
-        # [EN] No longer depends on generated grid files; nested grids take the union of outer + inner.
+        # [EN] Nested grids include every level rectangle for map display (union for click validation).
         """从 params.yml 的 config.grid 读取经纬度包围盒，供第三步点位校验。
 
-        不再依赖第二步已生成的网格文件；嵌套网格取外、内网格范围的并集。
+        嵌套网格返回各层矩形列表（``levels``）及并集范围；选点须在并集内。
         """
+        from ..steps.point_io import bounds_from_level_regions
+
         config = self._config_from_current_workdir_params(validation_stage="grid", log=False)
         if config is None:
             return None
-        outer = config.grid.outer
-        if not outer or not outer.lon or not outer.lat:
-            return None
-        inner = config.grid.inner if config.grid.grid_type == "nested" else None
-        all_lon = list(outer.lon) + (list(inner.lon) if inner and inner.lon else [])
-        all_lat = list(outer.lat) + (list(inner.lat) if inner and inner.lat else [])
-        if len(all_lon) < 2 or len(all_lat) < 2:
-            return None
-        return {
-            "lon_min": min(all_lon),
-            "lon_max": max(all_lon),
-            "lat_min": min(all_lat),
-            "lat_max": max(all_lat),
-        }
+        levels = config.grid.nested_levels or ([config.grid.outer] if config.grid.outer else [])
+        n = len(levels)
+        labels = []
+        for i in range(n):
+            if n == 1:
+                labels.append(tr("step3_map_grid_range", "网格范围"))
+            elif i == n - 1:
+                labels.append(tr("step2_level_finest", "level{i}（最细）").format(i=i))
+            else:
+                labels.append(tr("step2_level_n", "level{i}").format(i=i))
+        return bounds_from_level_regions(levels, level_labels=labels)
 
     def _persist_params(self) -> bool:
         # [EN] Write current form (including step 3 points) back to params.yml; report error and return False if points are incomplete.
@@ -1340,7 +1339,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._append_log(summary)
 
     def _nested_factor(self) -> float:
-        factor = self._loaded_config.grid.nested_contraction_coefficient if self._loaded_config else 1.3
+        nested = self._loaded_config.grid.structured.nested if self._loaded_config else None
+        factor = nested.nested_contraction_coefficient if nested else 1.3
         if factor <= 0:
             raise ValueError(tr("nested_factor_must_positive", "❌ 嵌套收缩系数必须大于 0"))
         return factor

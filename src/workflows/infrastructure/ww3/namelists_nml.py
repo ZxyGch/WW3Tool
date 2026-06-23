@@ -2,7 +2,7 @@
 
 当用户启用谱空间逐点计算或输出方案包含 EF 变量时，将 ``&OUTS`` 块中的 ``E3D``
 设为 1，并联动修改 ``ww3_shel.nml`` 中的 ``TYPE%POINT%FILE``、``DATE%POINT`` 等项。
-支持普通网格与嵌套网格（coarse/fine 子目录）两种布局。
+支持普通网格与嵌套网格（level0…levelN 子目录）两种布局。
 
 [EN] namelists.nml modification Mixin — E3D spectral partition flag and spectral
 point mode linkage.
@@ -10,7 +10,7 @@ point mode linkage.
 When the user enables spectral point-by-point computation or the output scheme
 contains EF variables, ``E3D`` in the ``&OUTS`` block is set to 1, and related
 items in ``ww3_shel.nml`` such as ``TYPE%POINT%FILE``, ``DATE%POINT`` etc. are
-updated accordingly. Supports both normal grid and nested grid (coarse/fine
+updated accordingly. Supports both normal grid and nested grid (level0…levelN
 subdirectory) layouts.
 """
 from __future__ import annotations
@@ -64,15 +64,10 @@ class NamelistsNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # [EN] Nested grid mode: modify files in coarse and fine directories
-            # 嵌套网格模式：修改 coarse 和 fine 目录下的文件
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
+            from .nested_level_dirs import list_nested_level_paths
 
-            if os.path.isdir(coarse_dir):
-                self._modify_namelists_e3d_in_dir(coarse_dir)
-            if os.path.isdir(fine_dir):
-                self._modify_namelists_e3d_in_dir(fine_dir)
+            for level_dir in list_nested_level_paths(self.selected_folder):
+                self._modify_namelists_e3d_in_dir(str(level_dir))
         else:
             # [EN] Normal grid mode: modify files in the working directory
             # 普通网格模式：修改工作目录下的文件

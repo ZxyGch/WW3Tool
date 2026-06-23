@@ -6,7 +6,7 @@
 - ``smc``：SMC 生成器子进程；
 - ``unstructured``：非结构网格 JSON 驱动流程。
 
-嵌套网格时会分别在外层 ``coarse/`` 与内层 ``fine/`` 目录产出网格文件。
+嵌套网格时会在各 ``level0``…``levelN`` 子目录分别产出网格文件。
 
 [EN] Headless grid generation adapter.
 
@@ -17,8 +17,7 @@ Invokes the corresponding generator under meshgen based on
 - ``smc``: SMC generator subprocess;
 - ``unstructured``: unstructured grid JSON-driven workflow.
 
-For nested grids, grid files are produced in the outer ``coarse/`` and inner
-``fine/`` directories respectively.
+For nested grids, grid files are produced in ``level0``…``levelN`` subdirectories.
 """
 
 from __future__ import annotations

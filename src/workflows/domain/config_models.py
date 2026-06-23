@@ -92,16 +92,22 @@ class GridRegion:
     Key fields:
     - ``dx`` / ``dy``: zonal and meridional grid spacing (degrees)
     - ``lon`` / ``lat``: longitude and latitude bounds as ``[min, max]``
-    - ``compute_precision`` / ``output_precision``: 该层独立的 ww3_shel 积分步 /
-      输出步（秒）；省略时回退全局 ``ww3.compute_precision`` / ``output_precision``。
     """
 
     dx: Optional[float] = None
     dy: Optional[float] = None
     lon: Optional[List[float]] = None
     lat: Optional[List[float]] = None
-    compute_precision: Optional[str] = None
-    output_precision: Optional[str] = None
+
+
+@dataclass
+class StructuredNestedSettings:
+    """结构化嵌套网格的 GUI / 套娃辅助参数（``grid.structured.nested``）。
+
+    [EN] Auxiliary nested-grid settings under ``grid.structured.nested``.
+    """
+
+    nested_contraction_coefficient: Optional[float] = None
 
 
 @dataclass
@@ -129,6 +135,7 @@ class StructuredGridSettings:
     lim_val: Optional[float] = None
     split_lim: Optional[float] = None
     lake_tol: Optional[float] = None
+    nested: StructuredNestedSettings = field(default_factory=StructuredNestedSettings)
 
 
 @dataclass
@@ -215,7 +222,6 @@ class GridConfig:
     nested_levels: Optional[List[GridRegion]] = None
     gridgen_version: Optional[str] = None
     reference_data_path: Optional[Path] = None
-    nested_contraction_coefficient: Optional[float] = None
     structured: StructuredGridSettings = field(default_factory=StructuredGridSettings)
     smc: SMCGridSettings = field(default_factory=SMCGridSettings)
     unstructured: UnstructuredGridSettings = field(default_factory=UnstructuredGridSettings)
@@ -314,26 +320,21 @@ class WW3Config:
 
     关键字段：
     - ``start_date`` / ``end_date``：模拟起止时间
-    - ``compute_precision`` / ``output_precision``：积分与输出时间步（秒）
-    - ``inner_*``：嵌套内圈网格的独立时间步（可选）
+    - ``output_step``：输出时间步（秒），同时写入 ww3_shel / ww3_ounp / ww3_ounf
     - ``output_scheme`` / ``st``：输出场方案与源项物理包（``st`` 已迁移至 ``slurm.server_st``，保留向后兼容）
 
     [EN] WAVEWATCH III run period and output scheme (corresponds to YAML ``ww3:`` section).
 
     Key fields:
     - ``start_date`` / ``end_date``: simulation start and end times
-    - ``compute_precision`` / ``output_precision``: integration and output time steps (seconds)
-    - ``inner_*``: independent time steps for the nested inner grid (optional)
+    - ``output_step``: output time step (seconds) for ww3_shel, ww3_ounp, and ww3_ounf
     - ``output_scheme``: output field scheme
     - ``st``: DEPRECATED — use ``slurm.server_st`` instead; kept for backward compatibility
     """
 
     start_date: str = ""
     end_date: str = ""
-    compute_precision: Optional[str] = None
-    output_precision: Optional[str] = None
-    inner_compute_precision: Optional[str] = None
-    inner_output_precision: Optional[str] = None
+    output_step: Optional[str] = None
     file_split: Optional[str] = None
     output_scheme: Optional[str] = None
     st: Optional[str] = None

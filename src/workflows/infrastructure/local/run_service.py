@@ -312,7 +312,9 @@ class LocalRunService:
                 nprocs = 1
         log(tr("local_run_mpi_nprocs", "使用 MPI_NPROCS={nprocs}").format(nprocs=nprocs))
 
-        nested = (wp / "coarse").is_dir() and (wp / "fine").is_dir()
+        from workflows.infrastructure.ww3.nested_level_dirs import is_nested_workdir
+
+        nested = is_nested_workdir(wp)
 
         if nested:
             rc = self._workflow_nested(wp, bin_dir, log, nprocs)
@@ -363,10 +365,16 @@ class LocalRunService:
     # ---- nested grid workflow ----
 
     def _workflow_nested(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
-        coarse = str(wp / "coarse")
-        fine = str(wp / "fine")
+        from workflows.infrastructure.ww3.nested_level_dirs import list_nested_level_entries
 
-        for label, sub in [("coarse", coarse), ("fine", fine)]:
+        levels = list_nested_level_entries(wp)
+        if not levels:
+            log(tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
+            return 1
+
+        for level_path, _idx in levels:
+            label = level_path.name
+            sub = str(level_path)
             log("")
             log("=" * 30 + " " + tr("local_run_step_grid_label", "运行 ww3_grid ({label})").format(label=label) + " " + "=" * 30)
             rc = self._run_tool_in("ww3_grid", sub, bin_dir, log)
@@ -381,21 +389,11 @@ class LocalRunService:
             if rc != 0:
                 return rc
 
-        # Move files
-        _move_if(wp / "coarse" / "mod_def.ww3", wp / "mod_def.coarse")
-        _move_if(wp / "coarse" / "restart.ww3", wp / "restart.coarse")
-        _move_if(wp / "coarse" / "wind.ww3", wp / "wind.coarse")
-        _move_if(wp / "coarse" / "current.ww3", wp / "current.coarse")
-        _move_if(wp / "coarse" / "level.ww3", wp / "level.coarse")
-        _move_if(wp / "coarse" / "ice.ww3", wp / "ice.coarse")
-        _move_if(wp / "coarse" / "ice1.ww3", wp / "ice1.coarse")
-        _move_if(wp / "fine" / "mod_def.ww3", wp / "mod_def.fine")
-        _move_if(wp / "fine" / "restart.ww3", wp / "restart.fine")
-        _move_if(wp / "fine" / "wind.ww3", wp / "wind.fine")
-        _move_if(wp / "fine" / "current.ww3", wp / "current.fine")
-        _move_if(wp / "fine" / "level.ww3", wp / "level.fine")
-        _move_if(wp / "fine" / "ice.ww3", wp / "ice.fine")
-        _move_if(wp / "fine" / "ice1.ww3", wp / "ice1.fine")
+        staged = ("mod_def", "restart", "wind", "current", "level", "ice", "ice1")
+        for level_path, _idx in levels:
+            lv = level_path.name
+            for stem in staged:
+                _move_if(level_path / f"{stem}.ww3", wp / f"{stem}.{lv}")
 
         # Run ww3_multi
         multi = self._resolve_tool("ww3_multi", bin_dir)
@@ -415,20 +413,28 @@ class LocalRunService:
         if rc != 0:
             return rc
 
-        # Move results
-        _move_if(wp / "out_grd.fine", wp / "fine" / "out_grd.ww3")
-        _move_if(wp / "mod_def.fine", wp / "fine" / "mod_def.ww3")
-        _move_if(wp / "out_pnt.fine", wp / "fine" / "out_pnt.ww3")
+        finest_path = levels[-1][0]
+        finest = finest_path.name
+        _move_if(wp / f"out_grd.{finest}", finest_path / "out_grd.ww3")
+        _move_if(wp / f"mod_def.{finest}", finest_path / "mod_def.ww3")
+        _move_if(wp / f"out_pnt.{finest}", finest_path / "out_pnt.ww3")
 
-        # Post-processing in fine dir
-        return self._run_post_processing(str(wp / "fine"), bin_dir, log)
+        return self._run_post_processing(str(finest_path), bin_dir, log, points_list_dir=str(wp))
 
     # ---- post-processing ----
 
-    def _run_post_processing(self, workdir: str, bin_dir: str, log: LogCallback) -> int:
+    def _run_post_processing(
+        self,
+        workdir: str,
+        bin_dir: str,
+        log: LogCallback,
+        *,
+        points_list_dir: str | None = None,
+    ) -> int:
         wp = Path(workdir)
+        points_root = Path(points_list_dir) if points_list_dir else wp
         rc = 0
-        if (wp / "points.list").exists():
+        if (points_root / "points.list").exists():
             log("")
             log("=" * 30 + " " + tr("local_run_step_ounp", "运行 ww3_ounp") + " " + "=" * 30)
             rc = self._run_tool_in("ww3_ounp", workdir, bin_dir, log)

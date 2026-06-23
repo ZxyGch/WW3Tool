@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -33,6 +34,7 @@ class _LevelCard(QWidget):
         on_changed: Callable[[], None],
     ) -> None:
         super().__init__()
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self._input_style = input_style
         self.fields: dict[str, LineEdit] = {}
 
@@ -55,7 +57,6 @@ class _LevelCard(QWidget):
         self._line(grid, 1, 2, tr("step2_lon_east", "东经:"), "lon_east", on_changed)
         self._line(grid, 2, 0, tr("step2_lat_south", "南纬:"), "lat_south", on_changed)
         self._line(grid, 2, 2, tr("step2_lat_north", "北纬:"), "lat_north", on_changed)
-        self._line(grid, 3, 0, tr("step2_compute_step", "积分步:"), "compute_precision", on_changed)
         root.addLayout(grid)
 
     def _line(self, grid: QGridLayout, row: int, col: int, label: str, key: str,
@@ -68,8 +69,6 @@ class _LevelCard(QWidget):
             field.setValidator(double_validator(-360.0, 360.0))
         elif key in ("dx", "dy"):
             field.setValidator(double_validator(0.0, 1.0e6))
-        else:  # compute_precision / output_precision（秒）
-            field.setValidator(double_validator(0.0, 1.0e7))
         field.textChanged.connect(on_changed)
         grid.addWidget(QLabel(label), row, col)
         grid.addWidget(field, row, col + 1)
@@ -85,9 +84,6 @@ class _LevelCard(QWidget):
             "lon": [self.fields["lon_west"].text().strip(), self.fields["lon_east"].text().strip()],
             "lat": [self.fields["lat_south"].text().strip(), self.fields["lat_north"].text().strip()],
         }
-        cp = self.fields["compute_precision"].text().strip()
-        if cp:
-            data["compute_precision"] = cp
         return data
 
     def set_from_region(self, region: GridRegion) -> None:
@@ -99,8 +95,6 @@ class _LevelCard(QWidget):
         if region.lat:
             self.fields["lat_south"].setText(f"{region.lat[0]:.4f}")
             self.fields["lat_north"].setText(f"{region.lat[1]:.4f}")
-        self.fields["compute_precision"].setText(
-            str(region.compute_precision) if region.compute_precision else "")
 
     def region_floats(self):
         """返回 (dx, dy, lon, lat) 浮点；任一字段无法解析时返回 None（供校验/套娃用）。"""
@@ -144,52 +138,6 @@ class GridStepPanel:
         self.level_cards: list[_LevelCard] = []
         group, layout = create_header_card(parent, tr("step2_title", "第二步：生成网格"))
 
-        # level0（最粗 / 主域）参数块
-        self.outer_grid_title = section_title(tr("step2_level0_params", "level0（最粗）网格参数"))
-        self.outer_grid_title.hide()
-        layout.addWidget(self.outer_grid_title)
-        outer_grid = QGridLayout()
-        outer_grid.setSpacing(10)
-        outer_grid.setColumnStretch(1, 1)
-        outer_grid.setColumnStretch(3, 1)
-        self._display_line(outer_grid, 0, 0, tr("step2_dx", "DX:"), "grid_dx")
-        self._display_line(outer_grid, 0, 2, tr("step2_dy", "DY:"), "grid_dy")
-        self._display_line(outer_grid, 1, 0, tr("step2_lon_west", "西经:"), "grid_lon_west")
-        self._display_line(outer_grid, 1, 2, tr("step2_lon_east", "东经:"), "grid_lon_east")
-        self._display_line(outer_grid, 2, 0, tr("step2_lat_south", "南纬:"), "grid_lat_south")
-        self._display_line(outer_grid, 2, 2, tr("step2_lat_north", "北纬:"), "grid_lat_north")
-        layout.addLayout(outer_grid)
-
-        # level0 的可选积分步（仅嵌套模式显示）；输出步各层统一用全局 ww3.output_precision
-        self.level0_prec_widget = QWidget()
-        prec_grid = QGridLayout(self.level0_prec_widget)
-        prec_grid.setContentsMargins(0, 0, 0, 0)
-        prec_grid.setSpacing(10)
-        prec_grid.setColumnStretch(1, 1)
-        prec_grid.setColumnStretch(3, 1)
-        self._display_line(prec_grid, 0, 0, tr("step2_compute_step", "积分步:"), "grid_compute")
-        self.level0_prec_widget.hide()
-        layout.addWidget(self.level0_prec_widget)
-
-        # level1…levelN：可增删层卡片列表（可滚动）
-        self.levels_widget = QWidget()
-        levels_layout = QVBoxLayout(self.levels_widget)
-        levels_layout.setContentsMargins(0, 0, 0, 0)
-        levels_layout.setSpacing(8)
-        levels_layout.addWidget(section_title(tr("step2_nested_levels", "其余嵌套层（细 → 最细）")))
-        # 卡片直接竖排、完全展开（不用滚动条）；容器随内容收缩，避免底部留大空隙
-        self._cards_container = QWidget()
-        self._cards_layout = QVBoxLayout(self._cards_container)
-        self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(8)
-        levels_layout.addWidget(self._cards_container)
-        self.levels_hint = QLabel("")
-        self.levels_hint.setWordWrap(True)
-        self.levels_hint.setStyleSheet("color: #c0392b;")
-        levels_layout.addWidget(self.levels_hint)
-        self.levels_widget.hide()
-        layout.addWidget(self.levels_widget)
-
         type_grid = QGridLayout()
         type_grid.setContentsMargins(0, 0, 0, 0)
         type_grid.setSpacing(10)
@@ -218,7 +166,47 @@ class GridStepPanel:
         type_grid.addWidget(self.grid_type_combo, 0, 1)
         type_grid.addWidget(self.mesh_type_label, 1, 0)
         type_grid.addWidget(self.mesh_type_combo, 1, 1)
-        self._align_left_control_columns(outer_grid, prec_grid, type_grid)
+
+        # level0（最粗 / 主域）参数块
+        self.outer_grid_title = section_title(tr("step2_level0_params", "level0（最粗）网格参数"))
+        self.outer_grid_title.hide()
+        layout.addWidget(self.outer_grid_title)
+        outer_grid = QGridLayout()
+        outer_grid.setSpacing(10)
+        outer_grid.setColumnStretch(1, 1)
+        outer_grid.setColumnStretch(3, 1)
+        self._display_line(outer_grid, 0, 0, tr("step2_dx", "DX:"), "grid_dx")
+        self._display_line(outer_grid, 0, 2, tr("step2_dy", "DY:"), "grid_dy")
+        self._display_line(outer_grid, 1, 0, tr("step2_lon_west", "西经:"), "grid_lon_west")
+        self._display_line(outer_grid, 1, 2, tr("step2_lon_east", "东经:"), "grid_lon_east")
+        self._display_line(outer_grid, 2, 0, tr("step2_lat_south", "南纬:"), "grid_lat_south")
+        self._display_line(outer_grid, 2, 2, tr("step2_lat_north", "北纬:"), "grid_lat_north")
+        layout.addLayout(outer_grid)
+
+        # level1…levelN：可增删层卡片列表
+        self.levels_widget = QWidget()
+        self.levels_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        levels_layout = QVBoxLayout(self.levels_widget)
+        levels_layout.setContentsMargins(0, 0, 0, 0)
+        levels_layout.setSpacing(8)
+        levels_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        levels_layout.addWidget(section_title(tr("step2_nested_levels", "其余嵌套层（细 → 最细）")))
+        self._cards_container = QWidget()
+        self._cards_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._cards_layout = QVBoxLayout(self._cards_container)
+        self._cards_layout.setContentsMargins(0, 0, 0, 0)
+        self._cards_layout.setSpacing(8)
+        self._cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        levels_layout.addWidget(self._cards_container)
+        self.levels_hint = QLabel("")
+        self.levels_hint.setWordWrap(True)
+        self.levels_hint.setStyleSheet("color: #c0392b;")
+        self.levels_hint.hide()
+        levels_layout.addWidget(self.levels_hint)
+        self.levels_widget.hide()
+        layout.addWidget(self.levels_widget)
+
+        self._align_left_control_columns(outer_grid, type_grid)
         layout.addLayout(type_grid)
 
         # SMC 内联参数（选择 SMC 网格时显示）
@@ -261,16 +249,16 @@ class GridStepPanel:
         self.recommend_button = create_button(tr("step2_recommend_params", "推荐参数"), recommend_params)
         self.grid_button = create_button(tr("step2_create_grid", "生成网格"), generate_grid)
         self.visualize_button = create_button(tr("step2_visualize_grid", "网格可视化"), visualize_grid)
-        layout.addWidget(self.load_bounds_button)
-        # 添加/删除层并排一行
+        # 添加/删除层并排一行（嵌套模式）
         level_btn_row = QHBoxLayout()
         level_btn_row.setContentsMargins(0, 0, 0, 0)
         level_btn_row.setSpacing(10)
         level_btn_row.addWidget(self.add_level_button)
         level_btn_row.addWidget(self.delete_level_button)
         layout.addLayout(level_btn_row)
+        layout.addWidget(self.telescope_button)
+        layout.addWidget(self.load_bounds_button)
         for button in (
-            self.telescope_button,
             self.map_button,
             self.recommend_button,
             self.grid_button,
@@ -293,6 +281,8 @@ class GridStepPanel:
 
     @property
     def is_nested(self) -> bool:
+        if self.mesh_type_combo.currentIndex() != 0:
+            return False
         return self.grid_type_combo.currentIndex() == 1
 
     def render(self, grid: GridConfig) -> None:
@@ -307,7 +297,6 @@ class GridStepPanel:
             self.set_value("grid_lon_east", f"{grid.outer.lon[1]:.4f}")
             self.set_value("grid_lat_south", f"{grid.outer.lat[0]:.4f}")
             self.set_value("grid_lat_north", f"{grid.outer.lat[1]:.4f}")
-            self.set_value("grid_compute", str(grid.outer.compute_precision) if grid.outer.compute_precision else "")
             self.grid_type_combo.setCurrentIndex(1 if grid.grid_type == "nested" else 0)
             self.mesh_type_combo.setCurrentIndex({"structured": 0, "smc": 1, "unstructured": 2}.get(grid.mesh_type, 0))
             if grid.smc is not None:
@@ -348,9 +337,6 @@ class GridStepPanel:
         mesh_type = ["structured", "smc", "unstructured"][self.mesh_type_combo.currentIndex()]
         if self.is_nested:
             level0 = self._region_overrides("grid")
-            cp = self.fields["grid_compute"].text().strip()
-            if cp:
-                level0["compute_precision"] = cp
             levels = [level0] + [card.to_override() for card in self.level_cards]
         else:
             levels = [self._region_overrides("grid")]
@@ -571,7 +557,7 @@ class GridStepPanel:
     def _validate_levels(self) -> None:
         """实时校验：逐层 dx 递减 + 套娃 + 层数 ≤ 99；违例在卡片下方红字提示。"""
         if not self.is_nested:
-            self.levels_hint.setText("")
+            self.levels_hint.hide()
             return
         regions = []
         base = self._grid_region_floats()
@@ -592,7 +578,9 @@ class GridStepPanel:
                 msgs.append(tr("step2_level_contain_warn", "{c} 必须完全落在 {p} 范围内").format(c=cn, p=pn))
         if 1 + len(self.level_cards) > 99:
             msgs.append(tr("step2_level_max_warn", "嵌套层数不能超过 99"))
-        self.levels_hint.setText("  ".join(msgs))
+        hint = "  ".join(msgs)
+        self.levels_hint.setText(hint)
+        self.levels_hint.setVisible(bool(hint))
 
     # ── 内部辅助 ────────────────────────────────────────────────
 
@@ -644,7 +632,6 @@ class GridStepPanel:
             self.field_labels["grid_dx"],
             self.field_labels["grid_lon_west"],
             self.field_labels["grid_lat_south"],
-            self.field_labels["grid_compute"],
             self.grid_type_label,
             self.mesh_type_label,
         ]
@@ -654,24 +641,24 @@ class GridStepPanel:
         for grid in grids:
             grid.setColumnMinimumWidth(0, width)
 
+    def _nested_ui_visible(self) -> bool:
+        """嵌套层编辑区：仅矩形网格 + 嵌套类型时显示。"""
+        return self.is_nested and self.mesh_type_combo.currentIndex() == 0
+
     def _on_grid_type_changed(self) -> None:
-        nested = self.is_nested
-        self.outer_grid_title.setVisible(nested)
-        self.level0_prec_widget.setVisible(nested)
-        self.levels_widget.setVisible(nested)
-        self.telescope_button.setVisible(nested)
-        self.add_level_button.setVisible(nested)
-        self.delete_level_button.setVisible(nested)
-        if nested:
-            self.mesh_type_combo.setCurrentIndex(0)
-            self.mesh_type_combo.setEnabled(False)
-            if not self.level_cards:  # 至少 level0 + 1 层，凑成可用的嵌套
+        show_nested = self._nested_ui_visible()
+        self.outer_grid_title.setVisible(show_nested)
+        self.levels_widget.setVisible(show_nested)
+        self.telescope_button.setVisible(show_nested)
+        self.add_level_button.setVisible(show_nested)
+        self.delete_level_button.setVisible(show_nested)
+        if self.is_nested and show_nested:
+            if not self.level_cards:
                 self._add_level()
             self._renumber_cards()
             self._validate_levels()
-        else:
-            self.mesh_type_combo.setEnabled(True)
-            self.levels_hint.setText("")
+        elif not self.is_nested:
+            self.levels_hint.hide()
 
     def _on_mesh_type_changed(self) -> None:
         idx = self.mesh_type_combo.currentIndex()
@@ -680,16 +667,14 @@ class GridStepPanel:
         unstructured = idx == 2
         self.grid_type_label.setVisible(structured)
         self.grid_type_combo.setVisible(structured)
+        if not structured:
+            self.grid_type_combo.blockSignals(True)
+            self.grid_type_combo.setCurrentIndex(0)
+            self.grid_type_combo.blockSignals(False)
         # DX/DY 在 SMC 和非结构下隐藏
         for key in ("grid_dx", "grid_dy"):
             self.fields[key].setVisible(structured)
             self.field_labels[key].setVisible(structured)
         self.smc_params_widget.setVisible(smc)
         self.unst_params_widget.setVisible(unstructured)
-        if not structured:
-            self.grid_type_combo.setCurrentIndex(0)
-            self.levels_widget.hide()
-            self.level0_prec_widget.hide()
-            self.telescope_button.hide()
-            self.add_level_button.hide()
-            self.delete_level_button.hide()
+        self._on_grid_type_changed()

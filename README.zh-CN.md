@@ -33,7 +33,7 @@ Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](htt
 
 6. 波高图、波高视频、等高线图、二维谱图、JASON3 卫星轨迹图、二维谱图
 
-WW3Tool 可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码），软件支持中英文切换，交互式终端可通过 `--lang en_US` 切换到英文，默认为中文。
+WW3Tool 可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码），软件支持中英文切换，交互式终端可通过 --lang en_US 切换到英文，默认为中文。
 
 实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
 
@@ -47,7 +47,7 @@ WW3Tool 可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 g
 
 ## 快速开始
 
-`run.py` 是整个软件的唯一入口，通过它提供三种调用方式：
+run.py 是整个软件的唯一入口，通过它提供三种调用方式：
 
 ```sh
 python3 run.py                 # 1. 图形界面 (默认)
@@ -73,7 +73,7 @@ python3 run.py
 ### 2. 交互式命令行
 
 ![](public/resource/README-media/截屏2026-06-13%2016.30.04.png)
-如果更习惯终端操作，可以用 `run.py shell` 进入交互式 REPL 环境，加载配置后反复执行各步骤：
+如果更习惯终端操作，可以用 run.py shell 进入交互式 REPL 环境，加载配置后反复执行各步骤：
 
 ```sh
 python3 run.py shell
@@ -92,7 +92,7 @@ python3 run.py workdir my_case    # 从模板创建并加载工作目录
 
 ### 3. 无界面 CLI 
 
-每个步骤都可作为一次性子命令直接调用，读取工作目录的 `params.yml` 后执行并退出：
+每个步骤都可作为一次性子命令直接调用，读取工作目录的 params.yml 后执行并退出：
 
 ```sh
 python3 run.py workdir my_case              # 创建或加载工作目录
@@ -105,7 +105,7 @@ python3 run.py plot-wave-maps my_case       # 绘图
 
 这种"一条命令一个步骤、无需人工交互"的形式特别适合脚本自动化与 AI（如 Claude Code 等）调用：AI 可以直接发起这些命令、读取标准输出与退出码来判断每一步是否成功，无需操作图形界面。
 
-完整子命令列表见 `python3 run.py --help`。
+完整子命令列表见 python3 run.py --help。
 
 
 
@@ -129,18 +129,18 @@ python3 run.py plot-wave-maps my_case       # 绘图
 
 ## 整体架构
 
-> 提示：你完全可以不了解下文中的目录、配置与流程细节，只简单地使用图形界面（`python3 run.py`）逐步操作即可；
+> 提示：你完全可以不了解下文中的目录、配置与流程细节，只简单地使用图形界面（python3 run.py）逐步操作即可；
 GUI 与 Shell / CLI 共用同一套能力，不会缺少任何功能。
 
-WW3Tool 是围绕 WAVEWATCH III 的预处理与运行辅助工具：负责强迫场整理、网格生成、namelist / 脚本生成、（可选）本地或远程提交运行，以及结果绘图与检验。不包含 WW3 数值模式本身，也不替代你在本机或服务器上安装好的 `ww3_grid`、`ww3_prnc`、`ww3_shel` 等可执行程序。
+WW3Tool 是围绕 WAVEWATCH III 的预处理与运行辅助工具：负责强迫场整理、网格生成、namelist / 脚本生成、（可选）本地或远程提交运行，以及结果绘图与检验。不包含 WW3 数值模式本身，也不替代你在本机或服务器上安装好的 ww3_grid、ww3_prnc、ww3_shel 等可执行程序。
 
 从使用角度看，软件由三层组成：
 
 | 层次   | 作用                             | 主要载体                     |
 | ---- | ------------------------------ | ------------------------ |
-| 入口   | 统一启动、依赖检查、语言切换                 | 仓库根目录 `run.py`           |
-| 配置   | 描述一次算例的全部参数                    | 工作目录内 `params.yml`       |
-| 算例数据 | 存放本次运行产生的网格、强迫场、namelist、日志与结果 | 工作目录（默认在 `workSpace/` 下） |
+| 入口   | 统一启动、依赖检查、语言切换                 | 仓库根目录 run.py           |
+| 配置   | 描述一次算例的全部参数                    | 工作目录内 params.yml       |
+| 算例数据 | 存放本次运行产生的网格、强迫场、namelist、日志与结果 | 工作目录（默认在 workSpace/ 下） |
 
 
 
@@ -154,7 +154,7 @@ python3 run.py shell        → 交互式终端（可反复执行各步骤）
 python3 run.py <子命令> …   → 无界面 CLI（适合脚本与自动化）
 ```
 
-根目录的 `params.yml` 仅为模板；实际运行前须用 `workdir` 创建或加载独立工作目录，再编辑该目录下的 `params.yml`。
+根目录的 params.yml 仅为模板；实际运行前须用 workdir 创建或加载独立工作目录，再编辑该目录下的 params.yml。
 
 
 
@@ -179,10 +179,10 @@ flowchart LR
   波高图 / 谱图 / 检验等]
 ```
 
-各步骤与 `params.yml` 中的段落对应关系：
+各步骤与 params.yml 中的段落对应关系：
 
 - forcing — 风 / 流 / 水位 / 海冰源文件路径与处理方式  
-- grid — 网格类型、范围、分辨率及 `meshgen` 相关参数  
+- grid — 网格类型、范围、分辨率及 meshgen 相关参数  
 - calc — 区域、谱点或航迹计算模式  
 - ww3 / ww3_grid — 时间范围、输出精度、谱离散与时间步等  
 - slurm / server — SSH 与远程作业（仅服务器模式）  
@@ -286,27 +286,27 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.meta、grid.mask_nobound
 
-1. **`grid.bot`**
+1. **grid.bot**
    - 格式：ASCII 文本文件
    - 内容：网格水深数据 (来)
    - 单位：来 (实际值 = 文件值 / 1000)
    - 尺寸：Ny × Nx
 
-2. **`grid.mask_nobound`**
+2. **grid.mask_nobound**
    - 格式：ASCII 文本文件
    - 内容：陆海掩膜
    - 值：0 = 陆地，1 = 海洋
    - 尺寸：Ny × Nx
 
-3. **`grid.obst`**
+3. **grid.obst**
    - 格式：ASCII 文本文件
    - 内容：x 和 y 方向的障碍物值
    - 单位：0-1 之间的比例 (实际值 = 文件值 / 100)
    - 尺寸：Ny × Nx (x 方向)，Ny × Nx (y 方向)
 
-4. **`grid.meta`**(实际上是 ww3_grid. nml，用于同步一些配置)
+4. **grid.meta**(实际上是 ww3_grid. nml，用于同步一些配置)
    - 格式：ASCII 文本文件
-   - 内容：供 WAVEWATCH III `ww3_grid` 使用的网格描述
+   - 内容：供 WAVEWATCH III ww3_grid 使用的网格描述
    - 包含：网格尺寸、分辨率、范围等信息
 
    生成的网格会自动缓存到 WW3Tool/meshgen/cache
@@ -961,7 +961,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 ![](public/resource/README-media/2026-03-30%2016.41.08.png)
 
-提交计算任务就是在服务器执行 server.sh 脚本。所有 WW3 执行日志始终写入 `run.log`；运行成功后在工作目录创建一个空标记文件 `success`，失败则创建空标记文件 `fail`（`run.log` 不改名）。判断是否完成：看 `success` 或 `fail` 标记是否存在，两者都没有则仍在运行，`run.log` 为实时日志
+提交计算任务就是在服务器执行 server.sh 脚本。所有 WW3 执行日志始终写入 run.log；运行成功后在工作目录创建一个空标记文件 success，失败则创建空标记文件 fail（run.log 不改名）。判断是否完成：看 success 或 fail 标记是否存在，两者都没有则仍在运行，run.log 为实时日志
 
 因此检查是否已完成可以检测是否存在 success 或 fail 标记，两者都没有说明服务器还在执行（run.log 为实时日志）。
 

@@ -125,7 +125,7 @@ run_ww3_shel_with_fallback() {
 # Determine grid type from params.yml (fall back to the on-disk layout)
 GRID_TYPE="$(grep -m1 -E '^[[:space:]]*grid_type:' "$SCRIPT_ROOT/params.yml" 2>/dev/null | sed -E 's/.*grid_type:[[:space:]]*//; s/[[:space:]]*$//')"
 if [ -z "$GRID_TYPE" ]; then
-    if [ -d "coarse" ] && [ -d "fine" ]; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
+    if ls -d level[0-9]* >/dev/null 2>&1; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
 fi
 echo "Grid type (from params.yml): $GRID_TYPE"
 
@@ -133,11 +133,10 @@ if [ "$GRID_TYPE" = "nested" ]; then
     ######################################
     # Nested grid mode (N levels: level0=coarsest .. levelN=finest)
     ######################################
-    # Discover nested grid dirs; fall back to old coarse/fine layout.
+    # Discover nested grid dirs (level0=coarsest .. levelN=finest).
     LEVELS=$(ls -d level[0-9]* 2>/dev/null | sort -V)
-    [ -z "$LEVELS" ] && LEVELS=$(ls -d coarse fine 2>/dev/null)
     if [ -z "$LEVELS" ]; then
-        echo "no nested grid dirs (level*/coarse/fine) found" ; fail_exit 1
+        echo "no nested grid dirs (level*) found" ; fail_exit 1
     fi
     FINEST=$(echo "$LEVELS" | tr ' ' '\n' | sed '/^$/d' | tail -1)
 
@@ -177,7 +176,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     [ -f "mod_def.$FINEST" ] && mv "mod_def.$FINEST" "$FINEST/mod_def.ww3"
     [ -f "out_pnt.$FINEST" ] && mv "out_pnt.$FINEST" "$FINEST/out_pnt.ww3"
     cd "$FINEST"
-    [ -f points.list ] && run_step "ww3_ounp ($FINEST)" ww3_ounp
+    [ -f ../points.list ] && run_step "ww3_ounp ($FINEST)" ww3_ounp
     [ -f track_i.ww3 ] && run_step "ww3_trnc ($FINEST)" ww3_trnc
     run_step "ww3_ounf ($FINEST)" ww3_ounf
     cd ..

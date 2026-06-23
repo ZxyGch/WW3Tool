@@ -167,7 +167,6 @@ _INTEGER_CONFIG_KEYS = {
     "DTMIN",
     "KERNEL_NUM",
     "NODE_NUM",
-    "COMPUTE_PRECISION",
     "OUTPUT_PRECISION",
     "SERVER_PORT",
 }
@@ -586,9 +585,8 @@ class SettingsInterface(QWidget):
         grid = self._card(tr("ww3_config_card", "WW3 配置"))
         self._combo(grid, 0, 0, tr("set_ww3_version", "WW3 版本："), "WW3_VERSION", list(WW3_VERSION_VALUES))
         self._combos["WW3_VERSION"].currentIndexChanged.connect(self._on_ww3_version_changed)
-        self._text(grid, 1, 0, tr("set_compute_precision", "计算精度："), "COMPUTE_PRECISION")
-        self._text(grid, 2, 0, tr("set_output_precision", "输出精度："), "OUTPUT_PRECISION")
-        self._combo(grid, 3, 0, tr("set_file_split", "文件分割："), "FILE_SPLIT", _file_split_items())
+        self._text(grid, 1, 0, tr("set_output_precision", "输出精度："), "OUTPUT_PRECISION")
+        self._combo(grid, 2, 0, tr("set_file_split", "文件分割："), "FILE_SPLIT", _file_split_items())
 
     def _on_ww3_version_changed(self, _index: int) -> None:
         combo = self._combos.get("WW3_VERSION")

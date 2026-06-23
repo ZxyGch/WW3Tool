@@ -1,7 +1,7 @@
 # workflows — 架构说明
 
-`workflows/` 是 WW3Tool CLI 和 Desktop 共用的核心代码包，负责所有与 WW3 相关的业务逻辑。
-Desktop 层（`src/desktop/`）调用这里，CLI 入口（根目录 `run.py`）也调用这里，两者不直接共享代码。
+workflows/ 是 WW3Tool CLI 和 Desktop 共用的核心代码包，负责所有与 WW3 相关的业务逻辑。
+Desktop 层（src/desktop/）调用这里，CLI 入口（根目录 run.py）也调用这里，两者不直接共享代码。
 
 ---
 
@@ -31,15 +31,15 @@ interfaces
 
 ## 各层详解
 
-### `domain/` — 领域模型
+### domain/ — 领域模型
 
 不依赖任何其他层。改动频率低，是整个包的"词汇表"。
 
 | 文件 | 说明 |
 |---|---|
-| `config_models.py` | 整个流水线的参数数据类（dataclass），涵盖 forcing / grid / ww3 / plot 等所有配置段 |
-| `forcing_fields.py` | `ForcingField` 枚举（WIND / CURRENT / LEVEL / ICE）及 `Step1Files` 路径容器 |
-| `parameter_catalog.py` | 参数的枚举选项常量，如地形分辨率、输出字段列表、文件分割方式等 |
+| config_models.py | 整个流水线的参数数据类（dataclass），涵盖 forcing / grid / ww3 / plot 等所有配置段 |
+| forcing_fields.py | ForcingField 枚举（WIND / CURRENT / LEVEL / ICE）及 Step1Files 路径容器 |
+| parameter_catalog.py | 参数的枚举选项常量，如地形分辨率、输出字段列表、文件分割方式等 |
 
 flowchart LR
     params["params.yml"]
@@ -56,134 +56,134 @@ flowchart LR
     models --> desktop
 
 
-### `support/` — 支撑工具
+### support/ — 支撑工具
 
 被所有层使用，自身不依赖 domain/infrastructure/application。
 
 | 文件 | 说明 |
 |---|---|
-| `logging.py` | `CoreLogger`：统一日志接口，支持回调函数（CLI 用 `print`，Desktop 用信号） |
-| `translations.py` | `tr(key, default)` 的无 Qt 版本——在 CLI/headless 上下文中直接返回 default |
+| logging.py | CoreLogger：统一日志接口，支持回调函数（CLI 用 print，Desktop 用信号） |
+| translations.py | tr(key, default) 的无 Qt 版本——在 CLI/headless 上下文中直接返回 default |
 
-### `infrastructure/` — 基础设施
+### infrastructure/ — 基础设施
 
 封装所有"副作用"：文件读写、子进程调用、第三方库（matplotlib、netCDF4、paramiko）。
 **application 层只通过这里与外部世界交互。**
 
-#### `infrastructure/forcing/` — 场文件处理（Step 1）
+#### infrastructure/forcing/ — 场文件处理（Step 1）
 
 | 文件 | 说明 |
 |---|---|
-| `file_path_manager.py` | 计算 workdir 内 wind.nc / current.nc 等目标路径 |
-| `file_service.py` | 文件复制 / 移动，调用归一化服务完成单遍标准化 |
-| `variable_detector.py` | 检测 NetCDF 文件中的变量类型（u/v 风场、SWH 等） |
-| `forcing_normalize_service.py` | 单遍归一化所有强迫场（坐标、变量名、时间单位）为 WW3 标准格式 |
-| `use_cases.py` | `ImportForcingFileUseCase`：统一入口，组合上面几个类完成任意场文件的导入 |
+| file_path_manager.py | 计算 workdir 内 wind.nc / current.nc 等目标路径 |
+| file_service.py | 文件复制 / 移动，调用归一化服务完成单遍标准化 |
+| variable_detector.py | 检测 NetCDF 文件中的变量类型（u/v 风场、SWH 等） |
+| forcing_normalize_service.py | 单遍归一化所有强迫场（坐标、变量名、时间单位）为 WW3 标准格式 |
+| use_cases.py | ImportForcingFileUseCase：统一入口，组合上面几个类完成任意场文件的导入 |
 
-> **注意**：`use_cases.py` 位于 infrastructure 层而非 application 层，因为它直接封装了文件 I/O 操作，不包含流程判断。
+> **注意**：use_cases.py 位于 infrastructure 层而非 application 层，因为它直接封装了文件 I/O 操作，不包含流程判断。
 
-#### `infrastructure/adapters/` — 高层适配器
-
-| 文件 | 说明 |
-|---|---|
-| `grid_generation_adapter.py` | 调用 structured / SMC / unstructured 网格生成器（均以子进程方式运行） |
-| `grid_visualization_adapter.py` | 在子进程中运行 `grid_visualization/worker.py`，返回生成的图片路径列表 |
-| `ww3_namelist_adapter.py` | 组装 WW3 namelist 文件（ww3_shel.nml、ww3_grid.nml 等），通过 fake-widget 适配层调用 `ww3/step4_service.py` |
-
-#### `infrastructure/grid_visualization/` — 网格可视化
+#### infrastructure/adapters/ — 高层适配器
 
 | 文件 | 说明 |
 |---|---|
-| `worker.py` | 主 worker：读取网格文件，用 matplotlib + cartopy 渲染结构化 / SMC / 非结构化三种网格 |
-| `rect_grid_desc_parse.py` | 解析 structured 网格的 `.desc` 文本文件 |
-| `structured_grid_paths.py` | 管理 structured 网格 workdir 中的文件路径约定 |
+| grid_generation_adapter.py | 调用 structured / SMC / unstructured 网格生成器（均以子进程方式运行） |
+| grid_visualization_adapter.py | 在子进程中运行 grid_visualization/worker.py，返回生成的图片路径列表 |
+| ww3_namelist_adapter.py | 组装 WW3 namelist 文件（ww3_shel.nml、ww3_grid.nml 等），通过 fake-widget 适配层调用 ww3/step4_service.py |
 
-#### `infrastructure/plot/` — 后处理绘图 workers
-
-每个 worker 接收 `(folder, ..., log_queue, result_queue)` 参数，设计上与 GUI 解耦；
-CLI 通过 `queue.SimpleQueue` 同步桥接，Desktop 通过多进程 Queue 异步调用。
+#### infrastructure/grid_visualization/ — 网格可视化
 
 | 文件 | 说明 |
 |---|---|
-| `workers_utils.py` | 公共纯函数：WW3 NetCDF 经纬度解析、SMC/非结构网格判别、Jason 配位展平 |
-| `wave_map_worker.py` | `_make_wave_maps_worker`：波高填色图；`_make_contour_maps_worker`：等值线图 |
-| `spectrum_worker.py` | 三个频谱 worker：`_generate_first_/all_/selected_spectrum_worker` |
-| `jason3_worker.py` | `_match_ww3_jason3_worker`：WW3 × Jason-3 卫星匹配；`_run_jason3_swh_worker`：SWH 分布图 |
-| `ndbc_worker.py` | `_match_ww3_ndbc_worker`：WW3 × NDBC 浮标匹配；`_download_ndbc_worker`：下载浮标数据 |
+| worker.py | 主 worker：读取网格文件，用 matplotlib + cartopy 渲染结构化 / SMC / 非结构化三种网格 |
+| rect_grid_desc_parse.py | 解析 structured 网格的 .desc 文本文件 |
+| structured_grid_paths.py | 管理 structured 网格 workdir 中的文件路径约定 |
 
-#### `infrastructure/ww3/` — WW3 Namelist 生成逻辑
+#### infrastructure/plot/ — 后处理绘图 workers
 
-| 文件 | 说明 |
-|---|---|
-| `modify_ww3_nml.py` | 底层：读取、修改、写入 `.nml` 文件的字符串操作 |
-| `step4_service.py` | 从 src 迁移的业务逻辑 Mixin：计算 WW3 运行参数、生成 `ww3_shel.nml` |
-
-#### `infrastructure/` 直属文件
+每个 worker 接收 (folder, ..., log_queue, result_queue) 参数，设计上与 GUI 解耦；
+CLI 通过 queue.SimpleQueue 同步桥接，Desktop 通过多进程 Queue 异步调用。
 
 | 文件 | 说明 |
 |---|---|
-| `runtime_config.py` | 读取 `public/config.json`；提供 ST 方案、CPU 配置、默认参数等运行时常量 |
-| `region_map_renderer.py` | 用 matplotlib + cartopy 将网格经纬度范围渲染成地理预览图（PNG） |
+| workers_utils.py | 公共纯函数：WW3 NetCDF 经纬度解析、SMC/非结构网格判别、Jason 配位展平 |
+| wave_map_worker.py | _make_wave_maps_worker：波高填色图；_make_contour_maps_worker：等值线图 |
+| spectrum_worker.py | 三个频谱 worker：_generate_first_/all_/selected_spectrum_worker |
+| jason3_worker.py | _match_ww3_jason3_worker：WW3 × Jason-3 卫星匹配；_run_jason3_swh_worker：SWH 分布图 |
+| ndbc_worker.py | _match_ww3_ndbc_worker：WW3 × NDBC 浮标匹配；_download_ndbc_worker：下载浮标数据 |
+
+#### infrastructure/ww3/ — WW3 Namelist 生成逻辑
+
+| 文件 | 说明 |
+|---|---|
+| modify_ww3_nml.py | 底层：读取、修改、写入 .nml 文件的字符串操作 |
+| step4_service.py | 从 src 迁移的业务逻辑 Mixin：计算 WW3 运行参数、生成 ww3_shel.nml |
+
+#### infrastructure/ 直属文件
+
+| 文件 | 说明 |
+|---|---|
+| runtime_config.py | 读取 public/config.json；提供 ST 方案、CPU 配置、默认参数等运行时常量 |
+| region_map_renderer.py | 用 matplotlib + cartopy 将网格经纬度范围渲染成地理预览图（PNG） |
 
 ---
 
-### `application/` — 应用用例
+### application/ — 应用用例
 
-编排 infrastructure 层的能力，形成完整的可运行流程。每个文件对应一个功能单元，返回带 `messages` 字段的 Result dataclass，便于 CLI 打印和 Desktop 展示。
+编排 infrastructure 层的能力，形成完整的可运行流程。每个文件对应一个功能单元，返回带 messages 字段的 Result dataclass，便于 CLI 打印和 Desktop 展示。
 
 #### 预处理（Preprocessing）
 
 | 文件 | 说明 |
 |---|---|
-| `configuration.py` | YAML 加载、路径解析、参数校验，输出 `PipelineConfig`；包含 `EXAMPLE_YAML` 模板 |
-| `preprocessing_workflow.py` | `run_pipeline`：forcing → grid → ww3 namelist 完整流水线；`run_prepare_forcing`：仅场文件 |
-| `forcing_preparation.py` | 单步：为所有配置的场字段调用 use_cases，输出 `Step1Files` |
-| `forcing_inspection.py` | 只读：输出已选场文件的概览信息（变量范围、时间范围等） |
-| `grid_preparation.py` | 单步：`run_generate_grid`，调用 grid_generation_adapter |
-| `grid_tools.py` | 只读工具：从 workdir 读取网格边界，供 Desktop 预览使用 |
+| configuration.py | YAML 加载、路径解析、参数校验，输出 PipelineConfig；包含 EXAMPLE_YAML 模板 |
+| preprocessing_workflow.py | run_pipeline：forcing → grid → ww3 namelist 完整流水线；run_prepare_forcing：仅场文件 |
+| forcing_preparation.py | 单步：为所有配置的场字段调用 use_cases，输出 Step1Files |
+| forcing_inspection.py | 只读：输出已选场文件的概览信息（变量范围、时间范围等） |
+| grid_preparation.py | 单步：run_generate_grid，调用 grid_generation_adapter |
+| grid_tools.py | 只读工具：从 workdir 读取网格边界，供 Desktop 预览使用 |
 
 #### 后处理（Post-processing）
 
 | 文件 | 说明 |
 |---|---|
-| `plot_wave_maps.py` | `run_wave_maps` / `run_contour_maps`：波高图生成 |
-| `plot_spectrum.py` | `run_spectrum(mode="first"/"all"/"selected")`：频谱图生成 |
-| `match_jason3.py` | `run_match_jason3` / `run_jason3_swh`：Jason-3 数据匹配与分布图 |
-| `match_ndbc.py` | `run_match_ndbc` / `run_download_ndbc`：NDBC 浮标匹配与数据下载 |
+| plot_wave_maps.py | run_wave_maps / run_contour_maps：波高图生成 |
+| plot_spectrum.py | run_spectrum(mode="first"/"all"/"selected")：频谱图生成 |
+| match_jason3.py | run_match_jason3 / run_jason3_swh：Jason-3 数据匹配与分布图 |
+| match_ndbc.py | run_match_ndbc / run_download_ndbc：NDBC 浮标匹配与数据下载 |
 
 ---
 
-### `interfaces/` — 入口适配器
+### interfaces/ — 入口适配器
 
 | 文件 | 说明 |
 |---|---|
-| `command_line.py` | `argparse` 解析器 + `main()` 分发；支持预处理、绘图和远程运维命令（见下表） |
+| command_line.py | argparse 解析器 + main() 分发；支持预处理、绘图和远程运维命令（见下表） |
 
 **CLI 命令列表：**
 
 | 命令 | 功能 |
 |---|---|
-| `validate` | 校验 params.yml 合法性 |
-| `prepare-forcing` | 仅执行场文件准备 |
-| `merge-forcing INPUT... -o OUTPUT` | 校验并合并 NetCDF 强迫场文件 |
-| `generate-grid` | 仅执行网格生成 |
-| `run [--skip-grid]` | 执行完整预处理流水线 |
-| `plot` | 运行 params.yml `plot:` 段中所有 enabled 的绘图任务 |
-| `plot-wave-maps [--contour]` | 生成波高填色图或等值线图 |
-| `plot-spectrum [--mode] [--station]` | 生成二维频谱图 |
-| `match-jason3` | WW3 × Jason-3 匹配 |
-| `match-ndbc [--download]` | WW3 × NDBC 匹配，或下载 NDBC 数据 |
-| `connect-test` | 测试 SSH 连接 |
-| `list-files` | 查看远程工作目录文件列表 |
-| `upload --confirm` | 上传本地工作目录到远程 |
-| `submit [--script]` | 在远程工作目录执行提交脚本 |
-| `check-status` | 检查 success / fail 标记状态 |
-| `queue-status` | 查看 SLURM 队列 |
-| `download-results [--nested]` | 下载远程 WW3 结果文件 |
-| `download-log` | 下载 run.log 及 success/fail 标记 |
-| `clear-remote --confirm` | 清空远程工作目录 |
-| `cancel-job` | 取消 SLURM 任务 |
-| `print-example` | 打印带注释的 params.yml 模板 |
+| validate | 校验 params.yml 合法性 |
+| prepare-forcing | 仅执行场文件准备 |
+| merge-forcing INPUT... -o OUTPUT | 校验并合并 NetCDF 强迫场文件 |
+| generate-grid | 仅执行网格生成 |
+| run [--skip-grid] | 执行完整预处理流水线 |
+| plot | 运行 params.yml plot: 段中所有 enabled 的绘图任务 |
+| plot-wave-maps [--contour] | 生成波高填色图或等值线图 |
+| plot-spectrum [--mode] [--station] | 生成二维频谱图 |
+| match-jason3 | WW3 × Jason-3 匹配 |
+| match-ndbc [--download] | WW3 × NDBC 匹配，或下载 NDBC 数据 |
+| connect-test | 测试 SSH 连接 |
+| list-files | 查看远程工作目录文件列表 |
+| upload --confirm | 上传本地工作目录到远程 |
+| submit [--script] | 在远程工作目录执行提交脚本 |
+| check-status | 检查 success / fail 标记状态 |
+| queue-status | 查看 SLURM 队列 |
+| download-results [--nested] | 下载远程 WW3 结果文件 |
+| download-log | 下载 run.log 及 success/fail 标记 |
+| clear-remote --confirm | 清空远程工作目录 |
+| cancel-job | 取消 SLURM 任务 |
+| print-example | 打印带注释的 params.yml 模板 |
 
 ---
 
@@ -196,10 +196,10 @@ domain → support ← infrastructure ← application ← interfaces 的依赖�
 Desktop 可以直接调用 application 层，CLI 也调用同一套代码，实现了重构计划的"共用核心"目标。
 
 **2. 配置集中**
-`configuration.py` 是唯一的 YAML 解析入口，所有参数经过类型校验后以强类型 dataclass 传入下游，避免了 `dict.get("key")` 散落全局的问题。
+configuration.py 是唯一的 YAML 解析入口，所有参数经过类型校验后以强类型 dataclass 传入下游，避免了 dict.get("key") 散落全局的问题。
 
 **3. Workers 与 GUI 解耦**
-plot 层的 worker 函数接收 `log_queue`/`result_queue` 而非 Qt 信号，Desktop 和 CLI 都能复用，且可以按需放入子进程。
+plot 层的 worker 函数接收 log_queue/result_queue 而非 Qt 信号，Desktop 和 CLI 都能复用，且可以按需放入子进程。
 
 ---
 
@@ -207,27 +207,27 @@ plot 层的 worker 函数接收 `log_queue`/`result_queue` 而非 Qt 信号，De
 
 **① ww3 namelist 的控件适配层** ✅ 已整理
 
-`ModifyWW3NML` / `StepFourServiceMixin` 是 Qt Mixin 类，方法通过 `self.widget.text()` 读取运行参数。`_WW3Adapter` 采用 **Object Adapter 模式**，将 `PipelineConfig` 中的纯 Python 值包装为轻量级控件桩对象，使两个 Mixin 能在无 GUI 环境下工作，且无需修改其内部逻辑（4730 行，Desktop 同样依赖）。
+ModifyWW3NML / StepFourServiceMixin 是 Qt Mixin 类，方法通过 self.widget.text() 读取运行参数。_WW3Adapter 采用 **Object Adapter 模式**，将 PipelineConfig 中的纯 Python 值包装为轻量级控件桩对象，使两个 Mixin 能在无 GUI 环境下工作，且无需修改其内部逻辑（4730 行，Desktop 同样依赖）。
 
-控件桩已提取到 `infrastructure/ww3/widget_stubs.py`，含设计意图注释，不再内联于适配器文件。
+控件桩已提取到 infrastructure/ww3/widget_stubs.py，含设计意图注释，不再内联于适配器文件。
 
 **② plot workers 的实时日志** ✅ 已修复
 
-原本用 `queue.SimpleQueue` 桥接导致日志在 worker 完成后才统一输出。现改用 `support/queue_bridge.py` 中的 `ImmediateQueue`：每次 `put()` 立即触发 `logger.log()` 回调，CLI 可看到实时进度。Desktop 多进程路径继续使用 `multiprocessing.Queue`，不受影响。
+原本用 queue.SimpleQueue 桥接导致日志在 worker 完成后才统一输出。现改用 support/queue_bridge.py 中的 ImmediateQueue：每次 put() 立即触发 logger.log() 回调，CLI 可看到实时进度。Desktop 多进程路径继续使用 multiprocessing.Queue，不受影响。
 
-**③ `forcing/use_cases.py` 命名** ✅ 已改善
+**③ forcing/use_cases.py 命名** ✅ 已改善
 
 文件顶部说明了 "UseCase" 是历史命名遗留，并在末尾提供了符合基础设施惯例的别名：
-`ForcingAutoAssociator`、`ForcingFileImporter`、`WorkdirForcingScanner`。
+ForcingAutoAssociator、ForcingFileImporter、WorkdirForcingScanner。
 旧名称保留以维持与 Desktop 层的向后兼容。
 
-**④ `grid_tools.py` 注释误导** ✅ 已修正
+**④ grid_tools.py 注释误导** ✅ 已修正
 
 文件注释更新为：工具函数放在 application 层，是为了让未来的 CLI 检查命令也能复用，而非仅供 Desktop 使用。
 
 **⑤ 网格可视化与 plot workers 调用方式不一致** ✅ 已文档化
 
-在 `grid_visualization_adapter.py` 顶部增加说明：grid 可视化必须用子进程，原因是与 Desktop Qt 事件循环共存时 matplotlib 后端会冲突；plot workers 在事件循环不活跃时直接在进程内调用。
+在 grid_visualization_adapter.py 顶部增加说明：grid 可视化必须用子进程，原因是与 Desktop Qt 事件循环共存时 matplotlib 后端会冲突；plot workers 在事件循环不活跃时直接在进程内调用。
 
 ---
 

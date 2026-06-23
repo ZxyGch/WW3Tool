@@ -684,10 +684,7 @@ _INT_PARAM_PATHS = {
     "grid.smc.msea",
     "grid.unstructured.nwav",
     "grid.unstructured.edge_segments",
-    "ww3.compute_precision",
-    "ww3.output_precision",
-    "ww3.inner_compute_precision",
-    "ww3.inner_output_precision",
+    "ww3.output_step",
     "ww3_grid.SPECTRUM%NK",
     "ww3_grid.SPECTRUM%NTH",
     "ww3_grid.TIMESTEPS%DTMAX",
@@ -701,7 +698,7 @@ _INT_PARAM_PATHS = {
 }
 
 _NUMERIC_PARAM_PATHS = {
-    "grid.nested_contraction_coefficient",
+    "grid.structured.nested.nested_contraction_coefficient",
     "grid.structured.min_dist",
     "grid.structured.cut_off",
     "grid.structured.lim_bathy",

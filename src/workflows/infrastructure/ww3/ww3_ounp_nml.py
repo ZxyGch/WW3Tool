@@ -32,7 +32,7 @@ class WW3OunpNML(NMLPrimitives):
     pass in the specified directory.
     """
 
-    def _apply_spectral_params_to_dir(self, target_dir, start_date, end_date, compute_precision, output_precision):
+    def _apply_spectral_params_to_dir(self, target_dir, start_date, end_date, output_precision):
         """在指定目录下应用谱空间逐点计算相关参数
 
         [EN] Apply spectral point-by-point computation related parameters under
@@ -80,9 +80,14 @@ class WW3OunpNML(NMLPrimitives):
         # 修改 namelists.nml
         self._modify_namelists_e3d_in_dir(target_dir)
 
-        # [EN] Export points.list
-        # 导出 points.list
-        self._export_points_to_dir(target_dir, points_data)
+        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
+
+        # [EN] Export points.list (nested: once at workdir root, see _apply_all_params_nested)
+        # 导出 points.list（嵌套模式在工作目录根目录统一生成）
+        if not is_nested_grid:
+            self._export_points_to_dir(target_dir, points_data)
 
         # [EN] Modify ww3_shel.nml
         # In nested grid mode, these modifications happen after _apply_ww3_params_to_dir
@@ -92,9 +97,6 @@ class WW3OunpNML(NMLPrimitives):
         # 在嵌套网格模式下，这些修改会在 _apply_ww3_params_to_dir 之后进行
         # 在普通网格模式下，这些修改会在 _modify_ww3_shel_times_to_dir 之前进行
         # 所以统一使用 silent=True，让 _modify_ww3_shel_times_to_dir 或这里统一输出合并的日志
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         # [EN] Modify TYPE%POINT%FILE
         # 修改 TYPE%POINT%FILE
@@ -103,11 +105,11 @@ class WW3OunpNML(NMLPrimitives):
         # [EN] Modify DATE%POINT and DATE%BOUNDARY
         # 修改 DATE%POINT 和 DATE%BOUNDARY
         modified_date_point = False
-        if start_date and end_date and compute_precision:
+        if start_date and end_date and output_precision:
             if (start_date.isdigit() and len(start_date) == 8 and
                 end_date.isdigit() and len(end_date) == 8 and
-                compute_precision.isdigit()):
-                modified_date_point = self._modify_ww3_shel_date_point_in_dir(target_dir, start_date, end_date, compute_precision, silent=True)
+                output_precision.isdigit()):
+                modified_date_point = self._modify_ww3_shel_date_point_in_dir(target_dir, start_date, end_date, output_precision, silent=True)
 
         # [EN] In nested grid mode, output merged log here (since _modify_ww3_shel_times_to_dir was already called before)
         # 在嵌套网格模式下，这里输出合并的日志（因为 _modify_ww3_shel_times_to_dir 已经在之前调用了）
@@ -116,11 +118,11 @@ class WW3OunpNML(NMLPrimitives):
             # 获取时间信息用于日志
             start_date_for_log = self.shel_start_edit.text().strip()
             end_date_for_log = self.shel_end_edit.text().strip()
-            compute_precision_for_log = compute_precision if compute_precision else self.shel_step_edit.text().strip()
+            output_stride_for_log = output_precision if output_precision else self.output_precision_edit.text().strip()
 
             parts = []
-            if start_date_for_log and end_date_for_log and compute_precision_for_log:
-                parts.append(tr("step4_date_range_compute_step", "起始={start}, 结束={end}, 计算步长={step}s").format(start=start_date_for_log, end=end_date_for_log, step=compute_precision_for_log))
+            if start_date_for_log and end_date_for_log and output_stride_for_log:
+                parts.append(tr("step4_date_range_output_step", "起始={start}, 结束={end}, 输出步长={step}s").format(start=start_date_for_log, end=end_date_for_log, step=output_stride_for_log))
             if modified_point_file:
                 parts.append(tr("step4_added_type_point_file", "添加 TYPE%POINT%FILE = 'points.list'"))
             if modified_date_point:
@@ -189,15 +191,16 @@ class WW3OunpNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # [EN] Nested grid mode: generate files in coarse and fine directories
-            # 嵌套网格模式：在 coarse 和 fine 目录下生成文件
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
+            from .nested_level_dirs import list_nested_level_paths
 
-            if os.path.isdir(coarse_dir):
-                self._export_points_to_dir(coarse_dir, points_data)
-            if os.path.isdir(fine_dir):
-                self._export_points_to_dir(fine_dir, points_data)
+            for level_dir in list_nested_level_paths(self.selected_folder):
+                stale = os.path.join(str(level_dir), "points.list")
+                if os.path.isfile(stale):
+                    try:
+                        os.remove(stale)
+                    except OSError:
+                        pass
+            self._export_points_to_dir(self.selected_folder, points_data)
         else:
             # [EN] Normal grid mode: generate file in working directory
             # 普通网格模式：在工作目录下生成文件
@@ -274,15 +277,10 @@ class WW3OunpNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # [EN] Nested grid mode: modify files in coarse and fine directories
-            # 嵌套网格模式：修改 coarse 和 fine 目录下的文件
-            coarse_dir = os.path.join(self.selected_folder, "coarse")
-            fine_dir = os.path.join(self.selected_folder, "fine")
+            from .nested_level_dirs import list_nested_level_paths
 
-            if os.path.isdir(coarse_dir):
-                self._modify_ww3_ounp_in_dir(coarse_dir, start_date, output_precision)
-            if os.path.isdir(fine_dir):
-                self._modify_ww3_ounp_in_dir(fine_dir, start_date, output_precision)
+            for level_dir in list_nested_level_paths(self.selected_folder):
+                self._modify_ww3_ounp_in_dir(str(level_dir), start_date, output_precision)
         else:
             # [EN] Normal grid mode: modify files in working directory
             # 普通网格模式：修改工作目录下的文件

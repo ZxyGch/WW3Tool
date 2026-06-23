@@ -64,6 +64,7 @@ from ..domain.config_models import (
     SlurmConfig,
     SpectrumConfig,
     StructuredGridSettings,
+    StructuredNestedSettings,
     TrackPointConfig,
     UnstructuredGridSettings,
     WW3Config,
@@ -371,12 +372,8 @@ def _region(data: Dict[str, Any], name: str) -> GridRegion:
     lat = _float_pair(data.get("lat"), f"{name}.lat")
     if lon[0] == lon[1] or lat[0] == lat[1]:
         raise ConfigError(f"{name}.lon / {name}.lat 范围不能为 0")
-    cp = data.get("compute_precision")  # 该层独立的积分步/输出步（可选）
-    op = data.get("output_precision")
     return GridRegion(
         dx=dx_f, dy=dy_f, lon=lon, lat=lat,
-        compute_precision=str(cp).strip() if cp is not None else None,
-        output_precision=str(op).strip() if op is not None else None,
     )
 
 
@@ -711,16 +708,17 @@ def parse_pipeline_config(
         raise ConfigError("grid.grid_type 不能为空")
     if grid_type not in {"normal", "nested"}:
         raise ConfigError("grid.grid_type 必须是 normal 或 nested")
-    if mesh_type != "structured" and grid_type == "nested":
-        raise ConfigError("第一版仅 structured 支持 nested 网格")
-    nested_contraction = _float_value(
-        grid_raw.get("nested_contraction_coefficient"),
-        "grid.nested_contraction_coefficient",
-    )
-    if nested_contraction <= 0:
-        raise ConfigError("grid.nested_contraction_coefficient 必须大于 0")
     structured_raw = _as_dict(grid_raw.get("structured"), "grid.structured")
     nested_raw = _as_dict(structured_raw.get("nested"), "grid.structured.nested")
+    nested_contraction_raw = nested_raw.get("nested_contraction_coefficient")
+    if nested_contraction_raw is None:
+        nested_contraction_raw = grid_raw.get("nested_contraction_coefficient")
+        nested_contraction_path = "grid.nested_contraction_coefficient"
+    else:
+        nested_contraction_path = "grid.structured.nested.nested_contraction_coefficient"
+    nested_contraction = _float_value(nested_contraction_raw, nested_contraction_path) if nested_contraction_raw is not None else 1.3
+    if nested_contraction <= 0:
+        raise ConfigError("grid.structured.nested.nested_contraction_coefficient 必须大于 0")
     grid_lon = grid_raw.get("lon")
     grid_lat = grid_raw.get("lat")
 
@@ -767,6 +765,9 @@ def parse_pipeline_config(
         lim_val=_float_value(structured_raw.get("lim_val"), "grid.structured.lim_val"),
         split_lim=_float_value(structured_raw.get("split_lim"), "grid.structured.split_lim"),
         lake_tol=_float_value(structured_raw.get("lake_tol"), "grid.structured.lake_tol"),
+        nested=StructuredNestedSettings(
+            nested_contraction_coefficient=nested_contraction,
+        ),
     )
     if structured.bathymetry not in presets.structured_bathymetry:
         raise ConfigError(
@@ -837,7 +838,6 @@ def parse_pipeline_config(
         nested_levels=nested_levels,
         gridgen_version=str(grid_raw.get("gridgen_version") or ""),
         reference_data_path=_resolve_path(grid_raw.get("reference_data_path"), base_dir),
-        nested_contraction_coefficient=nested_contraction,
         structured=structured,
         smc=smc,
         unstructured=unstructured,
@@ -856,17 +856,16 @@ def parse_pipeline_config(
     )
 
     ww3_raw = _as_dict(raw.get("ww3"), "ww3")
+    output_step = str(
+        ww3_raw.get("output_step")
+        or ww3_raw.get("output_precision")
+        or ww3_raw.get("compute_precision")
+        or ""
+    ).strip()
     ww3 = WW3Config(
         start_date=str(ww3_raw.get("start_date") or "").strip(),
         end_date=str(ww3_raw.get("end_date") or "").strip(),
-        compute_precision=str(ww3_raw.get("compute_precision") or ""),
-        output_precision=str(ww3_raw.get("output_precision") or ""),
-        inner_compute_precision=(
-            str(ww3_raw["inner_compute_precision"]) if "inner_compute_precision" in ww3_raw else None
-        ),
-        inner_output_precision=(
-            str(ww3_raw["inner_output_precision"]) if "inner_output_precision" in ww3_raw else None
-        ),
+        output_step=output_step,
         file_split=_file_split(ww3_raw.get("file_split")),
         output_scheme=_selected_output_scheme(ww3_raw.get("output_scheme"), presets),
         st=_st(ww3_raw.get("st")),
@@ -1020,19 +1019,12 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
     for label, date in (("ww3.start_date", config.ww3.start_date), ("ww3.end_date", config.ww3.end_date)):
         if not (date.isdigit() and len(date) == 8):
             raise ConfigError(tr("cfg_date_format", "{label} 必须是 YYYYMMDD").format(label=label))
-    for label, value in (
-        ("ww3.compute_precision", config.ww3.compute_precision),
-        ("ww3.output_precision", config.ww3.output_precision),
-    ):
+    for label, value in (("ww3.output_step", config.ww3.output_step),):
         if not str(value).isdigit():
             raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label=label))
     if config.grid.grid_type == "nested":
         if config.grid.inner is None:
             raise ConfigError(tr("cfg_nested_inner_required", "nested 网格需要 grid.inner"))
-        if config.ww3.inner_compute_precision is not None and not config.ww3.inner_compute_precision.isdigit():
-            raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.inner_compute_precision"))
-        if config.ww3.inner_output_precision is not None and not config.ww3.inner_output_precision.isdigit():
-            raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.inner_output_precision"))
     if config.calc.mode == "spectral_point" and not config.calc.points:
         raise ConfigError(tr("cfg_spectral_points_required", "calc.mode=spectral_point 时必须提供 calc.points"))
     if config.calc.mode == "track" and not config.calc.track_points:
@@ -1085,20 +1077,23 @@ grid:
   grid_type: normal
   gridgen_version: Python
   reference_data_path:
-  nested_contraction_coefficient: 1.3
   outer:
     dx: 0.05
     dy: 0.05
     lon: [110, 130]
     lat: [10, 30]
-  # [EN] When grid_type is nested, inner can be filled; omitted auto-generates from outer using nested_contraction_coefficient
-  # grid_type 为 nested 时，可填写 inner；省略时依据 nested_contraction_coefficient 从 outer 自动生成
+  # [EN] nested_contraction_coefficient – GUI telescope shrink ratio for nested levels (≥ 1).
+  # nested_contraction_coefficient – 嵌套套娃时各层范围向中心收缩的倍率（≥ 1，仅 GUI 辅助）。
+  # [EN] When grid_type is nested, list each level explicitly under structured.nested.levels.
+  # grid_type 为 nested 时，在 structured.nested.levels 中逐层写明 dx/dy/lon/lat。
   # inner:
   #   dx: 0.05
   #   dy: 0.05
   #   lon: [112, 128]
   #   lat: [12, 28]
   structured:
+    nested:
+      nested_contraction_coefficient: 1.3
     bathymetry: GEBCO             # GEBCO | ETOP1 | ETOP2
     coastline_precision: full     # full | high | inter | low | coarse
     min_dist: 20
@@ -1162,12 +1157,7 @@ calc:
 ww3:
   start_date: "20250101"
   end_date: "20250103"
-  compute_precision: "1800"
-  output_precision: "3600"
-  # [EN] Nested grids can specify precision for inner grid separately; omitted inherits from outer grid
-  # nested 网格可为内网格单独指定精度；省略则沿用外网格
-  # inner_compute_precision: "900"
-  # inner_output_precision: "1800"
+  output_step: "3600"
   file_split: year
   output_scheme: standard          # [EN] Select one scheme defined in presets.output_scheme
                                    # 选择 presets.output_scheme 中定义的一个方案

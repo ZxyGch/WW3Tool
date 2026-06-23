@@ -42,6 +42,56 @@ def _in_bounds(lon: float, lat: float, bounds: dict | None) -> bool:
     )
 
 
+def bounds_from_level_regions(
+    regions: list[Any],
+    *,
+    level_labels: list[str] | None = None,
+) -> dict | None:
+    """由嵌套各层区域生成地图选点/校验用包围盒（含逐层矩形）。
+
+    返回 ``lon_min/lon_max/lat_min/lat_max`` 为各层并集，``levels`` 为逐层框列表。
+    ``regions`` 元素需有 ``lon``、``lat`` 属性（各为 [west, east] / [south, north]）。
+    """
+    if not regions:
+        return None
+    level_boxes: list[dict[str, Any]] = []
+    all_lon: list[float] = []
+    all_lat: list[float] = []
+    for i, region in enumerate(regions):
+        lon = getattr(region, "lon", None)
+        lat = getattr(region, "lat", None)
+        if not lon or not lat or len(lon) < 2 or len(lat) < 2:
+            continue
+        lon_min, lon_max = float(min(lon)), float(max(lon))
+        lat_min, lat_max = float(min(lat)), float(max(lat))
+        all_lon.extend((lon_min, lon_max))
+        all_lat.extend((lat_min, lat_max))
+        if level_labels and i < len(level_labels):
+            label = level_labels[i]
+        elif len(regions) == 1:
+            label = "grid"
+        else:
+            label = f"level{i}"
+        level_boxes.append(
+            {
+                "lon_min": lon_min,
+                "lon_max": lon_max,
+                "lat_min": lat_min,
+                "lat_max": lat_max,
+                "label": label,
+            }
+        )
+    if not all_lon or not all_lat:
+        return None
+    return {
+        "lon_min": min(all_lon),
+        "lon_max": max(all_lon),
+        "lat_min": min(all_lat),
+        "lat_max": max(all_lat),
+        "levels": level_boxes,
+    }
+
+
 def parse_spectral_points_file(
     path: str | Path, *, bounds: dict | None = None
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -169,12 +219,12 @@ def _union(a: dict | None, b: dict | None) -> dict | None:
 def grid_bounds(workdir: str | Path, mesh_type: str, grid_type: str) -> dict | None:
     # [EN] Read lon/lat bounding box by grid type; returns ``None`` when parsing fails or type does not support bounding box validation.
     #
-    # [EN] - structured / nested: read RECT range from ``grid.meta`` (nested takes coarse/fine union).
+    # [EN] - structured / nested: read RECT range from ``grid.meta`` (nested: union of all level* dirs).
     # [EN] - unstructured: read range from ``grid.ww3`` nodes.
     # [EN] - smc: returns ``None`` (only global lon/lat validation).
     """按网格类型读取经纬度包围盒；无法解析或类型不支持包围盒校验时返回 ``None``。
 
-    - structured / 嵌套：从 ``grid.meta`` 取 RECT 范围（嵌套取 coarse/fine 并集）。
+    - structured / 嵌套：从 ``grid.meta`` 取 RECT 范围（嵌套取各 level* 并集）。
     - unstructured：从 ``grid.ww3`` 节点取范围。
     - smc：返回 ``None``（仅做全局经纬度校验）。
     """
@@ -198,9 +248,12 @@ def grid_bounds(workdir: str | Path, mesh_type: str, grid_type: str) -> dict | N
         return {"lon_min": lon_min, "lon_max": lon_max, "lat_min": lat_min, "lat_max": lat_max}
     if mesh_type == "structured":
         if grid_type == "nested":
-            return _union(
-                _structured_dir_bounds(directory / "coarse"),
-                _structured_dir_bounds(directory / "fine"),
-            )
+            from workflows.infrastructure.ww3.nested_level_dirs import list_nested_level_paths
+
+            bounds = None
+            for level_dir in list_nested_level_paths(directory):
+                level_bounds = _structured_dir_bounds(level_dir)
+                bounds = level_bounds if bounds is None else _union(bounds, level_bounds)
+            return bounds
         return _structured_dir_bounds(directory)
     return None

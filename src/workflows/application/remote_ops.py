@@ -1237,7 +1237,7 @@ def run_download_results(
     Args:
         config: 流水线配置。
         log: 可选日志回调。
-        nested: 为 ``True`` 时从远程 ``fine/`` 子目录下载至本地 ``fine/``。
+        nested: 为 ``True`` 时从远程最细层 ``levelN/`` 子目录下载至本地对应目录。
 
     Returns:
         ``data`` 字段为已下载文件的本地路径列表。
@@ -1250,8 +1250,16 @@ def run_download_results(
         if owns:
             c.connect(log=logger.log)
 
-        search_dir = f"{remote_dir.rstrip('/')}/fine" if nested else remote_dir
-        local_save = os.path.join(local_dir, "fine") if nested else local_dir
+        from workflows.infrastructure.ww3.nested_level_dirs import finest_nested_level_name
+
+        finest = finest_nested_level_name(local_dir) if nested else None
+        if nested and not finest:
+            msg = tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格")
+            logger.log(msg)
+            return RemoteResult(success=False, error=msg, messages=list(logger.messages))
+
+        search_dir = f"{remote_dir.rstrip('/')}/{finest}" if nested else remote_dir
+        local_save = os.path.join(local_dir, finest) if nested else local_dir
 
         def _is_ww3_nc(name: str) -> bool:
             return name.startswith("ww3") and name.endswith(".nc")
