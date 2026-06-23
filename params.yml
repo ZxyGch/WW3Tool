@@ -250,6 +250,8 @@ grid:
         lat:
         - 10.0
         - 30.0
+        compute_precision: 1800   # 本层积分步(秒)；越细的层应越小
+        output_precision: 3600    # 本层输出步(秒)
       - dx: 0.025           # level1：更细，必须落在 level0 内
         dy: 0.025
         lon:
@@ -258,9 +260,8 @@ grid:
         lat:
         - 15.0
         - 25.0
-        # 可选：本层独立的积分步/输出步（秒），省略则用全局 ww3.* ：
-        # compute_precision: 150
-        # output_precision: 3600
+        compute_precision: 900
+        output_precision: 3600
       # 再加层就继续追加 "- dx: …"（最多 99 层，逐层加密 + 套娃）
     bathymetry: GEBCO
     coastline_precision: full
