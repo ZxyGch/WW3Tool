@@ -4,15 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import (
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
-)
-from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton, PushButton
+from PyQt6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
@@ -31,13 +24,12 @@ def _contract(bounds: list[float], factor: float) -> list[float]:
 
 class _LevelCard(QWidget):
     """一层（level1…levelN）嵌套网格的输入卡片：dx/dy、经纬度边界、
-    可选积分步/输出步，以及删除按钮。"""
+    可选积分步/输出步。增删由面板底部的统一按钮控制。"""
 
     def __init__(
         self,
         *,
         input_style: Callable[[], str],
-        on_remove: Callable[["_LevelCard"], None],
         on_changed: Callable[[], None],
     ) -> None:
         super().__init__()
@@ -48,15 +40,9 @@ class _LevelCard(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
-        header = QHBoxLayout()
         self.title_label = QLabel()
         self.title_label.setStyleSheet("font-weight: 600;")
-        header.addWidget(self.title_label)
-        header.addStretch(1)
-        self.remove_button = PushButton(tr("step2_remove_level", "➖ 删除"))
-        self.remove_button.clicked.connect(lambda: on_remove(self))
-        header.addWidget(self.remove_button)
-        root.addLayout(header)
+        root.addWidget(self.title_label)
 
         grid = QGridLayout()
         grid.setSpacing(8)
@@ -89,9 +75,8 @@ class _LevelCard(QWidget):
         grid.addWidget(field, row, col + 1)
         self.fields[key] = field
 
-    def set_title(self, text: str, *, can_remove: bool) -> None:
+    def set_title(self, text: str) -> None:
         self.title_label.setText(text)
-        self.remove_button.setEnabled(can_remove)
 
     def to_override(self) -> dict[str, object]:
         data: dict[str, object] = {
@@ -197,23 +182,14 @@ class GridStepPanel:
         levels_layout = QVBoxLayout(self.levels_widget)
         levels_layout.setContentsMargins(0, 0, 0, 0)
         levels_layout.setSpacing(8)
-        header = QHBoxLayout()
-        header.addWidget(section_title(tr("step2_nested_levels", "其余嵌套层（细 → 最细）")))
-        header.addStretch(1)
-        self.add_level_button = PushButton(tr("step2_add_level", "➕ 添加一层"))
-        self.add_level_button.clicked.connect(self._add_level)
-        header.addWidget(self.add_level_button)
-        levels_layout.addLayout(header)
+        levels_layout.addWidget(section_title(tr("step2_nested_levels", "其余嵌套层（细 → 最细）")))
+        # 卡片直接竖排、完全展开（不用滚动条）；新卡插在 stretch 之前
         self._cards_container = QWidget()
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
         self._cards_layout.setSpacing(8)
         self._cards_layout.addStretch(1)
-        cards_scroll = QScrollArea()
-        cards_scroll.setWidgetResizable(True)
-        cards_scroll.setWidget(self._cards_container)
-        cards_scroll.setMinimumHeight(200)
-        levels_layout.addWidget(cards_scroll)
+        levels_layout.addWidget(self._cards_container)
         self.levels_hint = QLabel("")
         self.levels_hint.setWordWrap(True)
         self.levels_hint.setStyleSheet("color: #c0392b;")
@@ -282,6 +258,10 @@ class GridStepPanel:
         self.skip_grid.hide()
         layout.addWidget(self.skip_grid)
         self.load_bounds_button = create_button(tr("step2_load_from_nc", "从 wind.nc 读取范围"), load_bounds)
+        self.add_level_button = create_button(tr("step2_add_level", "添加一层"), self._add_level)
+        self.add_level_button.hide()
+        self.delete_level_button = create_button(tr("step2_delete_level", "删除末层"), self._delete_last_level)
+        self.delete_level_button.hide()
         self.telescope_button = create_button(tr("step2_auto_telescope", "按收缩系数自动套娃"), self._auto_telescope)
         self.telescope_button.hide()
         self.map_button = create_button(tr("step2_view_map", "查看地图"), view_map)
@@ -290,6 +270,8 @@ class GridStepPanel:
         self.visualize_button = create_button(tr("step2_visualize_grid", "网格可视化"), visualize_grid)
         for button in (
             self.load_bounds_button,
+            self.add_level_button,
+            self.delete_level_button,
             self.telescope_button,
             self.map_button,
             self.recommend_button,
@@ -299,6 +281,8 @@ class GridStepPanel:
             layout.addWidget(button)
         self.action_buttons = [
             self.load_bounds_button,
+            self.add_level_button,
+            self.delete_level_button,
             self.telescope_button,
             self.map_button,
             self.recommend_button,
@@ -506,7 +490,6 @@ class GridStepPanel:
     def _make_card(self) -> _LevelCard:
         return _LevelCard(
             input_style=self._input_style,
-            on_remove=self._remove_card,
             on_changed=self._validate_levels,
         )
 
@@ -525,13 +508,15 @@ class GridStepPanel:
         self._renumber_cards()
         self._validate_levels()
 
-    def _remove_card(self, card: _LevelCard) -> None:
-        if card in self.level_cards:
-            self.level_cards.remove(card)
-            self._cards_layout.removeWidget(card)
-            card.deleteLater()
-            self._renumber_cards()
-            self._validate_levels()
+    def _delete_last_level(self) -> None:
+        # 删最后一层；至少保留 level0 + 1 层（即 ≥1 张卡），不允许删光
+        if len(self.level_cards) <= 1:
+            return
+        card = self.level_cards.pop()
+        self._cards_layout.removeWidget(card)
+        card.deleteLater()
+        self._renumber_cards()
+        self._validate_levels()
 
     def _clear_cards(self) -> None:
         for card in self.level_cards:
@@ -544,9 +529,11 @@ class GridStepPanel:
         for i, card in enumerate(self.level_cards):
             idx = i + 1  # level0 是主域块，卡片从 level1 起
             if i == n_cards - 1:
-                card.set_title(tr("step2_level_finest", "level{i}（最细）").format(i=idx), can_remove=n_cards > 1)
+                card.set_title(tr("step2_level_finest", "level{i}（最细）").format(i=idx))
             else:
-                card.set_title(tr("step2_level_n", "level{i}").format(i=idx), can_remove=n_cards > 1)
+                card.set_title(tr("step2_level_n", "level{i}").format(i=idx))
+        # 仅剩 1 层时禁止删除（保证嵌套至少 2 层）
+        self.delete_level_button.setEnabled(n_cards > 1)
 
     def _last_level_floats(self):
         if self.level_cards:
@@ -679,6 +666,8 @@ class GridStepPanel:
         self.level0_prec_widget.setVisible(nested)
         self.levels_widget.setVisible(nested)
         self.telescope_button.setVisible(nested)
+        self.add_level_button.setVisible(nested)
+        self.delete_level_button.setVisible(nested)
         if nested:
             self.mesh_type_combo.setCurrentIndex(0)
             self.mesh_type_combo.setEnabled(False)
@@ -708,3 +697,5 @@ class GridStepPanel:
             self.levels_widget.hide()
             self.level0_prec_widget.hide()
             self.telescope_button.hide()
+            self.add_level_button.hide()
+            self.delete_level_button.hide()

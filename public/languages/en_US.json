@@ -305,7 +305,7 @@
   "step2_compute_step": "Compute step:",
   "step2_output_step": "Output step:",
   "step2_nested_levels": "Other nested levels (finer → finest)",
-  "step2_add_level": "➕ Add level",
+  "step2_add_level": "Add level",
   "step2_remove_level": "➖ Remove",
   "step2_auto_telescope": "Auto telescope by factor",
   "step2_level_finest": "level{i} (finest)",
@@ -2386,5 +2386,6 @@
   "ref_data_missing_prompt": "Required data files (coastline, bathymetry, etc.) are missing from the reference_data directory. Grid generation cannot proceed.\n\nPath: {path}\n\nDownload from GitHub now? (~6.5 GB)",
   "ref_data_downloading": "📥 Downloading reference_data (~6.5 GB), please wait...",
   "ref_data_download_complete": "✅ reference_data downloaded! You can now click 'Generate Grid' to continue.",
-  "ref_data_download_failed": "❌ Failed to download reference_data: {error}"
+  "ref_data_download_failed": "❌ Failed to download reference_data: {error}",
+  "step2_delete_level": "Delete level"
 }

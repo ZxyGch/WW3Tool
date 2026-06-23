@@ -295,7 +295,7 @@
   "step2_compute_step": "积分步:",
   "step2_output_step": "输出步:",
   "step2_nested_levels": "其余嵌套层（细 → 最细）",
-  "step2_add_level": "➕ 添加一层",
+  "step2_add_level": "添加一层",
   "step2_remove_level": "➖ 删除",
   "step2_auto_telescope": "按收缩系数自动套娃",
   "step2_level_finest": "level{i}（最细）",
@@ -2386,5 +2386,6 @@
   "ref_data_missing_prompt": "reference_data 目录中缺少必要的数据文件（海岸线、地形等），无法生成网格。\n\n路径：{path}\n\n是否从 GitHub 下载？（约 6.5 GB）",
   "ref_data_downloading": "📥 正在下载 reference_data（约 6.5 GB），请耐心等待...",
   "ref_data_download_complete": "✅ reference_data 下载完成！现在可以点击「生成网格」继续。",
-  "ref_data_download_failed": "❌ reference_data 下载失败：{error}"
+  "ref_data_download_failed": "❌ reference_data 下载失败：{error}",
+  "step2_delete_level": "删除末层"
 }
