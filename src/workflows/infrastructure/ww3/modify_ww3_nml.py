@@ -494,40 +494,14 @@ class ModifyWW3NML(
                 legacy.append((p, i))
         return legacy
 
-    def _read_nested_levels_cfg(self):
-        """从工作目录 params.yml 读取 grid.structured.nested.levels（列表）。"""
-        try:
-            import yaml
-            with open(os.path.join(self.selected_folder, "params.yml"), encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
-            nested = (((raw.get("grid") or {}).get("structured") or {}).get("nested") or {})
-            lv = nested.get("levels")
-            return lv if isinstance(lv, list) else []
-        except Exception:
-            return []
-
-    def _level_precision(self, idx, n_levels, levels_cfg):
-        """第 idx 层（共 n_levels 层）的 (compute_precision, output_precision)。
-
-        积分步 compute_precision：优先 params.yml 该层显式值；省略时末层回退内圈控件、
-        其余回退全局控件。输出步 output_precision：各层统一用全局 ww3.output_precision
-        （嵌套各层一般在相同时刻输出，无需逐层不同）。
-        """
-        cp = None
-        if 0 <= idx < len(levels_cfg) and isinstance(levels_cfg[idx], dict):
-            cp = levels_cfg[idx].get("compute_precision")
-        is_last = idx == n_levels - 1
-        g_cp = self.shel_step_edit.text().strip()
-        i_cp = self.inner_shel_step_edit.text().strip()
-        cp = str(cp).strip() if cp is not None else ((i_cp or g_cp) if is_last else g_cp)
-        op = self.output_precision_edit.text().strip()  # 输出步各层统一用全局
-        return cp, op
+    def _output_stride(self):
+        """全局输出步长（秒），统一用于 ww3_shel / ww3_ounp / ww3_ounf。"""
+        return self.output_precision_edit.text().strip()
 
     def _apply_all_params_nested(self, has_output_scheme=False):
         """嵌套网格模式：对 level0…levelN 逐层完成全部操作（每层在一条分隔线下）。
 
-        每层积分步/输出步取自 params.yml 该层的 compute_precision/output_precision，
-        省略时回退（末层→内圈控件、其余→全局控件）；CFL 传播步按各层 dx 自动重算。
+        各层输出步统一使用全局 ww3.output_precision；CFL 传播步按各层 dx 自动重算。
 
         [EN] Nested grid mode: process level0..levelN, each under one separator line.
         """
@@ -536,8 +510,7 @@ class ModifyWW3NML(
             self.log(tr("nested_grid_folders_not_found",
                         "❌ 未找到 level* / coarse / fine 网格目录，请先生成嵌套网格"))
             return
-        n = len(level_dirs)
-        levels_cfg = self._read_nested_levels_cfg()
+        output_stride = self._output_stride()
 
         # 公共文件（server.sh + ww3_multi.nml）
         self.log("")
@@ -562,14 +535,13 @@ class ModifyWW3NML(
                 scheme_applied = self._apply_output_scheme_to_dir(dir_path) or scheme_applied
             self._sync_grid_meta_to_grid_nml_in_dir(dir_path, grid_label="")
             self._update_grid_closure_from_meta(dir_path, grid_label="")
-            cp, op = self._level_precision(idx, n, levels_cfg)
-            self._apply_ww3_params_to_dir(dir_path, cp, op, grid_label="")
+            self._apply_ww3_params_to_dir(dir_path, output_stride, grid_label="")
             self._modify_ww3_prnc_nml_for_nested(dir_path, grid_label="")
             self._modify_ww3_prnc_times_in_dir(dir_path, grid_label="")
             self._generate_forcing_field_prnc_files(dir_path, use_relative_path=True)
             self._modify_ww3_shel_forcing_inputs_in_dir(dir_path, grid_label="")
             self._apply_spectral_params_to_dir(dir_path, self.shel_start_edit.text().strip(),
-                                              self.shel_end_edit.text().strip(), cp, op)
+                                              self.shel_end_edit.text().strip(), output_stride)
             # 按各层自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
             self._apply_cfl_timesteps_to_grid_nml(dir_path)
 
@@ -588,15 +560,13 @@ class ModifyWW3NML(
             self.log(tr("nested_grid_folders_not_found",
                         "❌ 未找到 level* / coarse / fine 网格目录，请先生成嵌套网格"))
             return
-        n = len(level_dirs)
-        levels_cfg = self._read_nested_levels_cfg()
+        output_stride = self._output_stride()
         for dir_path, idx in level_dirs:
             self.log("")
             self.log("=" * 70)
             self.log(tr("level_grid_params_start", "🔄 【level{idx}】开始应用网格参数...").format(idx=idx))
             self.log("=" * 70)
-            cp, op = self._level_precision(idx, n, levels_cfg)
-            self._apply_ww3_params_to_dir(dir_path, cp, op, grid_label="")
+            self._apply_ww3_params_to_dir(dir_path, output_stride, grid_label="")
             self._modify_ww3_prnc_nml_for_nested(dir_path, grid_label="")
 
         # 修改 ww3_multi.nml
@@ -618,13 +588,13 @@ class ModifyWW3NML(
         # 修改 ww3_shel.nml
         self.modify_ww3_shel_times()
 
-    def _apply_ww3_params_to_dir(self, target_dir, compute_precision, output_precision, grid_label=""):
+    def _apply_ww3_params_to_dir(self, target_dir, output_precision, grid_label=""):
         """在指定目录中应用 WW3 运行参数
 
         [EN] Apply WW3 runtime parameters in the specified directory.
         """
         self._apply_ww3_ounf_to_dir(target_dir, output_precision, grid_label=grid_label)
-        self._modify_ww3_shel_times_to_dir(target_dir, compute_precision, grid_label=grid_label)
+        self._modify_ww3_shel_times_to_dir(target_dir, output_precision, grid_label=grid_label)
 
     def _get_output_scheme_var_list(self):
         """获取当前选择的谱分区输出方案变量列表字符串
