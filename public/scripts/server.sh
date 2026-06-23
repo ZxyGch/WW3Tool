@@ -132,36 +132,34 @@ fi
 echo "Grid type (from params.yml): $GRID_TYPE" >> "$LOG"
 
 if [ "$GRID_TYPE" = "nested" ]; then
-    # Nested grid mode
-    cd coarse
-    run_step "ww3_grid (coarse)" ww3_grid
-    run_prnc_with_fields
-    run_step "ww3_strt (coarse)" ww3_strt
-    cd ..
+    # Nested grid mode (N levels: level0=coarsest .. levelN=finest)
+    # Discover nested grid dirs; fall back to old coarse/fine layout.
+    LEVELS=$(ls -d level[0-9]* 2>/dev/null | sort -V)
+    [ -z "$LEVELS" ] && LEVELS=$(ls -d coarse fine 2>/dev/null)
+    if [ -z "$LEVELS" ]; then
+        echo "no nested grid dirs (level*/coarse/fine) found" >> "$LOG" ; fail_exit 1
+    fi
+    FINEST=$(echo "$LEVELS" | tr ' ' '\n' | sed '/^$/d' | tail -1)
 
-    cd fine
-    run_step "ww3_grid (fine)" ww3_grid
-    run_prnc_with_fields
-    run_step "ww3_strt (fine)" ww3_strt
-    cd ..
+    # 1) Per-level: ww3_grid + forcing prep + ww3_strt
+    for lv in $LEVELS; do
+        cd "$lv"
+        run_step "ww3_grid ($lv)" ww3_grid
+        run_prnc_with_fields
+        run_step "ww3_strt ($lv)" ww3_strt
+        cd ..
+    done
 
-    # Coarse grid file handling
-    [ -f coarse/mod_def.ww3 ] && mv coarse/mod_def.ww3 mod_def.coarse
-    [ -f coarse/restart.ww3 ] && mv coarse/restart.ww3 restart.coarse
-    [ -f coarse/wind.ww3 ]    && mv coarse/wind.ww3    wind.coarse
-    [ -f coarse/current.ww3 ] && mv coarse/current.ww3 current.coarse
-    [ -f coarse/level.ww3 ]   && mv coarse/level.ww3   level.coarse
-    [ -f coarse/ice.ww3 ]     && mv coarse/ice.ww3     ice.coarse
-    [ -f coarse/ice1.ww3 ]    && mv coarse/ice1.ww3    ice1.coarse
-
-    # Fine grid file handling
-    [ -f fine/mod_def.ww3 ]   && mv fine/mod_def.ww3   mod_def.fine
-    [ -f fine/restart.ww3 ]   && mv fine/restart.ww3   restart.fine
-    [ -f fine/wind.ww3 ]      && mv fine/wind.ww3      wind.fine
-    [ -f fine/current.ww3 ]   && mv fine/current.ww3   current.fine
-    [ -f fine/level.ww3 ]     && mv fine/level.ww3     level.fine
-    [ -f fine/ice.ww3 ]       && mv fine/ice.ww3       ice.fine
-    [ -f fine/ice1.ww3 ]      && mv fine/ice1.ww3      ice1.fine
+    # 2) Stage each level's files as <type>.<level> for ww3_multi
+    for lv in $LEVELS; do
+        [ -f "$lv/mod_def.ww3" ] && mv "$lv/mod_def.ww3" "mod_def.$lv"
+        [ -f "$lv/restart.ww3" ] && mv "$lv/restart.ww3" "restart.$lv"
+        [ -f "$lv/wind.ww3" ]    && mv "$lv/wind.ww3"    "wind.$lv"
+        [ -f "$lv/current.ww3" ] && mv "$lv/current.ww3" "current.$lv"
+        [ -f "$lv/level.ww3" ]   && mv "$lv/level.ww3"   "level.$lv"
+        [ -f "$lv/ice.ww3" ]     && mv "$lv/ice.ww3"     "ice.$lv"
+        [ -f "$lv/ice1.ww3" ]    && mv "$lv/ice1.ww3"    "ice1.$lv"
+    done
 
     ######################################
     # Run MPI program (nested grid mode)
@@ -175,14 +173,11 @@ if [ "$GRID_TYPE" = "nested" ]; then
         fail_exit $rc_mpi
     fi
 
-    [ -f out_grd.fine ] && mv out_grd.fine fine/out_grd.ww3
-    [ -f mod_def.fine ] && mv mod_def.fine fine/mod_def.ww3
-    [ -f out_pnt.fine ] && mv out_pnt.fine fine/out_pnt.ww3
-
-    ######################################
-    # Export results (nested grid mode)
-    ######################################
-    cd fine
+    # 3) Export results from the finest level
+    [ -f "out_grd.$FINEST" ] && mv "out_grd.$FINEST" "$FINEST/out_grd.ww3"
+    [ -f "mod_def.$FINEST" ] && mv "mod_def.$FINEST" "$FINEST/mod_def.ww3"
+    [ -f "out_pnt.$FINEST" ] && mv "out_pnt.$FINEST" "$FINEST/out_pnt.ww3"
+    cd "$FINEST"
     [ -f points.list ] && run_step "ww3_ounp" ww3_ounp
     [ -f track_i.ww3 ] && run_step "ww3_trnc" ww3_trnc
     run_step "ww3_ounf" ww3_ounf
