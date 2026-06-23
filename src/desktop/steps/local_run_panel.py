@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import ComboBox, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -32,7 +32,11 @@ class LocalRunPanel:
     ) -> None:
         group, _ = create_header_card(parent, tr("step5_local_title", "本地运行"))
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
-        self._group = group
+        self._content = QWidget()
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setSpacing(10)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        group.viewLayout.addWidget(self._content)
 
         # [EN] Check if local ST versions are configured
         # 检查是否已配置本地 ST 版本
@@ -45,8 +49,8 @@ class LocalRunPanel:
 
         self.local_run_button = create_button(tr("step5_local_run", "本地运行"), local_run)
         self.stop_button = create_button(tr("step5_stop_shel", "停止执行"), stop)
-        group.viewLayout.addWidget(self.local_run_button)
-        group.viewLayout.addWidget(self.stop_button)
+        self._content_layout.addWidget(self.local_run_button)
+        self._content_layout.addWidget(self.stop_button)
         self.widget = group
 
     def _ensure_st_row(self) -> None:
@@ -62,7 +66,7 @@ class LocalRunPanel:
         left_align_combo_text(self.st_combo)
         row.addWidget(self.st_combo, 1)
         self._st_row_widget = row_widget
-        self._group.viewLayout.addWidget(row_widget)
+        self._content_layout.addWidget(row_widget)
 
     def refresh_st_versions(self) -> None:
         versions = self._load_local_st_versions()
