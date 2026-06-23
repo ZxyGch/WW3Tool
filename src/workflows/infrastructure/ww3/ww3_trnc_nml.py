@@ -51,10 +51,14 @@ class WW3TrncNML(NMLPrimitives):
         # [EN] Determine save path (nested grid: save to fine directory; normal grid: save to working directory)
         # 确定保存路径（嵌套网格模式保存到 fine 目录，普通网格保存到工作目录）
         if is_nested_grid:
-            fine_dir = os.path.join(self.selected_folder, "fine")
-            if not os.path.exists(fine_dir):
-                os.makedirs(fine_dir, exist_ok=True)
-            track_file_path = os.path.join(fine_dir, "track_i.ww3")
+            from .nested_level_dirs import finest_nested_level_name
+
+            finest = finest_nested_level_name(self.selected_folder)
+            if not finest:
+                self.log(tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
+                return
+            finest_dir = os.path.join(self.selected_folder, finest)
+            track_file_path = os.path.join(finest_dir, "track_i.ww3")
         else:
             track_file_path = os.path.join(self.selected_folder, "track_i.ww3")
 
@@ -183,11 +187,13 @@ class WW3TrncNML(NMLPrimitives):
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
-            # [EN] Nested grid mode: modify files in fine directory
-            # 嵌套网格模式：修改 fine 目录下的文件
-            fine_dir = os.path.join(self.selected_folder, "fine")
-            if os.path.isdir(fine_dir):
-                self._modify_ww3_trnc_track_in_dir(fine_dir, start_datetime, output_precision)
+            from .nested_level_dirs import finest_nested_level_name
+
+            finest = finest_nested_level_name(self.selected_folder)
+            if finest:
+                finest_dir = os.path.join(self.selected_folder, finest)
+                if os.path.isdir(finest_dir):
+                    self._modify_ww3_trnc_track_in_dir(finest_dir, start_datetime, output_precision)
         else:
             # [EN] Normal grid mode: modify files in working directory
             # 普通网格模式：修改工作目录下的文件

@@ -106,29 +106,25 @@ class WW3MultiNML(NMLPrimitives):
         rank 从 1 起（level0=rank 1，越细 rank 越大），frac 为累积进程区间。
         细网格 DTXY 更小、步数更多、每点更贵，故按 点数/DTXY 加权。
         """
+        from .nested_level_dirs import list_nested_level_entries
+
         folder = getattr(self, "selected_folder", None)
-        if not folder or not os.path.isdir(folder):
-            return []
-        dirs = []
-        for d in os.listdir(folder):
-            if os.path.isdir(os.path.join(folder, d)) and re.match(r"^level\d+$", d):
-                dirs.append((int(d[5:]), d))
-        dirs.sort()
-        if not dirs:
+        entries = list_nested_level_entries(folder) if folder else []
+        if not entries:
             return []
         costs = []
-        for _, name in dirs:
-            nml = os.path.join(folder, name, "ww3_grid.nml")
+        for path, _idx in entries:
+            nml = os.path.join(str(path), "ww3_grid.nml")
             nx, ny = self._read_grid_nx_ny_from_nml(nml)
             dtxy = self._read_grid_dtxy_from_nml(nml) or 1.0
             costs.append(((nx or 1) * (ny or 1)) / dtxy)
         total = sum(costs) or 1.0
-        out, acc, n = [], 0.0, len(dirs)
-        for i, ((_, name), c) in enumerate(zip(dirs, costs)):
+        out, acc, n = [], 0.0, len(entries)
+        for i, (path, _idx) in enumerate(entries):
             lo = acc
-            acc += c / total
+            acc += costs[i] / total
             hi = 1.0 if i == n - 1 else acc
-            out.append((name, i + 1, round(lo, 4), round(hi, 4)))
+            out.append((path.name, i + 1, round(lo, 4), round(hi, 4)))
         return out
 
     def _modify_ww3_multi_nml(self, nml_path):
@@ -162,8 +158,14 @@ class WW3MultiNML(NMLPrimitives):
 
         # 计算各嵌套层(level0..N)的进程分配 COMM_FRAC，按计算量 点数/DTXY 加权
         level_resources = self._compute_level_resources()
-        # 最细层目录名（谱点输出 points.list 放在最细层）；无 level* 时回退旧 fine
-        finest_name = level_resources[-1][0] if level_resources else "fine"
+        # 最细层目录名（谱点输出 out_pnt 命名用最细层）
+        from .nested_level_dirs import finest_nested_level_name
+
+        finest_name = (
+            level_resources[-1][0]
+            if level_resources
+            else finest_nested_level_name(getattr(self, "selected_folder", "") or "")
+        )
 
         try:
             with open(nml_path, "r", encoding="utf-8") as f:
@@ -188,12 +190,9 @@ class WW3MultiNML(NMLPrimitives):
             nested_text = tr("step2_grid_type_nested", "嵌套网格")
             is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
-            # 如果通过 grid_type_var 无法确定，检查文件夹结构（level*/ 或旧 coarse+fine）
+            # 如果通过 grid_type_var 无法确定，检查 level* 目录结构
             if not is_nested_grid and hasattr(self, 'selected_folder') and self.selected_folder:
-                coarse_dir = os.path.join(self.selected_folder, "coarse")
-                fine_dir = os.path.join(self.selected_folder, "fine")
-                is_nested_grid = bool(level_resources) or (
-                    os.path.isdir(coarse_dir) and os.path.isdir(fine_dir))
+                is_nested_grid = bool(level_resources)
 
             # 如果是嵌套网格模式，读取 ww3_shel.nml 中的 TYPE%FIELD%LIST 值
             alltype_field_list_value = None
@@ -271,7 +270,7 @@ class WW3MultiNML(NMLPrimitives):
                                     break
 
                             if not has_alltype_point_file:
-                                new_lines.append(f"  ALLTYPE%POINT%FILE     = './{finest_name}/points.list'\n")
+                                new_lines.append("  ALLTYPE%POINT%FILE     = 'points.list'\n")
                                 # 统一点输出命名为最细层 → out_pnt.<finest>，与运行脚本一致
                                 new_lines.append(f"  ALLTYPE%POINT%NAME     = '{finest_name}'\n")
                                 modified_alltype_point_file = True
@@ -468,7 +467,7 @@ class WW3MultiNML(NMLPrimitives):
                 log_parts.append(resource_str)
 
             if modified_alltype_point_file:
-                log_parts.append(tr("step4_alltype_point_file_value", "ALLTYPE%POINT%FILE = '{path}'").format(path=f"./{finest_name}/points.list"))
+                log_parts.append(tr("step4_alltype_point_file_value", "ALLTYPE%POINT%FILE = '{path}'").format(path="points.list"))
 
             if modified_alldate_point:
                 log_parts.append(tr("step4_alldate_point_value", "ALLDATE%POINT = '{start} 000000' '{precision}' '{end} 235959'").format(start=start_date, precision=output_stride, end=end_date))
