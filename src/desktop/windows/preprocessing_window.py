@@ -709,6 +709,38 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         button.style().unpolish(button)
         button.style().polish(button)
 
+    def _forcing_field_button_labels(self) -> dict[str, str]:
+        return {
+            "wind": tr("step1_choose_wind", "选择风场"),
+            "current": tr("step1_choose_current", "选择流场"),
+            "level": tr("step1_choose_level", "选择水位场"),
+            "ice": tr("step1_choose_ice", "选择海冰场"),
+        }
+
+    def _resolve_auto_associate_from_config(self, config: PipelineConfig, defaults: dict) -> bool:
+        aa = config.forcing.auto_associate
+        if aa is None:
+            aa = defaults.get("forcing", {}).get("auto_associate")
+        return bool(aa) if aa is not None else True
+
+    def _sync_forcing_options_from_config(self, config: PipelineConfig, defaults: dict) -> None:
+        pm = config.forcing.process_mode or defaults.get("forcing", {}).get("process_mode") or "copy"
+        self._mode.setCurrentIndex(0 if pm == "copy" else 1)
+        self._auto_associate.setChecked(self._resolve_auto_associate_from_config(config, defaults))
+
+    def _scan_and_fill_forcing_buttons(self, workdir: str, *, auto_associate: bool | None = None) -> None:
+        if not workdir or not os.path.isdir(workdir):
+            return
+        if auto_associate is None:
+            auto_associate = self._auto_associate.isChecked()
+        from workflows.infrastructure.forcing.file_service import FileService
+
+        scanned = FileService().scan_forcing_files(workdir, auto_associate=auto_associate)
+        labels = self._forcing_field_button_labels()
+        for key in ("wind", "current", "level", "ice"):
+            value = getattr(scanned, key, None)
+            self._set_path_value(key, str(value) if value else "", labels[key])
+
     def _apply_workdir_ui(self, folder: str) -> None:
         # [EN] Only update workdir-related UI (fields/recent list/title), without triggering params adoption.
         """仅更新工作目录相关 UI（字段/最近列表/标题），不触发 params 采纳。"""
@@ -723,6 +755,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._refresh_server_path()
         if hasattr(self, "_plot_interface"):
             self._plot_interface.auto_detect_from_workdir(folder)
+        self._scan_and_fill_forcing_buttons(folder)
 
     def _show_plot_page(self) -> None:
         # [EN] Switch to plot page and auto-detect wind.nc / ww3*.nc in workdir (aligned with src).
@@ -825,28 +858,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # [EN] Load defaults from root params.yml for fallback when workdir fields are empty
         # 从根 params.yml 加载默认值，供工作目录字段为空时回退使用
         defaults = self._load_root_defaults()
+        self._sync_forcing_options_from_config(config, defaults)
 
         if update_workdir_ui:
             self._apply_workdir_ui(str(config.workdir.path))
-        # [EN] Forcing field paths: not read from yml, directly scan workdir for standard-named files
-        # 强迫场路径：不从 yml 读取，直接扫描工作目录中是否存在标准命名的文件
-        from workflows.infrastructure.forcing.file_service import FileService
-        scanned = FileService().scan_forcing_files(str(config.workdir.path))
-        labels = {
-            "wind": tr("step1_choose_wind", "选择风场"),
-            "current": tr("step1_choose_current", "选择流场"),
-            "level": tr("step1_choose_level", "选择水位场"),
-            "ice": tr("step1_choose_ice", "选择海冰场"),
-        }
-        for key in ("wind", "current", "level", "ice"):
-            value = getattr(scanned, key, None)
-            self._set_path_value(key, str(value) if value else "", labels[key])
-        # [EN] process_mode / auto_associate: load_config already merged root defaults, use directly
-        # process_mode / auto_associate：load_config 已用根默认值合并，直接使用
-        pm = config.forcing.process_mode or defaults.get("forcing", {}).get("process_mode") or "copy"
-        self._mode.setCurrentIndex(0 if pm == "copy" else 1)
-        aa = config.forcing.auto_associate if config.forcing.auto_associate is not None else defaults.get("forcing", {}).get("auto_associate")
-        self._auto_associate.setChecked(bool(aa) if aa is not None else True)
+        else:
+            # set_work_directory：先同步 auto_associate，再按工作目录扫描强迫场
+            self._scan_and_fill_forcing_buttons(str(config.workdir.path))
         self._render_summary(config)
         self._append_log(tr("params_loaded", "已载入参数文件：{path}").format(path=self._params_path))
 
@@ -958,10 +976,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if selected:
             self._set_path_value(key, selected)
             if key in {"wind", "current", "level", "ice"}:
-                has_workdir = bool(self._paths["workdir"].text().strip())
-                has_wind = bool(self._paths["wind"].text().strip())
-                if has_workdir and has_wind:
-                    self._prepare_forcing(fields=(ForcingField(key),))
+                if not self._paths["workdir"].text().strip():
+                    self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
+                    return
+                self._prepare_forcing(fields=(ForcingField(key),))
 
     def _show_forcing_files_info(self) -> None:
         if self._busy:
@@ -2451,14 +2469,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._forcing_status.setText(tr("status_processing", "正在处理"))
         elif state.error:
             self._forcing_status.setText(tr("status_failed", "处理失败"))
-        elif state.files.wind:
+        elif any(getattr(state.files, key, None) for key in ("wind", "current", "level", "ice")):
             self._forcing_status.setText(tr("forcing_prepared", "强迫场已准备"))
-            labels = {
-                "wind": tr("step1_choose_wind", "选择风场"),
-                "current": tr("step1_choose_current", "选择流场"),
-                "level": tr("step1_choose_level", "选择水位场"),
-                "ice": tr("step1_choose_ice", "选择海冰场"),
-            }
+            labels = self._forcing_field_button_labels()
             for key, empty_text in labels.items():
                 value = getattr(state.files, key, None)
                 if value:

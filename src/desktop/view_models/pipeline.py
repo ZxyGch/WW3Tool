@@ -154,7 +154,10 @@ class PipelineViewModel:
 
             logger = CoreLogger(callback=self._handle_log)
             file_service = FileService(logger=logger)
-            files = ScanWorkdirForcingUseCase(file_service).execute(str(config.workdir.path))
+            files = ScanWorkdirForcingUseCase(file_service).execute(
+                str(config.workdir.path),
+                auto_associate=bool(config.forcing.auto_associate),
+            )
             prepare_ww3_files(config, files, logger, update_server_script=False)
             self._handle_log(tr("ww3_params_applied", "✅ WW3 参数已应用"))
             self._set_state(

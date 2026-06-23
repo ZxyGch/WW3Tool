@@ -286,14 +286,14 @@ class ScanWorkdirForcingUseCase:
     def __init__(self, file_service: FileService) -> None:
         self._file_service = file_service
 
-    def execute(self, selected_folder: Optional[str]) -> Step1Files:
+    def execute(self, selected_folder: Optional[str], *, auto_associate: bool = True) -> Step1Files:
         """扫描目录并返回 ``Step1Files``；目录为空或无效时返回空结构。
 
         [EN] Scan the directory and return ``Step1Files``; returns empty structure if directory is empty or invalid.
         """
         if not selected_folder:
             return Step1Files()
-        return self._file_service.scan_forcing_files(selected_folder)
+        return self._file_service.scan_forcing_files(selected_folder, auto_associate=auto_associate)
 
 
 # 更符合基础设施层命名习惯的类型别名（旧 UseCase 名保留以兼容桌面端）

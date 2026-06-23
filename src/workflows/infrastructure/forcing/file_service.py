@@ -466,17 +466,17 @@ class FileService:
             self.log(f"{tr('log_copy_fix_failed', '❌ 复制或修复文件失败')}: {e}")
             return None
 
-    def scan_forcing_files(self, selected_folder: str) -> Step1Files:
+    def scan_forcing_files(self, selected_folder: str, *, auto_associate: bool = True) -> Step1Files:
         """扫描工作目录，推断 wind/current/level/ice 四类场对应的 NetCDF 路径。
 
         [EN] Scan the working directory and infer NetCDF paths for wind/current/level/ice fields.
 
-        匹配顺序：单场标准名（``wind.nc`` 等）→ 组合文件名解析 → 打开文件做变量检测。
-        不修改 UI，返回 ``Step1Files`` 供 CLI 或 ViewModel 使用。
+        匹配顺序：单场标准名（``wind.nc`` 等）→（auto_associate 时）组合文件名解析
+        → 打开文件做变量检测。不修改 UI，返回 ``Step1Files`` 供 CLI 或 ViewModel 使用。
 
-        [EN] Matching order: single-field standard names (``wind.nc``, etc.) -> combined filename parsing
-        -> open file and detect variables. Does not modify the UI; returns ``Step1Files``
-        for CLI or ViewModel use.
+        [EN] Matching order: single-field standard names (``wind.nc``, etc.) ->
+        (when auto_associate) combined filename parsing -> open file and detect variables.
+        Does not modify the UI; returns ``Step1Files`` for CLI or ViewModel use.
         """
         files = Step1Files()
         try:
@@ -500,6 +500,8 @@ class FileService:
                         break
 
             for nc_file in nc_files:
+                if not auto_associate:
+                    continue
                 filename = os.path.basename(nc_file)
                 fields = self.path_manager.parse_forcing_filename(filename)
                 if len(fields) > 1:
@@ -513,16 +515,17 @@ class FileService:
                         elif found_files[field] == os.path.join(selected_folder, f"{field.value}.nc"):
                             pass
 
-            missing_fields = [field for field in field_patterns.keys() if field not in found_files]
-            if missing_fields:
-                for nc_file in nc_files:
-                    detected = VariableDetector.detect_all_forcing_fields_in_file(nc_file)
-                    for field in list(missing_fields):
-                        if detected.get(field.value) and field not in found_files:
-                            found_files[field] = nc_file
-                            missing_fields.remove(field)
-                    if not missing_fields:
-                        break
+            if auto_associate:
+                missing_fields = [field for field in field_patterns.keys() if field not in found_files]
+                if missing_fields:
+                    for nc_file in nc_files:
+                        detected = VariableDetector.detect_all_forcing_fields_in_file(nc_file)
+                        for field in list(missing_fields):
+                            if detected.get(field.value) and field not in found_files:
+                                found_files[field] = nc_file
+                                missing_fields.remove(field)
+                        if not missing_fields:
+                            break
 
             for field, path in found_files.items():
                 files.set(field, path)

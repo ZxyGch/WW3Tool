@@ -213,7 +213,10 @@ def _forcing_excluded_relpaths(config: PipelineConfig, local_dir: str) -> set[st
     try:
         from ..infrastructure.forcing.file_service import FileService
 
-        scanned = FileService().scan_forcing_files(local_dir)
+        scanned = FileService().scan_forcing_files(
+            local_dir,
+            auto_associate=config.forcing.auto_associate is not False,
+        )
         for _field, path in scanned.existing_items():
             add_path(path)
     except Exception:
