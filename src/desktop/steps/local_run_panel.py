@@ -18,8 +18,8 @@ from workflows.support.translations import tr
 
 
 class LocalRunPanel:
-    # [EN] Local run controls: ST version dropdown (or bin path) + run/stop + ounf/ounp/trnc.
-    """本地运行控件：ST 版本下拉框（或 bin 路径）+ 运行/停止 + ounf/ounp/trnc。"""
+    # [EN] Local run controls: ST version dropdown + run/stop + ounf/ounp/trnc.
+    """本地运行控件：ST 版本下拉框 + 运行/停止 + ounf/ounp/trnc。"""
 
     def __init__(
         self,
@@ -30,8 +30,9 @@ class LocalRunPanel:
         local_run: Callable[[], None],
         stop: Callable[[], None],
     ) -> None:
-        group, layout = create_header_card(parent, tr("step5_local_title", "本地运行"))
-        self._layout = layout
+        group, _ = create_header_card(parent, tr("step5_local_title", "本地运行"))
+        group.viewLayout.setContentsMargins(11, 10, 11, 12)
+        self._group = group
 
         # [EN] Check if local ST versions are configured
         # 检查是否已配置本地 ST 版本
@@ -44,11 +45,8 @@ class LocalRunPanel:
 
         self.local_run_button = create_button(tr("step5_local_run", "本地运行"), local_run)
         self.stop_button = create_button(tr("step5_stop_shel", "停止执行"), stop)
-        layout.addWidget(self.local_run_button)
-        layout.addWidget(self.stop_button)
-
-        group.viewLayout.setContentsMargins(11, 10, 11, 12)
-        group.viewLayout.addLayout(layout)
+        group.viewLayout.addWidget(self.local_run_button)
+        group.viewLayout.addWidget(self.stop_button)
         self.widget = group
 
     def _ensure_st_row(self) -> None:
@@ -64,7 +62,7 @@ class LocalRunPanel:
         left_align_combo_text(self.st_combo)
         row.addWidget(self.st_combo, 1)
         self._st_row_widget = row_widget
-        self._layout.addWidget(row_widget)
+        self._group.viewLayout.addWidget(row_widget)
 
     def refresh_st_versions(self) -> None:
         versions = self._load_local_st_versions()
