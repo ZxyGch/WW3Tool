@@ -184,12 +184,11 @@ class GridStepPanel:
         levels_layout.setContentsMargins(0, 0, 0, 0)
         levels_layout.setSpacing(8)
         levels_layout.addWidget(section_title(tr("step2_nested_levels", "其余嵌套层（细 → 最细）")))
-        # 卡片直接竖排、完全展开（不用滚动条）；新卡插在 stretch 之前
+        # 卡片直接竖排、完全展开（不用滚动条）；容器随内容收缩，避免底部留大空隙
         self._cards_container = QWidget()
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
         self._cards_layout.setSpacing(8)
-        self._cards_layout.addStretch(1)
         levels_layout.addWidget(self._cards_container)
         self.levels_hint = QLabel("")
         self.levels_hint.setWordWrap(True)
@@ -343,7 +342,7 @@ class GridStepPanel:
                 card = self._make_card()
                 card.set_from_region(region)
                 self.level_cards.append(card)
-                self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+                self._cards_layout.addWidget(card)
             self._renumber_cards()
         finally:
             self.grid_type_combo.blockSignals(False)
@@ -510,7 +509,7 @@ class GridStepPanel:
                 lon=_contract(lon, factor), lat=_contract(lat, factor),
             ))
         self.level_cards.append(card)
-        self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+        self._cards_layout.addWidget(card)
         self._renumber_cards()
         self._validate_levels()
 
