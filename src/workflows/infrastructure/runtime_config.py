@@ -674,9 +674,11 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#                          inner grid cells for nested grids (≥ 1).\n"
      "#   lon       – [west, east] longitude bounds of the main domain (deg).\n"
      "#   lat       – [south, north] latitude bounds of the main domain (deg).\n"
-     "#   structured.nested.outer / .inner – per-level grid cells for nested\n"
-     "#               grids: each with dx/dy (deg) and own lon/lat bounds;\n"
-     "#               outer bounds default to the main grid.lon / grid.lat.\n"
+     "#   structured.nested.levels – ordered list (coarse -> fine) of nested\n"
+     "#               grid levels; each with dx/dy (deg) and own lon/lat bounds.\n"
+     "#               level0 is coarsest (bounds default to grid.lon/lat); each\n"
+     "#               finer level has smaller dx and lies inside the previous\n"
+     "#               one (2 to 99 levels).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("  structured:",
      "  # Structured grid options:\n"
