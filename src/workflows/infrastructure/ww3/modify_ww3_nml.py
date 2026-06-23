@@ -532,10 +532,13 @@ class ModifyWW3NML(
         self._modify_ww3_shel_forcing_inputs_in_dir(coarse_dir, grid_label="")
         # [EN] Spectral point-by-point computation related operations (outer grid)
         # 谱空间逐点计算相关操作（外网格）
-        self._apply_spectral_params_to_dir(coarse_dir, self.shel_start_edit.text().strip(), 
-                                          self.shel_end_edit.text().strip(), 
+        self._apply_spectral_params_to_dir(coarse_dir, self.shel_start_edit.text().strip(),
+                                          self.shel_end_edit.text().strip(),
                                           self.shel_step_edit.text().strip(),
                                           self.output_precision_edit.text().strip())
+        # [EN] Recompute per-grid CFL timesteps from this grid's own dx + global FREQ1
+        # 按外网格自身 dx 与全局 FREQ1 重算 CFL 时间步（嵌套各网格 DTXY 应不同）
+        self._apply_cfl_timesteps_to_grid_nml(coarse_dir)
 
         # [EN] Process inner grid (all operations completed under one separator line)
         # 处理内网格（所有操作在一个分隔线下完成）
@@ -565,10 +568,13 @@ class ModifyWW3NML(
         self._modify_ww3_shel_forcing_inputs_in_dir(fine_dir, grid_label="")
         # [EN] Spectral point-by-point computation related operations (inner grid)
         # 谱空间逐点计算相关操作（内网格）
-        self._apply_spectral_params_to_dir(fine_dir, self.shel_start_edit.text().strip(), 
-                                          self.shel_end_edit.text().strip(), 
+        self._apply_spectral_params_to_dir(fine_dir, self.shel_start_edit.text().strip(),
+                                          self.shel_end_edit.text().strip(),
                                           inner_shel_step,
                                           inner_output_precision)
+        # [EN] Recompute per-grid CFL timesteps for the (finer) inner grid
+        # 按内网格自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
+        self._apply_cfl_timesteps_to_grid_nml(fine_dir)
         if self._is_step2_smc_mesh():
             self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
 

@@ -83,6 +83,22 @@ class WW3MultiNML(NMLPrimitives):
             self.log(tr("read_nml_error", "⚠️ 读取 {path} 时出错：{error}").format(path=nml_path, error=e))
             return None, None
 
+    def _read_grid_dtxy_from_nml(self, nml_path):
+        """从 ww3_grid.nml 读取 TIMESTEPS%DTXY（CFL 传播时间步，秒）。"""
+        if not os.path.exists(nml_path):
+            return None
+        try:
+            with open(nml_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.lstrip().startswith("!"):
+                        continue
+                    m = re.search(r"TIMESTEPS%DTXY\s*=\s*([0-9]*\.?[0-9]+)", line, re.IGNORECASE)
+                    if m:
+                        return float(m.group(1))
+        except Exception:
+            return None
+        return None
+
     def _modify_ww3_multi_nml(self, nml_path):
         """修改 ww3_multi.nml 的起始时间和强迫场配置"""
         if not os.path.exists(nml_path):
@@ -128,25 +144,21 @@ class WW3MultiNML(NMLPrimitives):
             if coarse_nx is not None and coarse_ny is not None and fine_nx is not None and fine_ny is not None:
                 points_coarse = coarse_nx * coarse_ny
                 points_fine = fine_nx * fine_ny
-                total_points = points_coarse + points_fine
 
-                if total_points > 0:
-                    # 计算基础比例
-                    base_coarse_ratio = points_coarse / total_points
+                # 进程按各网格的计算量分配，而不是仅按网格点数。
+                # 计算量 ≈ 网格点数 × 总步数 = 点数 ×（1/DTXY）：细网格 DTXY 更小、
+                # 步数更多、每点更贵。读各网格自身的 DTXY（CFL 传播步）作权重。
+                dtxy_coarse = self._read_grid_dtxy_from_nml(coarse_grid_nml) or 1.0
+                dtxy_fine = self._read_grid_dtxy_from_nml(fine_grid_nml) or 1.0
+                cost_coarse = points_coarse / dtxy_coarse
+                cost_fine = points_fine / dtxy_fine
+                total_cost = cost_coarse + cost_fine
 
-                    # 考虑网格分辨率的影响：更细的网格需要更多计算资源
-                    # 使用加权计算，给 coarse 网格更多的权重（因为需要处理边界条件等）
-                    # 或者设置一个最小比例保证
-                    min_coarse_ratio = 0.35  # 最小比例保证，避免 coarse 分配过少
-
-                    # 如果基础比例太小，使用最小比例
-                    # 否则，在基础比例和最小比例之间取较大值，但不超过 0.6
-                    if base_coarse_ratio < min_coarse_ratio:
-                        coarse_ratio = min_coarse_ratio
-                    else:
-                        # 给 coarse 一个额外的权重（+5%），但不超过 0.6
-                        coarse_ratio = min(base_coarse_ratio + 0.05, 0.60)
-
+                if total_cost > 0:
+                    coarse_ratio = cost_coarse / total_cost
+                    # 限幅到 [0.05, 0.95]，避免任一网格分到 0 进程（不再 +5% 偏向、
+                    # 也不再硬封顶 0.60——细网格往往才是计算大头）。
+                    coarse_ratio = max(0.05, min(coarse_ratio, 0.95))
                     fine_ratio = 1.0 - coarse_ratio
             #         self.log(tr("grid_points_info", "📊 网格点数：coarse={coarse} ({coarse_nx}x{coarse_ny}), fine={fine} ({fine_nx}x{fine_ny}), 基础比例：coarse={base_ratio:.2f}, 调整后比例：coarse={coarse_ratio:.2f}, fine={fine_ratio:.2f}").format(coarse=points_coarse, coarse_nx=coarse_nx, coarse_ny=coarse_ny, fine=points_fine, fine_nx=fine_nx, fine_ny=fine_ny, base_ratio=base_coarse_ratio, coarse_ratio=coarse_ratio, fine_ratio=fine_ratio))
             #     else:

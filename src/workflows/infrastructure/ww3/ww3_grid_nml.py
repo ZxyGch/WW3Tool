@@ -610,6 +610,63 @@ class WW3GridNML(NMLPrimitives):
             return
         self._sync_grid_meta_to_grid_nml_in_dir(target_dir)
 
+    def _apply_cfl_timesteps_to_grid_nml(self, grid_dir):
+        """按该网格自身 dx/dy 与（全局）FREQ1 重算 CFL 时间步并写回 ww3_grid.nml。
+
+        嵌套时 coarse/fine 的传播步 DTXY 必须不同（CFL: DTXY ∝ Δx），否则细网格
+        会违反 CFL 而数值不稳定。从已写好的 ww3_grid.nml 读 RECT%SX/SY/Y0/NY 与
+        SPECTRUM%FREQ1，调用 recommend_timesteps 重算后替换 TIMESTEPS%DT*（只改活动
+        行，跳过模板注释里的占位）。
+        """
+        import os
+        import re
+        from workflows.domain.timestep_recommendation import recommend_timesteps
+
+        nml = os.path.join(grid_dir, "ww3_grid.nml")
+        if not os.path.isfile(nml):
+            return
+        try:
+            with open(nml, encoding="utf-8") as f:
+                lines = f.readlines()
+
+            def _val(key, cast=float):
+                pat = re.compile(rf"{re.escape(key)}\s*=\s*([0-9.+\-Ee]+)")
+                for ln in lines:
+                    if ln.lstrip().startswith("!"):
+                        continue
+                    m = pat.search(ln)
+                    if m:
+                        return cast(m.group(1))
+                return None
+
+            sx = _val("RECT%SX"); sy = _val("RECT%SY")
+            y0 = _val("RECT%Y0"); ny = _val("RECT%NY", int)
+            freq1 = _val("SPECTRUM%FREQ1")
+            if not sx or not sy or not freq1 or y0 is None or not ny:
+                return
+            lat_center = y0 + (ny - 1) * sy / 2.0
+            rec = recommend_timesteps(dx_deg=sx, dy_deg=sy, freq1=freq1, lat_deg=lat_center)
+            ts_map = {"TIMESTEPS%DTMAX": rec.dtmax, "TIMESTEPS%DTXY": rec.dtxy,
+                      "TIMESTEPS%DTKTH": rec.dtkth, "TIMESTEPS%DTMIN": rec.dtmin}
+            out = []
+            for ln in lines:
+                if not ln.lstrip().startswith("!"):
+                    for key, val in ts_map.items():
+                        if re.search(rf"{re.escape(key)}\s*=", ln):
+                            ln = re.sub(rf"({re.escape(key)}\s*=\s*)[0-9.+\-Ee]+",
+                                        rf"\g<1>{val}", ln)
+                            break
+                out.append(ln)
+            with open(nml, "w", encoding="utf-8") as f:
+                f.writelines(out)
+            prefix = f"[{os.path.basename(grid_dir)}] " if grid_dir else ""
+            self.log(prefix + tr(
+                "step4_cfl_timesteps_applied",
+                "✅ 按 CFL 重算时间步：DTXY={dtxy}, DTMAX={dtmax}, DTKTH={dtkth}").format(
+                dtxy=rec.dtxy, dtmax=rec.dtmax, dtkth=rec.dtkth))
+        except Exception as e:
+            self.log(tr("step4_cfl_timesteps_failed", "⚠️ CFL 时间步重算失败：{error}").format(error=e))
+
     def _sync_grid_meta_to_grid_nml_in_dir(self, target_dir, grid_label=""):
         """从 grid.meta 仅同步 GRID%TYPE/COORD/CLOS、RECT%*、DEPTH%SF、OBST%SF 到 ww3_grid.nml（与扁平 meta 一致）。"""
         if not target_dir or not isinstance(target_dir, str):
