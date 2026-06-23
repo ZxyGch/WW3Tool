@@ -509,19 +509,18 @@ class ModifyWW3NML(
     def _level_precision(self, idx, n_levels, levels_cfg):
         """第 idx 层（共 n_levels 层）的 (compute_precision, output_precision)。
 
-        优先 params.yml 该层显式值；省略时：末层回退内圈控件、其余回退全局控件。
+        积分步 compute_precision：优先 params.yml 该层显式值；省略时末层回退内圈控件、
+        其余回退全局控件。输出步 output_precision：各层统一用全局 ww3.output_precision
+        （嵌套各层一般在相同时刻输出，无需逐层不同）。
         """
-        cp = op = None
+        cp = None
         if 0 <= idx < len(levels_cfg) and isinstance(levels_cfg[idx], dict):
             cp = levels_cfg[idx].get("compute_precision")
-            op = levels_cfg[idx].get("output_precision")
         is_last = idx == n_levels - 1
         g_cp = self.shel_step_edit.text().strip()
-        g_op = self.output_precision_edit.text().strip()
         i_cp = self.inner_shel_step_edit.text().strip()
-        i_op = self.inner_output_precision_edit.text().strip()
         cp = str(cp).strip() if cp is not None else ((i_cp or g_cp) if is_last else g_cp)
-        op = str(op).strip() if op is not None else ((i_op or g_op) if is_last else g_op)
+        op = self.output_precision_edit.text().strip()  # 输出步各层统一用全局
         return cp, op
 
     def _apply_all_params_nested(self, has_output_scheme=False):

@@ -210,13 +210,14 @@ forcing:
 #                          inner grid cells for nested grids (≥ 1).
 #   lon       – [west, east] longitude bounds of the main domain (deg).
 #   lat       – [south, north] latitude bounds of the main domain (deg).
-#   structured.nested.levels – ordered list (coarse → fine) of nested grid
-#               levels; each with dx/dy (deg) and own lon/lat bounds. level0 is
-#               coarsest (bounds default to grid.lon/lat); each finer level must
-#               have smaller dx and lie inside the previous one (2 to 99 levels).
-#               每层还可选填 compute_precision / output_precision（ww3_shel 积分步 /
-#               输出步，秒），省略则回退全局 ww3.compute_precision / output_precision；
-#               CFL 传播步 DTXY 始终按各层 dx 自动重算。
+#   structured.nested.levels – ordered list (coarse -> fine) of nested
+#               grid levels; each with dx/dy (deg) and own lon/lat bounds.
+#               level0 is coarsest (bounds default to grid.lon/lat); each
+#               finer level has smaller dx and lies inside the previous
+#               one (2 to 99 levels). Each level may also set an optional
+#               compute_precision (ww3_shel integration step, sec); omitted
+#               falls back to global ww3.compute_precision. The output step is
+#               uniform across levels (always global ww3.output_precision).
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -242,7 +243,7 @@ grid:
   structured:
     nested:
       levels:
-      - dx: 0.05            # level0：最粗（lon/lat 缺省取 grid.lon/lat）
+      - dx: 0.05
         dy: 0.05
         lon:
         - 110.0
@@ -250,9 +251,8 @@ grid:
         lat:
         - 10.0
         - 30.0
-        compute_precision: 1800   # 本层积分步(秒)；越细的层应越小
-        output_precision: 3600    # 本层输出步(秒)
-      - dx: 0.025           # level1：更细，必须落在 level0 内
+        compute_precision: 1800   # 本层积分步(秒)；越细的层应越小（输出步用全局 ww3.output_precision）
+      - dx: 0.025
         dy: 0.025
         lon:
         - 115.0
@@ -261,8 +261,6 @@ grid:
         - 15.0
         - 25.0
         compute_precision: 900
-        output_precision: 3600
-      # 再加层就继续追加 "- dx: …"（最多 99 层，逐层加密 + 套娃）
     bathymetry: GEBCO
     coastline_precision: full
     min_dist: 20

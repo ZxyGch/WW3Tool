@@ -678,9 +678,10 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#               grid levels; each with dx/dy (deg) and own lon/lat bounds.\n"
      "#               level0 is coarsest (bounds default to grid.lon/lat); each\n"
      "#               finer level has smaller dx and lies inside the previous\n"
-     "#               one (2 to 99 levels). Each level may also set optional\n"
-     "#               compute_precision / output_precision (ww3_shel steps, sec);\n"
-     "#               omitted falls back to global ww3.compute_precision/output.\n"
+     "#               one (2 to 99 levels). Each level may also set an optional\n"
+     "#               compute_precision (ww3_shel integration step, sec); omitted\n"
+     "#               falls back to global ww3.compute_precision. Output step is\n"
+     "#               uniform across levels (always global ww3.output_precision).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("  structured:",
      "  # Structured grid options:\n"

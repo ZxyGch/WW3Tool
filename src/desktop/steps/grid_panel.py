@@ -56,7 +56,6 @@ class _LevelCard(QWidget):
         self._line(grid, 2, 0, tr("step2_lat_south", "南纬:"), "lat_south", on_changed)
         self._line(grid, 2, 2, tr("step2_lat_north", "北纬:"), "lat_north", on_changed)
         self._line(grid, 3, 0, tr("step2_compute_step", "积分步:"), "compute_precision", on_changed)
-        self._line(grid, 3, 2, tr("step2_output_step", "输出步:"), "output_precision", on_changed)
         root.addLayout(grid)
 
     def _line(self, grid: QGridLayout, row: int, col: int, label: str, key: str,
@@ -87,11 +86,8 @@ class _LevelCard(QWidget):
             "lat": [self.fields["lat_south"].text().strip(), self.fields["lat_north"].text().strip()],
         }
         cp = self.fields["compute_precision"].text().strip()
-        op = self.fields["output_precision"].text().strip()
         if cp:
             data["compute_precision"] = cp
-        if op:
-            data["output_precision"] = op
         return data
 
     def set_from_region(self, region: GridRegion) -> None:
@@ -105,8 +101,6 @@ class _LevelCard(QWidget):
             self.fields["lat_north"].setText(f"{region.lat[1]:.4f}")
         self.fields["compute_precision"].setText(
             str(region.compute_precision) if region.compute_precision else "")
-        self.fields["output_precision"].setText(
-            str(region.output_precision) if region.output_precision else "")
 
     def region_floats(self):
         """返回 (dx, dy, lon, lat) 浮点；任一字段无法解析时返回 None（供校验/套娃用）。"""
@@ -166,7 +160,7 @@ class GridStepPanel:
         self._display_line(outer_grid, 2, 2, tr("step2_lat_north", "北纬:"), "grid_lat_north")
         layout.addLayout(outer_grid)
 
-        # level0 的可选精度（仅嵌套模式显示）
+        # level0 的可选积分步（仅嵌套模式显示）；输出步各层统一用全局 ww3.output_precision
         self.level0_prec_widget = QWidget()
         prec_grid = QGridLayout(self.level0_prec_widget)
         prec_grid.setContentsMargins(0, 0, 0, 0)
@@ -174,7 +168,6 @@ class GridStepPanel:
         prec_grid.setColumnStretch(1, 1)
         prec_grid.setColumnStretch(3, 1)
         self._display_line(prec_grid, 0, 0, tr("step2_compute_step", "积分步:"), "grid_compute")
-        self._display_line(prec_grid, 0, 2, tr("step2_output_step", "输出步:"), "grid_output")
         self.level0_prec_widget.hide()
         layout.addWidget(self.level0_prec_widget)
 
@@ -315,7 +308,6 @@ class GridStepPanel:
             self.set_value("grid_lat_south", f"{grid.outer.lat[0]:.4f}")
             self.set_value("grid_lat_north", f"{grid.outer.lat[1]:.4f}")
             self.set_value("grid_compute", str(grid.outer.compute_precision) if grid.outer.compute_precision else "")
-            self.set_value("grid_output", str(grid.outer.output_precision) if grid.outer.output_precision else "")
             self.grid_type_combo.setCurrentIndex(1 if grid.grid_type == "nested" else 0)
             self.mesh_type_combo.setCurrentIndex({"structured": 0, "smc": 1, "unstructured": 2}.get(grid.mesh_type, 0))
             if grid.smc is not None:
@@ -357,11 +349,8 @@ class GridStepPanel:
         if self.is_nested:
             level0 = self._region_overrides("grid")
             cp = self.fields["grid_compute"].text().strip()
-            op = self.fields["grid_output"].text().strip()
             if cp:
                 level0["compute_precision"] = cp
-            if op:
-                level0["output_precision"] = op
             levels = [level0] + [card.to_override() for card in self.level_cards]
         else:
             levels = [self._region_overrides("grid")]
