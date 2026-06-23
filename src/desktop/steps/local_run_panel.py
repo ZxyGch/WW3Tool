@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -37,17 +37,14 @@ class LocalRunPanel:
 
         # [EN] Check if local ST versions are configured
         # 检查是否已配置本地 ST 版本
-        local_st_versions = self._load_local_st_versions()
-        self._local_st_versions = local_st_versions
+        self._local_st_versions = self._load_local_st_versions()
         self.st_combo: ComboBox | None = None
         self.bin_edit: LineEdit | None = None
         self._st_row_widget: QWidget | None = None
         self._bin_row_widget: QWidget | None = None
 
-        if local_st_versions:
-            self._ensure_st_row()
-        else:
-            self._ensure_bin_row()
+        self._ensure_st_row()
+        self._ensure_bin_row()
         self.refresh_st_versions()
 
         self.local_run_button = create_button(tr("step5_local_run", "本地运行"), local_run)
@@ -58,12 +55,6 @@ class LocalRunPanel:
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
         self.widget = group
-
-    def _insert_selector_widget(self, widget: QWidget) -> None:
-        if isinstance(self._layout, QVBoxLayout):
-            self._layout.insertWidget(0, widget)
-        else:
-            self._layout.addWidget(widget)
 
     def _ensure_st_row(self) -> None:
         if self._st_row_widget is not None and self.st_combo is not None:
@@ -78,7 +69,7 @@ class LocalRunPanel:
         left_align_combo_text(self.st_combo)
         row.addWidget(self.st_combo, 1)
         self._st_row_widget = row_widget
-        self._insert_selector_widget(row_widget)
+        self._layout.addWidget(row_widget)
 
     def _ensure_bin_row(self) -> None:
         if self._bin_row_widget is not None and self.bin_edit is not None:
@@ -96,7 +87,7 @@ class LocalRunPanel:
         choose = self._create_button(tr("select", "选择"), self._choose_bin)
         row.addWidget(choose)
         self._bin_row_widget = row_widget
-        self._insert_selector_widget(row_widget)
+        self._layout.addWidget(row_widget)
 
     def refresh_st_versions(self) -> None:
         versions = self._load_local_st_versions()

@@ -484,7 +484,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         if section in {"st_versions", "output_schemes"}:
             self._refresh_home_st_and_output_options(config)
-        if section == "local_st_versions" and hasattr(self, "_local_run_panel"):
+        if section in {"st_versions", "local_st_versions"} and hasattr(self, "_local_run_panel"):
             self._local_run_panel.refresh_st_versions()
 
     def _refresh_home_st_and_output_options(self, config: dict) -> None:
