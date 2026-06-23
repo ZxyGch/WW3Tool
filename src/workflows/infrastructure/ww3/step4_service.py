@@ -468,6 +468,7 @@ class StepFourServiceMixin:
                 copied += 1
             scripts_target_dir = workdir_for_special if is_nested_grid else target_dir
             scripts_copied = 0
+            script_copy_entries = []
             if os.path.isdir(scripts_dir):
                 for item in os.listdir(scripts_dir):
                     src_path = os.path.join(scripts_dir, item)
@@ -476,17 +477,19 @@ class StepFourServiceMixin:
                     dst_path = os.path.join(scripts_target_dir, item)
                     shutil.copy2(src_path, dst_path)
                     if item in {"server.sh", "local.sh"}:
-                        self.log(
-                            tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
-                                name=item, src=src_path, dst=dst_path
-                            )
-                        )
+                        script_copy_entries.append(f"{item}: {src_path} → {dst_path}")
                     if item.endswith(".sh"):
                         try:
                             os.chmod(dst_path, os.stat(dst_path).st_mode | 0o755)
                         except OSError:
                             pass
                     scripts_copied += 1
+                if script_copy_entries:
+                    self.log(
+                        tr("scripts_copied_to_workdir", "✅ 已复制运行脚本：{entries}").format(
+                            entries="; ".join(script_copy_entries)
+                        )
+                    )
             else:
                 self.log(tr("step4_dir_not_found", "⚠️ 未找到目录：{path}").format(path=scripts_dir))
 

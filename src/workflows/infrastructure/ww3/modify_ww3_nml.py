@@ -410,6 +410,7 @@ class ModifyWW3NML(
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         copied_files = []
+        script_copy_entries = []
 
         try:
             # [EN] Copy server.sh (prefer public/scripts/server.sh)
@@ -421,11 +422,7 @@ class ModifyWW3NML(
             if os.path.isfile(server_script_path):
                 dst_path = os.path.join(self.selected_folder, "server.sh")
                 shutil.copy2(server_script_path, dst_path)
-                self.log(
-                    tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
-                        name="server.sh", src=server_script_path, dst=dst_path
-                    )
-                )
+                script_copy_entries.append(f"server.sh: {server_script_path} → {dst_path}")
                 copied_files.append("server.sh")
                 # [EN] Clean up \\r
                 # 清理 \r
@@ -456,13 +453,15 @@ class ModifyWW3NML(
                 if os.path.isfile(local_sh_path):
                     dst_path = os.path.join(self.selected_folder, "local.sh")
                     shutil.copy2(local_sh_path, dst_path)
-                    self.log(
-                        tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
-                            name="local.sh", src=local_sh_path, dst=dst_path
-                        )
-                    )
+                    script_copy_entries.append(f"local.sh: {local_sh_path} → {dst_path}")
                     copied_files.append("local.sh")
 
+            if script_copy_entries:
+                self.log(
+                    tr("scripts_copied_to_workdir", "✅ 已复制运行脚本：{entries}").format(
+                        entries="; ".join(script_copy_entries)
+                    )
+                )
             if copied_files:
                 files_str = ', '.join(copied_files)
                 self.log(tr("step4_special_files_copied", "✅ 已复制 {files} 到当前工作目录").format(files=files_str))

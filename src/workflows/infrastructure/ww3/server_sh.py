@@ -418,8 +418,8 @@ class ServerSh(NMLPrimitives):
             if os.path.exists(server_script_path):
                 shutil.copy2(server_script_path, workdir_server_sh)
                 self.log(
-                    tr("script_copied_to_workdir", "✅ 已复制脚本 {name}：{src} → {dst}").format(
-                        name="server.sh", src=server_script_path, dst=workdir_server_sh
+                    tr("scripts_copied_to_workdir", "✅ 已复制运行脚本：{entries}").format(
+                        entries=f"server.sh: {server_script_path} → {workdir_server_sh}"
                     )
                 )
             else:
