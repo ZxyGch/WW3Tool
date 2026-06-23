@@ -468,158 +468,138 @@ class ModifyWW3NML(
         except Exception as e:
             self.log(tr("copy_public_files_error", "❌ 复制公共文件时出错：{error}").format(error=e))
 
-    def _apply_all_params_nested(self, has_output_scheme=False):
-        """嵌套网格模式：合并所有操作，外网格和内网格各自在一个分隔线下完成
+    def _nested_level_dirs(self):
+        """返回嵌套各层目录 [(dir_path, idx), ...]，按 level 序号排序。
 
-        [EN] Nested grid mode: merge all operations, outer and inner grids each
-        completed under one separator line.
+        优先 level0…levelN；找不到时回退旧布局 coarse(idx 0)/fine(idx 1)。
         """
-        coarse_dir = os.path.join(self.selected_folder, "coarse")
-        fine_dir = os.path.join(self.selected_folder, "fine")
+        import re as _re
+        folder = self.selected_folder
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            names = []
+        dirs = [
+            (os.path.join(folder, d), int(d[5:]))
+            for d in names
+            if _re.match(r"^level\d+$", d) and os.path.isdir(os.path.join(folder, d))
+        ]
+        if dirs:
+            dirs.sort(key=lambda x: x[1])
+            return dirs
+        legacy = []
+        for i, name in enumerate(("coarse", "fine")):
+            p = os.path.join(folder, name)
+            if os.path.isdir(p):
+                legacy.append((p, i))
+        return legacy
 
-        if not os.path.isdir(coarse_dir) or not os.path.isdir(fine_dir):
-            self.log(tr("nested_grid_folders_not_found", "❌ 未找到 coarse 或 fine 文件夹，请先生成嵌套网格"))
+    def _read_nested_levels_cfg(self):
+        """从工作目录 params.yml 读取 grid.structured.nested.levels（列表）。"""
+        try:
+            import yaml
+            with open(os.path.join(self.selected_folder, "params.yml"), encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+            nested = (((raw.get("grid") or {}).get("structured") or {}).get("nested") or {})
+            lv = nested.get("levels")
+            return lv if isinstance(lv, list) else []
+        except Exception:
+            return []
+
+    def _level_precision(self, idx, n_levels, levels_cfg):
+        """第 idx 层（共 n_levels 层）的 (compute_precision, output_precision)。
+
+        优先 params.yml 该层显式值；省略时：末层回退内圈控件、其余回退全局控件。
+        """
+        cp = op = None
+        if 0 <= idx < len(levels_cfg) and isinstance(levels_cfg[idx], dict):
+            cp = levels_cfg[idx].get("compute_precision")
+            op = levels_cfg[idx].get("output_precision")
+        is_last = idx == n_levels - 1
+        g_cp = self.shel_step_edit.text().strip()
+        g_op = self.output_precision_edit.text().strip()
+        i_cp = self.inner_shel_step_edit.text().strip()
+        i_op = self.inner_output_precision_edit.text().strip()
+        cp = str(cp).strip() if cp is not None else ((i_cp or g_cp) if is_last else g_cp)
+        op = str(op).strip() if op is not None else ((i_op or g_op) if is_last else g_op)
+        return cp, op
+
+    def _apply_all_params_nested(self, has_output_scheme=False):
+        """嵌套网格模式：对 level0…levelN 逐层完成全部操作（每层在一条分隔线下）。
+
+        每层积分步/输出步取自 params.yml 该层的 compute_precision/output_precision，
+        省略时回退（末层→内圈控件、其余→全局控件）；CFL 传播步按各层 dx 自动重算。
+
+        [EN] Nested grid mode: process level0..levelN, each under one separator line.
+        """
+        level_dirs = self._nested_level_dirs()
+        if not level_dirs:
+            self.log(tr("nested_grid_folders_not_found",
+                        "❌ 未找到 level* / coarse / fine 网格目录，请先生成嵌套网格"))
             return
+        n = len(level_dirs)
+        levels_cfg = self._read_nested_levels_cfg()
 
-        # [EN] Process public files (all operations completed under one separator line)
-        # 处理公共文件（所有操作在一个分隔线下完成）
+        # 公共文件（server.sh + ww3_multi.nml）
         self.log("")
         self.log("=" * 70)
         self.log(tr("step4_public_files_start", "🔄 【工作目录】开始处理公共文件..."))
-        # [EN] Copy public files (server.sh and ww3_multi.nml) to working directory
-        # 复制公共文件（server.sh 和 ww3_multi.nml）到工作目录
         self._copy_public_special_files_to_workdir()
-        # [EN] Update server.sh file
-        # 更新 server.sh 文件
         self.modify_server_sh_file()
-        # [EN] Modify ww3_multi.nml
-        # 修改 ww3_multi.nml
         workdir_multi_nml = os.path.join(self.selected_folder, "ww3_multi.nml")
         if os.path.exists(workdir_multi_nml):
             self._modify_ww3_multi_nml(workdir_multi_nml)
         else:
             self.log(tr("ww3_multi_not_found", "⚠️ 未找到工作目录中的 ww3_multi.nml：{path}，跳过修改").format(path=workdir_multi_nml))
 
-        # [EN] Process outer grid (all operations completed under one separator line)
-        # 处理外网格（所有操作在一个分隔线下完成）
-        self.log("")
-        self.log("=" * 70)
-        self.log(tr("step4_outer_grid_start", "🔄 【外网格】开始处理外网格..."))
-       
-        self._copy_public_files_to_dir(coarse_dir, grid_label="")
-        # [EN] After copying files, apply spectral partition output scheme (outer/inner grid)
-        # 在复制文件后，应用谱分区输出方案（外/内网格）
         scheme_applied = False
-        if has_output_scheme:
-            scheme_applied = self._apply_output_scheme_to_dir(coarse_dir) or scheme_applied
-        self._sync_grid_meta_to_grid_nml_in_dir(coarse_dir, grid_label="")
-        self._update_grid_closure_from_meta(coarse_dir, grid_label="")
-        self._apply_ww3_params_to_dir(
-            coarse_dir,
-            self.shel_step_edit.text().strip(),
-            self.output_precision_edit.text().strip(),
-            grid_label=""
-        )
-        self._modify_ww3_prnc_nml_for_nested(coarse_dir, grid_label="")
-        # [EN] Modify time range in ww3_prnc.nml (outer grid)
-        # 修改 ww3_prnc.nml 中的时间范围（外网格）
-        self._modify_ww3_prnc_times_in_dir(coarse_dir, grid_label="")
-        # [EN] Generate other forcing field ww3_prnc_*.nml files for outer grid (copied and modified from time-adjusted ww3_prnc.nml)
-        # 为外网格生成其他强迫场的 ww3_prnc_*.nml 文件（从已修改时间的 ww3_prnc.nml 复制并修改）
-        self._generate_forcing_field_prnc_files(coarse_dir, use_relative_path=True)
-        # [EN] Modify INPUT%FORCING%* settings in outer grid ww3_shel.nml
-        # 修改外网格 ww3_shel.nml 中的 INPUT%FORCING%* 设置
-        self._modify_ww3_shel_forcing_inputs_in_dir(coarse_dir, grid_label="")
-        # [EN] Spectral point-by-point computation related operations (outer grid)
-        # 谱空间逐点计算相关操作（外网格）
-        self._apply_spectral_params_to_dir(coarse_dir, self.shel_start_edit.text().strip(),
-                                          self.shel_end_edit.text().strip(),
-                                          self.shel_step_edit.text().strip(),
-                                          self.output_precision_edit.text().strip())
-        # [EN] Recompute per-grid CFL timesteps from this grid's own dx + global FREQ1
-        # 按外网格自身 dx 与全局 FREQ1 重算 CFL 时间步（嵌套各网格 DTXY 应不同）
-        self._apply_cfl_timesteps_to_grid_nml(coarse_dir)
+        for dir_path, idx in level_dirs:
+            self.log("")
+            self.log("=" * 70)
+            self.log(tr("step4_level_grid_start", "🔄 【level{idx}】开始处理网格...").format(idx=idx))
 
-        # [EN] Process inner grid (all operations completed under one separator line)
-        # 处理内网格（所有操作在一个分隔线下完成）
-        self.log("")
-        self.log("=" * 70)
-        self.log(tr("step4_inner_grid_start", "🔄 【内网格】开始处理内网格..."))
-       
-        self._copy_public_files_to_dir(fine_dir, grid_label="")
-        if has_output_scheme:
-            scheme_applied = self._apply_output_scheme_to_dir(fine_dir) or scheme_applied
+            self._copy_public_files_to_dir(dir_path, grid_label="")
+            if has_output_scheme:
+                scheme_applied = self._apply_output_scheme_to_dir(dir_path) or scheme_applied
+            self._sync_grid_meta_to_grid_nml_in_dir(dir_path, grid_label="")
+            self._update_grid_closure_from_meta(dir_path, grid_label="")
+            cp, op = self._level_precision(idx, n, levels_cfg)
+            self._apply_ww3_params_to_dir(dir_path, cp, op, grid_label="")
+            self._modify_ww3_prnc_nml_for_nested(dir_path, grid_label="")
+            self._modify_ww3_prnc_times_in_dir(dir_path, grid_label="")
+            self._generate_forcing_field_prnc_files(dir_path, use_relative_path=True)
+            self._modify_ww3_shel_forcing_inputs_in_dir(dir_path, grid_label="")
+            self._apply_spectral_params_to_dir(dir_path, self.shel_start_edit.text().strip(),
+                                              self.shel_end_edit.text().strip(), cp, op)
+            # 按各层自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
+            self._apply_cfl_timesteps_to_grid_nml(dir_path)
+
         if has_output_scheme and scheme_applied:
             self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
-        self._sync_grid_meta_to_grid_nml_in_dir(fine_dir, grid_label="")
-        self._update_grid_closure_from_meta(fine_dir, grid_label="")
-        inner_shel_step = self.inner_shel_step_edit.text().strip()
-        inner_output_precision = self.inner_output_precision_edit.text().strip()
-        self._apply_ww3_params_to_dir(fine_dir, inner_shel_step, inner_output_precision, grid_label="")
-        self._modify_ww3_prnc_nml_for_nested(fine_dir, grid_label="")
-        # [EN] Modify time range in ww3_prnc.nml (inner grid)
-        # 修改 ww3_prnc.nml 中的时间范围（内网格）
-        self._modify_ww3_prnc_times_in_dir(fine_dir, grid_label="")
-        # [EN] Generate other forcing field ww3_prnc_*.nml files for inner grid (copied and modified from time-adjusted ww3_prnc.nml)
-        # 为内网格生成其他强迫场的 ww3_prnc_*.nml 文件（从已修改时间的 ww3_prnc.nml 复制并修改）
-        self._generate_forcing_field_prnc_files(fine_dir, use_relative_path=True)
-        # [EN] Modify INPUT%FORCING%* settings in inner grid ww3_shel.nml
-        # 修改内网格 ww3_shel.nml 中的 INPUT%FORCING%* 设置
-        self._modify_ww3_shel_forcing_inputs_in_dir(fine_dir, grid_label="")
-        # [EN] Spectral point-by-point computation related operations (inner grid)
-        # 谱空间逐点计算相关操作（内网格）
-        self._apply_spectral_params_to_dir(fine_dir, self.shel_start_edit.text().strip(),
-                                          self.shel_end_edit.text().strip(),
-                                          inner_shel_step,
-                                          inner_output_precision)
-        # [EN] Recompute per-grid CFL timesteps for the (finer) inner grid
-        # 按内网格自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
-        self._apply_cfl_timesteps_to_grid_nml(fine_dir)
         if self._is_step2_smc_mesh():
             self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
 
     def _apply_ww3_params_nested(self):
-        """嵌套网格模式：应用参数到外网格和内网格
+        """嵌套网格模式：对 level0…levelN 逐层应用 WW3 运行参数。
 
-        [EN] Nested grid mode: apply parameters to outer and inner grids.
+        [EN] Nested grid mode: apply parameters to level0..levelN.
         """
-        coarse_dir = os.path.join(self.selected_folder, "coarse")
-        fine_dir = os.path.join(self.selected_folder, "fine")
-
-        if not os.path.isdir(coarse_dir) or not os.path.isdir(fine_dir):
-            self.log(tr("nested_grid_folders_not_found", "❌ 未找到 coarse 或 fine 文件夹，请先生成嵌套网格"))
+        level_dirs = self._nested_level_dirs()
+        if not level_dirs:
+            self.log(tr("nested_grid_folders_not_found",
+                        "❌ 未找到 level* / coarse / fine 网格目录，请先生成嵌套网格"))
             return
+        n = len(level_dirs)
+        levels_cfg = self._read_nested_levels_cfg()
+        for dir_path, idx in level_dirs:
+            self.log("")
+            self.log("=" * 70)
+            self.log(tr("level_grid_params_start", "🔄 【level{idx}】开始应用网格参数...").format(idx=idx))
+            self.log("=" * 70)
+            cp, op = self._level_precision(idx, n, levels_cfg)
+            self._apply_ww3_params_to_dir(dir_path, cp, op, grid_label="")
+            self._modify_ww3_prnc_nml_for_nested(dir_path, grid_label="")
 
-        
-        # [EN] Apply outer grid parameters (all operations completed under one separator line)
-        # 应用外网格参数（所有操作在一个分隔线下完成）
-        self.log("")
-        self.log("=" * 70)
-        self.log(tr("outer_grid_params_start", "🔄 【外网格】开始应用外网格参数..."))
-        self.log("=" * 70)
-        self._apply_ww3_params_to_dir(
-            coarse_dir,
-            self.shel_step_edit.text().strip(),
-            self.output_precision_edit.text().strip(),
-            grid_label=""
-        )
-        self._modify_ww3_prnc_nml_for_nested(coarse_dir, grid_label="")
-
-        # [EN] Apply inner grid parameters (all operations completed under one separator line)
-        # 应用内网格参数（所有操作在一个分隔线下完成）
-        self.log("")
-        self.log("=" * 70)
-        self.log(tr("inner_grid_params_start", "🔄 【内网格】开始应用内网格参数..."))
-        self.log("=" * 70)
-        inner_shel_step = self.inner_shel_step_edit.text().strip()
-        inner_output_precision = self.inner_output_precision_edit.text().strip()
-        self._apply_ww3_params_to_dir(fine_dir, inner_shel_step, inner_output_precision, grid_label="")
-        self._modify_ww3_prnc_nml_for_nested(fine_dir, grid_label="")
-
-        # [EN] Generate script files
-        # 生成脚本文件
-
-        # [EN] Modify ww3_multi.nml
         # 修改 ww3_multi.nml
         workdir_multi_nml = os.path.join(self.selected_folder, "ww3_multi.nml")
         if os.path.exists(workdir_multi_nml):

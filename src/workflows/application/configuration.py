@@ -371,7 +371,13 @@ def _region(data: Dict[str, Any], name: str) -> GridRegion:
     lat = _float_pair(data.get("lat"), f"{name}.lat")
     if lon[0] == lon[1] or lat[0] == lat[1]:
         raise ConfigError(f"{name}.lon / {name}.lat 范围不能为 0")
-    return GridRegion(dx=dx_f, dy=dy_f, lon=lon, lat=lat)
+    cp = data.get("compute_precision")  # 该层独立的积分步/输出步（可选）
+    op = data.get("output_precision")
+    return GridRegion(
+        dx=dx_f, dy=dy_f, lon=lon, lat=lat,
+        compute_precision=str(cp).strip() if cp is not None else None,
+        output_precision=str(op).strip() if op is not None else None,
+    )
 
 
 def _contract_region(region: GridRegion, factor: float) -> Dict[str, Any]:

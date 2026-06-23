@@ -92,12 +92,16 @@ class GridRegion:
     Key fields:
     - ``dx`` / ``dy``: zonal and meridional grid spacing (degrees)
     - ``lon`` / ``lat``: longitude and latitude bounds as ``[min, max]``
+    - ``compute_precision`` / ``output_precision``: 该层独立的 ww3_shel 积分步 /
+      输出步（秒）；省略时回退全局 ``ww3.compute_precision`` / ``output_precision``。
     """
 
     dx: Optional[float] = None
     dy: Optional[float] = None
     lon: Optional[List[float]] = None
     lat: Optional[List[float]] = None
+    compute_precision: Optional[str] = None
+    output_precision: Optional[str] = None
 
 
 @dataclass
