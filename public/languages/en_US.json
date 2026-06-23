@@ -627,7 +627,7 @@
   "step4_smc_forcing_narrower_than_rect": "{prefix}⚠️ SMC / ww3_prnc: wind domain lon [{wl:.4f},{wh:.4f}] lat [{wb:.4f},{wn:.4f}] does NOT fully cover the SMC RECT base grid lon [{rlw:.4f},{rle:.4f}] lat [{rls:.4f},{rln:.4f}] (see grid.json ww3_rect / ww3_rect_geo; this box is now tightened to the active MCELS base grid, though SMC snapping may still make it slightly larger than regional_bounds). Expand forcing in step 1 to at least this box, or ww3_prnc will warn NOT COVERED BY INPUT GRID for most points.",
   "step4_namelists_flagtr_failed": "⚠️ Failed to set namelists.nml FLAGTR: {err}",
   "step4_ww3_slurm_updated": "✅ Updated ww3.slurm: cores={cores}, nodes={nodes}, CPU={cpu}, casename={name}",
-  "step4_server_sh_updated": "✅ Updated server.sh: -J={job}, -p={cpu}, -n={cores}, -N={nodes}, MPI_NPROCS={mpi_cores}, CASENAME={name}, ST={st}",
+  "step4_server_sh_updated": "✅ Updated server.sh: -J={job}, -p={cpu}, -n={cores}, -N={nodes}, MPI_NPROCS={mpi_cores}, ST={st}",
   "step4_ww3_ounf_updated": "✅ Updated ww3_ounf.nml: FIELD%TIMESTART={start}, FIELD%TIMESTRIDE={stride} seconds",
   "step4_ww3_shel_updated": "✅ Updated ww3_shel.nml: DOMAIN%START={start}, DOMAIN%STOP={end}, DATE%FIELD%STRIDE={step}s",
   "step4_scripts_generated": "✅ Generated script files: submit.sh and export.sh",

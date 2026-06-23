@@ -307,8 +307,8 @@ class ServerSh(NMLPrimitives):
             self.log(tr("date_format_error", "❌ 起始日期格式错误，应为 YYYYMMDD。"))
             return
 
-        # [EN] casename can only be like 202504, unknown reason
-        # casename 只能是 202504 这样的，未知原因
+        # [EN] start YYYYMM, used only as the Slurm job-name fallback when none is set
+        # 起始年月 YYYYMM，仅在未设置作业名时作为 Slurm -J 的回退值
         start_year_month = int(start_date[:6])
         job_name = self._server_sh_job_name(start_year_month)
 
@@ -443,10 +443,6 @@ class ServerSh(NMLPrimitives):
                         new_lines.append(f"MPI_NPROCS={num_n}\n")
                         i += 1
                         continue
-                    if line_stripped.startswith("CASENAME="):
-                        new_lines.append(f"CASENAME={start_year_month}\n")
-                        i += 1
-                        continue
                     # [EN] Skip existing ST version comments (if not in correct position)
                     # 跳过已存在的 ST 版本注释（如果不在正确位置）
                     if line_stripped.startswith("#wavewatch3--"):
@@ -462,10 +458,6 @@ class ServerSh(NMLPrimitives):
                 # 修改 MPI_NPROCS
                 elif line_stripped.startswith("MPI_NPROCS="):
                     new_lines.append(f"MPI_NPROCS={num_n}\n")
-                # [EN] Modify CASENAME
-                # 修改 CASENAME
-                elif line_stripped.startswith("CASENAME="):
-                    new_lines.append(f"CASENAME={start_year_month}\n")
                 else:
                     new_lines.append(line)
                 i += 1
@@ -477,8 +469,8 @@ class ServerSh(NMLPrimitives):
                 content_bytes = content.encode('utf-8').replace(b'\r\n', b'\n').replace(b'\r', b'\n')
                 f.write(content_bytes)
 
-            log_msg = tr("step4_server_sh_updated", "✅ 已更新 server.sh：-J={job}, -p={cpu}, -n={cores}, -N={nodes}, MPI_NPROCS={mpi_cores}, CASENAME={name}, ST={st}").format(
-                job=job_name, cpu=cpu, cores=num_n, nodes=num_N, mpi_cores=num_n, name=start_year_month, st=st_name
+            log_msg = tr("step4_server_sh_updated", "✅ 已更新 server.sh：-J={job}, -p={cpu}, -n={cores}, -N={nodes}, MPI_NPROCS={mpi_cores}, ST={st}").format(
+                job=job_name, cpu=cpu, cores=num_n, nodes=num_N, mpi_cores=num_n, st=st_name
             )
 
             self.log(log_msg)

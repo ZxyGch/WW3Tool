@@ -26,9 +26,6 @@ fi
 # Note: if you change this, also update #SBATCH -n above
 MPI_NPROCS=48
 
-# Case name (used by ww3_shel --casename)
-CASENAME=202501
-
 # Save script root directory
 SCRIPT_ROOT="$(pwd)"
 
@@ -103,7 +100,7 @@ run_prnc_with_fields() {
 run_ww3_shel_with_fallback() {
     echo -e "
 ============================== Running mpirun ww3_shel ==============================" >> "$LOG"
-    mpirun -n $MPI_NPROCS ww3_shel --casename=$CASENAME >> "$LOG" 2>&1
+    mpirun -n $MPI_NPROCS ww3_shel >> "$LOG" 2>&1
     rc_mpi=$?
     if [ $rc_mpi -eq 0 ]; then
         return 0
@@ -111,7 +108,7 @@ run_ww3_shel_with_fallback() {
 
     echo -e "
 ============================== mpirun ww3_shel failed with exit code $rc_mpi; retrying direct ww3_shel ==============================" >> "$LOG"
-    ww3_shel --casename=$CASENAME >> "$LOG" 2>&1
+    ww3_shel >> "$LOG" 2>&1
     rc_direct=$?
     if [ $rc_direct -eq 0 ]; then
         echo -e "
@@ -166,7 +163,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     ######################################
     echo -e "
 ============================== Running mpirun ww3_multi ==============================" >> "$LOG"
-    mpirun -n $MPI_NPROCS ww3_multi --casename=$CASENAME >> "$LOG" 2>&1
+    mpirun -n $MPI_NPROCS ww3_multi >> "$LOG" 2>&1
     rc_mpi=$?
 
     if [ $rc_mpi -ne 0 ]; then
