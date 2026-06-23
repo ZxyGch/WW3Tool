@@ -40,10 +40,10 @@ _DESKTOP_LEGACY_TO_YAML = {v: k for k, v in _DESKTOP_YAML_TO_LEGACY.items()}
 # 设置页管线参数：扁平键名 → params.yml 嵌套路径（供 settings 视图模型读写）
 # 根 params.yml 是基础模板，设置页直接读写顶层路径；CLI/GUI 必须先复制到工作目录再操作
 _SETTINGS_KEY_TO_YAML_PATH = {
-    "DX": "grid.structured.nested.outer.dx",
-    "DY": "grid.structured.nested.outer.dy",
-    "NESTED_OUTER_DX": "grid.structured.nested.outer.dx",
-    "NESTED_OUTER_DY": "grid.structured.nested.outer.dy",
+    "DX": "grid.structured.nested.levels.0.dx",
+    "DY": "grid.structured.nested.levels.0.dy",
+    "NESTED_OUTER_DX": "grid.structured.nested.levels.0.dx",
+    "NESTED_OUTER_DY": "grid.structured.nested.levels.0.dy",
     "GRIDGEN_VERSION": "grid.gridgen_version",
     "REFERENCE_DATA_PATH": "grid.reference_data_path",
     "NESTED_CONTRACTION_COEFFICIENT": "grid.nested_contraction_coefficient",
@@ -1038,13 +1038,19 @@ def save_config(config):
 
 
 def _get_nested(data: dict, dotted: str):
-    """按点号路径读取嵌套字典值；不存在返回 None。"""
+    """按点号路径读取嵌套值；数字段对列表取下标（如 levels.0.dx）；不存在返回 None。"""
     parts = dotted.split(".")
     cur = data
     for part in parts:
-        if not isinstance(cur, dict):
+        if isinstance(cur, list) and part.lstrip("-").isdigit():
+            idx = int(part)
+            if not (-len(cur) <= idx < len(cur)):
+                return None
+            cur = cur[idx]
+        elif isinstance(cur, dict):
+            cur = cur.get(part)
+        else:
             return None
-        cur = cur.get(part)
         if cur is None:
             return None
     return cur
@@ -1067,16 +1073,26 @@ def _coerce_yaml_value(value):
 
 
 def _set_nested(data: dict, dotted: str, value) -> None:
-    """按点号路径写入嵌套字典值（自动创建中间层），并对数值做类型归一化。"""
+    """按点号路径写入嵌套值（自动创建中间字典层）；数字段对列表取下标，越界则放弃写入。"""
     parts = dotted.split(".")
     cur = data
     for part in parts[:-1]:
+        if isinstance(cur, list):
+            if not (part.lstrip("-").isdigit() and -len(cur) <= int(part) < len(cur)):
+                return
+            cur = cur[int(part)]
+            continue
         nxt = cur.get(part)
-        if not isinstance(nxt, dict):
+        if not isinstance(nxt, (dict, list)):
             nxt = {}
             cur[part] = nxt
         cur = nxt
-    cur[parts[-1]] = _coerce_yaml_value(value)
+    last = parts[-1]
+    if isinstance(cur, list):
+        if last.lstrip("-").isdigit() and -len(cur) <= int(last) < len(cur):
+            cur[int(last)] = _coerce_yaml_value(value)
+        return
+    cur[last] = _coerce_yaml_value(value)
 
 
 def load_full_config() -> dict:

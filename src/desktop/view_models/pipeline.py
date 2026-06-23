@@ -733,16 +733,11 @@ _NUMERIC_PARAM_PATHS = {
     "plot.jason3.time_window_hours",
 }
 
-_REGION_KEYS = ("outer", "inner")
-
-
 def _normalize_params_scalar_types(raw: dict) -> None:
     grid = _as_dict(raw.get("grid"))
     nested = _as_dict(_as_dict(grid.get("structured")).get("nested"))
     for region in (nested.get("levels") or []):  # 嵌套各层
         _coerce_region(_as_dict(region))
-    for key in _REGION_KEYS:  # 兼容旧 outer/inner
-        _coerce_region(_as_dict(nested.get(key)))
     for key in ("lon", "lat"):  # 主域 grid.lon / grid.lat
         seq = grid.get(key)
         if isinstance(seq, list):

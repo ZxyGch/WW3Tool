@@ -718,14 +718,10 @@ def parse_pipeline_config(
     grid_lon = grid_raw.get("lon")
     grid_lat = grid_raw.get("lat")
 
-    # 嵌套层列表 grid.structured.nested.levels（粗 → 细，level0 最粗）；
-    # 兼容旧结构：无 levels 时退回 [outer, inner]。
-    levels_raw = nested_raw.get("levels")
-    if levels_raw is None:
-        levels_raw = [lv for lv in (nested_raw.get("outer"), nested_raw.get("inner")) if lv]
-    levels_raw = list(levels_raw or [])
+    # 嵌套层列表 grid.structured.nested.levels（粗 → 细，level0 最粗）。
+    levels_raw = list(nested_raw.get("levels") or [])
     if not levels_raw:
-        levels_raw = [_as_dict(nested_raw.get("outer"), "grid.structured.nested.outer")]
+        raise ConfigError("grid.structured.nested.levels 不能为空（normal 至少 1 层，nested 至少 2 层）")
 
     MAX_NRGRD = 99  # WW3 ww3_multi 硬上限（w3nmlmultimd.F90 MAX_NRGRD）
     if grid_type == "nested":
