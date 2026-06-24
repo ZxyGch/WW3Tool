@@ -33,6 +33,12 @@ import numpy as np
 from netCDF4 import Dataset
 
 from ...support.translations import tr
+from .forcing_time_metadata import (
+    audit_time_metadata_for_ww3,
+    format_time_metadata_issue_logs,
+    normalize_calendar_for_ww3,
+    normalize_time_units_for_ww3,
+)
 
 
 # ── 强迫场变量名候选列表 → 标准名映射 ──────────────────────────────
@@ -338,15 +344,29 @@ class ForcingNormalizeService:
             or any(std_name != src_name for std_name, (src_name, _field_type) in forcing_var_map.items())
         )
 
+        time_metadata_issues = audit_time_metadata_for_ww3(source_file, time_name=time_name)
+        needs_time_metadata_fix = bool(time_metadata_issues)
+
         try:
             same_target_file = os.path.samefile(source_file, output_file)
         except OSError:
             same_target_file = False
 
+        if needs_time_metadata_fix:
+            format_time_metadata_issue_logs(time_metadata_issues, log=log)
+            self._emit(
+                log,
+                tr(
+                    "forcing_time_metadata_rewrite",
+                    "🔄 将重写时间元数据为 WW3 可读的 char 属性（units + calendar）",
+                ),
+            )
+
         if (
             same_target_file
             and not lat_needs_flip
             and not needs_rename
+            and not needs_time_metadata_fix
         ):
             self._emit(log, tr("forcing_already_normalized", "✅ 文件已是标准格式: {path}").format(path=output_file))
             return True
@@ -639,10 +659,13 @@ class ForcingNormalizeService:
 
                 time_var.standard_name = "time"
                 time_var.long_name = "time"
-                if original_time_units:
-                    time_var.units = original_time_units
-                if original_time_calendar:
-                    time_var.calendar = original_time_calendar
+                ww3_units = normalize_time_units_for_ww3(str(original_time_units or ""))
+                if not ww3_units:
+                    raise ValueError(
+                        tr("forcing_time_issue_missing_units", "⚠️ time 变量缺少 units 属性")
+                    )
+                time_var.units = ww3_units
+                time_var.calendar = normalize_calendar_for_ww3(original_time_calendar)
 
                 # 设置强迫场变量属性
                 _VAR_ATTRS = {

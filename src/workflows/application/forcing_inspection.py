@@ -122,6 +122,7 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
             if time_var is None:
                 logger.log(tr("forcing_info_time_var_missing", "⚠️ 时间范围：未找到时间变量"))
                 return
+            _report_time_metadata_warnings(str(path), time_name, logger)
             _report_time(time_name, time_var, logger, np, num2date)
     except Exception as exc:
         logger.log(tr("forcing_info_read_failed", "❌ 读取文件信息失败：{error}").format(error=exc))
@@ -137,6 +138,21 @@ def _report_resolution(label: str, values, logger: CoreLogger, np) -> None:
     differences = np.diff(values)
     if len(differences) > 0:
         logger.log(f"{label}：{float(np.mean(np.abs(differences))):.6f}°")
+
+
+def _report_time_metadata_warnings(path: str, time_name: str, logger: CoreLogger) -> None:
+    """检查 time 元数据是否满足 WW3 ww3_prnc 要求。"""
+    from ..infrastructure.forcing.forcing_time_metadata import (
+        audit_time_metadata_for_ww3,
+        format_time_metadata_issue_logs,
+    )
+
+    issues = audit_time_metadata_for_ww3(path, time_name=time_name)
+    if not issues:
+        return
+    logger.log(tr("forcing_time_metadata_warning_header", "⚠️ WW3 时间轴兼容性："))
+    for line in format_time_metadata_issue_logs(issues):
+        logger.log(f"  {line}")
 
 
 def _report_time(name: str, variable, logger: CoreLogger, np, num2date) -> None:
