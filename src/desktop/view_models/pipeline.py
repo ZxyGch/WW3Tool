@@ -456,6 +456,9 @@ class PipelineViewModel:
                     for k in ("start_date", "end_date")
                     if old.get("ww3", {}).get(k)
                 }
+                old_ww3_version = (old.get("ww3") or {}).get("version")
+                if old_ww3_version:
+                    case_fields["ww3_version"] = old_ww3_version
                 case_fields["calc"] = old.get("calc", {})
                 # [EN] Preserve per-case server.remote_dir (custom value written by step 6 input)
                 # 保留 per-case 的 server.remote_dir（第六步输入框写入的自定义值）
@@ -480,6 +483,10 @@ class PipelineViewModel:
         if case_fields.get("ww3_dates"):
             ww3 = dict(raw.get("ww3") or {})
             ww3.update(case_fields["ww3_dates"])
+            raw["ww3"] = ww3
+        if case_fields.get("ww3_version"):
+            ww3 = dict(raw.get("ww3") or {})
+            ww3["version"] = case_fields["ww3_version"]
             raw["ww3"] = ww3
         if "calc" in case_fields:
             raw["calc"] = case_fields["calc"]
@@ -577,15 +584,15 @@ class PipelineViewModel:
             raw["server"] = {**_as_dict(raw.get("server")), **server_overrides}
         return raw
 
-    def init_workdir_params(self, source: Path | None, target: Path, workdir: str) -> Path:
-        # [EN] Generate params.yml for a new workdir: full copy of root template, only modify
-        # specific fields via regex substitution to preserve the original file structure
-        # (comments, ordering, desktop section, formatting).
-        """为新工作目录生成 params.yml：完整复制根模板，仅就地修改特定字段，保留原始文件结构。"""
+    def init_workdir_params(self, target: Path, workdir: str) -> Path:
+        # [EN] Generate params.yml for a new workdir: always copy repository root
+        # ``params.yml`` (never the previously loaded workdir file), then clear
+        # case-specific paths via regex substitution.
+        """为新工作目录生成 params.yml：始终从仓库根 params.yml 复制模板，再清空案例专属字段。"""
         import re
         import shutil
 
-        template = source if source and Path(source).is_file() else _repo_params_path()
+        template = _repo_params_path()
         if not Path(template).is_file():
             from workflows.application.configuration import EXAMPLE_YAML
             target = Path(target)

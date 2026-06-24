@@ -44,6 +44,7 @@ class ServerSh(NMLPrimitives):
         num_n = self.num_n_edit.text().strip()
         num_N = self.num_N_edit.text().strip()
         cpu = self.cpu_var
+        mem = str(getattr(self, "mem_var", "") or "").strip()
 
         # [EN] Get default template path for server.sh (prefer public/scripts/server.sh)
         # 获取 server.sh 的默认模板路径（优先使用 public/scripts/server.sh）
@@ -110,6 +111,7 @@ class ServerSh(NMLPrimitives):
 
             new_lines = []
             time_found = False
+            mem_found = False
             st_path_inserted = False
 
             i = 0
@@ -127,6 +129,15 @@ class ServerSh(NMLPrimitives):
                     new_lines.append(f"#SBATCH -n {num_n}\n")
                 elif line_stripped.startswith("#SBATCH -N"):
                     new_lines.append(f"#SBATCH -N {num_N}\n")
+                    if mem and not mem_found:
+                        new_lines.append(f"#SBATCH --mem={mem}\n")
+                        mem_found = True
+                elif line_stripped.startswith("#SBATCH --mem"):
+                    mem_found = True
+                    if mem:
+                        new_lines.append(f"#SBATCH --mem={mem}\n")
+                    else:
+                        new_lines.append(line)
                 # [EN] Check if #SBATCH --time is found
                 # 检查是否找到 #SBATCH --time
                 elif line_stripped.startswith("#SBATCH --time"):
@@ -198,8 +209,17 @@ class ServerSh(NMLPrimitives):
                 content_bytes = content.encode('utf-8').replace(b'\r\n', b'\n').replace(b'\r', b'\n')
                 f.write(content_bytes)
 
-            log_msg = tr("step4_server_sh_updated", "✅ 已更新 server.sh：-J={job}, -p={cpu}, -n={cores}, -N={nodes}, MPI_NPROCS={mpi_cores}, ST={st}").format(
-                job=job_name, cpu=cpu, cores=num_n, nodes=num_N, mpi_cores=num_n, st=st_name
+            log_msg = tr(
+                "step4_server_sh_updated",
+                "✅ 已更新 server.sh：-J={job}, -p={cpu}, -n={cores}, -N={nodes}, --mem={mem}, MPI_NPROCS={mpi_cores}, ST={st}",
+            ).format(
+                job=job_name,
+                cpu=cpu,
+                cores=num_n,
+                nodes=num_N,
+                mem=mem or "-",
+                mpi_cores=num_n,
+                st=st_name,
             )
 
             self.log(log_msg)

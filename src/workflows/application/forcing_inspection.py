@@ -147,7 +147,11 @@ def _report_time_metadata_warnings(path: str, time_name: str, logger: CoreLogger
         format_time_metadata_issue_logs,
     )
 
-    issues = audit_time_metadata_for_ww3(path, time_name=time_name)
+    issues = [
+        issue
+        for issue in audit_time_metadata_for_ww3(path, time_name=time_name)
+        if issue.code != "nc_string_attr"
+    ]
     if not issues:
         return
     logger.log(tr("forcing_time_metadata_warning_header", "⚠️ WW3 时间轴兼容性："))

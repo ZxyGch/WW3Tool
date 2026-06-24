@@ -387,12 +387,14 @@ ww3_grid:
 #   cpu       – default CPU model identifier.
 #   nodes     – number of compute nodes to request.
 #   cores     – CPU cores per node.
+#   mem       – job memory request written to #SBATCH --mem=.
 # ────────────────────────────────────────────────────────────────────
 slurm:
   job_name: null
   cpu: CPU6240R
   nodes: 1
   cores: 48
+  mem: 190G
   server_st: ST2
 # ────────────────────────────────────────────────────────────────────
 # Post-processing and validation plot settings.
@@ -501,6 +503,7 @@ desktop:
   theme: AUTO
   run_mode: both
   recent_workdirs:
+  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2026-06-24_22-32-05
+  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2026-06-24_22-24-33
   - /Volumes/Zxy's Disk/WW3Tool_workSpace/new
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2015/ARR_20150106T1300_0004
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

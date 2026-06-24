@@ -418,6 +418,7 @@ class LocalRunService:
         _move_if(wp / f"out_grd.{finest}", finest_path / "out_grd.ww3")
         _move_if(wp / f"mod_def.{finest}", finest_path / "mod_def.ww3")
         _move_if(wp / f"out_pnt.{finest}", finest_path / "out_pnt.ww3")
+        _move_if(wp / f"track_o.{finest}", finest_path / "track_o.ww3")
 
         return self._run_post_processing(str(finest_path), bin_dir, log, points_list_dir=str(wp))
 

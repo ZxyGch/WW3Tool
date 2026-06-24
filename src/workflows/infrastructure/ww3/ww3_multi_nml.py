@@ -166,6 +166,8 @@ class WW3MultiNML(NMLPrimitives):
             modified_alldate_point = False
             modified_alldate_field = False
             modified_alltype_field_list = False
+            modified_flghg1 = False
+            modified_flghg2 = False
 
             # 检查是否为嵌套网格模式
             grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
@@ -209,7 +211,20 @@ class WW3MultiNML(NMLPrimitives):
                     if re.search(r"DOMAIN%STOP", line):
                         new_lines.append(self._format_domain_line("DOMAIN%STOP", f"'{end_date} 235959'"))
                         continue
+                    # 双向嵌套（ww3_multi）：粗网格在细网格重叠区掩码计算与输出
+                    if re.search(r"DOMAIN%FLGHG1", line):
+                        new_lines.append(self._format_domain_line("DOMAIN%FLGHG1", "T"))
+                        modified_flghg1 = True
+                        continue
+                    if re.search(r"DOMAIN%FLGHG2", line):
+                        new_lines.append(self._format_domain_line("DOMAIN%FLGHG2", "T"))
+                        modified_flghg2 = True
+                        continue
                     if "/" in line:
+                        if not modified_flghg1:
+                            new_lines.append(self._format_domain_line("DOMAIN%FLGHG1", "T"))
+                        if not modified_flghg2:
+                            new_lines.append(self._format_domain_line("DOMAIN%FLGHG2", "T"))
                         in_domain = False
                         new_lines.append(line)
                         continue
@@ -454,3 +469,79 @@ class WW3MultiNML(NMLPrimitives):
             self.log(tr("ww3_multi_modify_error", "❌ 修改 ww3_multi.nml 出错：{error}").format(error=e))
             for line in traceback.format_exc().splitlines():
                 self.log(line)
+
+    def _modify_ww3_multi_alldate_track(self, nml_path: str) -> None:
+        """嵌套 + 航迹：在 ww3_multi.nml 写入 ALLDATE%TRACK（积分阶段启用航迹输出）。
+
+        普通网格走 ww3_shel 的 DATE%TRACK；嵌套由 ww3_multi 驱动，须配置 ALLDATE%TRACK。
+        """
+        if not nml_path or not os.path.exists(nml_path):
+            return
+        if not self._is_track_mode():
+            return
+        datetimes = self._track_datetimes_from_table()
+        if not datetimes:
+            return
+        start_datetime, end_datetime = datetimes
+        output_stride = self.output_precision_edit.text().strip()
+        if not output_stride.isdigit():
+            self.log(tr("output_precision_error_skip_track", "❌ 输出精度必须为数字（秒），跳过 ALLDATE%TRACK 修改"))
+            return
+
+        try:
+            with open(nml_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            new_lines: list[str] = []
+            in_output = False
+            modified = False
+            track_triple = (
+                f"  ALLDATE%TRACK          = '{start_datetime}' '{output_stride}' '{end_datetime}'\n"
+            )
+
+            for line in lines:
+                if "&OUTPUT_DATE_NML" in line:
+                    in_output = True
+                    new_lines.append(line)
+                    continue
+
+                if in_output:
+                    if re.search(r"ALLDATE%TRACK%START", line, re.IGNORECASE):
+                        new_lines.append(f"  ALLDATE%TRACK%START         = '{start_datetime}'\n")
+                        modified = True
+                        continue
+                    if re.search(r"ALLDATE%TRACK%STRIDE", line, re.IGNORECASE):
+                        new_lines.append(f"  ALLDATE%TRACK%STRIDE        = '{output_stride}'\n")
+                        modified = True
+                        continue
+                    if re.search(r"ALLDATE%TRACK%STOP", line, re.IGNORECASE):
+                        new_lines.append(f"  ALLDATE%TRACK%STOP          = '{end_datetime}'\n")
+                        modified = True
+                        continue
+                    if re.search(r"ALLDATE%TRACK", line) and not re.search(
+                        r"ALLDATE%TRACK%", line, re.IGNORECASE
+                    ):
+                        new_lines.append(track_triple)
+                        modified = True
+                        continue
+                    if "/" in line:
+                        if not modified:
+                            new_lines.append(track_triple)
+                            modified = True
+                        in_output = False
+                        new_lines.append(line)
+                        continue
+
+                new_lines.append(line)
+
+            if modified:
+                with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
+                    f.writelines(new_lines)
+                self.log(
+                    tr(
+                        "step4_ww3_multi_alldate_track_updated",
+                        "✅ 已修改 ww3_multi.nml：ALLDATE%TRACK（嵌套航迹模式）",
+                    )
+                )
+        except Exception as e:
+            self.log(tr("ww3_multi_modify_error", "❌ 修改 ww3_multi.nml 出错：{error}").format(error=e))

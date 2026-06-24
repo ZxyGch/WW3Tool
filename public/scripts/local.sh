@@ -175,6 +175,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     [ -f "out_grd.$FINEST" ] && mv "out_grd.$FINEST" "$FINEST/out_grd.ww3"
     [ -f "mod_def.$FINEST" ] && mv "mod_def.$FINEST" "$FINEST/mod_def.ww3"
     [ -f "out_pnt.$FINEST" ] && mv "out_pnt.$FINEST" "$FINEST/out_pnt.ww3"
+    [ -f "track_o.$FINEST" ] && mv "track_o.$FINEST" "$FINEST/track_o.ww3"
     cd "$FINEST"
     [ -f ../points.list ] && run_step "ww3_ounp ($FINEST)" ww3_ounp
     [ -f track_i.ww3 ] && run_step "ww3_trnc ($FINEST)" ww3_trnc

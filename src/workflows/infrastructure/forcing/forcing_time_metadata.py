@@ -146,11 +146,8 @@ def format_time_metadata_issue_logs(
     lines: List[str] = []
     for issue in issues:
         if issue.code == "nc_string_attr":
-            text = tr(
-                "forcing_time_issue_nc_string_attr",
-                "⚠️ time:units/calendar 为 NetCDF-4 string 类型，WW3 ww3_prnc 无法读取（常见于 CMEMS/ERA5 CF-1.11）",
-            )
-        elif issue.code == "missing_units":
+            continue
+        if issue.code == "missing_units":
             text = tr(
                 "forcing_time_issue_missing_units",
                 "⚠️ time 变量缺少 units 属性",

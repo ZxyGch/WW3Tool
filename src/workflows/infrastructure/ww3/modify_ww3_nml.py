@@ -258,21 +258,7 @@ class ModifyWW3NML(
 
         # [EN] Check if current computation mode is track mode
         # 检查当前计算模式是否为航迹模式
-        track_text = tr("step3_track_mode", "航迹模式")
-        is_track_mode = False
-        
-        # [EN] First check calc_mode_combo's current selection (this is the actual value on the UI)
-        # 优先检查 calc_mode_combo 的当前选择（这是用户界面上的实际值）
-        if hasattr(self, 'calc_mode_combo') and self.calc_mode_combo:
-            combo_text = self.calc_mode_combo.currentText()
-            if combo_text == track_text or combo_text == "航迹模式":
-                is_track_mode = True
-        else:
-            # [EN] If no calc_mode_combo, check calc_mode_var
-            # 如果没有 calc_mode_combo，检查 calc_mode_var
-            calc_mode = getattr(self, 'calc_mode_var', '')
-            if calc_mode == track_text or calc_mode == "航迹模式":
-                is_track_mode = True
+        is_track_mode = self._is_track_mode()
 
         grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
         
@@ -318,13 +304,17 @@ class ModifyWW3NML(
             # 修改 ww3_shel.nml 中的 INPUT%FORCING%* 设置
             self._modify_ww3_shel_forcing_inputs()
         
-        # [EN] After copying and applying parameters, if in track mode, generate track_i.ww3 and modify ww3_shel.nml
-        # This ensures DATE%TRACK is not overwritten by copy_public_files()
-        # 在复制和应用参数之后，如果是航迹模式，生成 track_i.ww3 并修改 ww3_shel.nml
-        # 这样可以确保 DATE%TRACK 不会被 copy_public_files() 覆盖
+        # [EN] After copying and applying parameters, if in track mode, generate track_i.ww3
+        # 在复制和应用参数之后，如果是航迹模式，生成 track_i.ww3 并写航迹 namelist
         if is_track_mode:
             self._generate_track_i_ww3_file()
-            self._modify_ww3_shel_date_track()
+            nested_text = tr("step2_grid_type_nested", "嵌套网格")
+            is_nested = grid_type in (nested_text, "嵌套网格")
+            if is_nested:
+                workdir_multi = os.path.join(self.selected_folder, "ww3_multi.nml")
+                self._modify_ww3_multi_alldate_track(workdir_multi)
+            else:
+                self._modify_ww3_shel_date_track()
             self._modify_ww3_trnc_track()
 
     def copy_public_and_meta_to_grid(self):
@@ -556,6 +546,8 @@ class ModifyWW3NML(
         workdir_multi_nml = os.path.join(self.selected_folder, "ww3_multi.nml")
         if os.path.exists(workdir_multi_nml):
             self._modify_ww3_multi_nml(workdir_multi_nml)
+            if self._is_track_mode():
+                self._modify_ww3_multi_alldate_track(workdir_multi_nml)
         else:
             self.log(tr("ww3_multi_not_found", "⚠️ 未找到工作目录中的 ww3_multi.nml：{path}，跳过修改").format(path=workdir_multi_nml))
 

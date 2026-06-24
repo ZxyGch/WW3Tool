@@ -88,6 +88,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
         self.num_N_edit = _TextValue(config.slurm.nodes)
         self.job_name_var = config.slurm.job_name or config.workdir.path.name
         self.cpu_var = config.slurm.cpu
+        self.mem_var = config.slurm.mem or ""
         self.st_var = _resolve_st_name(config, app_config)
 
         self.output_scheme_combo = _ComboValue(_resolve_output_scheme_name(config, app_config))
@@ -226,6 +227,7 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     if config.ww3.output_scheme in config.presets.output_scheme:
         schemes["__params__"] = list(config.presets.output_scheme[config.ww3.output_scheme])
     merged["OUTPUT_VARS_SCHEMES"] = schemes
+    merged["WW3_VERSION"] = config.ww3.version
     return merged
 
 
@@ -319,7 +321,8 @@ def prepare_ww3_files(
     adapter = _WW3Adapter(config, files, logger, app_config)
     if not update_server_script:
         adapter.modify_server_sh_file = lambda: None
-    with _patched_load_config(app_config):
+    params_ctx = config.source_path
+    with runtime_config.use_params_path(params_ctx), _patched_load_config(app_config):
         adapter.modify_ww3_file()
     if config.grid.grid_type != "nested":
         _apply_ww3_grid_settings(config, logger)
@@ -329,5 +332,5 @@ def update_server_script(config: PipelineConfig, logger: CoreLogger) -> None:
     """只按当前 Slurm/ST 表单参数更新工作目录中的 ``server.sh``。"""
     app_config = _merged_runtime_config(config)
     adapter = _WW3Adapter(config, Step1Files(), logger, app_config)
-    with _patched_load_config(app_config):
+    with runtime_config.use_params_path(config.source_path), _patched_load_config(app_config):
         adapter.modify_server_sh_file()

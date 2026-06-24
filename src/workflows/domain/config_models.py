@@ -322,6 +322,7 @@ class WW3Config:
     - ``start_date`` / ``end_date``：模拟起止时间
     - ``output_step``：输出时间步（秒），同时写入 ww3_shel / ww3_ounp / ww3_ounf
     - ``output_scheme`` / ``st``：输出场方案与源项物理包（``st`` 已迁移至 ``slurm.server_st``，保留向后兼容）
+    - ``version``：WW3 版本（``6.07`` / ``7.14``），决定 ``public/{version}_nml`` 模板目录
 
     [EN] WAVEWATCH III run period and output scheme (corresponds to YAML ``ww3:`` section).
 
@@ -330,6 +331,7 @@ class WW3Config:
     - ``output_step``: output time step (seconds) for ww3_shel, ww3_ounp, and ww3_ounf
     - ``output_scheme``: output field scheme
     - ``st``: DEPRECATED — use ``slurm.server_st`` instead; kept for backward compatibility
+    - ``version``: WW3 version (``6.07`` / ``7.14``), selects ``public/{version}_nml`` templates
     """
 
     start_date: str = ""
@@ -338,6 +340,7 @@ class WW3Config:
     file_split: Optional[str] = None
     output_scheme: Optional[str] = None
     st: Optional[str] = None
+    version: str = "6.07"
 
 
 @dataclass
@@ -363,6 +366,7 @@ class SlurmConfig:
     关键字段：
     - ``job_name``：Slurm 作业名，写入 ``server.sh`` 的 ``#SBATCH -J``
     - ``cpu`` / ``nodes`` / ``cores``：分区与并行规模
+    - ``mem``：作业内存申请，写入 ``server.sh`` 的 ``#SBATCH --mem=``
     - ``server_st``：服务器上选择的 ST 版本名称（对应 presets.server_st 的键）
 
     [EN] Remote SLURM job resources (corresponds to YAML ``slurm:`` section).
@@ -370,6 +374,7 @@ class SlurmConfig:
     Key fields:
     - ``job_name``: Slurm job name, written to ``#SBATCH -J`` in ``server.sh``
     - ``cpu`` / ``nodes`` / ``cores``: partition and parallelism scale
+    - ``mem``: job memory request, written to ``#SBATCH --mem=`` in ``server.sh``
     - ``server_st``: selected ST version name (key from presets.server_st)
     """
 
@@ -377,6 +382,7 @@ class SlurmConfig:
     cpu: Optional[str] = None
     nodes: Optional[str] = None
     cores: Optional[str] = None
+    mem: Optional[str] = None
     server_st: Optional[str] = None
 
 

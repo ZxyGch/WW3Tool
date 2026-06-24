@@ -31,6 +31,7 @@ from ..components.header_card import create_header_card
 from ..components.table_widget import EdgeAlignedTableWidget
 from ..components.validators import int_validator
 from workflows.domain.config_models import PipelineConfig
+from workflows.application.remote_ops import suggest_slurm_mem_for_partition
 from workflows.support.translations import tr
 
 _TITLE_KEY = "step6_title"
@@ -68,6 +69,7 @@ class ServerConnectPanel:
     ) -> None:
         self._input_style = input_style
         self._combo_style = combo_style
+        self._slurm_mem_user_edited = False
         self.fields: dict[str, LineEdit] = {}
         self.field_labels: dict[str, QLabel] = {}
 
@@ -206,11 +208,14 @@ class ServerConnectPanel:
         self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到 CPU 分区"))
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
+        self.cpu_combo.currentTextChanged.connect(self._on_cpu_partition_changed)
         self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
         slurm_grid.addWidget(self.cpu_label, 2, 0)
         slurm_grid.addWidget(self.cpu_combo, 2, 1)
         self._display_line(slurm_grid, 3, tr("step4_total_cores", "总核数:"), "slurm_cores")
         self._display_line(slurm_grid, 4, tr("step4_node_num", "节点数:"), "slurm_nodes")
+        self._text_line(slurm_grid, 5, tr("step5_slurm_mem", "内存："), "slurm_mem")
+        self.fields["slurm_mem"].textEdited.connect(self._on_slurm_mem_user_edited)
         layout.addWidget(self._slurm_form)
 
         self._confirm_slurm_widget = QWidget()
@@ -348,6 +353,8 @@ class ServerConnectPanel:
                     "nodes": nodes,
                     "cores": cores,
                     "max_cores_per_node": max_per_node,
+                    "free_mem_mb": row.get("free_mem_mb"),
+                    "total_mem_mb": row.get("total_mem_mb"),
                 }
             )
         valid.sort(key=lambda item: item["cores"], reverse=True)
@@ -382,6 +389,29 @@ class ServerConnectPanel:
                 item.setTextAlignment(align)
                 self._idle_table.setItem(row_index, col, item)
         self._idle_table.expand_to_contents(minimum_height=52, extra_height=6)
+        self._apply_suggested_slurm_mem()
+
+    def _on_cpu_partition_changed(self, _text: str) -> None:
+        self._apply_suggested_slurm_mem()
+
+    def _on_slurm_mem_user_edited(self, _text: str) -> None:
+        self._slurm_mem_user_edited = True
+
+    def _apply_suggested_slurm_mem(self) -> None:
+        """根据当前分区空闲资源，自动填写最大可用内存（不覆盖用户手改值）。"""
+        if "slurm_mem" not in self.fields:
+            return
+        if self._slurm_mem_user_edited:
+            return
+        partition = self.cpu_combo.currentText().strip()
+        suggested = suggest_slurm_mem_for_partition(self.idle_resources(), partition)
+        if not suggested:
+            return
+        self.fields["slurm_mem"].setText(suggested)
+
+    def apply_suggested_slurm_mem(self) -> None:
+        """供外部在刷新服务器状态后再次尝试填写内存。"""
+        self._apply_suggested_slurm_mem()
 
     def idle_resources(self) -> list[dict]:
         return list(getattr(self, "_idle_rows", []))
@@ -390,6 +420,8 @@ class ServerConnectPanel:
         self.fields["slurm_job_name"].setText(str(config.slurm.job_name or config.workdir.path.name))
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
+        self.fields["slurm_mem"].setText(str(config.slurm.mem or ""))
+        self._slurm_mem_user_edited = False
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._default_cpu = str(config.slurm.cpu or "").strip()
         self._replace_combo_items(self.cpu_combo, [self._default_cpu] if self._default_cpu else [], self._default_cpu)
@@ -403,6 +435,7 @@ class ServerConnectPanel:
             "cpu": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
+            "mem": self.fields["slurm_mem"].text().strip(),
             "server_st": self.st_combo.currentText().strip(),
         }
 
@@ -444,6 +477,7 @@ class ServerConnectPanel:
             self.cpu_combo.setCurrentText(selected)
         else:
             self.cpu_combo.setCurrentText(deduped[0])
+        self._apply_suggested_slurm_mem()
 
     def update_queue_table(self, lines: list) -> None:
         # [EN] Update task queue display. lines: squeue output lines.

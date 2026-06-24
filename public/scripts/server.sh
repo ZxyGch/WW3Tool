@@ -3,6 +3,7 @@
 #SBATCH -p CPU6240R
 #SBATCH -n 48
 #SBATCH -N 1
+#SBATCH --mem=190G
 #SBATCH --time=2880:00:00
 
 
@@ -173,6 +174,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     [ -f "out_grd.$FINEST" ] && mv "out_grd.$FINEST" "$FINEST/out_grd.ww3"
     [ -f "mod_def.$FINEST" ] && mv "mod_def.$FINEST" "$FINEST/mod_def.ww3"
     [ -f "out_pnt.$FINEST" ] && mv "out_pnt.$FINEST" "$FINEST/out_pnt.ww3"
+    [ -f "track_o.$FINEST" ] && mv "track_o.$FINEST" "$FINEST/track_o.ww3"
     cd "$FINEST"
     [ -f ../points.list ] && run_step "ww3_ounp" ww3_ounp
     [ -f track_i.ww3 ] && run_step "ww3_trnc" ww3_trnc

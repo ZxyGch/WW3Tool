@@ -351,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument(
         "--nested",
         action="store_true",
-        help=tr("cli_help_nested_download", "Download from the remote fine/ subdirectory (nested grid)"),
+        help=tr("cli_help_nested_download", "Download from the remote levelN/ subdirectory (nested grid)"),
     )
 
     p_log = sub.add_parser("download-log", help=tr("cli_help_download_log", "[workdir] Download run.log and success/fail markers from remote server"))

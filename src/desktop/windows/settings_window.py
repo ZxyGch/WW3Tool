@@ -580,6 +580,7 @@ class SettingsInterface(QWidget):
         self._text(grid, 0, 0, tr("set_kernel_num", "核数："), "KERNEL_NUM")
         self._text(grid, 1, 0, tr("set_node_num", "节点数："), "NODE_NUM")
         self._text(grid, 2, 0, tr("set_default_cpu", "CPU："), "DEFAULT_CPU")
+        self._text(grid, 3, 0, tr("set_slurm_mem", "内存："), "SLURM_MEM")
 
     def _build_ww3_card(self) -> None:
         grid = self._card(tr("ww3_config_card", "WW3 配置"))

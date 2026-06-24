@@ -31,6 +31,41 @@ class WW3TrncNML(NMLPrimitives):
     ``_modify_ww3_trnc_track`` writes track output configuration to the trnc namelist.
     """
 
+    def _is_track_mode(self) -> bool:
+        track_text = tr("step3_track_mode", "航迹模式")
+        if hasattr(self, "calc_mode_combo") and self.calc_mode_combo:
+            combo_text = self.calc_mode_combo.currentText()
+            if combo_text in (track_text, "航迹模式"):
+                return True
+        calc_mode = getattr(self, "calc_mode_var", "")
+        return calc_mode in (track_text, "航迹模式")
+
+    def _is_nested_grid_mode(self) -> bool:
+        grid_type = getattr(self, "grid_type_var", tr("step2_grid_type_normal", "普通网格"))
+        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        return grid_type in (nested_text, "嵌套网格")
+
+    def _track_datetimes_from_table(self) -> tuple[str, str] | None:
+        """从航迹表取最早/最晚时刻（YYYYMMDD HHMMSS）。"""
+        if not hasattr(self, "track_points_table"):
+            return None
+        if self.track_points_table.rowCount() <= 1:
+            return None
+        times: list[str] = []
+        for i in range(1, self.track_points_table.rowCount()):
+            time_item = self.track_points_table.item(i, 0)
+            if not time_item:
+                continue
+            time_str = time_item.text().strip()
+            if len(time_str) == 15 and " " in time_str:
+                date_part, time_part = time_str.split()
+                if len(date_part) == 8 and len(time_part) == 6:
+                    times.append(time_str)
+        if not times:
+            return None
+        times.sort()
+        return times[0], times[-1]
+
     def _generate_track_i_ww3_file(self):
         """生成 track_i.ww3 文件（航迹模式）
 
@@ -42,14 +77,9 @@ class WW3TrncNML(NMLPrimitives):
         if not hasattr(self, 'selected_folder') or not self.selected_folder:
             return
 
-        # [EN] Check if nested grid mode
-        # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
-
-        # [EN] Determine save path (nested grid: save to fine directory; normal grid: save to working directory)
-        # 确定保存路径（嵌套网格模式保存到 fine 目录，普通网格保存到工作目录）
+        is_nested_grid = self._is_nested_grid_mode()
+        finest: str | None = None
+        track_paths: list[str] = []
         if is_nested_grid:
             from .nested_level_dirs import finest_nested_level_name
 
@@ -58,9 +88,13 @@ class WW3TrncNML(NMLPrimitives):
                 self.log(tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
                 return
             finest_dir = os.path.join(self.selected_folder, finest)
-            track_file_path = os.path.join(finest_dir, "track_i.ww3")
+            # ww3_trnc 后处理读 levelN/track_i.ww3；ww3_multi 积分读根目录 track_i.<levelN>.ww3
+            track_paths = [
+                os.path.join(finest_dir, "track_i.ww3"),
+                os.path.join(self.selected_folder, f"track_i.{finest}.ww3"),
+            ]
         else:
-            track_file_path = os.path.join(self.selected_folder, "track_i.ww3")
+            track_paths = [os.path.join(self.selected_folder, "track_i.ww3")]
 
         try:
             def _fmt_track_coord(v):
@@ -124,12 +158,20 @@ class WW3TrncNML(NMLPrimitives):
                 )
                 lines.append(line)
 
-            # [EN] Write to file
-            # 写入文件
-            with open(track_file_path, 'w', encoding='utf-8', newline='\n') as f:
-                f.writelines(lines)
+            content = "".join(lines)
+            for track_file_path in track_paths:
+                with open(track_file_path, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(content)
 
-            self.log(tr("track_file_generated", "✅ 已生成 track_i.ww3 文件").format(path=track_file_path))
+            if is_nested_grid and finest:
+                self.log(
+                    tr(
+                        "track_file_generated_nested",
+                        "✅ 已生成航迹文件：{finest}/track_i.ww3 与 track_i.{finest}.ww3",
+                    ).format(finest=finest)
+                )
+            else:
+                self.log(tr("track_file_generated", "✅ 已生成 track_i.ww3 文件"))
         except Exception as e:
             self.log(tr("track_file_generation_failed", "❌ 生成 track_i.ww3 文件失败：{error}").format(error=e))
 

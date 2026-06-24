@@ -11,6 +11,8 @@ import json
 import os
 import re
 import shutil
+from contextlib import contextmanager
+from pathlib import Path
 
 from workflows.support.translations import tr
 
@@ -70,6 +72,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "KERNEL_NUM": "slurm.cores",
     "NODE_NUM": "slurm.nodes",
     "DEFAULT_CPU": "slurm.cpu",
+    "SLURM_MEM": "slurm.mem",
     "SERVER_HOST": "server.host",
     "SERVER_PORT": "server.port",
     "SERVER_USER": "server.user",
@@ -490,34 +493,90 @@ DEFAULT_CONFIG = {
 
 WW3_VERSION_VALUES = ("6.07", "7.14")
 
-
-def _nml_template_dir(version: str) -> str:
-    """返回指定版本的 NML 模板目录绝对路径（如 ``public/6.07_nml``）。"""
-    return os.path.join(PUBLIC_DIR, f"{version}_nml")
+_DEFAULT_WW3_VERSION = "6.07"
+_ACTIVE_PARAMS_PATH: str | None = None
 
 
-def get_nml_template_dir() -> str:
-    """返回当前 params.yml 中 ``ww3.version`` 对应的 NML 模板目录。"""
-    return _nml_template_dir(get_ww3_version())
+def _resolve_params_path(params_path: str | Path | None = None) -> Path:
+    """解析用于读取 ``ww3.version`` 的 params.yml 路径。
 
-
-def get_ww3_version() -> str:
-    """从 params.yml 读取当前 WW3 版本，默认 '6.07'。"""
-    root = _read_root_params()
-    ww3 = root.get("ww3") or {}
-    return str(ww3.get("version", "6.07"))
-
-
-def swap_ww3_version(new_version: str) -> bool:
-    """切换 WW3 版本：更新 params.yml 中的 ``ww3.version``。
-
-    模板目录使用固定命名 ``public/{version}_nml``，无需重命名。
+    优先级：显式 ``params_path`` → 活动工作目录 params → 仓库根 ``params.yml``。
     """
+    if params_path is not None:
+        return Path(params_path).expanduser().resolve()
+    if _ACTIVE_PARAMS_PATH:
+        return Path(_ACTIVE_PARAMS_PATH).expanduser().resolve()
+    return Path(PARAMS_FILE)
+
+
+def _read_params_file(params_path: str | Path) -> dict:
+    path = Path(params_path).expanduser().resolve()
+    if not path.is_file():
+        return {}
+    try:
+        yaml = _load_yaml()
+        with path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_params_file(params_path: str | Path, data: dict) -> bool:
+    path = Path(params_path).expanduser().resolve()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = _dump_yaml_with_comments(data)
+        with path.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+        return True
+    except Exception as exc:
+        print(tr("runtime_save_params_failed", "保存 params.yml 失败: {error}").format(error=exc))
+        return False
+
+
+def set_active_params_path(params_path: str | Path | None) -> None:
+    """设置当前活动的工作目录 params.yml（主页流程使用）。"""
+    global _ACTIVE_PARAMS_PATH
+    if params_path is None:
+        _ACTIVE_PARAMS_PATH = None
+        return
+    _ACTIVE_PARAMS_PATH = str(Path(params_path).expanduser().resolve())
+
+
+def get_active_params_path() -> str | None:
+    """返回当前活动的工作目录 params.yml 路径；未设置时返回 ``None``。"""
+    return _ACTIVE_PARAMS_PATH
+
+
+@contextmanager
+def use_params_path(params_path: str | Path | None):
+    """在上下文内临时将活动 params 路径设为指定工作目录 params.yml。"""
+    global _ACTIVE_PARAMS_PATH
+    previous = _ACTIVE_PARAMS_PATH
+    if params_path is not None:
+        _ACTIVE_PARAMS_PATH = str(Path(params_path).expanduser().resolve())
+    try:
+        yield
+    finally:
+        _ACTIVE_PARAMS_PATH = previous
+
+
+def read_ww3_version(*, params_path: str | Path | None = None) -> str:
+    """从指定或当前活动的 params.yml 读取 ``ww3.version``。"""
+    data = _read_params_file(_resolve_params_path(params_path))
+    ww3 = data.get("ww3") or {}
+    return str(ww3.get("version") or _DEFAULT_WW3_VERSION)
+
+
+def write_ww3_version(new_version: str, *, params_path: str | Path) -> bool:
+    """将 ``ww3.version`` 写入指定 params.yml（不修改其它文件）。"""
     if new_version not in WW3_VERSION_VALUES:
         return False
 
-    old_version = get_ww3_version()
-    if old_version == new_version:
+    path = Path(params_path).expanduser().resolve()
+    current = read_ww3_version(params_path=path)
+    if current == new_version:
         return True
 
     target_dir = _nml_template_dir(new_version)
@@ -525,11 +584,37 @@ def swap_ww3_version(new_version: str) -> bool:
         print(tr("runtime_swap_ww3_version_template_missing", "切换 WW3 版本失败：模板目录 {path} 不存在").format(path=target_dir))
         return False
 
-    root = _read_root_params()
-    ww3 = root.get("ww3") or {}
+    data = _read_params_file(path)
+    ww3 = dict(data.get("ww3") or {})
     ww3["version"] = new_version
-    root["ww3"] = ww3
-    return _write_root_params(root)
+    data["ww3"] = ww3
+    return _write_params_file(path, data)
+
+
+def _nml_template_dir(version: str) -> str:
+    """返回指定版本的 NML 模板目录绝对路径（如 ``public/6.07_nml``）。"""
+    return os.path.join(PUBLIC_DIR, f"{version}_nml")
+
+
+def get_nml_template_dir(*, params_path: str | Path | None = None) -> str:
+    """返回 params.yml 中 ``ww3.version`` 对应的 NML 模板目录。
+
+    未指定 ``params_path`` 时，优先使用活动工作目录 params，否则回退到仓库根。
+    """
+    return _nml_template_dir(read_ww3_version(params_path=params_path))
+
+
+def get_ww3_version() -> str:
+    """从仓库根 ``params.yml`` 读取 ``ww3.version``（供设置页与默认模板使用）。"""
+    return read_ww3_version(params_path=PARAMS_FILE)
+
+
+def swap_ww3_version(new_version: str) -> bool:
+    """切换仓库根 ``params.yml`` 中的 ``ww3.version``（供设置页使用）。
+
+    模板目录使用固定命名 ``public/{version}_nml``，无需重命名。
+    """
+    return write_ww3_version(new_version, params_path=PARAMS_FILE)
 
 
 RUN_MODE_VALUES = ("local", "server", "both")
@@ -756,6 +841,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   cpu       – default CPU model identifier.\n"
      "#   nodes     – number of compute nodes to request.\n"
      "#   cores     – CPU cores per node.\n"
+     "#   mem       – job memory request written to #SBATCH --mem=.\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("plot:",
      "# ────────────────────────────────────────────────────────────────────\n"
@@ -1106,7 +1192,7 @@ def load_full_config() -> dict:
         if value is not None:
             merged[flat_key] = value
     # WW3_CONFIG_PATH 是派生路径（public/{version}_nml），不存 yml，仅只读展示/打开用
-    merged["WW3_CONFIG_PATH"] = get_nml_template_dir()
+    merged["WW3_CONFIG_PATH"] = get_nml_template_dir(params_path=PARAMS_FILE)
     # presets 段：输出方案与 ST 版本
     presets = root.get("presets") or {}
     if isinstance(presets.get("output_scheme"), dict):

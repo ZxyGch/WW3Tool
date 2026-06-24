@@ -869,6 +869,7 @@ def parse_pipeline_config(
         file_split=_file_split(ww3_raw.get("file_split")),
         output_scheme=_selected_output_scheme(ww3_raw.get("output_scheme"), presets),
         st=_st(ww3_raw.get("st")),
+        version=str(ww3_raw.get("version") or "6.07").strip(),
     )
     if ww3.file_split not in presets.file_split:
         raise ConfigError(
@@ -939,6 +940,7 @@ def parse_pipeline_config(
         cpu=str(slurm_raw.get("cpu") or ""),
         nodes=str(slurm_raw.get("nodes") or ""),
         cores=str(slurm_raw.get("cores") or ""),
+        mem=str(slurm_raw.get("mem") or "").strip() or None,
         server_st=_slurm_server_st,
     )
     if presets.server_st and slurm.server_st not in presets.server_st:
@@ -1184,6 +1186,8 @@ slurm:
   cpu: CPU6240R
   nodes: "1"
   cores: "48"
+  mem: 190G                       # [EN] Job memory (#SBATCH --mem=); null keeps template default
+                                  # 作业内存（#SBATCH --mem=）；null 保留模板默认值
   server_st: ST2                  # [EN] Select one path name from presets.server_st
                                   # 选择 presets.server_st 中的一个路径名称
 

@@ -46,6 +46,7 @@ from workflows.infrastructure.runtime_config import (
     get_project_meshgen_path,
     load_config as _load_runtime_config,
     normalize_run_mode,
+    set_active_params_path,
 )
 from workflows.infrastructure.adapters.grid_generation_adapter import (
     REFERENCE_DATA_REQUIRED_FILES,
@@ -797,9 +798,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         folder = os.path.abspath(os.path.normpath(folder))
         target = Path(folder) / "params.yml"
         if not target.is_file():
-            source = self._params_path if self._params_path and self._params_path.is_file() else None
             try:
-                self._pipeline_vm.init_workdir_params(source, target, folder)
+                self._pipeline_vm.init_workdir_params(target, folder)
                 self._append_log(tr("params_created_in_workdir", "已在工作目录创建 params.yml：{path}").format(path=target))
             except Exception as exc:
                 self._show_error(tr("params_init_workdir_failed", "初始化工作目录 params.yml 失败：{error}").format(error=exc))
@@ -854,6 +854,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._params_path = path.resolve()
         self._loaded_config = config
         self._params_label.setText(str(self._params_path))
+        set_active_params_path(self._params_path)
 
         # [EN] Load defaults from root params.yml for fallback when workdir fields are empty
         # 从根 params.yml 加载默认值，供工作目录字段为空时回退使用
@@ -1022,9 +1023,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not create:
             self._show_error(tr("params_missing_in_current_workdir", "当前工作目录缺少 params.yml：{path}").format(path=target))
             return None
-        source = self._params_path if self._params_path and self._params_path.is_file() else None
         try:
-            self._pipeline_vm.init_workdir_params(source, target, str(Path(workdir).expanduser().resolve()))
+            self._pipeline_vm.init_workdir_params(
+                target, str(Path(workdir).expanduser().resolve())
+            )
         except Exception as exc:
             self._show_error(tr("params_init_current_workdir_failed", "初始化当前工作目录 params.yml 失败：{error}").format(error=exc))
             return None
@@ -1138,6 +1140,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
         self._params_path = destination
         self._params_label.setText(str(destination))
+        set_active_params_path(destination)
         if log:
             self._append_log(tr("params_saved", "已保存参数文件：{path}").format(path=destination))
         return destination
@@ -2085,6 +2088,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._server_connect_panel.update_idle_resources(idle_data)
             self._server_connect_panel.replace_cpu_options_if_changed(partition_data)
             self._server_connect_panel.update_queue_table(queue_lines)
+            self._server_connect_panel.apply_suggested_slurm_mem()
         # [EN] Stop polling when connection fails
         # 连接失败时停止轮询
         if not getattr(result, "success", True):
