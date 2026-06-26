@@ -486,17 +486,14 @@ class ServerConnectPanel:
         if not tasks:
             self._clear_queue_display()
             self._queue_title.setVisible(False)
+            self._queue_container.setVisible(False)
             self._cancel_widget.setVisible(False)
             return
 
-        # [EN] Check whether to rebuild cards
-        # 检查是否需要重建卡片
-        existing_count = self._queue_layout.count()
-        if existing_count != len(tasks):
-            self._rebuild_queue_cards(tasks)
-        else:
-            self._update_existing_queue_cards(tasks)
-
+        # [EN] squeue is a snapshot. Rebuild from the latest snapshot so cancel/add
+        # races cannot leave stale cards or separators in the layout.
+        # squeue 是快照。每次按最新快照重建，避免取消/新增交错时残留旧卡片或分隔线。
+        self._rebuild_queue_cards(tasks)
         self._queue_title.setVisible(True)
         self._queue_container.setVisible(True)
         self._cancel_widget.setVisible(True)
@@ -661,35 +658,6 @@ class ServerConnectPanel:
 
         table.expand_to_contents(minimum_height=80, extra_height=10)
         return table
-
-    def _update_existing_queue_cards(self, tasks: list[dict]) -> None:
-        # [EN] Only update existing card contents, without rebuilding.
-        """仅更新已有卡片的内容，不重建。"""
-        fields_keys = ["jobid", "name", "state", "time", "partition", "nodes", "cpus", "nodelist"]
-        labels = [
-            tr("queue_jobid", "JobID:"),
-            tr("queue_job_name", "作业名:"),
-            tr("queue_status", "状态:"),
-            tr("queue_runtime", "已运行:"),
-            tr("queue_cpu", "CPU:"),
-            tr("queue_node_num", "节点数:"),
-            tr("queue_cpus", "核数:"),
-            tr("queue_node_list", "节点列表:"),
-        ]
-        for i in range(min(self._queue_layout.count(), len(tasks))):
-            item = self._queue_layout.itemAt(i)
-            widget = item.widget() if item else None
-            if not isinstance(widget, EdgeAlignedTableWidget):
-                continue
-            task = tasks[i]
-            for row, (lbl, key) in enumerate(zip(labels, fields_keys)):
-                lbl_item = widget.item(row, 0)
-                if lbl_item:
-                    lbl_item.setText(lbl)
-                val_item = widget.item(row, 1)
-                if val_item:
-                    val_item.setText(str(task.get(key, "")))
-            widget.expand_to_contents(minimum_height=80, extra_height=10)
 
     def _clear_queue_display(self) -> None:
         while self._queue_layout.count() > 0:
