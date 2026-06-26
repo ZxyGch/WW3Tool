@@ -371,29 +371,6 @@ def _enrich_idle_summary_memory(idle_rows: list[dict], partition_mem: dict[str, 
     return enriched
 
 
-def _partition_memory_idle_rows(partitions: list[str], partition_mem: dict[str, int]) -> list[dict]:
-    """用分区节点内存构造可供推荐使用的空闲资源行。"""
-    rows: list[dict] = []
-    for partition in partitions or []:
-        name = str(partition or "").strip()
-        if not name:
-            continue
-        mem_mb = partition_mem.get(name)
-        if not mem_mb:
-            continue
-        rows.append(
-            {
-                "cpu": name,
-                "nodes": 1,
-                "cores": 1,
-                "max_cores_per_node": 1,
-                "free_mem_mb": mem_mb,
-                "total_mem_mb": mem_mb,
-            }
-        )
-    return rows
-
-
 def _fetch_partition_memory_mb(client) -> dict[str, int]:
     out, err, code = client.exec_command("sinfo -h -o '%P|%m'", timeout=10)
     if code != 0 or err:
@@ -1309,9 +1286,6 @@ def run_server_status(
             sinfo_data = _parse_sinfo_idle_resources(sinfo_out)
             idle_data = _attach_idle_memory_from_sinfo(c, sinfo_data.get("idle_summary", []))
             partitions = sinfo_data.get("partitions", [])
-            if not idle_data and partitions:
-                partition_mem = _fetch_partition_memory_mb(c)
-                idle_data = _partition_memory_idle_rows(partitions, partition_mem)
 
         # 任务队列
         q_out, q_err, _ = c.exec_command(
