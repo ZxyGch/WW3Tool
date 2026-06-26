@@ -60,6 +60,10 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
     MFc2 = MFct*2
     MFc3 = MFct*3
 
+    if Global:
+        WrapLon = True
+        NCM = nlon
+
 ## Find out row numbers of merging parallels of sizs-1 grid.
 ## It must be multiple of MFct as SMC grid level requires.
     prnlat=np.zeros(20, dtype=float)
@@ -167,7 +171,7 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
                 nlon, mlon, LFct, NLvl)
         Abrt = True
 
-    if( Abrt ): exit()
+    if( Abrt ): raise SystemExit(1)
 
 ## Initialise cell count variables
     Ns = np.zeros( (NLvl+1), dtype=int )

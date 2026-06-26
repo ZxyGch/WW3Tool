@@ -40,6 +40,7 @@ from ..runtime_config import (
 )
 
 from ...domain.config_models import GridConfig, GridRegion, PipelineConfig
+from ...domain.grid_bounds import GLOBAL_LAT, GLOBAL_LON, clamp_regional_bounds_to_bathy_safe, is_global_bounds
 from ...support.logging import CoreLogger
 from ...support.translations import tr
 from ..grid_visualization.structured_grid_paths import (
@@ -325,7 +326,7 @@ def _run_pygridgen_subprocess(
 def _structured_kwargs(region: GridRegion, config: GridConfig, out_dir: Path) -> Dict[str, Any]:
     ref_dir = _reference_dir(config)
     settings = config.structured
-    return {
+    kwargs: Dict[str, Any] = {
         "dx": region.dx,
         "dy": region.dy,
         "lon_range": [float(region.lon[0]), float(region.lon[1])],
@@ -341,6 +342,9 @@ def _structured_kwargs(region: GridRegion, config: GridConfig, out_dir: Path) ->
         "SPLIT_LIM": settings.split_lim,
         "LAKE_TOL": settings.lake_tol,
     }
+    if is_global_bounds(region.lon, region.lat):
+        kwargs["IS_GLOBAL"] = 1
+    return kwargs
 
 
 def _generate_structured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
@@ -611,12 +615,27 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
     if bathy and not Path(bathy).is_absolute():
         cfg["input"]["bathymetry_file"] = str((smc_dir / bathy).resolve())
     region = config.grid.outer
-    cfg["grid"]["regional_bounds"] = {
-        "west_lon": float(region.lon[0]),
-        "east_lon": float(region.lon[1]),
-        "south_lat": float(region.lat[0]),
-        "north_lat": float(region.lat[1]),
-    }
+    if is_global_bounds(region.lon, region.lat):
+        cfg["grid"]["global"] = True
+        cfg["grid"].pop("regional_bounds", None)
+        cfg["grid"]["origin"] = {
+            "lon0": GLOBAL_LON[0],
+            "lat0": GLOBAL_LAT[0],
+        }
+    else:
+        cfg["grid"]["global"] = False
+        west, east, south, north = clamp_regional_bounds_to_bathy_safe(
+            float(region.lon[0]),
+            float(region.lon[1]),
+            float(region.lat[0]),
+            float(region.lat[1]),
+        )
+        cfg["grid"]["regional_bounds"] = {
+            "west_lon": west,
+            "east_lon": east,
+            "south_lat": south,
+            "north_lat": north,
+        }
     cfg["grid"].setdefault("regional_bounds_policy", "warn")
     cfg["output"]["output_dir"] = str(config.workdir.path)
 
@@ -633,6 +652,14 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
 
     logger.log(tr("grid_smc_start", "🔄 开始生成 SMC 网格...") if not use_cache else tr("grid_smc_cache_miss", "ℹ️ 未找到匹配的 SMC 网格缓存，开始生成新网格..."))
     _run_subprocess([sys.executable, "create_grid.py", "--config", str(run_config)], smc_dir, logger)
+    grid_cell = config.workdir.path / "grid_cell.dat"
+    if not grid_cell.is_file() or grid_cell.stat().st_size == 0:
+        raise RuntimeError(
+            tr(
+                "grid_smc_output_missing",
+                "SMC 网格生成未完成：未找到有效的 grid_cell.dat",
+            )
+        )
     if use_cache:
         try:
             _save_smc_cache(cache_key, config.workdir.path)

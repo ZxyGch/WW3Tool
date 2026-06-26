@@ -239,6 +239,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("cli_help_recommend_cfl", "[workdir] Recommend timesteps via CFL and write back to params.yml"),
     )
     p_rec_cfl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_rec_cfl.add_argument(
+        "--mode",
+        choices=("safe", "fast", "faster"),
+        default="safe",
+        help=tr("cli_help_recommend_cfl_mode", "CFL aggressiveness: safe=0.9, fast=1.05, faster=1.15"),
+    )
+    p_rec_cfl.add_argument(
+        "--factor",
+        type=float,
+        default=None,
+        help=tr("cli_help_recommend_cfl_factor", "Override CFL multiplier directly, capped at 1.25"),
+    )
 
     p_local_run = sub.add_parser(
         "local-run",
@@ -552,7 +564,7 @@ def main(argv: list[str] | None = None) -> int:
             return _run_prepare_ww3(config)
 
         if args.command == "recommend-cfl":
-            return _run_recommend_cfl(config, params_path)
+            return _run_recommend_cfl(config, params_path, mode=args.mode, factor=args.factor)
 
         if args.command == "local-run":
             return _run_local_run(config)
@@ -686,8 +698,12 @@ def _run_prepare_ww3(config) -> int:
     return 0
 
 
-def _run_recommend_cfl(config, params_path: str) -> int:
-    from ..domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps_from_spacing
+def _run_recommend_cfl(config, params_path: str, *, mode: str = "safe", factor: float | None = None) -> int:
+    from ..domain.timestep_recommendation import (
+        as_ww3_grid_parameters,
+        recommend_timesteps_from_spacing,
+        resolve_cfl_factor,
+    )
     from .interactive_cli import _cfl_spacing_from_grid, _extract_freq1, _persist_ww3_grid_timesteps
 
     grid = config.grid
@@ -704,7 +720,13 @@ def _run_recommend_cfl(config, params_path: str) -> int:
         print(tr("icli_cfl_need_freq1", "⚠️ 请填写有效的起始频率 FREQ1（Hz）"), file=sys.stderr)
         return 1
 
-    rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1)
+    try:
+        cfl_factor = resolve_cfl_factor(mode=mode, explicit=factor)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1, cfl_factor=cfl_factor)
     new_params = as_ww3_grid_parameters(rec)
     config.ww3_grid.parameters.update(new_params)
     _persist_ww3_grid_timesteps(params_path, new_params)
@@ -716,6 +738,7 @@ def _run_recommend_cfl(config, params_path: str) -> int:
     print(f"  DTKTH = {rec.dtkth} s")
     print(f"  DTMIN = {rec.dtmin} s")
     print(f"  CFL ratio = {rec.cfl_ratio:.2f}")
+    print(f"  CFL mode = {mode}, factor = {cfl_factor:.2f}")
     print(tr("icli_cfl_persisted", "✅ 已写入 {}").format(params_path))
     return 0
 

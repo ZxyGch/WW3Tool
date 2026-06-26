@@ -759,6 +759,42 @@ def _ntfy_topic_for(config: PipelineConfig, remote_dir: str) -> str:
     return f"ww3-{digest}"
 
 
+def _ntfy_status_command(remote_dir: str) -> str:
+    """Build a remote shell snippet that reports ntfy watcher status."""
+    pid_file = "ntfy_watch.pid"
+    mode_file = "ntfy_watch.pid.mode"
+    q_remote = shlex.quote(remote_dir)
+    q_pid_path = shlex.quote(posixpath.join(remote_dir, pid_file))
+    q_mode_path = shlex.quote(posixpath.join(remote_dir, mode_file))
+    return (
+        f"if [ ! -d {q_remote} ]; then "
+        f"echo NO_DIR; "
+        f"elif [ -f {q_pid_path} ]; then "
+        f"PID=$(cat {q_pid_path}); "
+        f"MODE=$(tr -d '\\r\\n' < {q_mode_path} 2>/dev/null); "
+        f"if kill -0 \"$PID\" 2>/dev/null && [ \"$MODE\" = 'all' ]; then "
+        f"echo \"RUNNING $PID\"; "
+        f"else "
+        f"echo \"STOPPED\"; "
+        f"fi; "
+        f"else "
+        f"echo \"STOPPED\"; "
+        f"fi"
+    )
+
+
+def _parse_ntfy_status_output(out: str) -> tuple[bool, str | None, bool]:
+    """Return ``(running, pid, workdir_missing)`` from remote status output."""
+    text = (out or "").strip()
+    if text == "NO_DIR":
+        return False, None, True
+    if text.startswith("RUNNING"):
+        parts = text.split()
+        pid = parts[1] if len(parts) > 1 else "unknown"
+        return True, pid, False
+    return False, None, False
+
+
 def run_check_ntfy_status(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,
@@ -779,38 +815,25 @@ def run_check_ntfy_status(
         topic = _ntfy_topic_for(config, remote_dir)
         if owns:
             c.connect(log=logger.log)
-        pid_file = "ntfy_watch.pid"
-        mode_file = "ntfy_watch.pid.mode"
-        q_remote = shlex.quote(remote_dir)
-        command = (
-            f"cd {q_remote} && "
-            f"if [ -f {pid_file} ]; then "
-            f"PID=$(cat {pid_file}); "
-            f"MODE=$(cat {mode_file} 2>/dev/null); "
-            f"if kill -0 $PID 2>/dev/null && [ \"$MODE\" = 'all' ]; then "
-            f"echo \"RUNNING $PID\"; "
-            f"else "
-            f"echo \"STOPPED\"; "
-            f"fi; "
-            f"else "
-            f"echo \"STOPPED\"; "
-            f"fi"
-        )
+        command = _ntfy_status_command(remote_dir)
         out, err, code = c.exec_command(command, timeout=10)
-        running = False
-        pid = None
-        if out and out.strip().startswith("RUNNING"):
-            running = True
-            parts = out.strip().split()
-            pid = parts[1] if len(parts) > 1 else "unknown"
-        logger.log(
-            tr("ntfy_status_running", "✅ ntfy watcher 正在运行 (PID: {pid})").format(pid=pid)
-            if running
-            else tr("ntfy_status_stopped", "⏹ ntfy watcher 未运行")
-        )
+        running, pid, workdir_missing = _parse_ntfy_status_output(out)
+        if workdir_missing:
+            logger.log(
+                tr(
+                    "ntfy_status_workdir_missing",
+                    "⚠️ 远程工作目录不存在：{path}（请先上传或确认路径）",
+                ).format(path=remote_dir)
+            )
+        if running:
+            logger.log(
+                tr("ntfy_status_running", "✅ ntfy watcher 正在运行 (PID: {pid})").format(pid=pid)
+            )
+        elif not workdir_missing:
+            logger.log(tr("ntfy_status_stopped", "⏹ ntfy watcher 未运行"))
         return RemoteResult(
             success=True,
-            data={"running": running, "pid": pid, "topic": topic},
+            data={"running": running, "pid": pid, "topic": topic, "workdir_missing": workdir_missing},
             messages=list(logger.messages),
         )
     except Exception as exc:
@@ -956,7 +979,7 @@ def run_inject_ntfy_listener(
         command = (
             f"echo '{b64_payload}' | base64 -d > {q_script} && "
             f"chmod +x {q_script} && "
-            f"cd {q_remote} && "
+            f"mkdir -p {q_remote} && cd {q_remote} && "
             f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null "
             f"&& [ \"$(cat {q_mode_file} 2>/dev/null)\" = {q_mode} ]; then "
             f"echo \"ntfy watcher already running: $(cat {q_pid_file})\"; "
@@ -964,16 +987,22 @@ def run_inject_ntfy_listener(
             f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null; then "
             f"kill $(cat {q_pid_file}) 2>/dev/null || true; "
             "fi; "
-            f"nohup {q_script} --topic {q_topic} --label {q_label} --mode {q_mode} "
+            f"setsid nohup {q_script} --topic {q_topic} --label {q_label} --mode {q_mode} "
             f"--jobs {q_jobs} --workdirs {q_workdirs} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
-            f"> {q_log_file} 2>&1 & echo $! > {q_pid_file}; disown; "
+            f"> {q_log_file} 2>&1 < /dev/null & echo $! > {q_pid_file}; "
             f"printf '%s\\n' {q_mode} > {q_mode_file}; "
+            f"sleep 0.5; "
+            f"if kill -0 $(cat {q_pid_file}) 2>/dev/null; then "
             f"echo \"ntfy watcher started: $(cat {q_pid_file})\"; "
+            f"else "
+            f"echo \"ntfy watcher failed to stay alive, see {q_log_file}\"; "
+            f"exit 1; "
+            f"fi; "
             "fi; "
             f"printf '%s\\n' {q_topic_line}; "
             f"printf '%s\\n' {q_url_line}"
         )
-        out, err, code = c.exec_command(command, timeout=20)
+        out, err, code = c.exec_command(command, timeout=30)
         if out:
             for line in out.splitlines():
                 logger.log(line)
@@ -984,13 +1013,27 @@ def run_inject_ntfy_listener(
             raise RuntimeError(
                 err or out or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code)
             )
+        verify_out, _, _ = c.exec_command(_ntfy_status_command(remote_dir), timeout=10)
+        running, verify_pid, _ = _parse_ntfy_status_output(verify_out)
+        if not running:
+            log_path = posixpath.join(remote_dir, log_file)
+            raise RuntimeError(
+                tr(
+                    "ntfy_watcher_verify_failed",
+                    "❌ watcher 进程未存活，请检查远程日志：{path}",
+                ).format(path=log_path)
+            )
         logger.log(
             tr(
                 "ntfy_listener_injected",
                 "✅ ntfy 监听已启动；请订阅 topic：{topic}",
             ).format(topic=topic)
         )
-        return RemoteResult(success=True, data={"topic": topic}, messages=list(logger.messages))
+        return RemoteResult(
+            success=True,
+            data={"topic": topic, "running": True, "pid": verify_pid},
+            messages=list(logger.messages),
+        )
     except Exception as exc:
         logger.log(tr("ntfy_listener_failed", "❌ 注入 ntfy 监听失败：{error}").format(error=exc))
         return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))

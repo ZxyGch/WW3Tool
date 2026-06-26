@@ -1100,6 +1100,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         except Exception as exc:
             self._show_error(tr("server_path_save_failed", "保存服务器路径失败：{error}").format(error=exc))
             return False
+        if getattr(self, "_server_polling_active", False):
+            self._server_poll_config = self._build_poll_config()
         return True
 
     def _build_pipeline_config(self, *, validation_stage: str = "full", params_path: Path | None = None):
@@ -1275,6 +1277,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             (bounds.lon_min, bounds.lon_max),
             (bounds.lat_min, bounds.lat_max),
         )
+        self._prompt_global_grid_alignment()
 
     def _load_wind_time_range(self) -> None:
         if self._busy:
@@ -1444,6 +1447,35 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                     pass
                 self._map_preview_path = None
 
+    def _prompt_global_grid_alignment(self) -> None:
+        """Ask whether to snap near-global level0 bounds to the canonical global domain."""
+        if not self._grid_panel.needs_global_alignment_prompt():
+            return
+        box = MessageBox(
+            tr("step2_global_grid_title", "确认全球范围网格"),
+            tr(
+                "step2_global_grid_prompt",
+                "检测到网格范围非常接近全球范围。\n是否按全球范围生成（经度 -180~180，纬度 -90~90）？",
+            ),
+            self,
+        )
+        if getattr(box, "yesButton", None):
+            box.yesButton.setText(tr("step2_global_grid_confirm_button", "按全球生成"))
+        if getattr(box, "cancelButton", None):
+            box.cancelButton.setText(tr("step2_global_grid_cancel_button", "保持当前范围"))
+        if not box.exec():
+            self.titleBar.raise_()
+            return
+        self.titleBar.raise_()
+        outer_only = self._grid_panel.is_nested and bool(self._grid_panel.level_cards)
+        self._grid_panel.apply_global_bounds(outer_only=outer_only)
+        self._persist_current_form_to_workdir_params(validation_stage="grid", log=False)
+        self._append_log(
+            tr("step2_global_grid_outer_only", "✅ 已将外网格范围调整为全球范围")
+            if outer_only
+            else tr("step2_global_grid_applied", "✅ 已将网格范围调整为全球范围")
+        )
+
     def _generate_grid(self) -> None:
         if self._busy:
             return
@@ -1451,6 +1483,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # 在开始生成前检查 reference_data 是否就绪
         if not self._reference_data_available():
             return
+        self._prompt_global_grid_alignment()
         config = self._config_from_current_workdir_params(
             validation_stage="grid",
             log=False,
@@ -2150,10 +2183,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _on_ntfy_smart_done(self, result: object) -> None:
         self._on_job_done(result)
         if not getattr(result, "success", False):
+            self._update_ntfy_button_text()
             return
-        # [EN] After the smart action, update button text and show ntfy info.
-        # 操作完成后，更新按钮文本并显示 ntfy 信息
-        self._update_ntfy_button_text()
+        self._server_connect_panel.inject_ntfy_button.setText(
+            tr("step6_ntfy_send_test", "发送测试通知")
+        )
         data = getattr(result, "data", None) or {}
         topic = data.get("topic", "")
         action = data.get("action", "")
@@ -2216,11 +2250,19 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _update_ntfy_button_text(self) -> None:
         # [EN] Check ntfy watcher status and update button text accordingly.
         """检查 ntfy watcher 状态并更新按钮文本。"""
-        config = getattr(self, "_server_poll_config", None)
-        if config is None or not self._remote_vm.is_connected:
+        if not self._remote_vm.is_connected:
+            return
+        config = self._build_poll_config()
+        if config is None:
             return
         try:
-            status_result = self._remote_vm.check_ntfy_status(config)
+            from workflows.application.remote_ops import run_check_ntfy_status
+
+            status_result = run_check_ntfy_status(
+                config,
+                log=None,
+                client=self._remote_vm._client,
+            )
             data = getattr(status_result, "data", {}) or {}
             if data.get("running"):
                 self._server_connect_panel.inject_ntfy_button.setText(

@@ -65,6 +65,79 @@ log() {
     printf '[%s] %s\n' "$(date '+%F %T')" "$*"
 }
 
+format_elapsed() {
+    local total="$1"
+    local days=$((total / 86400))
+    local rem=$((total % 86400))
+    local hours=$((rem / 3600))
+    rem=$((rem % 3600))
+    local minutes=$((rem / 60))
+    local seconds=$((rem % 60))
+    local parts=""
+
+    if [ "$days" -gt 0 ]; then
+        parts="${days}d"
+        if [ "$hours" -gt 0 ]; then
+            parts="${parts} ${hours}h"
+        fi
+    elif [ "$hours" -gt 0 ]; then
+        parts="${hours}h"
+        if [ "$minutes" -gt 0 ]; then
+            parts="${parts} ${minutes}m"
+        fi
+    elif [ "$minutes" -gt 0 ]; then
+        parts="${minutes}m"
+        if [ "$seconds" -gt 0 ]; then
+            parts="${parts} ${seconds}s"
+        fi
+    else
+        parts="${seconds}s"
+    fi
+    echo "$parts"
+}
+
+clean_state() {
+    local state="$1"
+    printf '%s' "${state%%|*}"
+}
+
+status_title() {
+    local state="$1"
+    local base
+    base="$(printf '%s' "$(clean_state "$state")" | tr '[:lower:]' '[:upper:]')"
+    case "$base" in
+        COMPLETED*|OUT_OF_MEMORY*) echo "✅ Success"; return ;;
+        CANCELLED*|PREEMPTED*) echo "⚠️ Cancel"; return ;;
+        FAILED*|TIMEOUT*|NODE_FAIL*|BOOT_FAIL*|DEADLINE*) echo "❌ Fail"; return ;;
+    esac
+    case "$state" in
+        COMPLETED*) echo "✅ Success" ;;
+        FAILED*) echo "❌ Fail" ;;
+        CANCELLED*|PREEMPTED*) echo "⚠️ Cancel" ;;
+        *) echo "❌ Fail" ;;
+    esac
+}
+
+overall_status_title() {
+    local has_fail=0
+    local has_cancel=0
+    for raw in "$@"; do
+        case "$(status_title "$raw")" in
+            *Fail*) has_fail=1 ;;
+            *Cancel*) has_cancel=1 ;;
+        esac
+    done
+    if [ "$has_fail" -eq 1 ]; then
+        echo "❌ Fail"
+        return
+    fi
+    if [ "$has_cancel" -eq 1 ]; then
+        echo "⚠️ Cancel"
+        return
+    fi
+    echo "✅ Success"
+}
+
 send_ntfy() {
     subject="$1"
     body="$2"
@@ -205,17 +278,20 @@ notify_finished_job() {
     if [ -f "$state_dir/job_${job_id}.done" ]; then
         return 0
     fi
-    local jname
+    local jname elapsed_secs elapsed_text finished_at
     jname="$(job_name "$job_id")"
+    finished_at="$(date '+%F %T')"
+    elapsed_secs=$(($(date '+%s') - start_epoch))
+    elapsed_text="$(format_elapsed "$elapsed_secs")"
     {
         echo "Started: ${started_at}"
-        echo "Host: ${host}"
-        echo "Job: ${job_id}"
+        echo "Finished: ${finished_at}"
+        echo "JobID: ${job_id}"
         echo "JobName: ${jname}"
-        echo "State: ${state}"
-        echo "Elapsed: $(($(date '+%s') - start_epoch))s"
+        echo "State: $(clean_state "$state")"
+        echo "Elapsed: ${elapsed_text}"
     } > "$state_dir/message_${job_id}.txt"
-    send_ntfy "${jname} ${job_id} ${state}" "$(cat "$state_dir/message_${job_id}.txt")" \
+    send_ntfy "$(status_title "$state")" "$(cat "$state_dir/message_${job_id}.txt")" \
         && touch "$state_dir/job_${job_id}.done"
     return 0
 }
@@ -233,22 +309,16 @@ notify_workdir_if_finished() {
     fi
     printf '%s\n' "$state" > "$state_dir/workdir_${key}.state"
     workdir_name="$(basename "$dir")"
+    local elapsed_secs elapsed_text finished_at
+    finished_at="$(date '+%F %T')"
+    elapsed_secs=$(($(date '+%s') - start_epoch))
+    elapsed_text="$(format_elapsed "$elapsed_secs")"
     body="Started: ${started_at}
-Host: ${host}
+Finished: ${finished_at}
 Workdir: ${dir}
-State: ${state}
-Elapsed: $(($(date '+%s') - start_epoch))s"
-    # [EN] Try to use the SLURM job name in the title
-    # 尝试从 sacct 获取最近完成的任务名作为标题
-    if command -v sacct >/dev/null 2>&1; then
-        local jname
-        jname="$(sacct -n -X -P --format=JobName -S "$(date -d '-1 hour' '+%Y-%m-%dT%H:%M' 2>/dev/null || date -v-1H '+%Y-%m-%dT%H:%M' 2>/dev/null)" 2>/dev/null | head -1)"
-        if [ -n "$jname" ] && [ "$jname" != "None" ]; then
-            send_ntfy "${jname} ${state}" "$body"
-            return 0
-        fi
-    fi
-    send_ntfy "${NTFY_LABEL} ${state}" "$body"
+State: $(clean_state "$state")
+Elapsed: ${elapsed_text}"
+    send_ntfy "$(status_title "$state")" "$body"
     return 0
 }
 
@@ -263,7 +333,6 @@ run_once_mode() {
         active=0
         final_ok=1
         summary="Started: ${started_at}
-Host: ${host}
 "
         if [ -n "$NTFY_JOBS" ]; then
             summary="${summary}
@@ -271,7 +340,7 @@ Jobs:
 "
             for job in $NTFY_JOBS; do
                 state="$(job_state "$job")"
-                summary="${summary}- ${job}: ${state}
+                summary="${summary}- JobID ${job}: $(clean_state "$state")
 "
                 case "$state" in
                     ACTIVE*) active=$((active + 1)) ;;
@@ -288,7 +357,7 @@ Workdirs:
 "
             for dir in $NTFY_WORKDIRS; do
                 state="$(workdir_state "$dir")"
-                summary="${summary}- ${dir}: ${state}
+                summary="${summary}- ${dir}: $(clean_state "$state")
 "
                 case "$state" in
                     ACTIVE*) active=$((active + 1)) ;;
@@ -299,9 +368,6 @@ Workdirs:
         fi
 
         elapsed=$(($(date '+%s') - start_epoch))
-        summary="${summary}
-Elapsed: ${elapsed}s
-"
         [ "$active" -eq 0 ] && break
 
         if [ "$NTFY_TIMEOUT_HOURS" != "0" ]; then
@@ -319,38 +385,31 @@ Timeout reached while ${active} target(s) were still active.
         sleep "$NTFY_INTERVAL"
     done
 
-    # [EN] Build a dynamic title with job names and IDs
-    # 根据任务名称和 ID 生成动态标题
+    title_states=""
     if [ -n "$NTFY_JOBS" ]; then
-        job_count=0
-        job_ids=""
-        last_state=""
-        last_name=""
         for job in $NTFY_JOBS; do
-            st="$(job_state "$job")"
-            jn="$(job_name "$job")"
-            job_count=$((job_count + 1))
-            if [ -z "$job_ids" ]; then
-                job_ids="$job"
-            else
-                job_ids="${job_ids}, $job"
-            fi
-            last_state="$st"
-            last_name="$jn"
+            title_states="${title_states}$(job_state "$job") "
         done
-        if [ "$job_count" -eq 1 ]; then
-            title="${last_name} ${job_ids} ${last_state}"
-        else
-            if [ "$final_ok" -eq 1 ]; then
-                title="${job_count} jobs finished (${job_ids})"
-            else
-                title="${job_count} jobs finished — failed (${job_ids})"
-            fi
-        fi
-    else
-        title="jobs finished"
-        [ "$final_ok" -eq 1 ] || title="${title} (failed)"
     fi
+    if [ -n "$NTFY_WORKDIRS" ]; then
+        for dir in $NTFY_WORKDIRS; do
+            title_states="${title_states}$(workdir_state "$dir") "
+        done
+    fi
+    if [ -n "$title_states" ]; then
+        # shellcheck disable=SC2086
+        title="$(overall_status_title $title_states)"
+    elif [ "$final_ok" -eq 1 ]; then
+        title="✅ Success"
+    else
+        title="❌ Fail"
+    fi
+    finished_at="$(date '+%F %T')"
+    elapsed=$(($(date '+%s') - start_epoch))
+    summary="${summary}
+Finished: ${finished_at}
+Elapsed: $(format_elapsed "$elapsed")
+"
     send_ntfy "$title" "$summary"
 }
 
@@ -382,8 +441,7 @@ log "topic=${NTFY_TOPIC}"
 # Startup connectivity test: send a test notification so the user knows
 # the watcher is alive and curl can reach ntfy.sh from this host.
 log "sending startup test notification..."
-if send_ntfy "watcher started" "Host: ${host}
-Mode: ${NTFY_MODE}
+if send_ntfy "watcher started" "Mode: ${NTFY_MODE}
 Topic: ${NTFY_TOPIC}
 Jobs: ${NTFY_JOBS:-auto-detect}
 Started: ${started_at}"; then

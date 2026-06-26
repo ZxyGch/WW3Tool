@@ -17,6 +17,11 @@ from typing import Optional
 PI = math.pi
 G = 9.8
 METERS_PER_DEGREE_LAT = 111_320.0
+CFL_FACTORS = {
+    "safe": 0.9,
+    "fast": 1.05,
+    "faster": 1.15,
+}
 
 
 @dataclass(frozen=True)
@@ -30,6 +35,26 @@ class TimestepRecommendation:
     dtkth: int
     dtmin: int
     cfl_ratio: float
+
+
+def resolve_cfl_factor(mode: str = "safe", explicit: Optional[float] = None) -> float:
+    """Return the CFL multiplier used for timestep recommendation.
+
+    ``safe`` preserves the historical 0.9 setting. ``fast`` and ``faster`` are
+    intentionally more aggressive options for throughput-sensitive reruns.
+    """
+    if explicit is not None:
+        factor = float(explicit)
+    else:
+        key = str(mode or "safe").strip().lower()
+        if key not in CFL_FACTORS:
+            raise ValueError(f"unknown CFL mode: {mode}")
+        factor = CFL_FACTORS[key]
+    if factor <= 0:
+        raise ValueError("CFL factor must be positive")
+    if factor > 1.25:
+        raise ValueError("CFL factor above 1.25 is too aggressive for automatic recommendation")
+    return factor
 
 
 def grid_spacing_meters(dx_deg: float, dy_deg: float, lat_deg: float) -> float:

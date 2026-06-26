@@ -179,7 +179,7 @@ presets:
 # ────────────────────────────────────────────────────────────────────
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
-  default_workspace: /Volumes/Zxy's Disk/WW3Tool_workSpace/
+  default_workspace: /Users/zxy/ocean/Paper/WW3Tool/workSpace
 # ────────────────────────────────────────────────────────────────────
 # Forcing fields: NetCDF file paths for external driving fields.
 #   wind    – 10-m wind speed / direction (U10, V10).
@@ -503,7 +503,5 @@ desktop:
   theme: AUTO
   run_mode: both
   recent_workdirs:
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2026-06-24_22-32-05
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2026-06-24_22-24-33
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/new
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-25_13-04-29
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

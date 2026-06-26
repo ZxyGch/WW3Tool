@@ -929,14 +929,30 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_recommend_cfl(self, arg: str) -> None:
-        """recommend-cfl  — 按 CFL 公式推荐时间步长，自动写入配置
+        """recommend-cfl [--mode safe|fast|faster] [--factor X] — 按 CFL 公式推荐时间步长
 
-        [EN] recommend-cfl  — Recommend timesteps using the CFL formula, auto-write to config
+        [EN] recommend-cfl [--mode safe|fast|faster] [--factor X] — Recommend timesteps using the CFL formula
         """
         if not self._require_config():
             return
         try:
-            from ..domain.timestep_recommendation import as_ww3_grid_parameters, recommend_timesteps_from_spacing
+            import argparse
+            import shlex
+
+            from ..domain.timestep_recommendation import (
+                as_ww3_grid_parameters,
+                recommend_timesteps_from_spacing,
+                resolve_cfl_factor,
+            )
+
+            parser = argparse.ArgumentParser(prog="recommend-cfl", add_help=False)
+            parser.add_argument("--mode", choices=("safe", "fast", "faster"), default="safe")
+            parser.add_argument("--factor", type=float, default=None)
+            try:
+                opts = parser.parse_args(shlex.split(arg or ""))
+            except SystemExit:
+                print(_warn("用法: recommend-cfl [--mode safe|fast|faster] [--factor X]"))
+                return
 
             cfg = self._config
             grid = cfg.grid
@@ -955,7 +971,8 @@ class InteractiveCLI(cmd.Cmd):
                 print(_warn(tr("icli_cfl_need_freq1", "⚠️ 请填写有效的起始频率 FREQ1（Hz）")))
                 return
 
-            rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1)
+            cfl_factor = resolve_cfl_factor(mode=opts.mode, explicit=opts.factor)
+            rec = recommend_timesteps_from_spacing(dxy_m=dxy_m, freq1=freq1, cfl_factor=cfl_factor)
             new_params = as_ww3_grid_parameters(rec)
 
             # 更新内存配置
@@ -973,6 +990,7 @@ class InteractiveCLI(cmd.Cmd):
             print(f"  DTKTH = {rec.dtkth} s")
             print(f"  DTMIN = {rec.dtmin} s")
             print(f"  CFL ratio = {rec.cfl_ratio:.2f}")
+            print(f"  CFL mode = {opts.mode}, factor = {cfl_factor:.2f}")
             print(_success(tr("icli_cfl_persisted", "✅ 已写入 {}" ).format(self._params_path)))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))

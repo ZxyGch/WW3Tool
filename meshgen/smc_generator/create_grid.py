@@ -805,6 +805,43 @@ def _crop_bathy_for_regional_smc(
     return lon_c, lat_c, bathy_c
 
 
+def _trim_bathy_for_global_smc(
+    lon: np.ndarray,
+    lat: np.ndarray,
+    bathy_elev: np.ndarray,
+    *,
+    n_levels: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Trim bathy edges so global SMC resolution factors divide grid dimensions.
+
+    ETOPO/GEBCO NetCDF files often have nlat/nlon that are not exact multiples of
+    ``MFct`` / ``LFct`` required by ``smcellgen`` for global grids.
+    """
+    nlon = int(lon.size)
+    nlat = int(lat.size)
+    mfct = 2 ** (int(n_levels) - 1)
+    lfct = mfct * 8  # Global grids use Merg = 8 in smcellgen
+    target_nlat = (nlat // mfct) * mfct
+    target_nlon = (nlon // lfct) * lfct
+    if target_nlat < mfct or target_nlon < lfct:
+        raise SystemExit(
+            f"Global SMC bathy {nlon}x{nlat} is too small for n_levels={n_levels} "
+            f"(need at least {lfct}x{mfct})."
+        )
+    if target_nlat == nlat and target_nlon == nlon:
+        return lon, lat, bathy_elev
+    print(
+        "Global SMC: trimming bathy to fit resolution factors "
+        f"(n_levels={n_levels}, MFct={mfct}, LFct={lfct}): "
+        f"{nlon}x{nlat} -> {target_nlon}x{target_nlat}.",
+        flush=True,
+    )
+    lon_t = lon[:target_nlon].copy()
+    lat_t = lat[:target_nlat].copy()
+    bathy_t = bathy_elev[:target_nlat, :target_nlon].copy()
+    return lon_t, lat_t, bathy_t
+
+
 def _to_2d_bathy(var_data: np.ndarray) -> np.ndarray:
     arr = np.asarray(var_data, dtype=float).squeeze()
     if arr.ndim != 2:
@@ -1080,7 +1117,7 @@ def main() -> None:
     x0lon = _read_alias_float(origin_cfg, ["x0lon", "lon0"], "origin longitude")
     y0lat = _read_alias_float(origin_cfg, ["y0lat", "lat0"], "origin latitude")
 
-    mlvlxy0 = [n_levels, x0lon, y0lat]
+    mlvlxy0: list[float | int] = [n_levels, x0lon, y0lat]
     requested_bounds: dict[str, float] | None = None
     if not global_grid:
         bounds = grid_cfg.get("regional_bounds")
@@ -1128,6 +1165,13 @@ def main() -> None:
         lon, lat, bathy_elev = _crop_bathy_for_regional_smc(
             lon, lat, bathy_elev, mlvlxy0, dlon=dlon, dlat=dlat
         )
+    else:
+        lon, lat, bathy_elev = _trim_bathy_for_global_smc(
+            lon, lat, bathy_elev, n_levels=n_levels
+        )
+        x0lon = float(lon[0])
+        y0lat = float(lat[0])
+        mlvlxy0 = [n_levels, x0lon, y0lat]
 
     ndzlonlat = [int(lon.size), int(lat.size), float(dlon), float(dlat), float(lon[0]), float(lat[0])]
 

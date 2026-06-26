@@ -146,10 +146,14 @@ class RemoteViewModel:
 
         return run_inject_ntfy_listener(config, log=self._log, client=self._ensure_client(config))
 
-    def check_ntfy_status(self, config: PipelineConfig):
+    def check_ntfy_status(self, config: PipelineConfig, *, silent: bool = False):
         from workflows.application.remote_ops import run_check_ntfy_status
 
-        return run_check_ntfy_status(config, log=self._log, client=self._ensure_client(config))
+        return run_check_ntfy_status(
+            config,
+            log=None if silent else self._log,
+            client=self._ensure_client(config),
+        )
 
     def send_ntfy_test(self, config: PipelineConfig):
         from workflows.application.remote_ops import run_send_ntfy_test

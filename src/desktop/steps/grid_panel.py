@@ -12,6 +12,7 @@ from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.validators import double_validator, int_validator
 from workflows.domain.config_models import GridConfig, GridRegion
+from workflows.domain.grid_bounds import GLOBAL_LAT, GLOBAL_LON, is_near_global_bounds
 from workflows.domain.grid_spacing_recommendation import recommend_grid_params
 from workflows.support.translations import tr
 
@@ -458,6 +459,36 @@ class GridStepPanel:
         self.set_value(f"{prefix}_lon_east", f"{lon[1]:.4f}")
         self.set_value(f"{prefix}_lat_south", f"{lat[0]:.4f}")
         self.set_value(f"{prefix}_lat_north", f"{lat[1]:.4f}")
+
+    def outer_lon_lat(self) -> tuple[list[float], list[float]] | None:
+        """Return level0 lon/lat as float lists, or None when invalid."""
+        base = self._grid_region_floats()
+        if base is None:
+            return None
+        _, _, lon, lat = base
+        return lon, lat
+
+    def needs_global_alignment_prompt(self) -> bool:
+        """True when level0 bounds are very close to, but not exactly, global."""
+        bounds = self.outer_lon_lat()
+        if bounds is None:
+            return False
+        lon, lat = bounds
+        return is_near_global_bounds(lon, lat)
+
+    def apply_global_bounds(self, *, outer_only: bool = True) -> None:
+        """Snap level0 (and optionally all nested levels) to the global domain."""
+        self.set_bounds("grid", GLOBAL_LON, GLOBAL_LAT)
+        if outer_only:
+            return
+        for card in self.level_cards:
+            rf = card.region_floats()
+            if rf is None:
+                continue
+            dx, dy, _, _ = rf
+            card.set_from_region(
+                GridRegion(dx=dx, dy=dy, lon=list(GLOBAL_LON), lat=list(GLOBAL_LAT))
+            )
 
     def set_region_bounds(self, prefix: str, region: GridRegion) -> None:
         self.set_bounds(prefix, (region.lon[0], region.lon[1]), (region.lat[0], region.lat[1]))
