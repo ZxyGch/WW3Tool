@@ -545,6 +545,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._forcing_panel = ForcingStepPanel(
             parent,
             create_button=self._primary_button,
+            input_style=self._input_style,
+            combo_style=self._combo_style,
             browse_path=self._browse_path,
             show_file_info=self._show_forcing_files_info,
             confirm_import=self._confirm_forcing_import,

@@ -84,7 +84,7 @@
   "step1_lon_range": "经度：",
   "step1_date_placeholder": "YYYYMMDD",
   "range_separator": "至",
-  "step1_load_intersection": "读取相交范围",
+  "step1_load_intersection": "读取公共范围",
   "step1_confirm_import": "确认导入",
   "step1_confirm_crop_import": "确认裁剪并导入",
   "step1_wait_confirm_import": "已选择强迫场文件。请确认导入方式后点击“确认导入”。",

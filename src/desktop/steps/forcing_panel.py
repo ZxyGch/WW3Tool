@@ -10,7 +10,6 @@ from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
-from ..components import styles
 from workflows.support.translations import tr
 
 
@@ -22,12 +21,15 @@ class ForcingStepPanel:
         parent: QWidget,
         *,
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
+        input_style: Callable[[], str],
+        combo_style: Callable[[], str],
         browse_path: Callable[[str, bool], None],
         show_file_info: Callable[[], None],
         confirm_import: Callable[[], None],
         load_intersection: Callable[[], None],
         mode_changed: Callable[[], None],
     ) -> None:
+        self._input_style = input_style
         self.paths: dict[str, LineEdit] = {}
         self.path_buttons: dict[str, PrimaryPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
@@ -45,7 +47,7 @@ class ForcingStepPanel:
         layout.addLayout(grid)
 
         self.mode = ComboBox(parent)
-        self.mode.setStyleSheet(styles.combo_style())
+        self.mode.setStyleSheet(combo_style())
         for label, value in (
             (tr("step1_mode_copy_full", "完整复制"), "copy"),
             (tr("step1_mode_move_full", "完整剪切"), "move"),
@@ -75,7 +77,7 @@ class ForcingStepPanel:
         layout.addLayout(range_grid)
 
         self.load_intersection_button = create_button(
-            tr("step1_load_intersection", "读取相交范围"),
+            tr("step1_load_intersection", "读取公共范围"),
             load_intersection,
         )
         self.load_intersection_button.hide()
@@ -194,7 +196,7 @@ class ForcingStepPanel:
 
     def _new_range_field(self, *, placeholder: str = "") -> LineEdit:
         field = LineEdit()
-        field.setStyleSheet(styles.input_style())
+        field.setStyleSheet(self._input_style())
         field.setReadOnly(True)
         field.setClearButtonEnabled(False)
         if placeholder:

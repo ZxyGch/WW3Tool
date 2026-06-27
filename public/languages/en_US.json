@@ -84,7 +84,7 @@
   "step1_lon_range": "Longitude:",
   "step1_date_placeholder": "YYYYMMDD",
   "range_separator": "to",
-  "step1_load_intersection": "Read intersection",
+  "step1_load_intersection": "Read common extent",
   "step1_confirm_import": "Confirm Import",
   "step1_confirm_crop_import": "Confirm Crop Import",
   "step1_wait_confirm_import": "Forcing files selected. Confirm the import mode, then click \"Confirm Import\".",
