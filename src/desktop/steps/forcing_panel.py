@@ -25,7 +25,8 @@ class ForcingStepPanel:
         combo_style: Callable[[], str],
         browse_path: Callable[[str, bool], None],
         show_file_info: Callable[[], None],
-        confirm_import: Callable[[], None],
+        crop_import: Callable[[], None],
+        direct_import: Callable[[], None],
         load_intersection: Callable[[], None],
         mode_changed: Callable[[], None],
     ) -> None:
@@ -51,7 +52,6 @@ class ForcingStepPanel:
         for label, value in (
             (tr("step1_mode_copy_full", "完整复制"), "copy"),
             (tr("step1_mode_move_full", "完整剪切"), "move"),
-            (tr("step1_mode_crop", "范围裁剪"), "crop"),
         ):
             self.mode.addItem(label)
             self.mode.setItemData(self.mode.count() - 1, value)
@@ -80,15 +80,20 @@ class ForcingStepPanel:
             tr("step1_load_intersection", "读取公共范围"),
             load_intersection,
         )
-        self.load_intersection_button.hide()
         layout.addWidget(self.load_intersection_button)
 
-        self.confirm_import_button = create_button(
+        self.crop_import_button = create_button(
             tr("step1_confirm_crop_import", "确认裁剪并导入"),
-            confirm_import,
+            crop_import,
         )
-        layout.addWidget(self.confirm_import_button)
-        self.set_range_editable(False)
+        layout.addWidget(self.crop_import_button)
+
+        self.direct_import_button = create_button(
+            tr("step1_direct_import", "直接导入，不进行裁剪"),
+            direct_import,
+        )
+        layout.addWidget(self.direct_import_button)
+        self.set_range_editable(True)
 
         self.auto_associate = create_right_aligned_check_box(parent)
         self.auto_associate.setChecked(True)
@@ -117,12 +122,6 @@ class ForcingStepPanel:
         for field in self.range_fields.values():
             field.setReadOnly(not editable)
             field.setClearButtonEnabled(editable)
-        self.load_intersection_button.setVisible(editable)
-        self.confirm_import_button.setText(
-            tr("step1_confirm_crop_import", "确认裁剪并导入")
-            if editable
-            else tr("step1_confirm_import", "确认导入")
-        )
 
     def crop_time_range(self) -> list[str]:
         return [
@@ -197,8 +196,8 @@ class ForcingStepPanel:
     def _new_range_field(self, *, placeholder: str = "") -> LineEdit:
         field = LineEdit()
         field.setStyleSheet(self._input_style())
-        field.setReadOnly(True)
-        field.setClearButtonEnabled(False)
+        field.setReadOnly(False)
+        field.setClearButtonEnabled(True)
         if placeholder:
             field.setPlaceholderText(placeholder)
         field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)

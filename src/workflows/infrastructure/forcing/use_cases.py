@@ -170,18 +170,18 @@ class ImportForcingFileUseCase:
             file_path: 源 NetCDF 绝对路径
             selected_folder: WW3 工作目录
             auto_associate: 是否根据文件内变量自动关联其他场
-            process_mode: ``copy``、``move`` 或 ``crop``
-            crop_time_range: 裁剪模式下的时间范围
-            crop_bbox: 裁剪模式下的经纬度范围
+            process_mode: ``copy`` 或 ``move``
+            crop_time_range: 本次导入需要裁剪时的时间范围
+            crop_bbox: 本次导入需要裁剪时的经纬度范围
 
         [EN] Parameters:
             field: User-selected field type (current/level/ice)
             file_path: Source NetCDF absolute path
             selected_folder: WW3 working directory
             auto_associate: Whether to auto-associate other fields based on file variables
-            process_mode: ``copy``, ``move`` or ``crop``
-            crop_time_range: Time range used by crop mode
-            crop_bbox: lon/lat bounding box used by crop mode
+            process_mode: ``copy`` or ``move``
+            crop_time_range: Time range used when this import action crops data
+            crop_bbox: lon/lat bounding box used when this import action crops data
 
         返回:
             ``ForcingImportResult``，失败时 ``success=False`` 并附带原因
@@ -221,12 +221,13 @@ class ImportForcingFileUseCase:
 
         need_process = self._log_existing_target(file_path, target_file, target_filename)
         if need_process:
-            if process_mode == "crop":
+            if crop_time_range and crop_bbox:
                 copied_file = self._file_service.crop_and_fix_forcing_file(
                     file_path,
                     target_file,
                     time_range=crop_time_range,
                     bbox=crop_bbox,
+                    remove_source=process_mode == "move",
                 )
             else:
                 copied_file = self._file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)

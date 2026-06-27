@@ -473,6 +473,7 @@ class FileService:
         *,
         time_range: list[str] | tuple[str, str] | None = None,
         bbox: list[float] | tuple[float, float, float, float] | None = None,
+        remove_source: bool = False,
     ) -> Optional[str]:
         """裁剪强迫场到工作目录，并执行 WW3 格式标准化。
 
@@ -500,6 +501,18 @@ class FileService:
             ok = self._normalizer.normalize(target_file, target_file, log=self.log)
             if not ok:
                 return None
+            if remove_source:
+                try:
+                    same_file = os.path.samefile(source_file, target_file)
+                except OSError:
+                    same_file = False
+                if not same_file and os.path.exists(source_file):
+                    os.remove(source_file)
+                    self.log(
+                        tr("log_crop_forcing_source_removed", "🧹 剪切模式：已删除原始强迫场文件：{file}").format(
+                            file=os.path.basename(source_file)
+                        )
+                    )
             self.log(
                 tr("log_crop_forcing_done", "✅ 强迫场裁剪并标准化完成：{file}").format(
                     file=os.path.basename(target_file)

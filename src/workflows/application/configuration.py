@@ -216,9 +216,10 @@ def _process_mode(value: Any) -> str:
         return "copy"
     if raw == "move":
         return "move"
+    # 旧版 GUI 曾把裁剪作为第三种 process_mode；现在裁剪是导入动作，旧配置按复制导入兼容。
     if raw == "crop":
-        return "crop"
-    raise ConfigError("forcing.process_mode 必须是 copy、move 或 crop")
+        return "copy"
+    raise ConfigError("forcing.process_mode 必须是 copy 或 move")
 
 
 def _string_list(value: Any, name: str, *, expected: int | None = None) -> list[str]:
@@ -1043,11 +1044,11 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
         [config.forcing.current, config.forcing.level, config.forcing.ice],
         ["forcing.current", "forcing.level", "forcing.ice"],
     )
-    if config.forcing.process_mode == "crop":
+    if config.forcing.crop_time_range or config.forcing.crop_bbox:
         if len(config.forcing.crop_time_range) != 2:
-            raise ConfigError(tr("cfg_crop_time_required", "forcing.process_mode=crop 时必须设置 forcing.crop_time_range"))
+            raise ConfigError(tr("cfg_crop_time_required", "裁剪强迫场时必须设置 forcing.crop_time_range"))
         if len(config.forcing.crop_bbox) != 4:
-            raise ConfigError(tr("cfg_crop_bbox_required", "forcing.process_mode=crop 时必须设置 forcing.crop_bbox"))
+            raise ConfigError(tr("cfg_crop_bbox_required", "裁剪强迫场时必须设置 forcing.crop_bbox"))
         west, east, south, north = config.forcing.crop_bbox
         if east < west or north < south:
             raise ConfigError(tr("cfg_crop_bbox_order", "forcing.crop_bbox 必须为 [west, east, south, north] 且 east>=west、north>=south"))

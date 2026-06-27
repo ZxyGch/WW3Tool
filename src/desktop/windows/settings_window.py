@@ -564,7 +564,6 @@ class SettingsInterface(QWidget):
             [
                 (tr("step1_mode_copy_full", "完整复制"), "copy"),
                 (tr("step1_mode_move_full", "完整剪切"), "move"),
-                (tr("step1_mode_crop", "范围裁剪"), "crop"),
             ],
         )
 

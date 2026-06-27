@@ -187,12 +187,9 @@ workdir:
 #   level   – sea-surface elevation anomaly (LEV).
 #   ice     – sea-ice concentration (IC1 / IC5).
 #   process_mode     – 'copy' duplicates complete files into workdir;
-#                      'move' relocates complete originals;
-#                      'crop' imports cropped time/lon/lat subsets.
-#   crop_time_range  – used only when process_mode='crop',
-#                      [start_YYYYMMDD, end_YYYYMMDD].
-#   crop_bbox        – used only when process_mode='crop',
-#                      [west, east, south, north].
+#                      'move' relocates complete originals.
+#   crop_time_range  – optional crop action default, [start_YYYYMMDD, end_YYYYMMDD].
+#   crop_bbox        – optional crop action default, [west, east, south, north].
 #   auto_associate   – when true, automatically match dropped / selected
 #                      files to forcing variables by filename keyword.
 # ────────────────────────────────────────────────────────────────────

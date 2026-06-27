@@ -60,18 +60,18 @@ class ForcingConfig:
 
     关键字段：
     - ``wind`` / ``current`` / ``level`` / ``ice``：各场 NetCDF 源文件路径
-    - ``process_mode``：``copy``、``move`` 或 ``crop``，控制写入工作目录的方式
-    - ``crop_time_range``：裁剪模式下的时间范围，``[start, end]``
-    - ``crop_bbox``：裁剪模式下的空间范围，``[west, east, south, north]``
+    - ``process_mode``：``copy`` 或 ``move``，控制完整导入/裁剪导入时的源文件处理方式
+    - ``crop_time_range``：裁剪导入动作的时间范围，``[start, end]``
+    - ``crop_bbox``：裁剪导入动作的空间范围，``[west, east, south, north]``
     - ``auto_associate``：是否根据文件名自动匹配场类型
 
     [EN] Forcing source files and processing options (corresponds to YAML ``forcing:`` section).
 
     Key fields:
     - ``wind`` / ``current`` / ``level`` / ``ice``: NetCDF source file paths for each field
-    - ``process_mode``: ``copy``, ``move`` or ``crop``, controls how files are written to the working directory
-    - ``crop_time_range``: crop time range, ``[start, end]``
-    - ``crop_bbox``: crop bounding box, ``[west, east, south, north]``
+    - ``process_mode``: ``copy`` or ``move``, controls source-file handling for full/cropped imports
+    - ``crop_time_range``: crop import time range, ``[start, end]``
+    - ``crop_bbox``: crop import bounding box, ``[west, east, south, north]``
     - ``auto_associate``: whether to automatically match field types based on filenames
     """
 

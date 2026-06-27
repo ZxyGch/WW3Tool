@@ -549,7 +549,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             combo_style=self._combo_style,
             browse_path=self._browse_path,
             show_file_info=self._show_forcing_files_info,
-            confirm_import=self._confirm_forcing_import,
+            crop_import=self._crop_forcing_import,
+            direct_import=self._direct_forcing_import,
             load_intersection=self._load_forcing_intersection,
             mode_changed=self._on_forcing_mode_changed,
         )
@@ -731,7 +732,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _sync_forcing_options_from_config(self, config: PipelineConfig, defaults: dict) -> None:
         pm = config.forcing.process_mode or defaults.get("forcing", {}).get("process_mode") or "copy"
-        self._forcing_panel.set_process_mode(pm if pm in {"copy", "move", "crop"} else "copy")
+        self._forcing_panel.set_process_mode(pm if pm in {"copy", "move"} else "copy")
         self._auto_associate.setChecked(self._resolve_auto_associate_from_config(config, defaults))
         default_forcing = defaults.get("forcing", {}) if isinstance(defaults.get("forcing"), dict) else {}
         crop_time = config.forcing.crop_time_range or default_forcing.get("crop_time_range") or None
@@ -990,17 +991,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 if not self._paths["workdir"].text().strip():
                     self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
                     return
-                if self._forcing_process_mode() != "crop":
-                    self._update_forcing_intersection_ranges(overwrite=True)
+                self._update_forcing_intersection_ranges(overwrite=True)
                 self._append_log(
                     tr(
                         "step1_wait_confirm_import",
-                        "已选择强迫场文件。请确认导入方式后点击“确认导入”。",
-                    )
-                    if self._forcing_process_mode() != "crop"
-                    else tr(
-                        "step1_crop_wait_confirm",
-                        "已选择强迫场文件。当前为范围裁剪模式，请先读取/填写范围，再点击“确认裁剪并导入”。",
+                        "已选择强迫场文件。请确认导入方式后点击导入按钮。",
                     )
                 )
 
@@ -1057,9 +1052,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _build_forcing_config(self):
         process_mode = self._forcing_process_mode()
-        crop_time_range = self._forcing_crop_time_range() if process_mode == "crop" else []
-        crop_bbox = self._forcing_crop_bbox() if process_mode == "crop" else []
-        if process_mode == "crop" and (crop_time_range is None or crop_bbox is None):
+        apply_crop = bool(getattr(self, "_forcing_apply_crop", False))
+        crop_time_range = self._forcing_crop_time_range() if apply_crop else []
+        crop_bbox = self._forcing_crop_bbox() if apply_crop else []
+        if apply_crop and (crop_time_range is None or crop_bbox is None):
             return None
         try:
             return self._forcing_vm.config_from_selection(
@@ -1088,8 +1084,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             ice=self._paths["ice"].text().strip(),
             process_mode=self._forcing_process_mode(),
             auto_associate=self._auto_associate.isChecked(),
-            crop_time_range=self._forcing_crop_time_range(silent=True) or [],
-            crop_bbox=self._forcing_crop_bbox(silent=True) or [],
+            crop_time_range=[],
+            crop_bbox=[],
             grid_overrides=self._grid_panel.overrides(),
             calc_mode=self._calculation_panel.mode,
             calc_points=self._calculation_panel.points(),
@@ -1286,12 +1282,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _on_forcing_mode_changed(self) -> None:
-        is_crop = self._forcing_process_mode() == "crop"
-        self._forcing_panel.set_range_editable(is_crop)
-        if not is_crop:
-            self._update_forcing_intersection_ranges(overwrite=True)
+        self._forcing_panel.set_range_editable(True)
 
-    def _confirm_forcing_import(self) -> None:
+    def _prepare_selected_forcing(self, *, apply_crop: bool) -> None:
         if self._busy:
             return
         if not self._paths["workdir"].text().strip():
@@ -1301,11 +1294,16 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not fields:
             self._show_error(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
-        if self._forcing_process_mode() == "crop" and (
-            self._forcing_crop_time_range() is None or self._forcing_crop_bbox() is None
-        ):
+        if apply_crop and (self._forcing_crop_time_range() is None or self._forcing_crop_bbox() is None):
             return
+        self._forcing_apply_crop = apply_crop
         self._prepare_forcing(fields=fields)
+
+    def _crop_forcing_import(self) -> None:
+        self._prepare_selected_forcing(apply_crop=True)
+
+    def _direct_forcing_import(self) -> None:
+        self._prepare_selected_forcing(apply_crop=False)
 
     def _load_forcing_intersection(self) -> None:
         if not self._selected_forcing_paths():
