@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import platform
 from pathlib import Path
+from collections.abc import Sequence
 
 from ..domain.config_models import GridConfig
 
 
-def render_region_map_png(grid: GridConfig, output_path: Path) -> None:
+def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequence[str] | None = None) -> None:
     """渲染外网格（及嵌套时的内网格）范围预览 PNG。
 
     figsize 根据地图内容实际宽高比动态计算，使 PNG 与内容比例一致，
@@ -74,7 +75,7 @@ def render_region_map_png(grid: GridConfig, output_path: Path) -> None:
     for i, lv in enumerate(levels):
         # 由粗到细颜色渐变；单层时标“网格范围”，多层时标 levelI
         color = cm.rainbow(i / max(n_levels - 1, 1))
-        label = "网格范围" if n_levels == 1 else f"level{i}"
+        label = str(labels[i]) if labels and i < len(labels) else ("网格范围" if n_levels == 1 else f"level{i}")
         _draw_rectangle(axis, lv.lon, lv.lat, color, label, transform)
     axis.legend(loc="upper right", fontsize=10)
 

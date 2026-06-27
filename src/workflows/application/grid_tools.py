@@ -28,9 +28,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Optional
 
-from ..domain.config_models import GridRegion, PipelineConfig
+from ..domain.config_models import GridConfig, GridRegion, PipelineConfig
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
 
@@ -308,6 +309,32 @@ def render_region_map(
                 lat_max=f"{config.grid.outer.lat[1]:.2f}",
             )
         )
+    return GridPreviewResult(images=[str(output)], title=tr("step2_view_map", "查看地图"), messages=list(logger.messages))
+
+
+def render_forcing_region_map(
+    regions: Sequence[GridRegion],
+    labels: Sequence[str],
+    output_path: str | Path,
+    log: Optional[LogCallback] = None,
+) -> GridPreviewResult:
+    """渲染最多四个强迫场文件的经纬度范围预览图。"""
+    from ..infrastructure.region_map_renderer import render_region_map_png
+
+    if not regions:
+        raise RuntimeError(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
+    logger = CoreLogger(callback=log)
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    grid = GridConfig(
+        mesh_type="structured",
+        grid_type="nested" if len(regions) > 1 else "normal",
+        outer=regions[0],
+        inner=regions[-1] if len(regions) > 1 else None,
+        nested_levels=list(regions),
+    )
+    render_region_map_png(grid, output, labels=labels)
+    logger.log(tr("step1_forcing_map_displayed", "✅ 已显示强迫场范围地图"))
     return GridPreviewResult(images=[str(output)], title=tr("step2_view_map", "查看地图"), messages=list(logger.messages))
 
 

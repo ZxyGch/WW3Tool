@@ -38,7 +38,7 @@ from qfluentwidgets import (
 )
 
 from workflows.application.configuration import ConfigError, EXAMPLE_YAML
-from workflows.domain.config_models import PipelineConfig
+from workflows.domain.config_models import GridRegion, PipelineConfig
 from workflows.domain.forcing_fields import ForcingField, Step1Files
 from workflows.infrastructure.runtime_config import (
     add_recent_workdir,
@@ -552,6 +552,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             crop_import=self._crop_forcing_import,
             direct_import=self._direct_forcing_import,
             load_intersection=self._load_forcing_intersection,
+            view_map=self._view_forcing_region_map,
             mode_changed=self._on_forcing_mode_changed,
         )
         self._paths.update(self._forcing_panel.paths)
@@ -1306,6 +1307,89 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _direct_forcing_import(self) -> None:
         self._prepare_selected_forcing(apply_crop=False)
+
+    def _forcing_map_regions(self) -> tuple[list[GridRegion], list[str]] | None:
+        from workflows.application.grid_tools import read_wind_bounds
+
+        labels = {
+            "wind": tr("step1_field_wind", "风场"),
+            "current": tr("step1_field_current", "流场"),
+            "level": tr("step1_field_level", "水位场"),
+            "ice": tr("step1_field_ice", "海冰场"),
+        }
+        regions: list[GridRegion] = []
+        region_labels: list[str] = []
+        for key in ("wind", "current", "level", "ice"):
+            path = self._paths[key].text().strip()
+            if not path:
+                continue
+            bounds = read_wind_bounds(path)
+            regions.append(
+                GridRegion(
+                    lon=[bounds.lon_min, bounds.lon_max],
+                    lat=[bounds.lat_min, bounds.lat_max],
+                )
+            )
+            region_labels.append(labels[key])
+        return (regions, region_labels) if regions else None
+
+    def _forcing_map_aspect(self, regions: list[GridRegion]) -> float:
+        import numpy as np
+
+        all_lon = [value for region in regions for value in (region.lon or [])]
+        all_lat = [value for region in regions for value in (region.lat or [])]
+        if not all_lon or not all_lat:
+            return 4.0 / 3.0
+        lat_center = (min(all_lat) + max(all_lat)) / 2.0
+        lon_span = max(max(all_lon) - min(all_lon), 1e-6)
+        lat_span = max(max(all_lat) - min(all_lat), 1e-6)
+        cos_ref = max(abs(np.cos(np.radians(lat_center))), 0.08)
+        return float(np.clip((lon_span * cos_ref) / lat_span, 0.2, 14.0))
+
+    def _view_forcing_region_map(self) -> None:
+        if self._busy:
+            return
+        try:
+            regions_and_labels = self._forcing_map_regions()
+        except Exception as exc:
+            self._show_error(tr("step1_forcing_range_read_failed", "⚠️ 读取强迫场公共范围失败：{error}").format(error=exc))
+            return
+        if regions_and_labels is None:
+            self._show_error(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
+            return
+        regions, labels = regions_and_labels
+        handle, output = tempfile.mkstemp(suffix="_forcing_map.png", prefix="ww3tool_")
+        os.close(handle)
+        self._map_preview_path = Path(output)
+        self._map_dialog = RegionMapDialog(self, map_aspect_wh=self._forcing_map_aspect(regions))
+        self._forcing_panel.map_button.setText(tr("status_reading", "读取中..."))
+        self._set_busy(True)
+
+        def task():
+            return self._pipeline_vm.render_forcing_region_map(regions, labels, output)
+
+        def on_done(result: object) -> None:
+            self._forcing_panel.map_button.setText(tr("step2_view_map", "查看地图"))
+            self._set_busy(False)
+            dlg = getattr(self, "_map_dialog", None)
+            if dlg is None:
+                return
+            if isinstance(result, PipelineStepState) and result.error:
+                dlg.show_error(result.error)
+            elif isinstance(result, PipelineStepState) and result.result is not None and result.result.images:
+                dlg.show_image(result.result.images[0])
+            else:
+                dlg.show_error(tr("step2_map_image_not_generated", "未生成地图图片"))
+
+        def on_cancel() -> None:
+            self._map_dialog = None
+
+        self._map_dialog.set_cancel_callback(on_cancel)
+        self._runner.run(task, on_done)
+        try:
+            self._map_dialog.exec()
+        finally:
+            self._map_dialog = None
 
     def _load_forcing_intersection(self) -> None:
         if not self._selected_forcing_paths():

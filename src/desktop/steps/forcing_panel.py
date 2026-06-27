@@ -28,6 +28,7 @@ class ForcingStepPanel:
         crop_import: Callable[[], None],
         direct_import: Callable[[], None],
         load_intersection: Callable[[], None],
+        view_map: Callable[[], None],
         mode_changed: Callable[[], None],
     ) -> None:
         self._input_style = input_style
@@ -81,6 +82,9 @@ class ForcingStepPanel:
             load_intersection,
         )
         layout.addWidget(self.load_intersection_button)
+
+        self.map_button = create_button(tr("step2_view_map", "查看地图"), view_map)
+        layout.addWidget(self.map_button)
 
         self.crop_import_button = create_button(
             tr("step1_confirm_crop_import", "确认裁剪并导入"),

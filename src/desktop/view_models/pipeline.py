@@ -282,6 +282,25 @@ class PipelineViewModel:
             self._fail("map", str(exc))
         return self.state
 
+    def render_forcing_region_map(self, regions: list, labels: list[str], output_path: str | Path) -> PipelineStepState:
+        self._set_state(PipelineStepState(is_running=True, action="map"))
+        try:
+            from workflows.application.grid_tools import render_forcing_region_map
+
+            result = render_forcing_region_map(regions, labels, output_path, log=self._handle_log)
+            self._set_state(
+                PipelineStepState(
+                    is_running=False,
+                    action="map",
+                    workdir=result.images[0],
+                    messages=list(self.state.messages),
+                    result=result,
+                )
+            )
+        except Exception as exc:
+            self._fail("map", str(exc))
+        return self.state
+
     def visualize_grid(self, config: PipelineConfig) -> PipelineStepState:
         self._set_state(PipelineStepState(is_running=True, action="visualize", workdir=str(config.workdir.path)))
         try:
