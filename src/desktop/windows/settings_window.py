@@ -903,17 +903,20 @@ class SettingsInterface(QWidget):
         for text, handler in (
             (tr("new", "新增"), self._st_add),
             (tr("edit", "修改"), self._st_edit),
-            (tr("set_default", "设为默认"), self._st_set_default),
+            (tr("default", "默认"), self._st_set_default),
             (tr("delete", "删除"), self._st_delete),
         ):
             button = PrimaryPushButton(text)
             button.setStyleSheet(styles.button_style())
             button.clicked.connect(handler)
+            if handler == self._st_set_default:
+                self._st_default_button = button
             row.addWidget(button, 1)
         layout.addLayout(row)
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
         self._vbox.addWidget(group)
+        self._st_table.itemSelectionChanged.connect(self._update_st_default_button)
         self._reload_st_table()
 
     def _reload_st_table(self) -> None:
@@ -925,6 +928,11 @@ class SettingsInterface(QWidget):
             self._st_table.setItem(r, 0, QTableWidgetItem(version["name"]))
             self._st_table.setItem(r, 1, QTableWidgetItem(version.get("path", "")))
         _resize_table(self._st_table)
+        self._update_st_default_button()
+
+    def _update_st_default_button(self) -> None:
+        if hasattr(self, "_st_default_button"):
+            self._st_default_button.setEnabled(self._st_table.currentRow() >= 1)
 
     def _st_rows(self) -> list[dict]:
         rows = []
@@ -991,17 +999,20 @@ class SettingsInterface(QWidget):
         for text, handler in (
             (tr("new", "新增"), self._local_st_add),
             (tr("edit", "修改"), self._local_st_edit),
-            (tr("set_default", "设为默认"), self._local_st_set_default),
+            (tr("default", "默认"), self._local_st_set_default),
             (tr("delete", "删除"), self._local_st_delete),
         ):
             button = PrimaryPushButton(text)
             button.setStyleSheet(styles.button_style())
             button.clicked.connect(handler)
+            if handler == self._local_st_set_default:
+                self._local_st_default_button = button
             row.addWidget(button, 1)
         layout.addLayout(row)
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
         self._vbox.addWidget(group)
+        self._local_st_table.itemSelectionChanged.connect(self._update_local_st_default_button)
         self._reload_local_st_table()
 
     def _reload_local_st_table(self) -> None:
@@ -1013,6 +1024,11 @@ class SettingsInterface(QWidget):
             self._local_st_table.setItem(r, 0, QTableWidgetItem(version["name"]))
             self._local_st_table.setItem(r, 1, QTableWidgetItem(version.get("path", "")))
         _resize_table(self._local_st_table)
+        self._update_local_st_default_button()
+
+    def _update_local_st_default_button(self) -> None:
+        if hasattr(self, "_local_st_default_button"):
+            self._local_st_default_button.setEnabled(self._local_st_table.currentRow() >= 1)
 
     def _local_st_rows(self) -> list[dict]:
         rows = []
