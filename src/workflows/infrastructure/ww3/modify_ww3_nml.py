@@ -356,10 +356,11 @@ class ModifyWW3NML(
         elif self._is_step2_smc_mesh():
             wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
             self._transform_ww3_grid_nml_for_smcc(wgp)
+            self._sync_smc_psmc_namelist_if_needed()
             self.log(
                 tr(
                     "step4_smcc_nml_applied",
-                    "✅ SMC 网格：已将 ww3_grid.nml 设为 SMCG（RECT/DEPTH/MASK/OBST 已注释，SMC_NML 启用；grid_cell / grid_subtr 由 smc_generator，ISIDE/JSIDE 见 README；边界/北极文件存在时写入 BUNDY/MBARC）",
+                    "✅ SMC 网格：已将 ww3_grid.nml 设为 SMCG（RECT/DEPTH/MASK/OBST 已注释，SMC_NML 启用；grid_cell / grid_subtr 由 smc_generator，ISIDE/JSIDE 见 README；存在 grid_bundy.dat 时写入 BUNDY 并同步 namelists.nml &PSMC NBISMC/LvSMC）",
                 )
             )
             self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="")

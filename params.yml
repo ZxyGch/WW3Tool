@@ -16,7 +16,7 @@
 #   coastline_precision – GSHHG coastline resolution levels
 #                          (full > high > inter > low > coarse).
 #   file_split          – output file splitting strategies
-#                          (none / hour / day / month / year).
+#                          (single / hour / day / month / year).
 # ────────────────────────────────────────────────────────────────────
 presets:
   output_scheme:
@@ -45,92 +45,6 @@ presets:
     - PNR
     - TWS
     - EF
-    all_fields:
-    - DPT
-    - CUR
-    - WND
-    - AST
-    - WLV
-    - ICE
-    - IBG
-    - D50
-    - IC1
-    - IC5
-    - HS
-    - LM
-    - T02
-    - T0M1
-    - T01
-    - FP
-    - DIR
-    - SPR
-    - DP
-    - HIG
-    - EF
-    - TH1M
-    - STH1M
-    - TH2M
-    - STH2M
-    - WN
-    - PHS
-    - PTP
-    - PLP
-    - PDIR
-    - PSPR
-    - PWS
-    - PDP
-    - PQP
-    - PPE
-    - PGW
-    - PSW
-    - PTM10
-    - PT01
-    - PT02
-    - PEP
-    - TWS
-    - PNR
-    - UST
-    - CHA
-    - CGE
-    - FAW
-    - TAW
-    - TWA
-    - WCC
-    - WCF
-    - WCH
-    - WCM
-    - FWS
-    - SXY
-    - TWO
-    - BHD
-    - FOC
-    - TUS
-    - USS
-    - P2S
-    - USF
-    - P2L
-    - TWI
-    - FIC
-    - USP
-    - TOC
-    - ABR
-    - UBR
-    - BED
-    - FBB
-    - TBB
-    - MSS
-    - MSC
-    - MSD
-    - MCD
-    - QP
-    - QKK
-    - SKW
-    - EMB
-    - DTD
-    - FC
-    - CFX
-    - CFD
-    - CFK
   server_st:
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
     ST4: /public/home/weiyl001/software2/ww4/model/exe
@@ -141,7 +55,7 @@ presets:
     7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
     7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
   local_st:
-    7.14 ST2: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
+    7.14 ST2 SMC: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
     7.14 ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin/
     6.07 ST2: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2/
     6.07 ST4: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4/
@@ -164,7 +78,7 @@ presets:
   - low
   - coarse
   file_split:
-  - none
+  - single
   - hour
   - day
   - month
@@ -352,7 +266,7 @@ calc:
 #                          (reads public/{version}_nml template directory).
 #   start_date / end_date – simulation period (YYYYMMDD).
 #   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.
-#   file_split        – output file splitting: none | hour | day | month | year.
+#   file_split        – output file splitting: single | hour | day | month | year.
 #   output_scheme     – named preset from presets.output_scheme.
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
@@ -361,7 +275,7 @@ ww3:
   start_date: '20250101'
   end_date: '20250103'
   output_step: 3600
-  file_split: None
+  file_split: single
   output_scheme: standard
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
@@ -378,9 +292,9 @@ ww3:
 # ────────────────────────────────────────────────────────────────────
 ww3_grid:
   SPECTRUM%XFR: 1.1
-  SPECTRUM%FREQ1: 0.04118
-  SPECTRUM%NK: 32
-  SPECTRUM%NTH: 24
+  SPECTRUM%FREQ1: 0.0375
+  SPECTRUM%NK: 35
+  SPECTRUM%NTH: 36
   TIMESTEPS%DTMAX: 900
   TIMESTEPS%DTXY: 320
   TIMESTEPS%DTKTH: 300
@@ -507,5 +421,6 @@ desktop:
   theme: AUTO
   run_mode: both
   recent_workdirs:
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-27_21-25-51
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-25_13-04-29
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

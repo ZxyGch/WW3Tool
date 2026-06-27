@@ -159,13 +159,13 @@ class ServerSh(NMLPrimitives):
                         if next_stripped.startswith("#wavewatch3--"):
                             i += 1
                             continue
-                        # [EN] Skip existing export PATH (containing /model/exe or /model:)
-                        # 跳过已存在的 export PATH（包含 /model/exe 或 /model: 的）
-                        if next_stripped.startswith("export PATH=") and ("/model/exe" in next_line or "/model:" in next_line):
+                        # [EN] Skip existing export PATH (ST executable dir; confirm-slurm 只改这一行)
+                        # 跳过已存在的 export PATH（仅 ST 可执行目录，不碰下方运行时库配置）
+                        if next_stripped.startswith("export PATH="):
                             i += 1
                             continue
-                        # [EN] Stop skipping on other content
-                        # 遇到其他内容，停止跳过
+                        # [EN] Stop skipping on other content (keep WW3 运行时库 block in server.sh)
+                        # 遇到其他内容，停止跳过（保留 server.sh 里手改的运行时库段）
                         break
                     # [EN] Add ST version path after #SBATCH --time
                     # 在 #SBATCH --time 后面添加 ST 版本路径
@@ -188,9 +188,9 @@ class ServerSh(NMLPrimitives):
                     if line_stripped.startswith("#wavewatch3--"):
                         i += 1
                         continue
-                    # [EN] Skip existing export PATH (containing /model/exe or /model:, if not in correct position)
-                    # 跳过已存在的 export PATH（包含 /model/exe 或 /model: 的，如果不在正确位置）
-                    if line_stripped.startswith("export PATH=") and ("/model/exe" in line or "/model:" in line):
+                    # [EN] Skip duplicate export PATH only (not runtime LD_LIBRARY_PATH block)
+                    # 仅跳过重复的 ST export PATH，不修改运行时库段
+                    if line_stripped.startswith("export PATH="):
                         i += 1
                         continue
                     new_lines.append(line)

@@ -30,7 +30,6 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
     """
 
     import numpy  as np
-    import pandas as pd
     from smcellgen import recursion_add 
     from datetime import datetime
 
@@ -194,6 +193,11 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
             wlevel, depmin, dshalw, NLvshlw)
     nshalw = 0
 
+    jdk_by_levl = [recursion_add(levl) for levl in range(NLvl + 2)]
+    max_iFc3 = 3 * Merg * MFct
+    subathy_buf = np.empty((MFc3, max_iFc3), dtype=np.float64)
+    row_progress_step = max(10 * MFct, 100 * MFct) if (Global and nlon >= 5000) else 10 * MFct
+
 ## Size zone parallel index
     jprold=0
    
@@ -212,7 +216,7 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
 ## Full grid jj and latitude for this row
         jj=j + jequt
         yj=ylat[j]
-        if( j % 10*MFct == 0 ):
+        if( j % row_progress_step == 0 ):
             print( j, "row started at ", 
                  datetime.now().strftime('%H:%M:%S'))
 
@@ -238,13 +242,12 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
         for i in range(istart, iend, iFct):
 
 ## Extract a sub-array from Bathy for cell generating loop.
-            subathy = np.zeros((MFc3, iFc3), dtype=float) 
+            subathy = subathy_buf[:, :iFc3]
 
             if( WrapLon ): 
                 ii = (i + ishft + NCM) % NCM
-                for ib in range(iFc3):
-                    ik = (i+ib-iFct+NCM ) % NCM
-                    subathy[:,ib] = Bathy[j-MFct:j+MFc2,ik] 
+                ik = (np.arange(i - iFct, i - iFct + iFc3, dtype=np.int64) + NCM) % NCM
+                subathy[:, :] = Bathy[j-MFct:j+MFc2, ik]
             else:
                 ii = i + ishft 
                 subathy[:,:] = Bathy[j-MFct:j+MFc2, 
@@ -270,7 +273,7 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
                 else:
                     jchk = 2**(levl - 1)
                     irng = jchk*ism
-                    jdk = recursion_add(levl)
+                    jdk = jdk_by_levl[levl]
                     idg = jdk*ism 
 
                     for jb in range(0,MFct,jchk):
@@ -332,9 +335,12 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
     print(" *** Shallow water number in all sizes =", nshalw) 
 
 ## Follow Qingxiang's method to sort smcels before save it.
-    smcelsdf=pd.DataFrame(smcels, columns=['i','j','di','dj','kdp'])
-    smcelsdf.sort_values(by=['dj','j','i'], inplace=True)
-    smcels = np.array(smcelsdf)
+    if smcels:
+        smcels_arr = np.asarray(smcels, dtype=np.int64)
+        order = np.lexsort((smcels_arr[:, 0], smcels_arr[:, 1], smcels_arr[:, 3]))
+        smcels = smcels_arr[order]
+    else:
+        smcels = np.empty((0, 5), dtype=np.int64)
 
 ## Cell array output format for each cell.
     fmtcel='%6d %5d %4d %3d %5d'

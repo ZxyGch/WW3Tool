@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -121,6 +122,7 @@ class ServerConnectPanel:
         self._cpu_table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
+        self._cpu_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._cpu_table.setRowCount(0)
         self._cpu_table.setVisible(False)
         layout.addWidget(self._cpu_table)
@@ -185,6 +187,7 @@ class ServerConnectPanel:
         self._idle_table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
+        self._idle_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(self._idle_table)
 
         self._slurm_title = self._build_section_title(
@@ -242,7 +245,6 @@ class ServerConnectPanel:
         self._group.viewLayout.addLayout(layout)
         self.widget = self._group
         self.set_connected(False)
-        self.update_idle_resources([])
 
     # [EN] ── Public API ──────────────────────────────────────────────────────────
     # ── 公共接口 ──────────────────────────────────────────────────────────
@@ -417,6 +419,9 @@ class ServerConnectPanel:
         return list(getattr(self, "_idle_rows", []))
 
     def render_slurm(self, config: PipelineConfig) -> None:
+        self._without_stealing_focus(self._render_slurm_impl, config)
+
+    def _render_slurm_impl(self, config: PipelineConfig) -> None:
         self.fields["slurm_job_name"].setText(str(config.slurm.job_name or config.workdir.path.name))
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
@@ -450,6 +455,9 @@ class ServerConnectPanel:
         self.fields["slurm_nodes"].setText(str(max(1, int(nodes))))
 
     def replace_cpu_options_if_changed(self, values: list[str]) -> None:
+        self._without_stealing_focus(self._replace_cpu_options_if_changed_impl, values)
+
+    def _replace_cpu_options_if_changed_impl(self, values: list[str]) -> None:
         server_values = [str(value).strip() for value in values if str(value).strip()]
         if not server_values:
             # 服务器连不上或未解析到 CPU 分区：回退到默认 CPU
@@ -639,6 +647,7 @@ class ServerConnectPanel:
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setWordWrap(True)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -658,6 +667,20 @@ class ServerConnectPanel:
 
         table.expand_to_contents(minimum_height=80, extra_height=10)
         return table
+
+    @staticmethod
+    def _without_stealing_focus(fn, *args, **kwargs) -> None:
+        app = QApplication.instance()
+        focus_before = app.focusWidget() if app is not None else None
+        fn(*args, **kwargs)
+        if focus_before is None:
+            return
+        current = app.focusWidget() if app is not None else None
+        if current is not focus_before:
+            try:
+                focus_before.setFocus()
+            except RuntimeError:
+                pass
 
     def _clear_queue_display(self) -> None:
         while self._queue_layout.count() > 0:

@@ -46,6 +46,12 @@ from ..components.table_widget import EdgeAlignedTableWidget
 from ..components import styles
 from ..components.validators import double_validator, int_validator
 from ..view_models.settings import SettingsViewModel
+from ..components.combo_box import (
+    add_labeled_combo_items,
+    current_file_split_from_combo,
+    file_split_combo_items,
+    select_file_split_combo,
+)
 from workflows.infrastructure.runtime_config import (
     RUN_MODE_VALUES,
     WW3_VERSION_VALUES,
@@ -205,19 +211,14 @@ _NUMERIC_DOTTED_KEYS = {
     "physics.dshalw",
 }
 
+# SMC depmin: sea/land elevation threshold in smcellgen; must be >= wlevel (negative input is clamped).
+_NONNEGATIVE_DOTTED_KEYS = {
+    "physics.depmin",
+}
+
 _SERVER_LOGIN_MODE_PASSWORD = "password"
 _SERVER_LOGIN_MODE_KEY_FILE = "key_file"
 _SERVER_LOGIN_MODE_SSH_CONFIG = "ssh_config"
-
-
-def _file_split_items() -> list[tuple[str, str]]:
-    return [
-        (tr("file_split_none", "无日期"), "none"),
-        (tr("file_split_hour", "小时"), "hour"),
-        (tr("file_split_day", "天"), "day"),
-        (tr("file_split_month", "月"), "month"),
-        (tr("file_split_year", "年"), "year"),
-    ]
 
 
 class _NoHScrollArea(QScrollArea):
@@ -336,24 +337,27 @@ class SettingsInterface(QWidget):
         combo = ComboBox()
         for option in options:
             if isinstance(option, tuple):
-                combo.addItem(option[0], option[1])
+                add_labeled_combo_items(combo, [option])
             else:
                 combo.addItem(option)
         combo.setStyleSheet(styles.combo_style())
         left_align_combo_text(combo)
-        value = _as_text(self._config.get(key))
-        selected_index = -1
-        for index in range(combo.count()):
-            if combo.itemData(index) == value or combo.itemText(index) == value:
-                selected_index = index
-                break
-        if value and selected_index < 0:
-            combo.addItem(value)
-            selected_index = combo.count() - 1
-        if selected_index >= 0:
-            combo.setCurrentIndex(selected_index)
-        elif combo.count():
-            combo.setCurrentIndex(0)
+        if key == "FILE_SPLIT":
+            select_file_split_combo(combo, self._config.get(key))
+        else:
+            value = _as_text(self._config.get(key))
+            selected_index = -1
+            for index in range(combo.count()):
+                if combo.itemData(index) == value or combo.itemText(index) == value:
+                    selected_index = index
+                    break
+            if value and selected_index < 0:
+                combo.addItem(value)
+                selected_index = combo.count() - 1
+            if selected_index >= 0:
+                combo.setCurrentIndex(selected_index)
+            elif combo.count():
+                combo.setCurrentIndex(0)
         self._expand_field(combo)
         grid.addWidget(self._label(label), row, col)
         grid.addWidget(combo, row, col + 1, 1, self._control_span(col))
@@ -602,7 +606,7 @@ class SettingsInterface(QWidget):
         self._combo(grid, 0, 0, tr("set_ww3_version", "WW3 版本："), "WW3_VERSION", list(WW3_VERSION_VALUES))
         self._combos["WW3_VERSION"].currentIndexChanged.connect(self._on_ww3_version_changed)
         self._text(grid, 1, 0, tr("set_output_precision", "输出精度："), "OUTPUT_PRECISION")
-        self._combo(grid, 2, 0, tr("set_file_split", "文件分割："), "FILE_SPLIT", _file_split_items())
+        self._combo(grid, 2, 0, tr("set_file_split", "文件分割："), "FILE_SPLIT", file_split_combo_items())
 
     def _on_ww3_version_changed(self, _index: int) -> None:
         combo = self._combos.get("WW3_VERSION")
@@ -1199,6 +1203,9 @@ class SettingsInterface(QWidget):
                 data = combo.itemData(combo.currentIndex())
                 updates[key] = str(data or "").strip()
                 continue
+            if key == "FILE_SPLIT":
+                updates[key] = current_file_split_from_combo(combo)
+                continue
             data = combo.itemData(combo.currentIndex())
             updates[key] = data if data is not None else combo.currentText()
         for key, check in self._checks.items():
@@ -1422,6 +1429,8 @@ def _coerce(text: str):
 def _apply_validator(edit: LineEdit, key: str) -> None:
     if key in _INTEGER_CONFIG_KEYS or key in _INTEGER_DOTTED_KEYS:
         edit.setValidator(int_validator(0))
+    elif key in _NONNEGATIVE_DOTTED_KEYS:
+        edit.setValidator(double_validator(0.0))
     elif key in _NUMERIC_CONFIG_KEYS or key in _NUMERIC_DOTTED_KEYS:
         edit.setValidator(double_validator())
 

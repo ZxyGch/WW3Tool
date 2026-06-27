@@ -1,6 +1,6 @@
 {
   "input": {
-    "bathymetry_file": "../reference_data/etopo1.nc",
+    "bathymetry_file": "../reference_data/etopo2.nc",
     "lon_var": null,
     "lat_var": null,
     "bathy_var": null,
@@ -13,7 +13,7 @@
   },
   "grid": {
     "name": "grid",
-    "n_levels": 10,
+    "n_levels": 2,
     "global": false,
     "arctic": false,
     "glb_arc_lat": 84.4,

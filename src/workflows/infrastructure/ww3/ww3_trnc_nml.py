@@ -251,17 +251,13 @@ class WW3TrncNML(NMLPrimitives):
         if not os.path.exists(ww3_trnc_path):
             return
 
-        # [EN] Read file split setting. The underlying layer only accepts English enumerations:
-        # none/hour/day/month/year; UI translations are for display only.
-        # 读取文件分割设置。底层只接受英文枚举：
-        # none/hour/day/month/year；界面翻译仅用于显示。
+        # [EN] Read file split setting (single = WW3 nodate / TIMESPLIT 0).
+        # 读取文件分割设置（single 对应 WW3 nodate / TIMESPLIT 0）。
         from ..runtime_config import load_full_config
+        from ...domain.parameter_catalog import file_split_timesplit_value
+
         config = load_full_config()
-        file_split = str(config.get("FILE_SPLIT", "year")).strip().lower()
-        file_split_value_map = {"none": 0, "year": 4, "month": 6, "day": 8, "hour": 10}
-        if file_split not in file_split_value_map:
-            raise ValueError("FILE_SPLIT must be one of: none, hour, day, month, year")
-        timesplit_value = file_split_value_map[file_split]
+        timesplit_value = file_split_timesplit_value(str(config.get("FILE_SPLIT", "year")))
 
         try:
             with open(ww3_trnc_path, "r", encoding="utf-8") as f:

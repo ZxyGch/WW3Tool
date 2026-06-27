@@ -102,7 +102,10 @@ class ServerOpsPanel:
         self.widget = group
 
     def set_server_path(self, path: str) -> None:
+        had_focus = self.path_edit.hasFocus()
         self.path_edit.setText(path or "")
+        if not had_focus:
+            self.path_edit.clearFocus()
 
     def remote_dir(self) -> str:
         return self.path_edit.text().strip()

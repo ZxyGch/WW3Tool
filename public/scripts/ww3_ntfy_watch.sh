@@ -152,13 +152,13 @@ send_ntfy() {
         curl -fsS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
             --resolve "ntfy.sh:443:${NTFY_RESOLVE_IP}" \
             -H "Title: ${subject}" \
-            -H "Tags: ocean,wave" \
+            -H "Tags: ocean" \
             -d "$body" "$url" >/dev/null 2>"$curl_err_file"
         rc=$?
     else
         curl -fsS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
             -H "Title: ${subject}" \
-            -H "Tags: ocean,wave" \
+            -H "Tags: ocean" \
             -d "$body" "$url" >/dev/null 2>"$curl_err_file"
         rc=$?
     fi

@@ -31,9 +31,48 @@ SMC_BATHYMETRY_OPTIONS = ("ETOPO1", "ETOPO2", "GEBCO")
 # 海岸线精度档位（与 gridgen 工具参数对应）
 # [EN] Coastline precision levels (corresponding to gridgen tool parameters)
 COASTLINE_PRECISION_OPTIONS = ("full", "high", "inter", "low", "coarse")
-# WW3 输出文件按时间切分的粒度
-# [EN] Time-split granularity for WW3 output files
-FILE_SPLIT_OPTIONS = ("none", "hour", "day", "month", "year")
+# WW3 输出文件按时间切分的粒度（``single`` = WW3 nodate / TIMESPLIT 0）
+# [EN] Time-split granularity for WW3 output files (``single`` = WW3 nodate / TIMESPLIT 0)
+FILE_SPLIT_OPTIONS = ("single", "hour", "day", "month", "year")
+FILE_SPLIT_LEGACY_ALIASES = {"none": "single"}
+# 旧版 UI 误把展示文案写入 yaml（qfluentwidgets addItem 第二参是 icon 不是 userData）
+FILE_SPLIT_DISPLAY_ALIASES = {
+    "单文件": "single",
+    "小时": "hour",
+    "天": "day",
+    "月": "month",
+    "年": "year",
+    "single file": "single",
+}
+FILE_SPLIT_TIMESPLIT = {
+    "single": 0,
+    "year": 4,
+    "month": 6,
+    "day": 8,
+    "hour": 10,
+}
+
+
+def canonical_file_split(value: object, *, default: str = "year") -> str:
+    """Normalize ``ww3.file_split``; accept legacy ``none`` as ``single``."""
+    if value is None:
+        return default
+    raw = str(value).strip().lower()
+    if raw in FILE_SPLIT_LEGACY_ALIASES:
+        return FILE_SPLIT_LEGACY_ALIASES[raw]
+    if raw in FILE_SPLIT_DISPLAY_ALIASES:
+        return FILE_SPLIT_DISPLAY_ALIASES[raw]
+    if raw in FILE_SPLIT_OPTIONS:
+        return raw
+    if raw in {"", "null"}:
+        return default
+    return default
+
+
+def file_split_timesplit_value(file_split: str) -> int:
+    """Map canonical ``ww3.file_split`` to WW3 ``TIMESPLIT`` namelist integer."""
+    key = canonical_file_split(file_split)
+    return FILE_SPLIT_TIMESPLIT[key]
 
 # WAVEWATCH III 输出场变量代码，与旧版设置页可选字段一致
 # [EN] WAVEWATCH III output field variable codes, consistent with legacy settings page selectable fields

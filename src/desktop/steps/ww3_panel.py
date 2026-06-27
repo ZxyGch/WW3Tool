@@ -23,7 +23,13 @@ _TIMESTEP_SPECS = [
     ("TIMESTEPS%DTMIN", "set_dtmin", "最小源项时间步长："),
 ]
 
-from ..components.combo_box import left_align_combo_text
+from ..components.combo_box import (
+    add_labeled_combo_items,
+    current_file_split_from_combo,
+    file_split_combo_items,
+    left_align_combo_text,
+    select_file_split_combo,
+)
 from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
@@ -152,6 +158,13 @@ class WW3StepPanel:
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
         wave_grid.addWidget(self.output_scheme_label, 4, 0)
         wave_grid.addWidget(self.output_scheme_combo, 4, 1)
+        self.file_split_combo = ComboBox()
+        self.file_split_combo.setStyleSheet(combo_style())
+        left_align_combo_text(self.file_split_combo)
+        add_labeled_combo_items(self.file_split_combo, file_split_combo_items())
+        self.file_split_label = self._field_label(tr("file_split", "文件分割："))
+        wave_grid.addWidget(self.file_split_label, 5, 0)
+        wave_grid.addWidget(self.file_split_combo, 5, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -201,6 +214,7 @@ class WW3StepPanel:
         self.nml_version_combo.blockSignals(False)
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
         self._replace_combo_items(self.output_scheme_combo, sorted(config.presets.output_scheme), ww3.output_scheme)
+        self._set_file_split_combo(ww3.file_split)
         self._replace_combo_items(self.cpu_combo, [config.slurm.cpu] if config.slurm.cpu else [], config.slurm.cpu or "")
         params = config.ww3_grid.parameters
         for grid_key, edit in {**self._spectrum_fields, **self._timesteps_fields}.items():
@@ -314,6 +328,7 @@ class WW3StepPanel:
             "end_date": self.fields["ww3_end"].text().strip(),
             "output_step": self.fields["ww3_output"].text().strip(),
             "output_scheme": self.output_scheme_combo.currentText().strip(),
+            "file_split": current_file_split_from_combo(self.file_split_combo),
             "version": self.nml_version_combo.currentText().strip(),
         }
 
@@ -365,6 +380,7 @@ class WW3StepPanel:
             self.field_labels["ww3_start"],
             self.field_labels["ww3_end"],
             self.output_scheme_label,
+            self.file_split_label,
         ]
         for label in labels:
             label.update()
@@ -382,3 +398,6 @@ class WW3StepPanel:
         combo.clear()
         combo.addItems(values)
         combo.setCurrentText(selected)
+
+    def _set_file_split_combo(self, value: object) -> None:
+        select_file_split_combo(self.file_split_combo, value)

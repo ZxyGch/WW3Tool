@@ -77,10 +77,12 @@ from ..domain.parameter_catalog import (
     COASTLINE_PRECISION_OPTIONS,
     DEFAULT_OUTPUT_SCHEME_PRESETS,
     DEFAULT_ST_PRESETS,
+    FILE_SPLIT_LEGACY_ALIASES,
     FILE_SPLIT_OPTIONS,
     OUTPUT_FIELD_OPTIONS,
     SMC_BATHYMETRY_OPTIONS,
     STRUCTURED_BATHYMETRY_OPTIONS,
+    canonical_file_split,
 )
 
 
@@ -249,11 +251,16 @@ def _float_list(value: Any, name: str, *, expected: int | None = None) -> list[f
 
 def _file_split(value: Any) -> str:
     if value is None:
-        raise ConfigError("ww3.file_split 不能为空")
+        return "year"
     raw = str(value).strip().lower()
-    if raw not in FILE_SPLIT_OPTIONS:
-        raise ConfigError(f"ww3.file_split 必须是 {'、'.join(FILE_SPLIT_OPTIONS)}")
-    return raw
+    if raw in {"", "null"}:
+        return "year"
+    from ..domain.parameter_catalog import FILE_SPLIT_DISPLAY_ALIASES
+
+    accepted = set(FILE_SPLIT_OPTIONS) | set(FILE_SPLIT_LEGACY_ALIASES) | set(FILE_SPLIT_DISPLAY_ALIASES)
+    if raw not in accepted:
+        raise ConfigError(f"ww3.file_split 必须是 {'、'.join(FILE_SPLIT_OPTIONS)}（兼容旧值 none）")
+    return canonical_file_split(value, default="year")
 
 
 def _output_fields(value: Any, name: str) -> List[str]:
@@ -1099,7 +1106,7 @@ presets:
   structured_bathymetry: [GEBCO, ETOP1, ETOP2]
   smc_bathymetry: [ETOPO1, ETOPO2, GEBCO]
   coastline_precision: [full, high, inter, low, coarse]
-  file_split: [none, hour, day, month, year]
+  file_split: [single, hour, day, month, year]
 
 workdir:
   path: ./workdir/example

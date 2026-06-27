@@ -19,6 +19,7 @@ from ..runtime_config import PUBLIC_DIR, load_config
 from ..grid_visualization.structured_grid_paths import structured_grid_desc_path
 from ..grid_visualization.rect_grid_desc_parse import parse_ww3_grid_meta_for_sync
 from .nml_primitives import NMLPrimitives
+from .smc_open_boundary import BUNDY_FILENAME
 
 
 class WW3GridNML(NMLPrimitives):
@@ -354,7 +355,7 @@ class WW3GridNML(NMLPrimitives):
         work_dir = getattr(self, "selected_folder", None) or os.path.dirname(
             os.path.abspath(nml_path)
         )
-        has_bundy = os.path.isfile(os.path.join(work_dir, "grid_boundary.dat"))
+        has_bundy = os.path.isfile(os.path.join(work_dir, BUNDY_FILENAME))
         has_mbarc = os.path.isfile(os.path.join(work_dir, "grid_arctic_cells.dat"))
         cell_p = os.path.join(work_dir, "grid_cell.dat")
         if not os.path.isfile(cell_p):
@@ -444,13 +445,13 @@ class WW3GridNML(NMLPrimitives):
             if "SMC%BUNDY%FILENAME" in uln and "=" in uln and has_bundy:
                 uln = re.sub(
                     r"SMC%BUNDY%FILENAME\s*=\s*'[^']*'",
-                    "SMC%BUNDY%FILENAME       = 'grid_boundary.dat'",
+                    f"SMC%BUNDY%FILENAME       = '{BUNDY_FILENAME}'",
                     uln,
                     count=1,
                 )
                 uln = re.sub(
                     r'SMC%BUNDY%FILENAME\s*=\s*"[^"]*"',
-                    'SMC%BUNDY%FILENAME       = "grid_boundary.dat"',
+                    f'SMC%BUNDY%FILENAME       = "{BUNDY_FILENAME}"',
                     uln,
                     count=1,
                 )

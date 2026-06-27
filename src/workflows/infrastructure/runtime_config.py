@@ -724,7 +724,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   coastline_precision – GSHHG coastline resolution levels\n"
      "#                          (full > high > inter > low > coarse).\n"
      "#   file_split          – output file splitting strategies\n"
-     "#                          (none / hour / day / month / year).\n"
+     "#                          (single / hour / day / month / year).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("workdir:",
      "# ────────────────────────────────────────────────────────────────────\n"
@@ -819,7 +819,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#                          (reads public/{version}_nml template directory).\n"
      "#   start_date / end_date – simulation period (YYYYMMDD).\n"
      "#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.\n"
-     "#   file_split        – output file splitting: none | hour | day | month | year.\n"
+     "#   file_split        – output file splitting: single | hour | day | month | year.\n"
      "#   output_scheme     – named preset from presets.output_scheme.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "# ────────────────────────────────────────────────────────────────────"),

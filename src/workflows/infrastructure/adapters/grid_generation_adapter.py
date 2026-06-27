@@ -422,6 +422,7 @@ SMC_CACHE_FILES = (
     "grid_iside.dat",
     "grid_jside.dat",
     "grid_boundary.dat",
+    "grid_bundy.dat",
     "grid_arctic_cells.dat",
     "grid_aisid.dat",
     "grid_ajsid.dat",
@@ -651,7 +652,7 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
             return
 
     logger.log(tr("grid_smc_start", "🔄 开始生成 SMC 网格...") if not use_cache else tr("grid_smc_cache_miss", "ℹ️ 未找到匹配的 SMC 网格缓存，开始生成新网格..."))
-    _run_subprocess([sys.executable, "create_grid.py", "--config", str(run_config)], smc_dir, logger)
+    _run_subprocess([sys.executable, "-u", "create_grid.py", "--config", str(run_config)], smc_dir, logger)
     grid_cell = config.workdir.path / "grid_cell.dat"
     if not grid_cell.is_file() or grid_cell.stat().st_size == 0:
         raise RuntimeError(

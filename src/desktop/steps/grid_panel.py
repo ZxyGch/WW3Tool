@@ -241,8 +241,6 @@ class GridStepPanel:
         smc_layout.setSpacing(10)
         smc_layout.setColumnStretch(1, 1)
         self._smc_n_levels = self._smc_field(smc_layout, 0, tr("step2_smc_n_levels", "细化层数："), "2", integer=True)
-        self._smc_depmin = self._smc_field(smc_layout, 1, tr("step2_smc_depmin", "最小水深："), "0.0")
-        self._smc_dshalw = self._smc_field(smc_layout, 2, tr("step2_smc_dshalw", "浅水截断："), "-150.0")
         self.smc_params_widget.hide()
         layout.addWidget(self.smc_params_widget)
 
@@ -327,10 +325,6 @@ class GridStepPanel:
             if grid.smc is not None:
                 if grid.smc.n_levels is not None:
                     self._smc_n_levels.setText(str(grid.smc.n_levels))
-                if grid.smc.depmin is not None:
-                    self._smc_depmin.setText(str(grid.smc.depmin))
-                if grid.smc.dshalw is not None:
-                    self._smc_dshalw.setText(str(grid.smc.dshalw))
             if grid.unstructured is not None:
                 if grid.unstructured.hmax is not None:
                     self._unst_hmax.setText(str(grid.unstructured.hmax))
@@ -373,8 +367,6 @@ class GridStepPanel:
         if mesh_type == "smc":
             result["smc"] = {
                 "n_levels": self._smc_n_levels.text().strip(),
-                "depmin": self._smc_depmin.text().strip(),
-                "dshalw": self._smc_dshalw.text().strip(),
             }
         if mesh_type == "unstructured":
             result["unstructured"] = {

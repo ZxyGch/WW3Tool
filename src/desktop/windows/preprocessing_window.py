@@ -421,6 +421,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._build_step_panels(content_widget, content_layout)
 
         scroll.setWidget(content_widget)
+        self._steps_scroll = scroll
         self.left_stacked.addWidget(scroll)  # [EN] index 0: preprocessing steps
         # index 0：预处理步骤
         self._settings_interface = SettingsInterface(
@@ -463,6 +464,18 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         left_layout.addWidget(self.left_stacked)
         QTimer.singleShot(200, self._update_run_mode_visibility)
         return left_content
+
+    def _preserve_steps_scroll(self, fn) -> None:
+        scroll = getattr(self, "_steps_scroll", None)
+        if scroll is None:
+            fn()
+            return
+        scroll.preserve_vertical_scroll(fn)
+
+    def _scroll_steps_to_top(self) -> None:
+        scroll = getattr(self, "_steps_scroll", None)
+        if scroll is not None:
+            scroll.scroll_to_top()
 
     def _on_run_mode_changed_from_settings(self, run_mode: str) -> None:
         self._update_run_mode_visibility(run_mode)
@@ -967,6 +980,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         """切回主页步骤页，并刷新第六步服务器路径。"""
         self.left_stacked.setCurrentIndex(0)
         self._refresh_server_path()
+        self._scroll_steps_to_top()
 
     def _render_summary(self, config: PipelineConfig) -> None:
         # [EN] Override config with current UI form forcing paths (ensure Step 4 shows latest selection)
@@ -981,6 +995,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._server_connect_panel.render_slurm(config)
         if hasattr(self, "_server_ops_panel"):
             self._server_ops_panel.set_server_path(self._effective_server_path(config))
+        self._scroll_steps_to_top()
 
     def _browse_path(self, key: str, directory: bool) -> None:
         current = self._paths[key].text().strip()
@@ -2270,11 +2285,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if getattr(self, "_step5_ui_synced", False):
             return
         self._step5_ui_synced = True
-        self._server_connect_panel.set_connected(True)
-        # [EN] Start polling
-        # 启动轮询
-        self._server_poll_config = self._build_poll_config()
-        self._start_server_polling()
+
+        def sync_ui() -> None:
+            self._server_connect_panel.set_connected(True)
+            self._server_poll_config = self._build_poll_config()
+            self._start_server_polling()
+
+        self._preserve_steps_scroll(sync_ui)
         # [EN] Update ntfy button text after a short delay (non-blocking).
         # 短暂延迟后更新 ntfy 按钮文本（不阻塞 UI）
         QTimer.singleShot(2000, self._update_ntfy_button_text)
@@ -2418,11 +2435,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             idle_data = data.get("idle", []) or []
             partition_data = data.get("partitions", []) or []
             queue_lines = data.get("queue", []) or []
-            self._server_connect_panel.update_cpu_table(cpu_data)
-            self._server_connect_panel.update_idle_resources(idle_data)
-            self._server_connect_panel.replace_cpu_options_if_changed(partition_data)
-            self._server_connect_panel.update_queue_table(queue_lines)
-            self._server_connect_panel.apply_suggested_slurm_mem()
+
+            def apply_status() -> None:
+                self._server_connect_panel.update_cpu_table(cpu_data)
+                self._server_connect_panel.update_idle_resources(idle_data)
+                self._server_connect_panel.replace_cpu_options_if_changed(partition_data)
+                self._server_connect_panel.update_queue_table(queue_lines)
+                self._server_connect_panel.apply_suggested_slurm_mem()
+
+            self._preserve_steps_scroll(apply_status)
         # [EN] Stop polling when connection fails
         # 连接失败时停止轮询
         if not getattr(result, "success", True):
@@ -2793,6 +2814,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _append_log(self, message: str) -> None:
         """以段落方式追加纯文本，确保每行应用统一行距。"""
         text = str(message)
+        had_log_focus = self._log.hasFocus()
         cursor = self._log.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         fmt = self._create_log_block_format()
@@ -2810,6 +2832,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 cursor.insertText(part)
 
         self._log.setTextCursor(cursor)
+        if not had_log_focus:
+            self._log.clearFocus()
 
     def _render_forcing_state(self, state: ForcingStepState) -> None:
         if self._busy and state.is_running:

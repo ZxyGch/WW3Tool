@@ -20,6 +20,7 @@ import re
 
 from ...support.translations import tr
 from .nml_primitives import NMLPrimitives
+from .smc_open_boundary import BUNDY_FILENAME, count_smc_bundy_points, read_smc_n_levels
 
 
 class NamelistsNML(NMLPrimitives):
@@ -160,4 +161,91 @@ class NamelistsNML(NMLPrimitives):
 
         except Exception as e:
             self.log(tr("namelists_modify_error", "❌ 修改 namelists.nml 时出错：{error}").format(error=str(e)))
+            return False
+
+    def _sync_smc_psmc_namelist_if_needed(self) -> None:
+        """Regional SMC runs: sync ``&PSMC`` ``NBISMC`` / ``LvSMC`` from grid outputs."""
+        if not getattr(self, "_is_step2_smc_mesh", lambda: False)():
+            return
+        self._sync_smc_psmc_namelist_in_dir(self.selected_folder)
+
+    def _sync_smc_psmc_namelist_in_dir(self, target_dir: str) -> bool:
+        """Set ``&PSMC`` ``NBISMC`` and ``LvSMC`` in ``namelists.nml`` for SMC open boundaries."""
+        namelists_path = os.path.join(target_dir, "namelists.nml")
+        if not os.path.isfile(namelists_path):
+            return False
+
+        nbismc = count_smc_bundy_points(target_dir)
+        n_levels = read_smc_n_levels(target_dir)
+        if n_levels is None:
+            return False
+
+        try:
+            with open(namelists_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            new_lines: list[str] = []
+            modified = False
+            in_psmc = False
+            for line in lines:
+                stripped = line.lstrip()
+                is_comment = stripped.startswith("!")
+
+                if not is_comment and re.match(r"^\s*&PSMC\b", line, re.IGNORECASE):
+                    in_psmc = True
+                    new_lines.append(line)
+                    continue
+
+                if in_psmc and not is_comment:
+                    updated = line
+                    if re.search(r"^\s*NBISMC\s*=", line, re.IGNORECASE):
+                        updated, n = re.subn(
+                            r"^(\s*NBISMC\s*=\s*)\d+",
+                            rf"\g<1>{nbismc}",
+                            line,
+                            count=1,
+                            flags=re.IGNORECASE,
+                        )
+                        modified = modified or n > 0
+                    if n_levels is not None and re.search(r"^\s*LvSMC\s*=", line, re.IGNORECASE):
+                        updated, n = re.subn(
+                            r"^(\s*LvSMC\s*=\s*)\d+",
+                            rf"\g<1>{int(n_levels)}",
+                            updated,
+                            count=1,
+                            flags=re.IGNORECASE,
+                        )
+                        modified = modified or n > 0
+                    new_lines.append(updated)
+                    if re.match(r"^\s*/\s*$", line):
+                        in_psmc = False
+                    continue
+
+                new_lines.append(line)
+
+            if not modified:
+                return False
+
+            with open(namelists_path, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(new_lines)
+
+            parts: list[str] = [f"NBISMC={nbismc}"]
+            if nbismc > 0:
+                parts[0] = f"NBISMC={nbismc} ({BUNDY_FILENAME})"
+            parts.append(f"LvSMC={int(n_levels)}")
+            detail = "，".join(parts)
+            self.log(
+                tr(
+                    "step4_namelists_smc_psmc_updated",
+                    "✅ 已修改 namelists.nml：&PSMC 同步 {detail}",
+                ).format(detail=detail)
+            )
+            return True
+        except Exception as e:
+            self.log(
+                tr(
+                    "step4_namelists_smc_psmc_failed",
+                    "⚠️ 修改 namelists.nml &PSMC 失败：{err}",
+                ).format(err=e)
+            )
             return False

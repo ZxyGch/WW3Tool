@@ -7,9 +7,8 @@ Final outputs in output_dir (smcellgen/smcellbdy write to a temp stem, then rena
 - grid_cell.dat — SMC MCELS (from *Cels.dat)
 - grid_iside.dat / grid_jside.dat — ISIDE / JSIDE (SMCGTools ``SMCGSideMP`` + count step)
 - grid_subtr.dat — SUBTR (zero obstruction); ``ww3_grid`` opens after MCELS/ISIDE/JSIDE
-- grid_boundary.dat — BUNDY only when ``NBISMC > 0`` is intended: regional domain and
-  boundary strip generation enabled; use ``boundary.n_bismc: 0`` to skip the file even
-  when regional.
+- grid_boundary.dat — regional boundary strip cells from smcellbdy (*Bdys.dat)
+- grid_bundy.dat — WW3 BUNDY integer list (*Blst.dat style) when open boundaries are enabled
 - grid_arctic_cells.dat — MBARC (from *BArc.dat) when ``grid.arctic`` is true;
   grid_aisid.dat / grid_ajsid.dat — AISID / AJSID from a second SMCGSideMP run on the
   Arctic cell file (same toolchain as ISIDE/JSIDE).
@@ -39,6 +38,7 @@ from typing import Any
 
 OUT_CELL_NAME = "grid_cell.dat"
 OUT_BOUNDARY_NAME = "grid_boundary.dat"
+OUT_BUNDY_NAME = "grid_bundy.dat"
 OUT_ARCTIC_NAME = "grid_arctic_cells.dat"
 OUT_SUBTR_NAME = "grid_subtr.dat"
 OUT_ISIDE_NAME = "grid_iside.dat"
@@ -54,6 +54,31 @@ SMCGSIDE_STEM_GLOBAL = "SMCSideG"
 SMCGSIDE_STEM_ARCTIC = "SMCSideA"
 
 import numpy as np
+
+
+def _write_smc_bundy_list(cell_path: Path, bdys_path: Path, bundy_path: Path) -> int:
+    """Map smcellbdy strip cells to MCELS indices for WW3 ``NBISMC`` / BUNDY."""
+    from readcell import readcell
+    from smcellmap import smcids
+
+    _, cel = readcell([str(cell_path)])
+    hdrs, bcel = readcell([str(bdys_path)])
+    nbdy = int(hdrs[0].split()[0])
+    idlst = np.asarray(smcids(bcel, cel), dtype=np.int64)
+    ncbdy = idlst[:nbdy]
+    valid = ncbdy[ncbdy >= 0]
+    if valid.size == 0:
+        raise SystemExit(
+            f"No boundary cells matched inner MCELS ({cell_path.name} vs {bdys_path.name})."
+        )
+    ww3_ids = valid.astype(np.int64) + 1
+    np.savetxt(bundy_path, ww3_ids, fmt="%8d", header="", comments="")
+    print(
+        f"Wrote {bundy_path.name}: NBISMC={int(ww3_ids.size)} "
+        f"(from {nbdy} boundary strip cells, {int(valid.size)} matched).",
+        flush=True,
+    )
+    return int(ww3_ids.size)
 
 
 def write_grid_subtr_for_ww3(cell_path: Path, out_path: Path) -> None:
@@ -170,20 +195,6 @@ def _side_allocation_bounds(nglo: int) -> tuple[int, int]:
     return ncl, nfc
 
 
-def _fmt_isd_row(row: np.ndarray) -> str:
-    return (
-        f"{int(row[0]):7d}{int(row[1]):6d}{int(row[2]):5d}"
-        f"{int(row[3]):8d}{int(row[4]):8d}{int(row[5]):8d}{int(row[6]):8d}\n"
-    )
-
-
-def _fmt_jsd_row(row: np.ndarray) -> str:
-    return (
-        f"{int(row[0]):7d}{int(row[1]):6d}{int(row[2]):5d}"
-        f"{int(row[3]):8d}{int(row[4]):8d}{int(row[5]):8d}{int(row[6]):8d}{int(row[7]):4d}\n"
-    )
-
-
 def _countijsd_write_dat(iside_d: Path, jside_d: Path, out_iside: Path, out_jside: Path) -> None:
     """Same as SMCGTools/Linuxs/countijsd6lv: sort faces, prepend size-count header line."""
     isd = np.atleast_2d(np.loadtxt(iside_d, dtype=np.int64))
@@ -220,14 +231,19 @@ def _countijsd_write_dat(iside_d: Path, jside_d: Path, out_iside: Path, out_jsid
     hdr_i = " " + " ".join(str(x) for x in (nut, nu1, nu2, nu4, nu8, nu16, nu32)) + "\n"
     hdr_j = " " + " ".join(str(x) for x in (nvt, nv1, nv2, nv4, nv8, nv16, nv32)) + "\n"
 
-    with out_iside.open("w", encoding="utf-8") as f:
-        f.write(hdr_i)
-        for r in isd_s:
-            f.write(_fmt_isd_row(r))
-    with out_jside.open("w", encoding="utf-8") as f:
-        f.write(hdr_j)
-        for r in jsd_s:
-            f.write(_fmt_jsd_row(r))
+    _write_smc_side_dat(out_iside, hdr_i, isd_s, _ISD_ROW_FMT)
+    _write_smc_side_dat(out_jside, hdr_j, jsd_s, _JSD_ROW_FMT)
+
+
+_ISD_ROW_FMT = ["%7d", "%6d", "%5d", "%8d", "%8d", "%8d", "%8d"]
+_JSD_ROW_FMT = ["%7d", "%6d", "%5d", "%8d", "%8d", "%8d", "%8d", "%4d"]
+
+
+def _write_smc_side_dat(path: Path, header: str, data: np.ndarray, col_fmt: list[str]) -> None:
+    """Write SMC ISIDE/JSIDE tables without per-row Python formatting."""
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(header)
+        np.savetxt(f, data, fmt=col_fmt, delimiter="")
 
 
 def _cell_path_for_smcgside(cel_abs: Path, out_dir: Path) -> str:
@@ -1172,6 +1188,15 @@ def main() -> None:
         x0lon = float(lon[0])
         y0lat = float(lat[0])
         mlvlxy0 = [n_levels, x0lon, y0lat]
+        mfct = 2 ** (int(n_levels) - 1)
+        if int(n_levels) <= 3:
+            print(
+                f"Warning: global SMC with n_levels={n_levels} (MFct={mfct}) on "
+                f"~{int(lon.size)}x{int(lat.size)} bathy often yields millions of cells "
+                f"and SMCGSideMP may run for hours. For global grids, n_levels>=4 is "
+                f"usually much faster (fewer cells).",
+                flush=True,
+            )
 
     ndzlonlat = [int(lon.size), int(lat.size), float(dlon), float(dlat), float(lon[0]), float(lat[0])]
 
@@ -1190,6 +1215,7 @@ def main() -> None:
     final_jside = out_dir / OUT_JSIDE_NAME
     final_aisid = out_dir / OUT_AISID_NAME
     final_ajsid = out_dir / OUT_AJSID_NAME
+    final_bundy = out_dir / OUT_BUNDY_NAME
     run_info_file = out_dir / OUT_RUN_INFO_NAME
 
     generate_bdy = bool(boundary_cfg.get("generate_boundary_cells", True))
@@ -1214,6 +1240,7 @@ def main() -> None:
     dshalw = float(physics_cfg.get("dshalw", 0.0))
 
     print(f"Generating cells (temp {cells_tmp.name}) -> {final_cell.name}")
+    t_cells = time.time()
     smcellgen(
         bathy_elev,
         ndzlonlat,
@@ -1226,9 +1253,22 @@ def main() -> None:
         wlevel=wlevel,
         GlbArcLat=arc_lat,
     )
+    print(f"smcellgen finished in {time.time() - t_cells:.1f}s", flush=True)
 
     if not cells_tmp.is_file():
         raise SystemExit(f"Expected cell file not created: {cells_tmp}")
+
+    try:
+        ncel_hdr = int(_read_text_header_line(cells_tmp).split()[0])
+    except (OSError, ValueError, IndexError):
+        ncel_hdr = 0
+    if ncel_hdr >= 1_000_000:
+        print(
+            f"Warning: smcellgen produced {ncel_hdr:,} cells — SMCGSideMP (ISIDE/JSIDE) "
+            f"typically dominates runtime and may take hours at this scale. "
+            f"For global grids, try n_levels=4 or 6; for regional, widen MFct by raising n_levels.",
+            flush=True,
+        )
 
     msea = int(boundary_cfg.get("msea", 1))
     bdy_written = False
@@ -1286,6 +1326,7 @@ def main() -> None:
             flush=True,
         )
 
+    t_sides = time.time()
     _generate_iside_jside_pair(
         script_dir=script_dir,
         output_cfg=output_cfg,
@@ -1299,6 +1340,7 @@ def main() -> None:
         final_iside=final_iside,
         final_jside=final_jside,
     )
+    print(f"SMCGSideMP (global) finished in {time.time() - t_sides:.1f}s", flush=True)
 
     os.replace(cells_tmp, final_cell)
 
@@ -1338,23 +1380,30 @@ def main() -> None:
     if need_bundy:
         if not bdy_written:
             raise SystemExit(
-                "BUNDY (grid_boundary.dat) is required (NBISMC>0) but boundary "
-                "generation did not run or failed. Enable boundary.generate_boundary_cells "
-                "for regional grids or set boundary.n_bismc to 0."
+                "Open-boundary files are required but smcellbdy did not run. "
+                "Enable boundary.generate_boundary_cells for regional grids "
+                "or set boundary.n_bismc to 0."
             )
         os.replace(bdys_tmp, final_boundary)
+        nbismc = _write_smc_bundy_list(final_cell, final_boundary, final_bundy)
     else:
-        for p in (bdys_tmp, final_boundary):
+        for p in (bdys_tmp, final_boundary, final_bundy):
             try:
                 if p.is_file():
                     p.unlink()
             except OSError:
                 pass
+        nbismc = 0
 
     run_doc = copy.deepcopy(config)
     run_doc["ww3_rect"] = dict(ww3_rect)
     run_doc["ww3_rect"].pop("shift_i", None)
     run_doc["ww3_rect"].pop("shift_j", None)
+    run_doc["smc_open_boundary"] = {
+        "nbismc": int(nbismc),
+        "bundy_file": OUT_BUNDY_NAME if nbismc > 0 else "",
+        "boundary_cells_file": OUT_BOUNDARY_NAME if nbismc > 0 else "",
+    }
     # Geographic envelope of the actual WW3 SMC RECT after regional index rebasing. This is the
     # active base grid occupied by MCELS, not the larger bathy crop used internally for stencils.
     run_doc["ww3_rect_geo"] = {
@@ -1403,7 +1452,8 @@ def main() -> None:
     _summary_file(OUT_ISIDE_NAME, "ISIDE")
     _summary_file(OUT_JSIDE_NAME, "JSIDE")
     _summary_file(OUT_SUBTR_NAME, "SUBTR obstruction (zero)")
-    _summary_file(OUT_BOUNDARY_NAME, "boundary strip (BUNDY)")
+    _summary_file(OUT_BOUNDARY_NAME, "boundary strip cells (smcellbdy)")
+    _summary_file(OUT_BUNDY_NAME, "WW3 BUNDY cell-id list (NBISMC)")
     _summary_file(OUT_ARCTIC_NAME, "Arctic cells (MBARC)")
     _summary_file(OUT_AISID_NAME, "Arctic ISIDE (AISID)")
     _summary_file(OUT_AJSID_NAME, "Arctic JSIDE (AJSID)")

@@ -56,16 +56,12 @@ class WW3OunfNML(NMLPrimitives):
             self.log(tr("timestep_must_be_number", "❌ 时间步长必须为数字（秒）。"))
             return
 
-        # [EN] Read file split setting from configuration. The underlying layer only accepts
-        # English enumerations: none/hour/day/month/year; UI translations are for display only.
-        # 从配置中读取文件分割设置。底层只接受英文枚举：
-        # none/hour/day/month/year；界面翻译仅用于显示。
+        # [EN] Read file split setting from configuration (single = WW3 nodate / TIMESPLIT 0).
+        # 从配置中读取文件分割设置（single 对应 WW3 nodate / TIMESPLIT 0）。
+        from ...domain.parameter_catalog import file_split_timesplit_value
+
         config = load_full_config()
-        file_split = str(config.get("FILE_SPLIT", "year")).strip().lower()
-        file_split_value_map = {"none": 0, "year": 4, "month": 6, "day": 8, "hour": 10}
-        if file_split not in file_split_value_map:
-            raise ValueError("FILE_SPLIT must be one of: none, hour, day, month, year")
-        timesplit_value = file_split_value_map[file_split]
+        timesplit_value = file_split_timesplit_value(str(config.get("FILE_SPLIT", "year")))
 
         try:
             with open(nml_path, "r", encoding="utf-8") as f:

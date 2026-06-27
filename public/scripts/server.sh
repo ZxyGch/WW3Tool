@@ -6,6 +6,8 @@
 #SBATCH --mem=190G
 #SBATCH --time=2880:00:00
 
+#wavewatch3--ST2
+export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
 
 set -o pipefail
 
@@ -38,6 +40,27 @@ FAIL_MARK="$SCRIPT_ROOT/fail"
 
 # Clean old markers only; keep earlier preparation/submission logs.
 rm -f "$SUCCESS_MARK" "$FAIL_MARK"
+
+# If login-shell MPICH libraries shadow Intel MPI, prepend Intel runtime libs after probe.
+# Edit _WW3_INTEL_LD when moving to another host; hosts without this issue skip the export.
+_WW3_INTEL_LD="/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib/release:/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib:/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/libfabric/lib:/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/compiler/lib/intel64_lin:/public/home/weiyl001/software/netcdf/lib"
+ensure_ww3_mpi_runtime() {
+    if [ -n "${WW3_MPI_RUNTIME_FIXED:-}" ]; then
+        return 0
+    fi
+    local probe
+    probe=$(ww3_grid 2>&1 | head -8 || true)
+    if echo "$probe" | grep -q "mpi_f08_compile_constants_mp_mpi_comm_world_\|symbol lookup error"; then
+        echo "WW3 MPI probe failed (MPICH/LD_LIBRARY_PATH conflict); prepending Intel runtime libs" >> "$LOG"
+        export LD_LIBRARY_PATH="${_WW3_INTEL_LD}:${LD_LIBRARY_PATH:-}"
+        probe=$(ww3_grid 2>&1 | head -8 || true)
+        if echo "$probe" | grep -q "mpi_f08_compile_constants_mp_mpi_comm_world_\|symbol lookup error"; then
+            echo "WW3 MPI probe still failed after LD_LIBRARY_PATH fix" >> "$LOG"
+            fail_exit 1
+        fi
+    fi
+    WW3_MPI_RUNTIME_FIXED=1
+}
 
 # Abort the run: drop a 'fail' marker (keep run.log) and exit with the given code
 fail_exit() {
@@ -128,6 +151,7 @@ if [ -z "$GRID_TYPE" ]; then
     if ls -d level[0-9]* >/dev/null 2>&1; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
 fi
 echo "Grid type (from params.yml): $GRID_TYPE" >> "$LOG"
+ensure_ww3_mpi_runtime
 
 if [ "$GRID_TYPE" = "nested" ]; then
     # Nested grid mode (N levels: level0=coarsest .. levelN=finest)

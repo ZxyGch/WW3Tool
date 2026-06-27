@@ -76,8 +76,24 @@ class ForcingStepPanel:
             "time_end",
             placeholder=tr("step1_date_placeholder", "YYYYMMDD"),
         )
-        self._add_range_pair(range_grid, 2, tr("step1_lat_range", "纬度："), "lat_south", "lat_north")
-        self._add_range_pair(range_grid, 3, tr("step1_lon_range", "经度："), "lon_west", "lon_east")
+        self._add_range_pair(
+            range_grid,
+            2,
+            tr("step1_lat_range", "纬度："),
+            "lat_south",
+            "lat_north",
+            start_placeholder=tr("step1_lat_south_placeholder", "-40"),
+            end_placeholder=tr("step1_lat_north_placeholder", "20"),
+        )
+        self._add_range_pair(
+            range_grid,
+            3,
+            tr("step1_lon_range", "经度："),
+            "lon_west",
+            "lon_east",
+            start_placeholder=tr("step1_lon_west_placeholder", "-30"),
+            end_placeholder=tr("step1_lon_east_placeholder", "110"),
+        )
         layout.addLayout(range_grid)
 
         self.load_intersection_button = create_button(
@@ -210,10 +226,12 @@ class ForcingStepPanel:
         end_key: str,
         *,
         placeholder: str = "",
+        start_placeholder: str = "",
+        end_placeholder: str = "",
     ) -> None:
         grid.addWidget(QLabel(label), row, 0)
-        start = self._new_range_field(placeholder=placeholder)
-        end = self._new_range_field(placeholder=placeholder)
+        start = self._new_range_field(placeholder=start_placeholder or placeholder)
+        end = self._new_range_field(placeholder=end_placeholder or placeholder)
         grid.addWidget(start, row, 1)
         grid.addWidget(QLabel(tr("range_separator", "至")), row, 2)
         grid.addWidget(end, row, 3)
