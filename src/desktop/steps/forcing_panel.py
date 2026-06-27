@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QWidget
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -35,7 +35,7 @@ class ForcingStepPanel:
         self._input_style = input_style
         self.paths: dict[str, LineEdit] = {}
         self.path_buttons: dict[str, PrimaryPushButton] = {}
-        self.clear_buttons: dict[str, PrimaryPushButton] = {}
+        self.clear_buttons: dict[str, QPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
         group, layout = create_header_card(parent, tr("step1_title", "第一步：选择强迫场文件"), include_vbox_style=True)
         grid = QGridLayout()
@@ -180,10 +180,25 @@ class ForcingStepPanel:
         field.hide()
         button = create_button(button_text, lambda _checked=False: browse_path(key, False))
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        clear_button = create_button("×", lambda _checked=False: clear_path(key))
-        clear_button.setFixedWidth(32)
+        clear_button = QPushButton("×")
+        clear_button.clicked.connect(lambda _checked=False: clear_path(key))
+        clear_button.setFixedSize(30, 30)
         clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
-        clear_button.setEnabled(False)
+        clear_button.setStyleSheet(
+            """
+            QPushButton {
+                color: #D13438;
+                background: transparent;
+                border: 1px solid #D0D0D0;
+                border-radius: 4px;
+                padding: 0px;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background: rgba(209, 52, 56, 0.10); }
+            QPushButton:pressed { background: rgba(209, 52, 56, 0.18); }
+            """
+        )
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)

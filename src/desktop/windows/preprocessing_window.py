@@ -128,7 +128,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._paths["workdir"] = LineEdit(self)
         self._paths["workdir"].hide()
         self._path_buttons: dict[str, PrimaryPushButton] = {}
-        self._path_clear_buttons: dict[str, PrimaryPushButton] = {}
         self._display_fields: dict[str, LineEdit] = {}
         self._params_label = LineEdit(self)
         self._params_label.hide()
@@ -559,7 +558,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
         self._paths.update(self._forcing_panel.paths)
         self._path_buttons.update(self._forcing_panel.path_buttons)
-        self._path_clear_buttons.update(self._forcing_panel.clear_buttons)
         self._mode = self._forcing_panel.mode
         self._auto_associate = self._forcing_panel.auto_associate
         self._forcing_status = self._forcing_panel.status
@@ -704,9 +702,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _set_path_value(self, key: str, value: str, empty_text: str | None = None) -> None:
         self._paths[key].setText(value)
-        clear_button = self._path_clear_buttons.get(key)
-        if clear_button is not None:
-            clear_button.setEnabled(bool(value))
         button = self._path_buttons.get(key)
         if button is None:
             return
