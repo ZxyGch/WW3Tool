@@ -985,7 +985,6 @@ class SettingsInterface(QWidget):
         self._reload_st_table()
         self._st_table.selectRow(1)
         self._notify_config_changed("st_versions")
-        self._toast(tr("set_default_content", "已将 ST 版本 '{name}' 设置为默认版本").format(name=selected["name"]))
 
     # ── 本地 ST 版本管理 ─────────────────────────────────────────────────────────
 
@@ -1081,7 +1080,6 @@ class SettingsInterface(QWidget):
         self._reload_local_st_table()
         self._local_st_table.selectRow(1)
         self._notify_config_changed("local_st_versions")
-        self._toast(tr("set_default_content", "已将 ST 版本 '{name}' 设置为默认版本").format(name=selected["name"]))
 
     # ── 谱分区输出方案 ────────────────────────────────────────────────────────
 
