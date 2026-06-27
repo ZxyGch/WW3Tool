@@ -24,7 +24,8 @@ class ForcingStepPanel:
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         browse_path: Callable[[str, bool], None],
         show_file_info: Callable[[], None],
-        confirm_crop: Callable[[], None],
+        confirm_import: Callable[[], None],
+        load_intersection: Callable[[], None],
         mode_changed: Callable[[], None],
     ) -> None:
         self.paths: dict[str, LineEdit] = {}
@@ -73,12 +74,19 @@ class ForcingStepPanel:
         self._add_range_pair(range_grid, 3, tr("step1_lon_range", "经度："), "lon_west", "lon_east")
         layout.addLayout(range_grid)
 
-        self.confirm_crop_button = create_button(
-            tr("step1_confirm_crop_import", "确认裁剪并导入"),
-            confirm_crop,
+        self.load_intersection_button = create_button(
+            tr("step1_load_intersection", "读取相交范围"),
+            load_intersection,
         )
-        self.confirm_crop_button.hide()
-        layout.addWidget(self.confirm_crop_button)
+        self.load_intersection_button.hide()
+        layout.addWidget(self.load_intersection_button)
+
+        self.confirm_import_button = create_button(
+            tr("step1_confirm_crop_import", "确认裁剪并导入"),
+            confirm_import,
+        )
+        layout.addWidget(self.confirm_import_button)
+        self.set_range_editable(False)
 
         self.auto_associate = create_right_aligned_check_box(parent)
         self.auto_associate.setChecked(True)
@@ -107,7 +115,12 @@ class ForcingStepPanel:
         for field in self.range_fields.values():
             field.setReadOnly(not editable)
             field.setClearButtonEnabled(editable)
-        self.confirm_crop_button.setVisible(editable)
+        self.load_intersection_button.setVisible(editable)
+        self.confirm_import_button.setText(
+            tr("step1_confirm_crop_import", "确认裁剪并导入")
+            if editable
+            else tr("step1_confirm_import", "确认导入")
+        )
 
     def crop_time_range(self) -> list[str]:
         return [
