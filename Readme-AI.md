@@ -693,7 +693,7 @@ python3 run.py workdir 2026_shanghai_points
 python3 run.py prepare-ww3 2026_shanghai_points
 ```
 
-打开工作目录时，如果已经存在 points.list 或 track_i.ww3，GUI 会据此切换到对应模式并导入点位。
+打开工作目录时，GUI 只根据 params.yml 的 calc 段恢复第三步：calc.mode 决定区域 / 谱点 / 航迹模式，calc.points 和 calc.track_points 决定表格点位。已有的 points.list 或 track_i.ww3 只视为第四步/运行后生成的文件，或手动点击第三步导入按钮时的输入来源；不会在打开工作目录时自动反推模式或覆盖 yml 中的点位。
 
 谱点模式需要若干 (经度, 纬度, 名称)；航迹模式还要每个点的时间。第四步会把这些列表写进 namelist，并启用相应的后处理（ww3_ounp / ww3_trnc）。
 
@@ -926,7 +926,7 @@ python3 run.py download-log new
 普通网格（grid_type: normal）：
 
 4. mpirun ww3_shel（失败会尝试单进程 ww3_shel）— 主积分，生成 out_grd.ww3 等。
-5. 若有 points.list → ww3_ounp；若有 track_i.ww3 → ww3_trnc。
+5. 按 params.yml 的 calc.mode 决定后处理：spectral_point → 生成 points.list 并运行 ww3_ounp；track → 生成 track_i.ww3 并运行 ww3_trnc。
 6. ww3_ounf — 把 out_grd.ww3 转成 ww3.YYYY.nc。
 
 嵌套网格（grid_type: nested）：
@@ -1072,7 +1072,7 @@ work_dir_name/
 └── ww3.2025.nc 等          # 后处理产物（ww3_ounf / ounp / trnc）
 ```
 
-打开工作目录时，程序只从 params.yml 恢复表单；另外会扫描是否已有 wind.nc 等标准强迫场文件名来填充 Step 1。若存在 points.list 或 track_i.ww3，会切换计算模式。嵌套时根据是否存在 level* 目录识别网格类型。不会从 ww3_shel.nml 或 server.sh 反填时间、谱分区或 Slurm 参数。
+打开工作目录时，程序只从 params.yml 恢复表单；另外会扫描是否已有 wind.nc 等标准强迫场文件名来填充 Step 1。第三步计算模式和点位只读取 params.yml 的 calc.mode、calc.points、calc.track_points；即使工作目录里已经存在 points.list 或 track_i.ww3，也不会自动切换模式或导入点位。嵌套时根据 params.yml 的 grid.grid_type 和 nested levels 恢复网格设置。不会从 ww3_shel.nml 或 server.sh 反填时间、谱分区或 Slurm 参数。
 
 载入已有算例：
 
