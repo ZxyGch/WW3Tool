@@ -145,18 +145,13 @@ def format_time_metadata_issue_logs(
     """将检测结果格式化为可写入日志的文本行。"""
     lines: List[str] = []
     for issue in issues:
-        if issue.code == "nc_string_attr":
+        if issue.code in {"nc_string_attr", "invalid_units"}:
             continue
         if issue.code == "missing_units":
             text = tr(
                 "forcing_time_issue_missing_units",
                 "⚠️ time 变量缺少 units 属性",
             )
-        elif issue.code == "invalid_units":
-            text = tr(
-                "forcing_time_issue_invalid_units",
-                "⚠️ time:units 不符合 WW3 要求（需形如 hours since YYYY-MM-DD hh:mm:ss）：{detail}",
-            ).format(detail=issue.detail)
         elif issue.code == "missing_calendar":
             text = tr(
                 "forcing_time_issue_missing_calendar",
