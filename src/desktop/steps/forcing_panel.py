@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -24,6 +24,7 @@ class ForcingStepPanel:
         input_style: Callable[[], str],
         combo_style: Callable[[], str],
         browse_path: Callable[[str, bool], None],
+        clear_path: Callable[[str], None],
         show_file_info: Callable[[], None],
         crop_import: Callable[[], None],
         direct_import: Callable[[], None],
@@ -34,6 +35,7 @@ class ForcingStepPanel:
         self._input_style = input_style
         self.paths: dict[str, LineEdit] = {}
         self.path_buttons: dict[str, PrimaryPushButton] = {}
+        self.clear_buttons: dict[str, PrimaryPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
         group, layout = create_header_card(parent, tr("step1_title", "第一步：选择强迫场文件"), include_vbox_style=True)
         grid = QGridLayout()
@@ -45,7 +47,7 @@ class ForcingStepPanel:
             (2, tr("step1_label_level", "水位场："), "level", tr("step1_choose_level", "选择水位场")),
             (3, tr("step1_label_ice", "海冰场："), "ice", tr("step1_choose_ice", "选择海冰场")),
         ):
-            self._add_path_button_pair(grid, row, label, key, button_text, create_button, browse_path)
+            self._add_path_button_pair(grid, row, label, key, button_text, create_button, browse_path, clear_path)
         layout.addLayout(grid)
 
         self.mode = ComboBox(parent)
@@ -171,16 +173,28 @@ class ForcingStepPanel:
         button_text: str,
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         browse_path: Callable[[str, bool], None],
+        clear_path: Callable[[str], None],
     ) -> None:
         field = LineEdit()
         field.setClearButtonEnabled(True)
         field.hide()
         button = create_button(button_text, lambda _checked=False: browse_path(key, False))
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        clear_button = create_button("×", lambda _checked=False: clear_path(key))
+        clear_button.setFixedWidth(32)
+        clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
+        clear_button.setEnabled(False)
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+        row_layout.addWidget(button, 1)
+        row_layout.addWidget(clear_button, 0)
         grid.addWidget(QLabel(label), row, 0)
-        grid.addWidget(button, row, 1)
+        grid.addWidget(row_widget, row, 1)
         self.paths[key] = field
         self.path_buttons[key] = button
+        self.clear_buttons[key] = clear_button
 
     def _add_range_pair(
         self,

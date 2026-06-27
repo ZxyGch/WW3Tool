@@ -128,6 +128,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._paths["workdir"] = LineEdit(self)
         self._paths["workdir"].hide()
         self._path_buttons: dict[str, PrimaryPushButton] = {}
+        self._path_clear_buttons: dict[str, PrimaryPushButton] = {}
         self._display_fields: dict[str, LineEdit] = {}
         self._params_label = LineEdit(self)
         self._params_label.hide()
@@ -548,6 +549,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             input_style=self._input_style,
             combo_style=self._combo_style,
             browse_path=self._browse_path,
+            clear_path=self._clear_forcing_path,
             show_file_info=self._show_forcing_files_info,
             crop_import=self._crop_forcing_import,
             direct_import=self._direct_forcing_import,
@@ -557,6 +559,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
         self._paths.update(self._forcing_panel.paths)
         self._path_buttons.update(self._forcing_panel.path_buttons)
+        self._path_clear_buttons.update(self._forcing_panel.clear_buttons)
         self._mode = self._forcing_panel.mode
         self._auto_associate = self._forcing_panel.auto_associate
         self._forcing_status = self._forcing_panel.status
@@ -701,6 +704,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _set_path_value(self, key: str, value: str, empty_text: str | None = None) -> None:
         self._paths[key].setText(value)
+        clear_button = self._path_clear_buttons.get(key)
+        if clear_button is not None:
+            clear_button.setEnabled(bool(value))
         button = self._path_buttons.get(key)
         if button is None:
             return
@@ -723,6 +729,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             "current": tr("step1_choose_current", "选择流场"),
             "level": tr("step1_choose_level", "选择水位场"),
             "ice": tr("step1_choose_ice", "选择海冰场"),
+        }
+
+    def _forcing_field_names(self) -> dict[str, str]:
+        return {
+            "wind": tr("step1_field_wind", "风场"),
+            "current": tr("step1_field_current", "流场"),
+            "level": tr("step1_field_level", "水位场"),
+            "ice": tr("step1_field_ice", "海冰场"),
         }
 
     def _resolve_auto_associate_from_config(self, config: PipelineConfig, defaults: dict) -> bool:
@@ -1268,6 +1282,83 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             if self._paths[key].text().strip()
         )
 
+    def _is_workdir_converted_forcing_file(self, path: Path) -> bool:
+        workdir_text = self._paths["workdir"].text().strip()
+        if not workdir_text:
+            return False
+        try:
+            workdir = Path(workdir_text).expanduser().resolve()
+            candidate = path.expanduser().resolve()
+        except OSError:
+            return False
+        if not candidate.is_file():
+            return False
+        try:
+            relative = candidate.relative_to(workdir)
+        except ValueError:
+            return False
+        if relative.parent != Path("."):
+            return False
+        if candidate.suffix.lower() != ".nc":
+            return False
+        from workflows.infrastructure.forcing.file_path_manager import FilePathManager
+
+        return bool(FilePathManager.parse_forcing_filename(candidate.name))
+
+    def _same_path_text(self, left: str, right: str) -> bool:
+        try:
+            return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
+        except OSError:
+            return os.path.abspath(os.path.normpath(left)) == os.path.abspath(os.path.normpath(right))
+
+    def _clear_forcing_path(self, key: str) -> None:
+        if key not in {"wind", "current", "level", "ice"} or self._busy:
+            return
+        value = self._paths[key].text().strip()
+        if not value:
+            return
+        labels = self._forcing_field_button_labels()
+        field_names = self._forcing_field_names()
+        path = Path(value)
+        delete_file = self._is_workdir_converted_forcing_file(path)
+        if delete_file:
+            box = MessageBox(
+                tr("step1_delete_forcing_title", "删除已转换强迫场文件"),
+                tr(
+                    "step1_delete_forcing_content",
+                    "将删除当前工作目录中的已转换强迫场文件，并清除引用它的选择。此操作不可恢复。\n\n{path}",
+                ).format(path=str(path)),
+                self,
+            )
+            if not box.exec():
+                self.titleBar.raise_()
+                return
+            self.titleBar.raise_()
+            try:
+                path.expanduser().resolve().unlink()
+                self._append_log(tr("step1_forcing_file_deleted", "🗑️ 已删除工作目录强迫场文件：{path}").format(path=value))
+            except OSError as exc:
+                self._show_error(tr("step1_forcing_file_delete_failed", "删除强迫场文件失败：{error}").format(error=exc))
+                return
+            cleared_keys = [
+                field_key
+                for field_key in ("wind", "current", "level", "ice")
+                if self._paths[field_key].text().strip()
+                and self._same_path_text(self._paths[field_key].text().strip(), value)
+            ]
+        else:
+            cleared_keys = [key]
+
+        for field_key in cleared_keys:
+            self._set_path_value(field_key, "", labels[field_key])
+        if not delete_file:
+            self._append_log(
+                tr("step1_forcing_selection_cleared", "已清除{field}选择").format(
+                    field=field_names.get(key, key)
+                )
+            )
+        self._refresh_forcing_common_ranges(clear_if_empty=True)
+
     def _forcing_crop_time_range(self, *, silent: bool = False) -> list[str] | None:
         values = self._forcing_panel.crop_time_range()
         if len(values) == 2 and all(values) and all(re.fullmatch(r"\d{8}", value) for value in values):
@@ -1311,12 +1402,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _forcing_map_regions(self) -> tuple[list[GridRegion], list[str]] | None:
         from workflows.application.grid_tools import read_wind_bounds
 
-        labels = {
-            "wind": tr("step1_field_wind", "风场"),
-            "current": tr("step1_field_current", "流场"),
-            "level": tr("step1_field_level", "水位场"),
-            "ice": tr("step1_field_ice", "海冰场"),
-        }
+        labels = self._forcing_field_names()
         regions: list[GridRegion] = []
         region_labels: list[str] = []
         for key in ("wind", "current", "level", "ice"):
