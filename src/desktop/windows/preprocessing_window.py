@@ -768,6 +768,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if hasattr(self, "_plot_interface"):
             self._plot_interface.auto_detect_from_workdir(folder)
         self._scan_and_fill_forcing_buttons(folder)
+        self._refresh_forcing_common_ranges(clear_if_empty=True)
 
     def _show_plot_page(self) -> None:
         # [EN] Switch to plot page and auto-detect wind.nc / ww3*.nc in workdir (aligned with src).
@@ -878,6 +879,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             # set_work_directory：先同步 auto_associate，再按工作目录扫描强迫场
             self._scan_and_fill_forcing_buttons(str(config.workdir.path))
         self._render_summary(config)
+        self._refresh_forcing_common_ranges(clear_if_empty=True)
         self._append_log(tr("params_loaded", "已载入参数文件：{path}").format(path=self._params_path))
 
     def _load_root_defaults(self) -> dict:
@@ -991,7 +993,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 if not self._paths["workdir"].text().strip():
                     self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
                     return
-                self._update_forcing_intersection_ranges(overwrite=True)
+                self._refresh_forcing_common_ranges(clear_if_empty=False)
                 self._append_log(
                     tr(
                         "step1_wait_confirm_import",
@@ -1309,9 +1311,26 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._selected_forcing_paths():
             self._show_error(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
-        self._update_forcing_intersection_ranges(overwrite=True)
+        self._refresh_forcing_common_ranges(clear_if_empty=False)
 
-    def _update_forcing_intersection_ranges(self, *, overwrite: bool = False) -> None:
+    def _clear_forcing_common_ranges(self) -> None:
+        self._forcing_panel.clear_range_values()
+        self._ww3_panel.set_value("ww3_start", "")
+        self._ww3_panel.set_value("ww3_end", "")
+
+    def _refresh_forcing_common_ranges(self, *, clear_if_empty: bool = False) -> None:
+        if not self._selected_forcing_paths():
+            if clear_if_empty:
+                self._clear_forcing_common_ranges()
+            return
+        self._update_forcing_intersection_ranges(overwrite=True, update_ww3_time=True)
+
+    def _update_forcing_intersection_ranges(
+        self,
+        *,
+        overwrite: bool = False,
+        update_ww3_time: bool = False,
+    ) -> None:
         paths = self._selected_forcing_paths()
         if not paths:
             return
@@ -1330,6 +1349,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             bbox=bbox,
             overwrite_editable=overwrite,
         )
+        if update_ww3_time:
+            self._ww3_panel.set_value("ww3_start", _date_yyyymmdd(time_range[0]))
+            self._ww3_panel.set_value("ww3_end", _date_yyyymmdd(time_range[1]))
 
     def _validate_params(self) -> None:
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
@@ -2633,6 +2655,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 value = getattr(state.files, key, None)
                 if value:
                     self._set_path_value(key, str(value), empty_text)
+            self._refresh_forcing_common_ranges(clear_if_empty=False)
         else:
             self._forcing_status.setText(tr("status_waiting", "等待执行"))
 
@@ -2668,3 +2691,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
 def create_preprocessing_window() -> PreprocessingWindow:
     return PreprocessingWindow()
+
+
+def _date_yyyymmdd(value: object) -> str:
+    text = str(value or "").strip()
+    digits = "".join(ch for ch in text[:10] if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else text

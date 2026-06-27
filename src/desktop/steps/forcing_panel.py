@@ -154,6 +154,10 @@ class ForcingStepPanel:
             self.range_fields["lat_south"].setText(f"{south:.6g}")
             self.range_fields["lat_north"].setText(f"{north:.6g}")
 
+    def clear_range_values(self) -> None:
+        for field in self.range_fields.values():
+            field.clear()
+
     def _add_path_button_pair(
         self,
         grid: QGridLayout,
