@@ -51,8 +51,8 @@ class ForcingStepPanel:
         self.mode = ComboBox(parent)
         self.mode.setStyleSheet(combo_style())
         for label, value in (
-            (tr("step1_mode_copy_full", "完整复制"), "copy"),
-            (tr("step1_mode_move_full", "完整剪切"), "move"),
+            (tr("step1_mode_copy_full", "复制"), "copy"),
+            (tr("step1_mode_move_full", "剪切"), "move"),
         ):
             self.mode.addItem(label)
             self.mode.setItemData(self.mode.count() - 1, value)

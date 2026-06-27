@@ -562,8 +562,8 @@ class SettingsInterface(QWidget):
             tr("set_forcing_process_mode", "默认导入方式："),
             "FORCING_PROCESS_MODE",
             [
-                (tr("step1_mode_copy_full", "完整复制"), "copy"),
-                (tr("step1_mode_move_full", "完整剪切"), "move"),
+                (tr("step1_mode_copy_full", "复制"), "copy"),
+                (tr("step1_mode_move_full", "剪切"), "move"),
             ],
         )
 
