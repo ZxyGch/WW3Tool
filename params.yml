@@ -189,7 +189,8 @@ workdir:
 #   process_mode     – 'copy' duplicates complete files into workdir;
 #                      'move' relocates complete originals;
 #                      'crop' imports cropped time/lon/lat subsets.
-#   crop_time_range  – used only when process_mode='crop', [start, end].
+#   crop_time_range  – used only when process_mode='crop',
+#                      [start_YYYYMMDD, end_YYYYMMDD].
 #   crop_bbox        – used only when process_mode='crop',
 #                      [west, east, south, north].
 #   auto_associate   – when true, automatically match dropped / selected

@@ -1266,10 +1266,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _forcing_crop_time_range(self, *, silent: bool = False) -> list[str] | None:
         values = self._forcing_panel.crop_time_range()
-        if len(values) == 2 and all(values):
+        if len(values) == 2 and all(values) and all(re.fullmatch(r"\d{8}", value) for value in values):
             return values
         if not silent:
-            self._show_error(tr("step1_crop_time_required", "范围裁剪需要填写开始时间和结束时间"))
+            self._show_error(tr("step1_crop_time_required", "范围裁剪需要填写 YYYYMMDD 格式的开始日期和结束日期"))
         return None
 
     def _forcing_crop_bbox(self, *, silent: bool = False) -> list[float] | None:

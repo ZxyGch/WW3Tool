@@ -10,6 +10,7 @@ from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
+from ..components import styles
 from workflows.support.translations import tr
 
 
@@ -43,6 +44,7 @@ class ForcingStepPanel:
         layout.addLayout(grid)
 
         self.mode = ComboBox(parent)
+        self.mode.setStyleSheet(styles.combo_style())
         for label, value in (
             (tr("step1_mode_copy_full", "完整复制"), "copy"),
             (tr("step1_mode_move_full", "完整剪切"), "move"),
@@ -62,12 +64,16 @@ class ForcingStepPanel:
         range_grid.setVerticalSpacing(8)
         range_grid.setColumnStretch(1, 1)
         range_grid.setColumnStretch(3, 1)
-        self._add_range_field(range_grid, 0, 0, tr("step1_time_start", "开始时间："), "time_start")
-        self._add_range_field(range_grid, 0, 2, tr("step1_time_end", "结束时间："), "time_end")
-        self._add_range_field(range_grid, 1, 0, tr("step1_lon_west", "西边界："), "lon_west")
-        self._add_range_field(range_grid, 1, 2, tr("step1_lon_east", "东边界："), "lon_east")
-        self._add_range_field(range_grid, 2, 0, tr("step1_lat_south", "南边界："), "lat_south")
-        self._add_range_field(range_grid, 2, 2, tr("step1_lat_north", "北边界："), "lat_north")
+        self._add_range_pair(
+            range_grid,
+            0,
+            tr("step1_time_range", "时间范围："),
+            "time_start",
+            "time_end",
+            placeholder=tr("step1_date_placeholder", "YYYYMMDD"),
+        )
+        self._add_range_pair(range_grid, 1, tr("step1_lat_range", "纬度范围："), "lat_south", "lat_north")
+        self._add_range_pair(range_grid, 2, tr("step1_lon_range", "经度范围："), "lon_west", "lon_east")
         layout.addLayout(range_grid)
 
         self.confirm_crop_button = create_button(
@@ -128,8 +134,8 @@ class ForcingStepPanel:
         overwrite_editable: bool = False,
     ) -> None:
         if time_range and (overwrite_editable or not self.range_fields["time_start"].text().strip()):
-            self.range_fields["time_start"].setText(str(time_range[0]))
-            self.range_fields["time_end"].setText(str(time_range[1]))
+            self.range_fields["time_start"].setText(_date_yyyymmdd(time_range[0]))
+            self.range_fields["time_end"].setText(_date_yyyymmdd(time_range[1]))
         if bbox and (overwrite_editable or not self.range_fields["lon_west"].text().strip()):
             west, east, south, north = [float(v) for v in bbox]
             self.range_fields["lon_west"].setText(f"{west:.6g}")
@@ -157,11 +163,37 @@ class ForcingStepPanel:
         self.paths[key] = field
         self.path_buttons[key] = button
 
-    def _add_range_field(self, grid: QGridLayout, row: int, col: int, label: str, key: str) -> None:
+    def _add_range_pair(
+        self,
+        grid: QGridLayout,
+        row: int,
+        label: str,
+        start_key: str,
+        end_key: str,
+        *,
+        placeholder: str = "",
+    ) -> None:
+        grid.addWidget(QLabel(label), row, 0)
+        start = self._new_range_field(placeholder=placeholder)
+        end = self._new_range_field(placeholder=placeholder)
+        grid.addWidget(start, row, 1)
+        grid.addWidget(QLabel(tr("range_separator", "至")), row, 2)
+        grid.addWidget(end, row, 3)
+        self.range_fields[start_key] = start
+        self.range_fields[end_key] = end
+
+    def _new_range_field(self, *, placeholder: str = "") -> LineEdit:
         field = LineEdit()
+        field.setStyleSheet(styles.input_style())
         field.setReadOnly(True)
         field.setClearButtonEnabled(False)
+        if placeholder:
+            field.setPlaceholderText(placeholder)
         field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        grid.addWidget(QLabel(label), row, col)
-        grid.addWidget(field, row, col + 1)
-        self.range_fields[key] = field
+        return field
+
+
+def _date_yyyymmdd(value: object) -> str:
+    text = str(value or "").strip()
+    digits = "".join(ch for ch in text[:10] if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else text
