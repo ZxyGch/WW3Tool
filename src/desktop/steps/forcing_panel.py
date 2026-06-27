@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -22,7 +22,6 @@ class ForcingStepPanel:
         *,
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         input_style: Callable[[], str],
-        button_style: Callable[[], str],
         combo_style: Callable[[], str],
         browse_path: Callable[[str, bool], None],
         clear_path: Callable[[str], None],
@@ -34,10 +33,9 @@ class ForcingStepPanel:
         mode_changed: Callable[[], None],
     ) -> None:
         self._input_style = input_style
-        self._button_style = button_style
         self.paths: dict[str, LineEdit] = {}
         self.path_buttons: dict[str, PrimaryPushButton] = {}
-        self.clear_buttons: dict[str, QPushButton] = {}
+        self.clear_buttons: dict[str, PrimaryPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
         group, layout = create_header_card(parent, tr("step1_title", "第一步：选择强迫场文件"), include_vbox_style=True)
         grid = QGridLayout()
@@ -131,9 +129,6 @@ class ForcingStepPanel:
             field.setReadOnly(not editable)
             field.setClearButtonEnabled(editable)
 
-    def compact_button_style(self, style: str) -> str:
-        return _compact_button_style(style)
-
     def crop_time_range(self) -> list[str]:
         return [
             self.range_fields["time_start"].text().strip(),
@@ -185,15 +180,14 @@ class ForcingStepPanel:
         field.hide()
         button = create_button(button_text, lambda _checked=False: browse_path(key, False))
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        clear_button = QPushButton("×")
-        clear_button.clicked.connect(lambda _checked=False: clear_path(key))
-        clear_button.setFixedSize(28, 28)
+        clear_button = create_button("×", lambda _checked=False: clear_path(key))
+        clear_button.setFixedWidth(48)
+        clear_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
-        clear_button.setStyleSheet(_compact_button_style(self._button_style()))
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(0)
+        row_layout.setSpacing(10)
         row_layout.addWidget(button, 1)
         row_layout.addWidget(clear_button, 0)
         grid.addWidget(QLabel(label), row, 0)
@@ -236,11 +230,3 @@ def _date_yyyymmdd(value: object) -> str:
     text = str(value or "").strip()
     digits = "".join(ch for ch in text[:10] if ch.isdigit())
     return digits[:8] if len(digits) >= 8 else text
-
-
-def _compact_button_style(style: str) -> str:
-    return (
-        style.replace("PrimaryPushButton", "QPushButton")
-        .replace("padding: 8px 16px;", "padding: 0px;")
-        .replace("min-height: 20px;", "min-height: 20px; max-height: 28px; font-size: 22px; font-weight: 500;")
-    )
