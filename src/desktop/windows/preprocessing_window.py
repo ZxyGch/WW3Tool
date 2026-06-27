@@ -172,6 +172,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _refresh_manual_styles(self) -> None:
         for button in self.findChildren(PrimaryPushButton):
             button.setStyleSheet(self._button_style())
+        if hasattr(self, "_forcing_panel"):
+            self._forcing_panel.apply_clear_button_style(self._button_style())
         for field in self.findChildren(LineEdit):
             field.setStyleSheet(self._input_style())
         for combo in self.findChildren(ComboBox):

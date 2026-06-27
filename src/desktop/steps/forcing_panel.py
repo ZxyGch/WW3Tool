@@ -129,6 +129,10 @@ class ForcingStepPanel:
             field.setReadOnly(not editable)
             field.setClearButtonEnabled(editable)
 
+    def apply_clear_button_style(self, style: str) -> None:
+        for button in self.clear_buttons.values():
+            button.setStyleSheet(_clear_button_style(style))
+
     def crop_time_range(self) -> list[str]:
         return [
             self.range_fields["time_start"].text().strip(),
@@ -186,6 +190,7 @@ class ForcingStepPanel:
         font = clear_button.font()
         font.setPointSize(max(font.pointSize() + 4, 16))
         clear_button.setFont(font)
+        clear_button.setStyleSheet(_clear_button_style(clear_button.styleSheet()))
         clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
@@ -233,3 +238,7 @@ def _date_yyyymmdd(value: object) -> str:
     text = str(value or "").strip()
     digits = "".join(ch for ch in text[:10] if ch.isdigit())
     return digits[:8] if len(digits) >= 8 else text
+
+
+def _clear_button_style(style: str) -> str:
+    return style.replace("padding: 8px 16px;", "padding: 0px;")
