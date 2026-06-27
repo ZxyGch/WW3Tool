@@ -275,19 +275,19 @@ class SettingsInterface(QWidget):
         outer.addWidget(scroll)
 
         self._build_interface_card()
+        self._build_server_card()
+        self._build_slurm_card()
+        self._build_st_card()
         self._build_paths_card()
         self._build_forcing_card()
         self._build_gridgen_card()
         self._build_unst_card()
         self._build_smc_card()
-        self._build_slurm_card()
         self._build_ww3_card()
         self._build_spectrum_card()
         self._build_timesteps_card()
-        self._build_scheme_card()
-        self._build_server_card()
-        self._build_st_card()
         self._build_local_st_card()
+        self._build_scheme_card()
 
         self._vbox.addStretch(1)
         self._wire_autosave()
@@ -577,7 +577,6 @@ class SettingsInterface(QWidget):
         self._text(grid, 1, 0, tr("set_freq_start", "起始频率："), "FREQ_START")
         self._text(grid, 2, 0, tr("set_freq_num", "频率数量："), "FREQ_NUM")
         self._text(grid, 3, 0, tr("set_dir_num", "方向离散数："), "DIR_NUM")
-        self._reset_button(grid, 4, self._reset_spectrum_defaults)
 
     def _build_timesteps_card(self) -> None:
         grid = self._card(tr("timesteps_params", "数值积分时间步长参数"))
@@ -585,14 +584,6 @@ class SettingsInterface(QWidget):
         self._text(grid, 1, 0, tr("set_dtxy", "空间时间步长："), "DTXY")
         self._text(grid, 2, 0, tr("set_dtkth", "谱空间时间步长："), "DTKTH")
         self._text(grid, 3, 0, tr("set_dtmin", "最小源项时间步长："), "DTMIN")
-        self._reset_button(grid, 4, self._reset_timesteps_defaults)
-
-    def _reset_button(self, grid: QGridLayout, row: int, handler: Callable[[], None]) -> None:
-        button = PrimaryPushButton(tr("reset_defaults", "恢复默认值"))
-        button.setStyleSheet(styles.button_style())
-        button.clicked.connect(handler)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        grid.addWidget(button, row, 0, 1, 4)
 
     def _build_slurm_card(self) -> None:
         grid = self._card(tr("slurm_config", "Slurm 配置"))
@@ -826,28 +817,6 @@ class SettingsInterface(QWidget):
         self._server_key_button.setVisible(use_key)
         self._server_ssh_config_label.setVisible(use_ssh)
         self._combos["SERVER_SSH_CONFIG_HOST"].setVisible(use_ssh)
-
-    def _reset_spectrum_defaults(self) -> None:
-        for key, value in {
-            "FREQ_INC": "1.1",
-            "FREQ_START": "0.04118",
-            "FREQ_NUM": "32",
-            "DIR_NUM": "24",
-        }.items():
-            if key in self._fields:
-                self._fields[key].setText(value)
-        self._save_config_now()
-
-    def _reset_timesteps_defaults(self) -> None:
-        for key, value in {
-            "DTMAX": "900",
-            "DTXY": "320",
-            "DTKTH": "300",
-            "DTMIN": "15",
-        }.items():
-            if key in self._fields:
-                self._fields[key].setText(value)
-        self._save_config_now()
 
     def _build_unst_card(self) -> None:
         grid = self._card(tr("unst_mesh_config_card", "非结构化三角网格配置"))
