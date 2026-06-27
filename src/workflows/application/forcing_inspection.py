@@ -84,6 +84,27 @@ def report_forcing_file_overviews(
     return list(logger.messages)
 
 
+def report_netcdf_file_overviews(
+    paths: list[str] | tuple[str, ...],
+    log: Optional[LogCallback] = None,
+) -> list[str]:
+    """为任意 NetCDF 文件列表生成概览报告。
+
+    供工具页合并强迫场前查看所有输入文件信息；不要求文件已经归类为
+    wind/current/level/ice。
+    """
+    logger = CoreLogger(callback=log)
+    selected = [Path(path) for path in paths if path and Path(path).is_file()]
+    if not selected:
+        logger.log(tr("no_field_files_msg", "⚠️ 没有已选择的场文件，请先选择场文件"))
+        return list(logger.messages)
+
+    for path in selected:
+        _report_file_overview(path.name, path, logger)
+    logger.log("=" * 70)
+    return list(logger.messages)
+
+
 def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> None:
     """输出单个 NetCDF 强迫场文件的详细概览。
 

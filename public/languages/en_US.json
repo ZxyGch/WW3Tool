@@ -222,6 +222,7 @@
   "tools_merge_forcing_card_title": "Merge Forcing Files",
   "tools_merge_select_title": "Select forcing files (multiple)",
   "tools_merge_save_title": "Save merged file",
+  "tools_merge_view_files_info": "Show All Files Info",
   "tools_merge_need_multiple": "At least 2 files are required",
   "tools_merge_need_netcdf4": "Merging requires netCDF4. Install: pip install netCDF4",
   "tools_merge_no_time_dim": "File missing time dimension: {path}",

@@ -222,6 +222,7 @@
   "tools_merge_forcing_card_title": "合并强迫场文件",
   "tools_merge_select_title": "选择强迫场文件（可多选）",
   "tools_merge_save_title": "保存合并后的文件",
+  "tools_merge_view_files_info": "显示所有文件信息",
   "tools_merge_need_multiple": "至少需要选择 2 个文件",
   "tools_merge_need_netcdf4": "合并强迫场需要 netCDF4，请安装：pip install netCDF4",
   "tools_merge_no_time_dim": "文件缺少 time 维度：{path}",

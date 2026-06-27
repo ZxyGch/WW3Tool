@@ -29,6 +29,7 @@ from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
 from ..components import styles
+from workflows.application.forcing_inspection import report_netcdf_file_overviews
 from workflows.infrastructure.forcing.merge_service import (
     MergeAnalysis,
     analyze_merge_inputs,
@@ -149,6 +150,9 @@ class ToolsInterface(QWidget):
         )
         file_buttons.addWidget(self._small_button(tr("merge_inline_clear", "清空"), self._clear_merge_files), 1)
         layout.addLayout(file_buttons)
+        layout.addWidget(
+            self._button(tr("tools_merge_view_files_info", "显示所有文件信息"), self._show_merge_files_info)
+        )
 
         # 裁剪范围（可选）：留空则时间取并集（最大）、经纬度取公共网格（最小）
         # 顺序：经纬度 → 时间 → 输出路径
@@ -224,6 +228,20 @@ class ToolsInterface(QWidget):
         self._merge_button.setEnabled(
             not busy and bool(self._merge_analysis and self._merge_analysis.valid and self._merge_output.text())
         )
+
+    def _show_merge_files_info(self) -> None:
+        if not self._merge_paths:
+            self._merge_log_received.emit(tr("merge_inline_need_files", "请先添加文件"))
+            return
+        paths = tuple(self._merge_paths)
+        self._runner.run(
+            lambda: report_netcdf_file_overviews(paths, log=self._merge_log_received.emit),
+            self._on_merge_files_info_done,
+        )
+
+    def _on_merge_files_info_done(self, result: object) -> None:
+        if isinstance(result, dict) and result.get("error"):
+            self._merge_log_received.emit(str(result["error"]))
 
     def _fill_union_time(self) -> None:
         """把时间范围输入框填为所选文件的并集（最大时间范围）。"""
