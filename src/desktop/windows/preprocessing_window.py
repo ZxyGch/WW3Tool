@@ -1315,8 +1315,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _clear_forcing_common_ranges(self) -> None:
         self._forcing_panel.clear_range_values()
-        self._ww3_panel.set_value("ww3_start", "")
-        self._ww3_panel.set_value("ww3_end", "")
 
     def _refresh_forcing_common_ranges(self, *, clear_if_empty: bool = False) -> None:
         if not self._selected_forcing_paths():
@@ -1350,8 +1348,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             overwrite_editable=overwrite,
         )
         if update_ww3_time:
-            self._ww3_panel.set_value("ww3_start", _date_yyyymmdd(time_range[0]))
-            self._ww3_panel.set_value("ww3_end", _date_yyyymmdd(time_range[1]))
+            start_field = self._ww3_panel.fields["ww3_start"].text().strip()
+            end_field = self._ww3_panel.fields["ww3_end"].text().strip()
+            if not start_field and not end_field:
+                self._ww3_panel.set_value("ww3_start", _date_yyyymmdd(time_range[0]))
+                self._ww3_panel.set_value("ww3_end", _date_yyyymmdd(time_range[1]))
 
     def _validate_params(self) -> None:
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
