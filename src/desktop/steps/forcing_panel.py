@@ -22,6 +22,7 @@ class ForcingStepPanel:
         *,
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         input_style: Callable[[], str],
+        button_style: Callable[[], str],
         combo_style: Callable[[], str],
         browse_path: Callable[[str, bool], None],
         clear_path: Callable[[str], None],
@@ -33,6 +34,7 @@ class ForcingStepPanel:
         mode_changed: Callable[[], None],
     ) -> None:
         self._input_style = input_style
+        self._button_style = button_style
         self.paths: dict[str, LineEdit] = {}
         self.path_buttons: dict[str, PrimaryPushButton] = {}
         self.clear_buttons: dict[str, QPushButton] = {}
@@ -129,6 +131,9 @@ class ForcingStepPanel:
             field.setReadOnly(not editable)
             field.setClearButtonEnabled(editable)
 
+    def compact_button_style(self, style: str) -> str:
+        return _compact_button_style(style)
+
     def crop_time_range(self) -> list[str]:
         return [
             self.range_fields["time_start"].text().strip(),
@@ -184,21 +189,7 @@ class ForcingStepPanel:
         clear_button.clicked.connect(lambda _checked=False: clear_path(key))
         clear_button.setFixedSize(30, 30)
         clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
-        clear_button.setStyleSheet(
-            """
-            QPushButton {
-                color: #D13438;
-                background: transparent;
-                border: 1px solid #D0D0D0;
-                border-radius: 4px;
-                padding: 0px;
-                font-size: 18px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background: rgba(209, 52, 56, 0.10); }
-            QPushButton:pressed { background: rgba(209, 52, 56, 0.18); }
-            """
-        )
+        clear_button.setStyleSheet(_compact_button_style(self._button_style()))
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -245,3 +236,11 @@ def _date_yyyymmdd(value: object) -> str:
     text = str(value or "").strip()
     digits = "".join(ch for ch in text[:10] if ch.isdigit())
     return digits[:8] if len(digits) >= 8 else text
+
+
+def _compact_button_style(style: str) -> str:
+    return (
+        style.replace("PrimaryPushButton", "QPushButton")
+        .replace("padding: 8px 16px;", "padding: 0px;")
+        .replace("min-height: 20px;", "min-height: 20px; max-height: 30px;")
+    )
