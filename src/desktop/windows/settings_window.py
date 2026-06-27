@@ -570,6 +570,9 @@ class SettingsInterface(QWidget):
                 (tr("step1_mode_move_full", "剪切"), "move"),
             ],
         )
+        auto_associate = self._switch_row(grid, 1, tr("auto_associate_fields", "自动关联场:"))
+        auto_associate.setChecked(bool(self._config.get("AUTO_ASSOCIATE_FIELDS", True)))
+        self._checks["AUTO_ASSOCIATE_FIELDS"] = auto_associate
 
     def _build_spectrum_card(self) -> None:
         grid = self._card(tr("spectrum_config", "频谱参数"))

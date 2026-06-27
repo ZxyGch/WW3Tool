@@ -85,6 +85,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "NDBC_PATH": "paths.ndbc_path",
     "DEFAULT_WORKDIR": "workdir.default_workspace",
     "FORCING_PROCESS_MODE": "forcing.process_mode",
+    "AUTO_ASSOCIATE_FIELDS": "forcing.auto_associate",
 }
 
 DEFAULT_OUTPUT_VARS_SCHEME_NAME = "Default"
