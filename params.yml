@@ -186,8 +186,12 @@ workdir:
 #   current – ocean surface current (UCUR, VCUR).
 #   level   – sea-surface elevation anomaly (LEV).
 #   ice     – sea-ice concentration (IC1 / IC5).
-#   process_mode     – 'copy' duplicates files into workdir;
-#                      'move' relocates the originals.
+#   process_mode     – 'copy' duplicates complete files into workdir;
+#                      'move' relocates complete originals;
+#                      'crop' imports cropped time/lon/lat subsets.
+#   crop_time_range  – used only when process_mode='crop', [start, end].
+#   crop_bbox        – used only when process_mode='crop',
+#                      [west, east, south, north].
 #   auto_associate   – when true, automatically match dropped / selected
 #                      files to forcing variables by filename keyword.
 # ────────────────────────────────────────────────────────────────────
@@ -197,6 +201,8 @@ forcing:
   level: null
   ice: null
   process_mode: copy
+  crop_time_range: []
+  crop_bbox: []
   auto_associate: true
 # ────────────────────────────────────────────────────────────────────
 # Grid generation settings (structured / SMC / unstructured).

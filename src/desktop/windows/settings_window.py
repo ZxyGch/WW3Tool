@@ -275,6 +275,7 @@ class SettingsInterface(QWidget):
 
         self._build_interface_card()
         self._build_paths_card()
+        self._build_forcing_card()
         self._build_gridgen_card()
         self._build_unst_card()
         self._build_smc_card()
@@ -551,6 +552,21 @@ class SettingsInterface(QWidget):
         self._text(grid, 12, 0, tr("set_lim_val", "边界覆盖阈值："), "LIM_VAL")
         self._text(grid, 13, 0, tr("set_split_lim", "边界切分阈值："), "SPLIT_LIM")
         self._text(grid, 14, 0, tr("set_lake_tol", "湖泊清理阈值："), "LAKE_TOL")
+
+    def _build_forcing_card(self) -> None:
+        grid = self._card(tr("forcing_config", "强迫场配置"))
+        self._combo(
+            grid,
+            0,
+            0,
+            tr("set_forcing_process_mode", "默认导入方式："),
+            "FORCING_PROCESS_MODE",
+            [
+                (tr("step1_mode_copy_full", "完整复制"), "copy"),
+                (tr("step1_mode_move_full", "完整剪切"), "move"),
+                (tr("step1_mode_crop", "范围裁剪"), "crop"),
+            ],
+        )
 
     def _build_spectrum_card(self) -> None:
         grid = self._card(tr("spectrum_config", "频谱参数"))

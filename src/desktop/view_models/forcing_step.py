@@ -57,6 +57,8 @@ class ForcingStepViewModel:
         ice: str | Path | None = None,
         process_mode: str = "copy",
         auto_associate: bool = True,
+        crop_time_range: list[str] | None = None,
+        crop_bbox: list[float] | None = None,
     ) -> PipelineConfig:
         return parse_pipeline_config(
             {
@@ -68,6 +70,8 @@ class ForcingStepViewModel:
                     "ice": str(ice) if ice else None,
                     "process_mode": process_mode,
                     "auto_associate": auto_associate,
+                    "crop_time_range": crop_time_range or [],
+                    "crop_bbox": crop_bbox or [],
                 },
             },
             base_dir=Path.cwd(),

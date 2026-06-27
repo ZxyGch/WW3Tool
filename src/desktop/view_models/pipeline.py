@@ -318,6 +318,8 @@ class PipelineViewModel:
         ice: str | Path | None = None,
         process_mode: str = "copy",
         auto_associate: bool = True,
+        crop_time_range: list[str] | None = None,
+        crop_bbox: list[float] | None = None,
         grid_overrides: dict | None = None,
         calc_mode: str | None = None,
         calc_points: list[dict] | None = None,
@@ -338,6 +340,8 @@ class PipelineViewModel:
             ice=ice,
             process_mode=process_mode,
             auto_associate=auto_associate,
+            crop_time_range=crop_time_range,
+            crop_bbox=crop_bbox,
             grid_overrides=grid_overrides,
             calc_mode=calc_mode,
             calc_points=calc_points,
@@ -447,7 +451,16 @@ class PipelineViewModel:
                 case_fields["workdir"] = old.get("workdir", {})
                 case_fields["forcing"] = {
                     k: old.get("forcing", {}).get(k)
-                    for k in ("wind", "current", "level", "ice", "process_mode", "auto_associate")
+                    for k in (
+                        "wind",
+                        "current",
+                        "level",
+                        "ice",
+                        "process_mode",
+                        "auto_associate",
+                        "crop_time_range",
+                        "crop_bbox",
+                    )
                 }
                 # [EN] Preserve ww3 dates and calc points (case-specific values set by user in form)
                 # 保留 ww3 日期和 calc 点位（用户在表单中设置的 case 专属值）
@@ -512,6 +525,8 @@ class PipelineViewModel:
         ice: str | Path | None = None,
         process_mode: str = "copy",
         auto_associate: bool = True,
+        crop_time_range: list[str] | None = None,
+        crop_bbox: list[float] | None = None,
         grid_overrides: dict | None = None,
         calc_mode: str | None = None,
         calc_points: list[dict] | None = None,
@@ -537,6 +552,8 @@ class PipelineViewModel:
             "ice": str(ice) if ice else None,
             "process_mode": process_mode,
             "auto_associate": auto_associate,
+            "crop_time_range": crop_time_range or [],
+            "crop_bbox": crop_bbox or [],
         }
         if grid_overrides:
             grid_raw = {**_as_dict(raw.get("grid"))}

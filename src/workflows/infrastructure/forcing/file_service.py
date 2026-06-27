@@ -466,6 +466,50 @@ class FileService:
             self.log(f"{tr('log_copy_fix_failed', '❌ 复制或修复文件失败')}: {e}")
             return None
 
+    def crop_and_fix_forcing_file(
+        self,
+        source_file: str,
+        target_file: str,
+        *,
+        time_range: list[str] | tuple[str, str] | None = None,
+        bbox: list[float] | tuple[float, float, float, float] | None = None,
+    ) -> Optional[str]:
+        """裁剪强迫场到工作目录，并执行 WW3 格式标准化。
+
+        [EN] Crop a forcing NetCDF into the workdir and then normalize it for WW3.
+        """
+        try:
+            from .merge_service import merge_forcing_netcdf
+
+            target_dir = os.path.dirname(target_file)
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
+            self.log(
+                tr("log_crop_forcing_start", "✂️ 正在按范围裁剪强迫场：{src} → {dst}").format(
+                    src=os.path.basename(source_file),
+                    dst=os.path.basename(target_file),
+                )
+            )
+            merge_forcing_netcdf(
+                [source_file],
+                target_file,
+                log=self.log,
+                time_range=time_range,
+                bbox=bbox,
+            )
+            ok = self._normalizer.normalize(target_file, target_file, log=self.log)
+            if not ok:
+                return None
+            self.log(
+                tr("log_crop_forcing_done", "✅ 强迫场裁剪并标准化完成：{file}").format(
+                    file=os.path.basename(target_file)
+                )
+            )
+            return target_file
+        except Exception as e:
+            self.log(f"{tr('log_crop_fix_failed', '❌ 裁剪或修复文件失败')}: {e}")
+            return None
+
     def scan_forcing_files(self, selected_folder: str, *, auto_associate: bool = True) -> Step1Files:
         """扫描工作目录，推断 wind/current/level/ice 四类场对应的 NetCDF 路径。
 

@@ -122,6 +122,8 @@ def prepare_forcing(
             str(workdir),
             config.forcing.auto_associate,
             config.forcing.process_mode,
+            crop_time_range=config.forcing.crop_time_range or None,
+            crop_bbox=config.forcing.crop_bbox or None,
         )
         if not result.success:
             raise RuntimeError(_forcing_import_error_message(result))

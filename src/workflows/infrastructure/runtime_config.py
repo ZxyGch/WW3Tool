@@ -84,6 +84,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "JASON_PATH": "paths.jason_path",
     "NDBC_PATH": "paths.ndbc_path",
     "DEFAULT_WORKDIR": "workdir.default_workspace",
+    "FORCING_PROCESS_MODE": "forcing.process_mode",
 }
 
 DEFAULT_OUTPUT_VARS_SCHEME_NAME = "Default"
@@ -741,8 +742,12 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   current – ocean surface current (UCUR, VCUR).\n"
      "#   level   – sea-surface elevation anomaly (LEV).\n"
      "#   ice     – sea-ice concentration (IC1 / IC5).\n"
-     "#   process_mode     – 'copy' duplicates files into workdir;\n"
-     "#                      'move' relocates the originals.\n"
+     "#   process_mode     – 'copy' duplicates complete files into workdir;\n"
+     "#                      'move' relocates complete originals;\n"
+     "#                      'crop' imports cropped time/lon/lat subsets.\n"
+     "#   crop_time_range  – used only when process_mode='crop', [start, end].\n"
+     "#   crop_bbox        – used only when process_mode='crop',\n"
+     "#                      [west, east, south, north].\n"
      "#   auto_associate   – when true, automatically match dropped / selected\n"
      "#                      files to forcing variables by filename keyword.\n"
      "# ────────────────────────────────────────────────────────────────────"),

@@ -157,6 +157,9 @@ class ImportForcingFileUseCase:
         selected_folder: str,
         auto_associate: bool,
         process_mode: str,
+        *,
+        crop_time_range: list[str] | tuple[str, str] | None = None,
+        crop_bbox: list[float] | tuple[float, float, float, float] | None = None,
     ) -> ForcingImportResult:
         """执行单场或多场（自动关联）导入。
 
@@ -167,14 +170,18 @@ class ImportForcingFileUseCase:
             file_path: 源 NetCDF 绝对路径
             selected_folder: WW3 工作目录
             auto_associate: 是否根据文件内变量自动关联其他场
-            process_mode: ``copy`` 或 ``move``
+            process_mode: ``copy``、``move`` 或 ``crop``
+            crop_time_range: 裁剪模式下的时间范围
+            crop_bbox: 裁剪模式下的经纬度范围
 
         [EN] Parameters:
             field: User-selected field type (current/level/ice)
             file_path: Source NetCDF absolute path
             selected_folder: WW3 working directory
             auto_associate: Whether to auto-associate other fields based on file variables
-            process_mode: ``copy`` or ``move``
+            process_mode: ``copy``, ``move`` or ``crop``
+            crop_time_range: Time range used by crop mode
+            crop_bbox: lon/lat bounding box used by crop mode
 
         返回:
             ``ForcingImportResult``，失败时 ``success=False`` 并附带原因
@@ -214,7 +221,15 @@ class ImportForcingFileUseCase:
 
         need_process = self._log_existing_target(file_path, target_file, target_filename)
         if need_process:
-            copied_file = self._file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)
+            if process_mode == "crop":
+                copied_file = self._file_service.crop_and_fix_forcing_file(
+                    file_path,
+                    target_file,
+                    time_range=crop_time_range,
+                    bbox=crop_bbox,
+                )
+            else:
+                copied_file = self._file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)
             if not copied_file:
                 return ForcingImportResult(
                     success=False,

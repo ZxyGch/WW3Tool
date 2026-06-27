@@ -375,8 +375,8 @@ def _build_plan(input_paths: Sequence[str]) -> _MergePlan:
     normalized = list(dict.fromkeys(os.path.abspath(path) for path in input_paths))
     infos = tuple(read_netcdf_info(path) for path in normalized)
     errors = [f"{info.filename}: {info.error}" for info in infos if info.error]
-    if len(normalized) < 2:
-        errors.append(tr("tools_merge_need_multiple", "至少需要选择 2 个文件"))
+    if not normalized:
+        errors.append(tr("tools_merge_need_input", "至少需要选择 1 个文件"))
     if errors:
         return _MergePlan([], MergeAnalysis(infos, "", tuple(errors)))
 
@@ -399,6 +399,8 @@ def _build_plan(input_paths: Sequence[str]) -> _MergePlan:
         else tr("tools_merge_strategy_time", "按时间拼接")
         if has_time_concat
         else tr("tools_merge_strategy_fields", "合并不同强迫场")
+        if has_field_merge
+        else tr("tools_merge_strategy_crop", "单文件范围裁剪")
     )
     return _MergePlan(
         groups,
@@ -766,6 +768,30 @@ def union_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
             hi = b if hi is None else max(hi, b)
     if lo is None or hi is None:
         raise ValueError(tr("tools_merge_no_time_any", "所选文件均无时间轴"))
+    fmt = lambda epoch: _dt.datetime.fromtimestamp(epoch, _dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return fmt(lo), fmt(hi)
+
+
+def common_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
+    """所有输入文件时间轴的**交集**（最晚开始, 最早结束）。"""
+    nc, _ = _imports()
+    lo: float | None = None
+    hi: float | None = None
+    for path in input_paths:
+        with nc.Dataset(path, "r") as ds:
+            time_name = _time_name(ds)
+            if time_name is None:
+                continue
+            values = _canonical_times(ds.variables[time_name])
+            if values.size == 0:
+                continue
+            a, b = float(values.min()), float(values.max())
+            lo = a if lo is None else max(lo, a)
+            hi = b if hi is None else min(hi, b)
+    if lo is None or hi is None:
+        raise ValueError(tr("tools_merge_no_time_any", "所选文件均无时间轴"))
+    if hi < lo:
+        raise ValueError(tr("tools_merge_time_no_overlap", "所选强迫场时间范围没有交集"))
     fmt = lambda epoch: _dt.datetime.fromtimestamp(epoch, _dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
     return fmt(lo), fmt(hi)
 
