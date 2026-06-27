@@ -903,6 +903,7 @@ class SettingsInterface(QWidget):
         for text, handler in (
             (tr("new", "新增"), self._st_add),
             (tr("edit", "修改"), self._st_edit),
+            (tr("set_default", "设为默认"), self._st_set_default),
             (tr("delete", "删除"), self._st_delete),
         ):
             button = PrimaryPushButton(text)
@@ -965,6 +966,19 @@ class SettingsInterface(QWidget):
         self._reload_st_table()
         self._notify_config_changed("st_versions")
 
+    def _st_set_default(self) -> None:
+        r = self._st_table.currentRow()
+        if r < 1:
+            return
+        versions = self._st_rows()
+        selected = versions.pop(r - 1)
+        versions.insert(0, selected)
+        self._vm.save_st_versions(versions, selected["name"])
+        self._reload_st_table()
+        self._st_table.selectRow(1)
+        self._notify_config_changed("st_versions")
+        self._toast(tr("set_default_content", "已将 ST 版本 '{name}' 设置为默认版本").format(name=selected["name"]))
+
     # ── 本地 ST 版本管理 ─────────────────────────────────────────────────────────
 
     def _build_local_st_card(self) -> None:
@@ -977,6 +991,7 @@ class SettingsInterface(QWidget):
         for text, handler in (
             (tr("new", "新增"), self._local_st_add),
             (tr("edit", "修改"), self._local_st_edit),
+            (tr("set_default", "设为默认"), self._local_st_set_default),
             (tr("delete", "删除"), self._local_st_delete),
         ):
             button = PrimaryPushButton(text)
@@ -1038,6 +1053,19 @@ class SettingsInterface(QWidget):
         self._vm.save_local_st_versions(versions, self._vm.default_local_st())
         self._reload_local_st_table()
         self._notify_config_changed("local_st_versions")
+
+    def _local_st_set_default(self) -> None:
+        r = self._local_st_table.currentRow()
+        if r < 1:
+            return
+        versions = self._local_st_rows()
+        selected = versions.pop(r - 1)
+        versions.insert(0, selected)
+        self._vm.save_local_st_versions(versions, selected["name"])
+        self._reload_local_st_table()
+        self._local_st_table.selectRow(1)
+        self._notify_config_changed("local_st_versions")
+        self._toast(tr("set_default_content", "已将 ST 版本 '{name}' 设置为默认版本").format(name=selected["name"]))
 
     # ── 谱分区输出方案 ────────────────────────────────────────────────────────
 
