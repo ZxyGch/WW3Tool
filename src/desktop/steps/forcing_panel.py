@@ -181,7 +181,7 @@ class ForcingStepPanel:
         button = create_button(button_text, lambda _checked=False: browse_path(key, False))
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         clear_button = create_button("×", lambda _checked=False: clear_path(key))
-        clear_button.setFixedWidth(48)
+        clear_button.setFixedSize(34, 34)
         clear_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         font = clear_button.font()
         font.setPointSize(max(font.pointSize() + 4, 16))
