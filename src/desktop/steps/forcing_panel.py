@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QWidget
+from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -54,26 +54,23 @@ class ForcingStepPanel:
             self.mode.setItemData(self.mode.count() - 1, value)
         left_align_combo_text(self.mode)
         self.mode.currentIndexChanged.connect(lambda *_: mode_changed())
-        mode_row = QHBoxLayout()
-        mode_row.addWidget(QLabel(tr("step1_process_mode", "导入方式：")))
-        mode_row.addWidget(self.mode, 1)
-        layout.addLayout(mode_row)
-
         range_grid = QGridLayout()
         range_grid.setHorizontalSpacing(8)
         range_grid.setVerticalSpacing(8)
         range_grid.setColumnStretch(1, 1)
         range_grid.setColumnStretch(3, 1)
+        range_grid.addWidget(QLabel(tr("step1_process_mode", "导入模式：")), 0, 0)
+        range_grid.addWidget(self.mode, 0, 1, 1, 3)
         self._add_range_pair(
             range_grid,
-            0,
-            tr("step1_time_range", "时间范围："),
+            1,
+            tr("step1_time_range", "时间："),
             "time_start",
             "time_end",
             placeholder=tr("step1_date_placeholder", "YYYYMMDD"),
         )
-        self._add_range_pair(range_grid, 1, tr("step1_lat_range", "纬度范围："), "lat_south", "lat_north")
-        self._add_range_pair(range_grid, 2, tr("step1_lon_range", "经度范围："), "lon_west", "lon_east")
+        self._add_range_pair(range_grid, 2, tr("step1_lat_range", "纬度："), "lat_south", "lat_north")
+        self._add_range_pair(range_grid, 3, tr("step1_lon_range", "经度："), "lon_west", "lon_east")
         layout.addLayout(range_grid)
 
         self.confirm_crop_button = create_button(

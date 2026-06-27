@@ -54,10 +54,8 @@ class _LevelCard(QWidget):
         grid.setColumnStretch(3, 1)
         self._line(grid, 0, 0, tr("step2_dx", "DX:"), "dx", on_changed)
         self._line(grid, 0, 2, tr("step2_dy", "DY:"), "dy", on_changed)
-        self._line(grid, 1, 0, tr("step2_lon_west", "西经:"), "lon_west", on_changed)
-        self._line(grid, 1, 2, tr("step2_lon_east", "东经:"), "lon_east", on_changed)
-        self._line(grid, 2, 0, tr("step2_lat_south", "南纬:"), "lat_south", on_changed)
-        self._line(grid, 2, 2, tr("step2_lat_north", "北纬:"), "lat_north", on_changed)
+        self._range_pair(grid, 1, tr("step2_lat_south", "纬度："), "lat_south", "lat_north", on_changed)
+        self._range_pair(grid, 2, tr("step2_lon_west", "经度："), "lon_west", "lon_east", on_changed)
         root.addLayout(grid)
 
     def _line(self, grid: QGridLayout, row: int, col: int, label: str, key: str,
@@ -74,6 +72,34 @@ class _LevelCard(QWidget):
         grid.addWidget(QLabel(label), row, col)
         grid.addWidget(field, row, col + 1)
         self.fields[key] = field
+
+    def _range_pair(
+        self,
+        grid: QGridLayout,
+        row: int,
+        label: str,
+        start_key: str,
+        end_key: str,
+        on_changed: Callable[[], None],
+    ) -> None:
+        grid.addWidget(QLabel(label), row, 0)
+        start = self._range_field(start_key, on_changed)
+        end = self._range_field(end_key, on_changed)
+        grid.addWidget(start, row, 1)
+        grid.addWidget(QLabel(tr("range_separator", "至")), row, 2)
+        grid.addWidget(end, row, 3)
+        self.fields[start_key] = start
+        self.fields[end_key] = end
+
+    def _range_field(self, key: str, on_changed: Callable[[], None]) -> LineEdit:
+        field = LineEdit()
+        field.setStyleSheet(self._input_style())
+        if "lat_" in key:
+            field.setValidator(double_validator(-90.0, 90.0))
+        elif "lon_" in key:
+            field.setValidator(double_validator(-360.0, 360.0))
+        field.textChanged.connect(on_changed)
+        return field
 
     def set_title(self, text: str) -> None:
         self.title_label.setText(text)
@@ -178,10 +204,8 @@ class GridStepPanel:
         outer_grid.setColumnStretch(3, 1)
         self._display_line(outer_grid, 0, 0, tr("step2_dx", "DX:"), "grid_dx")
         self._display_line(outer_grid, 0, 2, tr("step2_dy", "DY:"), "grid_dy")
-        self._display_line(outer_grid, 1, 0, tr("step2_lon_west", "西经:"), "grid_lon_west")
-        self._display_line(outer_grid, 1, 2, tr("step2_lon_east", "东经:"), "grid_lon_east")
-        self._display_line(outer_grid, 2, 0, tr("step2_lat_south", "南纬:"), "grid_lat_south")
-        self._display_line(outer_grid, 2, 2, tr("step2_lat_north", "北纬:"), "grid_lat_north")
+        self._display_pair(outer_grid, 1, tr("step2_lat_south", "纬度："), "grid_lat_south", "grid_lat_north")
+        self._display_pair(outer_grid, 2, tr("step2_lon_west", "经度："), "grid_lon_west", "grid_lon_east")
         layout.addLayout(outer_grid)
 
         # level1…levelN：可增删层卡片列表
@@ -645,6 +669,27 @@ class GridStepPanel:
         grid.addWidget(field, row, column + 1)
         self.fields[key] = field
         self.field_labels[key] = field_label
+
+    def _display_pair(self, grid: QGridLayout, row: int, label: str, start_key: str, end_key: str) -> None:
+        field_label = QLabel(label)
+        start = self._display_field(start_key)
+        end = self._display_field(end_key)
+        grid.addWidget(field_label, row, 0)
+        grid.addWidget(start, row, 1)
+        grid.addWidget(QLabel(tr("range_separator", "至")), row, 2)
+        grid.addWidget(end, row, 3)
+        self.fields[start_key] = start
+        self.fields[end_key] = end
+        self.field_labels[start_key] = field_label
+
+    def _display_field(self, key: str) -> LineEdit:
+        field = LineEdit()
+        field.setStyleSheet(self._input_style())
+        if "_lat_" in key:
+            field.setValidator(double_validator(-90.0, 90.0))
+        elif "_lon_" in key:
+            field.setValidator(double_validator(-360.0, 360.0))
+        return field
 
     def _smc_field(self, grid: QGridLayout, row: int, label: str, default: str, *, integer: bool = False) -> LineEdit:
         field = LineEdit()
