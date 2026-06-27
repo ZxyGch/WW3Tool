@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QWidget
+from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
@@ -41,6 +41,7 @@ class ForcingStepPanel:
         grid = QGridLayout()
         grid.setSpacing(10)
         grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 0)
         for row, label, key, button_text in (
             (0, tr("step1_label_wind", "风场："), "wind", tr("step1_choose_wind", "选择风场")),
             (1, tr("step1_label_current", "流场："), "current", tr("step1_choose_current", "选择流场")),
@@ -192,14 +193,9 @@ class ForcingStepPanel:
         clear_button.setFont(font)
         clear_button.setStyleSheet(_clear_button_style(clear_button.styleSheet()))
         clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
-        row_widget = QWidget()
-        row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(10)
-        row_layout.addWidget(button, 1)
-        row_layout.addWidget(clear_button, 0)
         grid.addWidget(QLabel(label), row, 0)
-        grid.addWidget(row_widget, row, 1)
+        grid.addWidget(button, row, 1)
+        grid.addWidget(clear_button, row, 2)
         self.paths[key] = field
         self.path_buttons[key] = button
         self.clear_buttons[key] = clear_button
