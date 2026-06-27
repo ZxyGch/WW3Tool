@@ -1536,6 +1536,71 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 self._ww3_panel.set_value("ww3_start", _date_yyyymmdd(time_range[0]))
                 self._ww3_panel.set_value("ww3_end", _date_yyyymmdd(time_range[1]))
 
+    def _confirm_ww3_time_within_forcing_range(self) -> bool:
+        paths = self._selected_forcing_paths()
+        if not paths:
+            return True
+        start = self._ww3_panel.fields["ww3_start"].text().strip()
+        end = self._ww3_panel.fields["ww3_end"].text().strip()
+        if not (re.fullmatch(r"\d{8}", start) and re.fullmatch(r"\d{8}", end)):
+            return True
+        try:
+            from workflows.infrastructure.forcing.merge_service import common_time_range
+
+            forcing_start_raw, forcing_end_raw = common_time_range(paths)
+        except Exception as exc:
+            box = MessageBox(
+                tr("step4_forcing_time_check_failed_title", "强迫场时间范围读取失败"),
+                tr("step4_forcing_time_check_failed", "无法读取强迫场时间范围：{error}\n\n是否仍然继续确认参数？").format(
+                    error=exc
+                ),
+                self,
+            )
+            if getattr(box, "yesButton", None):
+                box.yesButton.setText(tr("step4_time_warning_continue", "继续确认"))
+            if getattr(box, "cancelButton", None):
+                box.cancelButton.setText(tr("step4_time_warning_edit", "返回修改"))
+            accepted = bool(box.exec())
+            self.titleBar.raise_()
+            return accepted
+        forcing_start = _date_yyyymmdd(forcing_start_raw)
+        forcing_end = _date_yyyymmdd(forcing_end_raw)
+        if not (
+            re.fullmatch(r"\d{8}", forcing_start)
+            and re.fullmatch(r"\d{8}", forcing_end)
+        ):
+            return True
+        if start >= forcing_start and end <= forcing_end:
+            return True
+        title = tr("step4_time_range_exceeds_forcing_title", "时间范围超出强迫场")
+        if len(paths) == 1:
+            content = tr(
+                "step4_time_range_exceeds_single_forcing",
+                "当前 WW3 时间范围 {start} → {end} 超出强迫场时间范围 {forcing_start} → {forcing_end}。\n\n是否仍然继续确认参数？",
+            )
+        else:
+            content = tr(
+                "step4_time_range_exceeds_forcing_intersection",
+                "当前 WW3 时间范围 {start} → {end} 超出所有强迫场相交时间范围 {forcing_start} → {forcing_end}。\n\n是否仍然继续确认参数？",
+            )
+        box = MessageBox(
+            title,
+            content.format(
+                start=start,
+                end=end,
+                forcing_start=forcing_start,
+                forcing_end=forcing_end,
+            ),
+            self,
+        )
+        if getattr(box, "yesButton", None):
+            box.yesButton.setText(tr("step4_time_warning_continue", "继续确认"))
+        if getattr(box, "cancelButton", None):
+            box.cancelButton.setText(tr("step4_time_warning_edit", "返回修改"))
+        accepted = bool(box.exec())
+        self.titleBar.raise_()
+        return accepted
+
     def _validate_params(self) -> None:
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
         if params_path is None or self._busy:
@@ -2711,6 +2776,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _apply_ww3_params_only(self) -> None:
         """Apply WW3 namelist parameters without re-running forcing or grid generation."""
+        if not self._confirm_ww3_time_within_forcing_range():
+            return
         # Use "plot" stage to skip forcing-path existence checks — files are
         # already in the workdir from a previous run; we only need WW3 params.
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
