@@ -171,7 +171,7 @@ def _report_time_metadata_warnings(path: str, time_name: str, logger: CoreLogger
     issues = [
         issue
         for issue in audit_time_metadata_for_ww3(path, time_name=time_name)
-        if issue.code != "nc_string_attr"
+        if issue.code not in {"nc_string_attr", "invalid_units"}
     ]
     if not issues:
         return
