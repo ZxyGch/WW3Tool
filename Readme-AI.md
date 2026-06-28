@@ -806,26 +806,47 @@ smc:
 
 最常用的是 `region` 和 `spectral_point`。如果只是为了看上海外海若干验证点的谱，优先用谱点模式，输出更小；如果后续要画空间传播、波场动画或区域诊断，必须用区域模式。
 
-#### 点位来源与恢复规则
+#### params.yml 参数
 
-典型用法：先在 GUI 或 params.yml 里设好 calc.mode 和点位，再跑第四步。例如区域算例：
+Step 3 相关配置位于 `calc` 段。GUI 第三步修改模式、点位或航迹点后，会写回工作目录的 `params.yml`；第四步 `prepare-ww3` 会读取这里的设置，生成 `points.list` 或 `track_i.ww3`。
 
-```sh
-python3 run.py workdir 2026_shanghai_region
-# 编辑 workSpace/2026_shanghai_region/params.yml → calc.mode: region
-python3 run.py run-workflow 2026_shanghai_region
-```
-
-谱点算例在 params.yml 里设 calc.mode: spectral_point，并在 calc.points 里写好经纬度；第四步会生成 points.list：
+对应 params.yml 与 CLI：
 
 ```sh
-python3 run.py workdir 2026_shanghai_points
-python3 run.py prepare-ww3 2026_shanghai_points
+# Step 3 没有单独 CLI 子命令；改好 calc 段后执行第四步
+python3 run.py prepare-ww3 [work_dir_name]
+
+# 或在完整预处理时自动读取 calc 段
+python3 run.py run-workflow [work_dir_name]
 ```
 
-打开工作目录时，GUI 只根据 params.yml 的 calc 段恢复第三步：calc.mode 决定区域 / 谱点 / 航迹模式，calc.points 和 calc.track_points 决定表格点位。已有的 points.list 或 track_i.ww3 只视为第四步/运行后生成的文件，或手动点击第三步导入按钮时的输入来源；不会在打开工作目录时自动反推模式或覆盖 yml 中的点位。
+```yaml
+calc:
+  mode: spectral_point     # region | spectral_point | track
+  points:
+  - lon: 114.225
+    lat: 15.4798
+    name: '0'
+  - lon: 115.519
+    lat: 20.6623
+    name: '1'
+  track_points: []
+```
 
-谱点模式需要若干 (经度, 纬度, 名称)；航迹模式还要每个点的时间。第四步会把这些列表写进 namelist，并启用相应的后处理（ww3_ounp / ww3_trnc）。
+关键字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `calc.mode` | 计算模式：`region` 区域场输出，`spectral_point` 固定点二维谱输出，`track` 航迹输出 |
+| `calc.points` | 谱点模式使用的固定点列表，每个点包含 `lon`、`lat`、`name` |
+| `calc.track_points` | 航迹模式使用的移动点列表；每个点通常需要时间、经度、纬度等信息 |
+
+使用注意：
+
+1. `region` 模式不需要填写 `points` 或 `track_points`。
+2. `spectral_point` 模式至少需要一个点；第四步会据此生成 `points.list`。
+3. `track` 模式需要航迹点；第四步会据此生成 `track_i.ww3`。
+4. 打开工作目录时，GUI 以 `params.yml` 的 `calc` 段为准，不会因为目录里已有 `points.list` 或 `track_i.ww3` 就自动改模式。
 
 
 
