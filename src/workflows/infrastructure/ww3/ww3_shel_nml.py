@@ -1,7 +1,7 @@
 """ww3_shel.nml 修改 Mixin — 时间设置、强迫输入、输出方案与点/航迹日期。
 
 负责写入 WW3 主程序 namelist 中的模拟起止时间、计算步长、强迫场 INPUT 开关、
-谱分区输出变量列表（``TYPE%FIELD%LIST``），以及谱点/航迹模式的 DATE 与 POINT 配置。
+谱分区输出变量列表（``TYPE%FIELD%LIST``），以及谱点/轨迹计算的 DATE 与 POINT 配置。
 """
 from __future__ import annotations
 
@@ -295,7 +295,7 @@ class WW3ShelNML(NMLPrimitives):
             with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            # 检查是否是谱空间逐点计算模式，如果是则合并日志
+            # 检查是否是二维谱点计算模式，如果是则合并日志
             is_spectral_point = self._is_spectral_point_mode()
             has_points = False
             if is_spectral_point and hasattr(self, 'spectral_points_table'):
@@ -305,7 +305,7 @@ class WW3ShelNML(NMLPrimitives):
             prefix = f"{grid_label} " if grid_label else ""
 
             if is_spectral_point and has_points:
-                # 谱空间逐点计算模式：合并所有修改的日志
+                # 二维谱点计算模式：合并所有修改的日志
                 modified_point_file = self._modify_ww3_shel_point_file_in_dir(target_dir, silent=True)
                 modified_date_point = self._modify_ww3_shel_date_point_in_dir(target_dir, start_date, end_date, main_step, silent=True)
 
@@ -487,7 +487,7 @@ class WW3ShelNML(NMLPrimitives):
         参数:
             silent: 如果为 True，不输出日志（用于合并日志）
         """
-        # 检查计算模式是否为"谱空间逐点计算"
+        # 检查计算模式是否为"二维谱点计算"
         if not self._is_spectral_point_mode():
             return
 
@@ -589,7 +589,7 @@ class WW3ShelNML(NMLPrimitives):
         参数:
             silent: 如果为 True，不输出日志（用于合并日志）
         """
-        # 检查计算模式是否为"谱空间逐点计算"
+        # 检查计算模式是否为"二维谱点计算"
         if not self._is_spectral_point_mode():
             return
 
@@ -725,7 +725,7 @@ class WW3ShelNML(NMLPrimitives):
             return False
 
     def _modify_ww3_shel_date_track(self):
-        """修改 ww3_shel.nml，在 &OUTPUT_DATE_NML 下添加 DATE%TRACK（航迹模式）"""
+        """修改 ww3_shel.nml，在 &OUTPUT_DATE_NML 下添加 DATE%TRACK（轨迹计算）"""
         # 检查航迹点位表格是否存在且不为空
         if not hasattr(self, 'track_points_table'):
             return
@@ -865,9 +865,9 @@ class WW3ShelNML(NMLPrimitives):
                 )
             else:
                 if not found_output_date_nml:
-                    self.log(tr("output_date_nml_not_found", "⚠️ 航迹模式：未找到 &OUTPUT_DATE_NML 块，无法添加 DATE%TRACK"))
+                    self.log(tr("output_date_nml_not_found", "⚠️ 轨迹计算：未找到 &OUTPUT_DATE_NML 块，无法添加 DATE%TRACK"))
                 elif not found_date_field:
-                    self.log(tr("date_field_not_found", "⚠️ 航迹模式：未找到 DATE%FIELD 行，无法添加 DATE%TRACK"))
+                    self.log(tr("date_field_not_found", "⚠️ 轨迹计算：未找到 DATE%FIELD 行，无法添加 DATE%TRACK"))
 
         except Exception as e:
             self.log(tr("ww3_shel_modify_error_str", "❌ 修改 ww3_shel.nml 时出错：{error}").format(error=str(e)))

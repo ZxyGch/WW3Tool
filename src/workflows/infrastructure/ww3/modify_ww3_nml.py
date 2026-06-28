@@ -13,7 +13,7 @@ Mixin 文件与对应目标：
 ``ww3_ounf_nml.py``             ``ww3_ounf.nml``
 ``ww3_prnc_nml.py``             ``ww3_prnc*.nml``
 ``ww3_ounp_nml.py``             ``ww3_ounp.nml``（谱点输出）
-``ww3_trnc_nml.py``             ``ww3_trnc.nml``（航迹模式）
+``ww3_trnc_nml.py``             ``ww3_trnc.nml``（轨迹计算）
 ``namelists_nml.py``            ``namelists.nml``
 ``server_sh.py``                ``server.sh``
 ``ww3_multi_nml.py``            ``ww3_multi.nml``（嵌套网格）
@@ -85,13 +85,13 @@ class ModifyWW3NML(
     """
 
     def _is_spectral_point_mode(self):
-        """检查当前是否为谱空间逐点计算模式
+        """检查当前是否为二维谱点计算模式
 
         [EN] Check whether the current mode is spectral point-by-point computation.
         """
         calc_mode = getattr(self, 'calc_mode_var', tr("step3_region_scale", "区域尺度计算"))
-        spectral_text = tr("step3_spectral_point", "谱空间逐点计算")
-        return calc_mode == spectral_text or calc_mode == "谱空间逐点计算"
+        spectral_text = tr("step3_spectral_point", "二维谱点计算")
+        return calc_mode in (spectral_text, "二维谱点计算", "谱空间逐点计算")
 
     def _validate_and_update_forcing_field_paths(self):
         """验证并更新强迫场文件路径，确保文件在新工作目录中
@@ -257,7 +257,7 @@ class ModifyWW3NML(
         has_output_scheme = self._get_output_scheme_var_list() is not None
 
         # [EN] Check if current computation mode is track mode
-        # 检查当前计算模式是否为航迹模式
+        # 检查当前计算模式是否为轨迹计算
         is_track_mode = self._is_track_mode()
 
         grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
@@ -286,7 +286,7 @@ class ModifyWW3NML(
             # 检查是否需要修改 namelists.nml 中的 E3D 参数
             self._modify_namelists_e3d_if_needed()
             # [EN] Check if ww3_ounp.nml needs modification (spectral point-by-point computation mode)
-            # 检查是否需要修改 ww3_ounp.nml（谱空间逐点计算模式）
+            # 检查是否需要修改 ww3_ounp.nml（二维谱点计算模式）
             self._modify_ww3_ounp_if_needed()
             # [EN] Execute Step 5 functionality: apply WW3 parameters
             # 再执行第五步的功能：应用 WW3 参数
@@ -302,7 +302,7 @@ class ModifyWW3NML(
             self._modify_ww3_shel_forcing_inputs()
         
         # [EN] After copying and applying parameters, if in track mode, generate track_i.ww3
-        # 在复制和应用参数之后，如果是航迹模式，生成 track_i.ww3 并写航迹 namelist
+        # 在复制和应用参数之后，如果是轨迹计算，生成 track_i.ww3 并写航迹 namelist
         if is_track_mode:
             self._generate_track_i_ww3_file()
             nested_text = tr("step2_grid_type_nested", "嵌套网格")

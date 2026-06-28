@@ -73,9 +73,9 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
             self.mesh_type_var = "结构网格"
 
         if config.calc.mode == "spectral_point":
-            self.calc_mode_var = "谱空间逐点计算"
+            self.calc_mode_var = "二维谱点计算"
         elif config.calc.mode == "track":
-            self.calc_mode_var = "航迹模式"
+            self.calc_mode_var = "轨迹计算"
         else:
             self.calc_mode_var = "区域尺度计算"
         self.calc_mode_combo = _ComboValue(self.calc_mode_var)

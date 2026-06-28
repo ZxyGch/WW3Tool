@@ -1,6 +1,6 @@
-"""ww3_trnc.nml 修改 Mixin — 航迹模式配置与 track_i.ww3 生成。
+"""ww3_trnc.nml 修改 Mixin — 轨迹计算配置与 track_i.ww3 生成。
 
-在「航迹模式」下，根据用户航迹点表格生成 ``track_i.ww3`` 输入文件，并修改
+在「轨迹计算」下，根据用户航迹点表格生成 ``track_i.ww3`` 输入文件，并修改
 ``ww3_shel.nml`` 的 ``DATE%TRACK`` 与 ``ww3_trnc.nml`` 的航迹输出参数。
 
 [EN] ww3_trnc.nml modification Mixin — track mode configuration and track_i.ww3
@@ -21,7 +21,7 @@ from .nml_primitives import NMLPrimitives
 
 
 class WW3TrncNML(NMLPrimitives):
-    """航迹模式相关操作的 Mixin 类。
+    """轨迹计算相关操作的 Mixin 类。
 
     核心方法 ``_generate_track_i_ww3_file`` 从 GUI 表格导出航迹点；
     ``_modify_ww3_trnc_track`` 写入 trnc namelist 航迹输出配置。
@@ -33,13 +33,13 @@ class WW3TrncNML(NMLPrimitives):
     """
 
     def _is_track_mode(self) -> bool:
-        track_text = tr("step3_track_mode", "航迹模式")
+        track_text = tr("step3_track_mode", "轨迹计算")
         if hasattr(self, "calc_mode_combo") and self.calc_mode_combo:
             combo_text = self.calc_mode_combo.currentText()
-            if combo_text in (track_text, "航迹模式"):
+            if combo_text in (track_text, "轨迹计算", "航迹模式"):
                 return True
         calc_mode = getattr(self, "calc_mode_var", "")
-        return calc_mode in (track_text, "航迹模式")
+        return calc_mode in (track_text, "轨迹计算", "航迹模式")
 
     def _is_nested_grid_mode(self) -> bool:
         grid_type = getattr(self, "grid_type_var", tr("step2_grid_type_normal", "普通网格"))
@@ -68,7 +68,7 @@ class WW3TrncNML(NMLPrimitives):
         return times[0], times[-1]
 
     def _generate_track_i_ww3_file(self):
-        """生成 track_i.ww3 文件（航迹模式）
+        """生成 track_i.ww3 文件（轨迹计算）
 
         [EN] Generate track_i.ww3 file (track mode).
         """
@@ -141,7 +141,7 @@ class WW3TrncNML(NMLPrimitives):
                             continue
 
             if not track_points:
-                self.log(tr("no_valid_track_points", "⚠️ 航迹模式表格中没有有效点位，未生成 track_i.ww3 文件"))
+                self.log(tr("no_valid_track_points", "⚠️ 轨迹计算表格中没有有效点位，未生成 track_i.ww3 文件"))
                 return
 
             # [EN] Generate file content
@@ -177,7 +177,7 @@ class WW3TrncNML(NMLPrimitives):
             self.log(tr("track_file_generation_failed", "❌ 生成 track_i.ww3 文件失败：{error}").format(error=e))
 
     def _modify_ww3_trnc_track(self):
-        """修改 ww3_trnc.nml，设置 TRACK%TIMESTART 和 TRACK%TIMESTRIDE（航迹模式）
+        """修改 ww3_trnc.nml，设置 TRACK%TIMESTART 和 TRACK%TIMESTRIDE（轨迹计算）
 
         [EN] Modify ww3_trnc.nml, setting TRACK%TIMESTART and TRACK%TIMESTRIDE (track mode).
         """

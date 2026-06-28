@@ -1,6 +1,6 @@
 """Step 3 panel：计算模式选择 + 谱点/航迹点位编辑。
 
-三种模式：区域尺度计算（无需点位）、谱空间逐点计算（谱点表）、航迹模式（航迹表）。
+三种模式：区域尺度计算（无需点位）、二维谱点计算（谱点表）、轨迹计算（航迹表）。
 表格样式对齐 src：表头作为第 0 行、隐藏 Qt 列头、无边框、无竖向表头与滚动条、
 按内容自适应高度；按钮为「新增 / 修改 / 删除」一行 + 整宽「导入」。
 点位通过 :class:`PointEditDialog` 录入/编辑，或从文件导入（:mod:`point_io`），
@@ -98,8 +98,8 @@ class CalculationStepPanel:
         self.mode_combo.addItems(
             [
                 tr("step3_region_scale", "区域尺度计算"),
-                tr("step3_spectral_point", "谱空间逐点计算"),
-                tr("step3_track_mode", "航迹模式"),
+                tr("step3_spectral_point", "二维谱点计算"),
+                tr("step3_track_mode", "轨迹计算"),
             ]
         )
         self.mode_combo.setStyleSheet(combo_style())

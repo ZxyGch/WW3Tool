@@ -188,7 +188,7 @@ class WW3MultiNML(NMLPrimitives):
                         alltype_field_list_value,
                     )
 
-            # 检查是否为谱空间逐点计算模式
+            # 检查是否为二维谱点计算模式
             is_spectral_point = self._is_spectral_point_mode()
             has_spectral_points = False
             if is_spectral_point and hasattr(self, 'spectral_points_table'):
@@ -248,7 +248,7 @@ class WW3MultiNML(NMLPrimitives):
                             new_lines.append(line)
                         continue
                     if "/" in line:
-                        # 在结束标记之前，如果是谱空间逐点计算模式，添加 ALLTYPE%POINT%FILE
+                        # 在结束标记之前，如果是二维谱点计算模式，添加 ALLTYPE%POINT%FILE
                         if is_spectral_point and has_spectral_points:
                             # 检查是否已有 ALLTYPE%POINT%FILE
                             has_alltype_point_file = False

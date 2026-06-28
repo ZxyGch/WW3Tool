@@ -1321,13 +1321,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._persist_current_form_to_workdir_params(validation_stage="grid", log=False)
 
     def _validate_calc_points(self) -> bool:
-        """谱点/航迹模式下要求点位表非空（第四步确认参数前校验）。"""
+        """谱点/轨迹计算下要求点位表非空（第四步确认参数前校验）。"""
         mode = self._calculation_panel.mode
         if mode == "spectral_point" and not self._calculation_panel.points():
-            self._show_error(tr("step3_spectral_points_required", "谱空间逐点计算需至少一个谱点"))
+            self._show_error(tr("step3_spectral_points_required", "二维谱点计算需至少一个谱点"))
             return False
         if mode == "track" and not self._calculation_panel.track_points():
-            self._show_error(tr("step3_track_points_required", "航迹模式需至少一个航迹点"))
+            self._show_error(tr("step3_track_points_required", "轨迹计算需至少一个航迹点"))
             return False
         return True
 

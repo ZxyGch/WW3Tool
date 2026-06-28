@@ -1,6 +1,6 @@
 """ww3_ounp.nml 修改 Mixin — 谱空间逐点输出配置。
 
-在「谱空间逐点计算」模式下，根据用户点列表修改 ``ww3_ounp.nml`` 的
+在「二维谱点计算」模式下，根据用户点列表修改 ``ww3_ounp.nml`` 的
 ``POINT%FILE``、时间范围与输出变量，并联动 ``namelists.nml``、``ww3_shel.nml``
 及 ``points.list`` 文件。
 
@@ -35,13 +35,13 @@ class WW3OunpNML(NMLPrimitives):
     """
 
     def _apply_spectral_params_to_dir(self, target_dir, start_date, end_date, output_precision):
-        """在指定目录下应用谱空间逐点计算相关参数
+        """在指定目录下应用二维谱点计算相关参数
 
         [EN] Apply spectral point-by-point computation related parameters under
         the specified directory.
         """
         # [EN] Check if computation mode is "spectral point-by-point computation"
-        # 检查计算模式是否为"谱空间逐点计算"
+        # 检查计算模式是否为"二维谱点计算"
         if not self._is_spectral_point_mode():
             return
 
@@ -147,7 +147,7 @@ class WW3OunpNML(NMLPrimitives):
         supports nested grid mode).
         """
         # [EN] Check if computation mode is "spectral point-by-point computation"
-        # 检查计算模式是否为"谱空间逐点计算"
+        # 检查计算模式是否为"二维谱点计算"
         if not self._is_spectral_point_mode():
             return
 
@@ -245,7 +245,7 @@ class WW3OunpNML(NMLPrimitives):
         (supports nested grid mode).
         """
         # [EN] Check if computation mode is "spectral point-by-point computation"
-        # 检查计算模式是否为"谱空间逐点计算"
+        # 检查计算模式是否为"二维谱点计算"
         if not self._is_spectral_point_mode():
             return
 

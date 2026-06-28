@@ -52,10 +52,10 @@ class StepFourServiceMixin:
             if combo_text:
                 calc_mode = combo_text
 
-        spectral_text = tr("step3_spectral_point", "谱空间逐点计算")
-        track_text = tr("step3_track_mode", "航迹模式")
-        is_spectral_mode = (calc_mode == spectral_text or calc_mode == "谱空间逐点计算")
-        is_track_mode = (calc_mode == track_text or calc_mode == "航迹模式")
+        spectral_text = tr("step3_spectral_point", "二维谱点计算")
+        track_text = tr("step3_track_mode", "轨迹计算")
+        is_spectral_mode = calc_mode in (spectral_text, "二维谱点计算", "谱空间逐点计算")
+        is_track_mode = calc_mode in (track_text, "轨迹计算", "航迹模式")
 
         # 嵌套网格模式下需复制到工作目录（而非各 level 子目录）的特殊文件
         special_files = ["server.sh", "ww3_multi.nml"]
@@ -65,10 +65,10 @@ class StepFourServiceMixin:
         # 如果不是嵌套网格模式，跳过 ww3_multi.nml
         if not is_nested_grid:
             skip_files.append("ww3_multi.nml")
-        # 如果不是航迹模式，跳过 ww3_trnc.nml
+        # 如果不是轨迹计算，跳过 ww3_trnc.nml
         if not is_track_mode:
             skip_files.append("ww3_trnc.nml")
-        # 如果不是谱空间逐点计算模式，跳过 ww3_ounp.nml
+        # 如果不是二维谱点计算模式，跳过 ww3_ounp.nml
         if not is_spectral_mode:
             skip_files.append("ww3_ounp.nml")
         # 嵌套网格模式下，local.sh 仅保留在工作目录，不复制到各 level* 子目录

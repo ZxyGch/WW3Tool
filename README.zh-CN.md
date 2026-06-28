@@ -25,11 +25,11 @@ Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](htt
 - JIGSAW 三角形非结构化网格生成
 - SMCGTools 的 SMC 网格生成
 
-3. 支持区域计算、二维谱点计算、航迹计算
+3. 支持区域计算、二维谱点计算、轨迹计算
 
 4. 支持 Slurm 脚本配置（ssh 配置、slurm 核数、节点数、CPU）
 
-5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，配置包括：网格文件配置、计算精度、输出精度、时间范围、二维谱点计算、航迹计算、谱分区输出、强迫场配置。
+5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，配置包括：网格文件配置、计算精度、输出精度、时间范围、二维谱点计算、轨迹计算、谱分区输出、强迫场配置。
 
 6. 波高图、波高视频、等高线图、二维谱图、JASON3 卫星轨迹图、二维谱图
 
@@ -183,7 +183,7 @@ flowchart LR
 
 - forcing — 风 / 流 / 水位 / 海冰源文件路径与处理方式  
 - grid — 网格类型、范围、分辨率及 meshgen 相关参数  
-- calc — 区域、谱点或航迹计算模式  
+- calc — 区域、谱点或轨迹计算模式
 - ww3 / ww3_grid — 时间范围、输出精度、谱离散与时间步等  
 - slurm / server — SSH 与远程作业（仅服务器模式）  
 - plot — 出图与卫星 / 浮标检验开关  
@@ -387,13 +387,13 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 ![](public/resource/README-media/2026-03-29%2014.32.55.png)
 
-其实这三种计算模式计算量上是一样的，但是最终输出的结果有些不同，看似谱空间逐点计算模式和航迹模式似乎是只计算几个点，但是计算的实际是整个地图范围。
+其实这三种计算模式计算量上是一样的，但是最终输出的结果有些不同，看似二维谱点计算模式和轨迹计算似乎是只计算几个点，但是计算的实际是整个地图范围。
 
 普通的区域计算模式就是基础的 ww3_ounf 输出
 
-谱空间逐点计算模式就是加了个 ww3_ounp
+二维谱点计算模式就是加了个 ww3_ounp
 
-航迹模式就是 ww3_trnc
+轨迹计算就是 ww3_trnc
 
 在第四步的配置参数可以看出他们的配置区别
 
@@ -405,7 +405,7 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 
 
 
-#### 谱空间逐点计算模式
+#### 二维谱点计算模式
 
 ![](public/resource/README-media/2026-03-29%2014.55.42.png)
 
@@ -426,7 +426,7 @@ DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
 126 18 '5'
 ```
 
-points.list 的三列分别是：经度、纬度、点名称，当某个工作目录存在 points.list 文件时，打开该工作目录计算模式会自动切换到：谱空间逐点计算，并自动导入 points.list 的点
+points.list 的三列分别是：经度、纬度、点名称，当某个工作目录存在 points.list 文件时，打开该工作目录计算模式会自动切换到：二维谱点计算，并自动导入 points.list 的点
 
 最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
 
@@ -437,11 +437,11 @@ points.list 的三列分别是：经度、纬度、点名称，当某个工作�
 ![](workSpace/global/photo/spectrum/spectrum_3_time_20250104_120000.png)
 
 
-#### 航迹模式
+#### 轨迹计算
 
 ![](public/resource/README-media/2026-03-29%2015.52.47.png)
 
-和谱空间逐点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
+和二维谱点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
 
 ```
 WAVEWATCH III TRACK LOCATIONS DATA 
@@ -464,7 +464,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ![](public/resource/README-media/2026-03-29%2016.14.29.png)
 我们添加了风场、水位场、流场作为强迫场，冰场可以添加，但是我们生成的网格区域没有冰，因此在这里不做展示。
 
-我们使用的是航迹模式，这个模式会比普通的区域计算模式多一些配置日志，顺便把航迹模式的特有的配置讲解一下。
+我们使用的是轨迹计算，这个模式会比普通的区域计算模式多一些配置日志，顺便把轨迹计算的特有的配置讲解一下。
 
 
 ```log
@@ -479,7 +479,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
 ✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
 ✅ 已生成 track_i.ww3 文件
-✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（航迹模式）
+✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（轨迹计算）
 ✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
@@ -637,7 +637,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 其中日期即为起始日期，另外 DATE%FIELD 和 DATE%TRACK 中间的 '1800' 是计算时间步长
 
-其中 DATE%TRACK 是航迹模式会单独添加的一条，默认是没有的。
+其中 DATE%TRACK 是轨迹计算会单独添加的一条，默认是没有的。
 
 ---
 
@@ -717,7 +717,7 @@ FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
 
 ---
 
-根据当前的航迹模式的点列表或者谱空间逐点计算的点列表我们生成
+根据当前的轨迹计算的点列表或者二维谱点计算的点列表我们生成
 
 ```log
 ✅ 已生成 track_i.ww3 文件
@@ -737,7 +737,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ---
 
 ```log
-✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（航迹模式）
+✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（轨迹计算）
 ```
 
 我们还会在 ww3_shel.nml 添加
@@ -802,7 +802,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ 已复制 9 个 public/ww3 文件到当前工作目录
 ✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
 ✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
-✅ 已更新 ww3_shel.nml（谱空间逐点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
+✅ 已更新 ww3_shel.nml（二维谱点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
 ✅ 已修改 ww3_prnc.nml：FORCING%FIELD%WINDS = T, FILE%FILENAME = '../wind.nc'
 ✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
 ✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
@@ -812,7 +812,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
 ✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
 ✅ 已创建 points.list 文件，包含 4 个点位
-✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（谱空间逐点计算模式）
+✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（二维谱点计算模式）
 
 ======================================================================
 🔄 【内网格】开始处理内网格...
@@ -820,7 +820,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
 ✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
 ✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
-✅ 已更新 ww3_shel.nml（谱空间逐点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
+✅ 已更新 ww3_shel.nml（二维谱点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
 ✅ 已修改 ww3_prnc.nml：FORCING%FIELD%WINDS = T, FILE%FILENAME = '../wind.nc'
 ✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
 ✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
@@ -830,7 +830,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
 ✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
 ✅ 已创建 points.list 文件，包含 4 个点位
-✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（谱空间逐点计算模式）
+✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（二维谱点计算模式）
 ```
 
 我们第四步确认参数，观察 Log 输出
@@ -899,15 +899,15 @@ MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
 
 
 
-#### 谱空间逐点计算模式
+#### 二维谱点计算模式
 
 ```log
 ✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
 ✅ 已创建 points.list 文件，包含 4 个点位
-✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（谱空间逐点计算模式）
+✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（二维谱点计算模式）
 ```
 
-上一节的日志中，这三个日志是关于谱空间逐点计算模式的日志，这些日志都很好理解
+上一节的日志中，这三个日志是关于二维谱点计算模式的日志，这些日志都很好理解
 
 对于 E3D 从 0 改为 1，如果谱分区输出方案包含 EF，那么也会执行
 
@@ -980,7 +980,7 @@ ww3_prnc   ww3_systrk ww3_uprstr
 
 自动读取网格文件的范围和精度，填充第二步，检测是否包含 coarse 和 fine 文件夹，自动切换到嵌套网格模式
 
-自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到航迹模式，并且自动导入文件中的点列表。
+自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到轨迹计算，并且自动导入文件中的点列表。
 
 自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel.nml 的计算精度，时间范围，谱分区方案。
 

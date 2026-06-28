@@ -1,6 +1,6 @@
 """namelists.nml 修改 Mixin — E3D 谱分区标志与谱点模式联动。
 
-当用户启用谱空间逐点计算或输出方案包含 EF 变量时，将 ``&OUTS`` 块中的 ``E3D``
+当用户启用二维谱点计算或输出方案包含 EF 变量时，将 ``&OUTS`` 块中的 ``E3D``
 设为 1，并联动修改 ``ww3_shel.nml`` 中的 ``TYPE%POINT%FILE``、``DATE%POINT`` 等项。
 支持普通网格与嵌套网格（level0…levelN 子目录）两种布局。
 
