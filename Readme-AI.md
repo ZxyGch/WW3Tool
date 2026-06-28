@@ -290,57 +290,7 @@ flowchart LR
   波高图 / 谱图 / 检验等]
 ```
 
-CLI 指令示例流程：
-
-```bash
-cd /Users/zxy/ocean/Paper/WW3Tool
-
-# 1. 创建或加载工作目录
-python3 run.py workdir "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-
-# 2. 检查当前配置
-python3 run.py validate "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py config "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-
-# 3. 分步骤完成预处理
-python3 run.py prepare-forcing "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py generate-grid "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py prepare-ww3 "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-```
-
-如果确认 `params.yml` 已经配置完整，也可以直接用一条命令跑完前三步：
-
-```bash
-python3 run.py run-workflow "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-```
-
-本地运行：
-
-```bash
-python3 run.py local-run "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-```
-
-服务器运行：
-
-```bash
-python3 run.py connect-test "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py confirm-slurm "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py upload --confirm "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py submit "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py queue-status "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py check-status "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py download-log "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py download-results "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-```
-
-后处理绘图：
-
-```bash
-python3 run.py plot-wave-maps "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py plot-spectrum "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo" --mode all
-python3 run.py plot-jason3-swh "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-python3 run.py plot-ndbc "/Volumes/Zxy's Disk/WW3Tool_workSpace/case_demo"
-```
+各步骤的 CLI 指令示例不单独集中罗列，统一放在每节的 `yml 对应参数` 或 `params.yml 参数` 小节里，方便一边看参数一边执行对应命令。
 我会在接下来的章节中，详细的和你说明每一步具体在做什么，让你放心的使用这个软件
 
 
@@ -422,10 +372,6 @@ ww3> queue-status
 
 ### 5.2 Step 1 — 强迫场准备
 
-```sh
-python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
-```
-
 第一步负责把外部 NetCDF 强迫场导入工作目录，并统一成 WW3Tool 后续步骤能够直接识别的标准文件。支持四类场：风场、流场、水位场、海冰场。
 
 ![](public/resource/README-media/截屏2026-06-28%2010.50.13.png)
@@ -457,6 +403,12 @@ python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
 #### params.yml 参数
 
 Step 1 相关配置位于 `forcing` 段：
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
+```
 
 ```yaml
 forcing:
@@ -519,11 +471,6 @@ forcing:
 
 ### 5.3 Step 2 — 网格生成
 
-```sh
-python3 run.py generate-grid  [work_dir_name]                 # 生成网格
-python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网格间距
-```
-
 Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责“把经纬度范围、水深、海岸线、网格类型变成 WW3 可读取的网格输入”，不运行 `ww3_grid`；真正把网格编译成 `mod_def.ww3` 是 Step 4 / 运行脚本中的 `ww3_grid` 完成的。
 
 关于底层网格生成器 `WW3Tool/meshgen`，详细说明见 `meshgen/README.md`。这里只写 GUI / CLI 使用时最常改、最容易误解的部分。
@@ -574,6 +521,13 @@ Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责�
 
 
 #### 网格 yml 参数
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py generate-grid  [work_dir_name]                 # 生成网格
+python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网格间距
+```
 
 ```yaml
 # ────────────────────────────────────────────────────────────────────
@@ -637,7 +591,15 @@ grid:
 - 各层各有 grid.bot、grid.obst、grid.meta 等；强迫场 NetCDF 仍放在工作目录根，各层 prnc 用 ../wind.nc 引用。
 - 根目录一份 ww3_multi.nml；谱点模式时 points.list 也在根目录，谱点须落在最细层网格内。
 
-CLI 示例（两层嵌套）：
+嵌套算例仍处演进中；若 run.log 出现 OUTPUT POINT OUT OF GRID、NBI=0 AND RANK > 1 等，请对照 嵌套网格设计与问题分析.md 检查层间范围、点位与 ww3_multi.nml 配置。
+
+
+
+##### yml 参数
+
+单层（grid_type: normal）时 levels 只保留一项即可；嵌套时至少两项。
+
+对应 params.yml 与 CLI：
 
 ```sh
 python3 run.py workdir nested_demo
@@ -649,14 +611,6 @@ python3 run.py recommend-cfl nested_demo    # 逐层按 CFL 算时间步
 python3 run.py prepare-ww3 nested_demo
 python3 run.py local-run nested_demo
 ```
-
-嵌套算例仍处演进中；若 run.log 出现 OUTPUT POINT OUT OF GRID、NBI=0 AND RANK > 1 等，请对照 嵌套网格设计与问题分析.md 检查层间范围、点位与 ww3_multi.nml 配置。
-
-
-
-##### yml 参数
-
-单层（grid_type: normal）时 levels 只保留一项即可；嵌套时至少两项。
 
 ```yml
 # 矩形网格参数：
@@ -954,7 +908,10 @@ python3 run.py prepare-ww3 nested_case
 
 GUI 点「自动配置时间步」，或 CLI / Shell 执行 recommend-cfl，会按 CFL 稳定性给出 TIMESTEPS%DTXY、DTMAX、DTKTH、DTMIN 的建议，并写入 params.yml 的 ww3_grid 段；确认第四步时再写进各层 ww3_grid.nml。
 
+对应 params.yml 与 CLI：
+
 ```sh
+# 写入 params.yml 的 ww3_grid.parameters.TIMESTEPS%*
 python3 run.py recommend-cfl new                         # 默认 safe，CFL 系数 0.9
 python3 run.py recommend-cfl new --mode fast             # 更激进，CFL 系数 1.05
 python3 run.py recommend-cfl new --mode faster           # 最激进内置档，CFL 系数 1.15
@@ -1151,22 +1108,6 @@ local.sh 与 server.sh 的差别：
 
 ### 5.6 连接服务器与 Slurm
 
-```sh
-python3 run.py connect-test work_dir_name    # 测试 SSH
-python3 run.py slurm-idle work_dir_name      # 看集群空闲核数
-python3 run.py queue-status work_dir_name    # 看作业队列
-python3 run.py confirm-slurm work_dir_name   # 按 params.yml 刷新 server.sh
-python3 run.py ssh work_dir_name             # 打开交互式 SSH 终端
-```
-
-示例：
-
-```sh
-python3 run.py connect-test hpc_case
-python3 run.py slurm-idle hpc_case
-python3 run.py confirm-slurm hpc_case
-```
-
 在 GUI 第五步，你需要先连上 HPC，确认分区、核数、节点数和 WW3 版本（slurm.server_st）。这些值在 params.yml 里；「确认 Slurm 配置」会写进 server.sh 顶部的 #SBATCH 和 MPI_NPROCS。nml 管物理参数，server.sh 管申请多少核、用哪套可执行文件。
 
 常见配置含义：
@@ -1183,40 +1124,24 @@ python3 run.py confirm-slurm hpc_case
 
 如果只是改服务器资源，不需要重新做 Step 1～4；执行 `confirm-slurm` 或 GUI 的“确认 Slurm 配置”刷新 `server.sh` 即可。
 
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py connect-test work_dir_name    # 测试 SSH
+python3 run.py slurm-idle work_dir_name      # 看集群空闲核数
+python3 run.py queue-status work_dir_name    # 看作业队列
+python3 run.py confirm-slurm work_dir_name   # 按 params.yml 刷新 server.sh
+python3 run.py ssh work_dir_name             # 打开交互式 SSH 终端
+
+# 示例
+python3 run.py connect-test hpc_case
+python3 run.py slurm-idle hpc_case
+python3 run.py confirm-slurm hpc_case
+```
+
 
 
 ### 5.7 上传与运行
-
-```sh
-python3 run.py upload --confirm work_dir_name   # 上传整个工作目录
-python3 run.py submit work_dir_name             # 在服务器提交 server.sh
-python3 run.py check-status work_dir_name       # 看 success / fail 标记
-python3 run.py download-results work_dir_name   # 拉回结果
-python3 run.py download-results work_dir_name --nested   # 嵌套：只拉最细层
-python3 run.py download-log work_dir_name       # 拉回 run.log
-python3 run.py cancel-job work_dir_name 12345   # 取消作业
-python3 run.py clear-remote --confirm work_dir_name
-python3 run.py local-run work_dir_name          # 本机跑 local.sh
-```
-
-服务器完整链路示例：
-
-```sh
-python3 run.py run-workflow hpc_case
-python3 run.py confirm-slurm hpc_case
-python3 run.py upload --confirm hpc_case
-python3 run.py submit hpc_case
-python3 run.py check-status hpc_case
-python3 run.py download-log hpc_case
-python3 run.py download-results hpc_case
-```
-
-本机调试（不连服务器）：
-
-```sh
-python3 run.py run-workflow local_test
-python3 run.py local-run local_test
-```
 
 嵌套算例下载结果时，一般只关心最细层 levelN/ 里的 ww3.*.nc。
 
@@ -1229,6 +1154,33 @@ python3 run.py local-run local_test
 5. `check-status` 或 `queue-status` 查看状态。
 6. `download-log` 先拉日志排错。
 7. `download-results` 拉结果文件。
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py upload --confirm work_dir_name   # 上传整个工作目录
+python3 run.py submit work_dir_name             # 在服务器提交 server.sh
+python3 run.py check-status work_dir_name       # 看 success / fail 标记
+python3 run.py download-results work_dir_name   # 拉回结果
+python3 run.py download-results work_dir_name --nested   # 嵌套：只拉最细层
+python3 run.py download-log work_dir_name       # 拉回 run.log
+python3 run.py cancel-job work_dir_name 12345   # 取消作业
+python3 run.py clear-remote --confirm work_dir_name
+python3 run.py local-run work_dir_name          # 本机跑 local.sh
+
+# 服务器完整链路示例
+python3 run.py run-workflow hpc_case
+python3 run.py confirm-slurm hpc_case
+python3 run.py upload --confirm hpc_case
+python3 run.py submit hpc_case
+python3 run.py check-status hpc_case
+python3 run.py download-log hpc_case
+python3 run.py download-results hpc_case
+
+# 本机调试（不连服务器）
+python3 run.py run-workflow local_test
+python3 run.py local-run local_test
+```
 
 状态判断：
 
@@ -1243,23 +1195,37 @@ python3 run.py local-run local_test
 
 ### 5.8 ntfy 通知（可选）
 
+作业在服务器上跑得久时，可在登录节点轮询 Slurm，任务结束往手机推 ntfy 通知。
+
+对应 params.yml 与 CLI：
+
 ```sh
 python3 run.py ntfy-watch work_dir_name
 python3 run.py ntfy-watch-job work_dir_name 12345
-```
 
-示例：提交作业后挂一次性监听（12345 换成 squeue 里的 JobID）：
-
-```sh
+# 提交作业后挂一次性监听（12345 换成 squeue 里的 JobID）
 python3 run.py submit hpc_case
 python3 run.py ntfy-watch-job hpc_case 12345
 ```
 
-作业在服务器上跑得久时，可在登录节点轮询 Slurm，任务结束往手机推 ntfy 通知。
-
 
 
 ### 5.9 后处理绘图
+
+Step 7 用工作目录里已有的 ww3.*.nc、points.list 等做填色图、方向谱、与 Jason-3 / NDBC 对比，不参与 WW3 积分本身。
+
+常用输入与产物：
+
+| 功能 | 需要的输入 | 输出内容 |
+| --- | --- | --- |
+| `plot-wave-maps` | `ww3.YYYY.nc` | 波高 / 方向等空间图 |
+| `plot-spectrum` | `ww3.YYYY_spec.nc` 和 `points.list` | 点位方向谱或频谱图 |
+| `plot-jason3` / `plot-jason3-swh` | WW3 场输出 + Jason-3 轨道数据 | 卫星过境对比图 |
+| `plot-ndbc` | WW3 输出 + NDBC 观测数据 | 浮标对比图 |
+
+绘图不会重新运行 WW3；如果结果文件缺失，先回到下载结果或运行日志排查。
+
+对应 params.yml 与 CLI：
 
 ```sh
 python3 run.py plot-wave-maps work_dir_name
@@ -1280,19 +1246,6 @@ python3 run.py download-results new
 python3 run.py plot-wave-maps new
 python3 run.py plot-spectrum new --mode polar
 ```
-
-Step 7 用工作目录里已有的 ww3.*.nc、points.list 等做填色图、方向谱、与 Jason-3 / NDBC 对比，不参与 WW3 积分本身。
-
-常用输入与产物：
-
-| 功能 | 需要的输入 | 输出内容 |
-| --- | --- | --- |
-| `plot-wave-maps` | `ww3.YYYY.nc` | 波高 / 方向等空间图 |
-| `plot-spectrum` | `ww3.YYYY_spec.nc` 和 `points.list` | 点位方向谱或频谱图 |
-| `plot-jason3` / `plot-jason3-swh` | WW3 场输出 + Jason-3 轨道数据 | 卫星过境对比图 |
-| `plot-ndbc` | WW3 输出 + NDBC 观测数据 | 浮标对比图 |
-
-绘图不会重新运行 WW3；如果结果文件缺失，先回到下载结果或运行日志排查。
 
 ## 7. 工作目录结构
 
