@@ -25,11 +25,11 @@ The program automatically fixes forcing-field issues (latitude ordering, time fi
 - JIGSAW triangular unstructured grid generation
 - SMCGTools SMC grid generation
 
-3. Regional runs, spectral point runs, and track runs
+3. Regional runs, 2D spectral point runs, and trajectory runs
 
 4. Slurm script configuration (SSH settings, Slurm cores, nodes, CPU)
 
-5. Automatic configuration of ww3_grid.nml, ww3_prnc.nml, ww3_shel.nml, ww3_ounf.nml, ww3_multi.nml, and related files, including grid file settings, compute precision, output precision, time range, spectral point runs, track runs, spectral partition output, and forcing field configuration
+5. Automatic configuration of ww3_grid.nml, ww3_prnc.nml, ww3_shel.nml, ww3_ounf.nml, ww3_multi.nml, and related files, including grid file settings, compute precision, output precision, time range, 2D spectral point runs, trajectory runs, spectral partition output, and forcing field configuration
 
 6. Wave height plots, wave height videos, contour plots, 2D spectrum plots, JASON3 satellite track plots, 2D spectrum plots
 
@@ -374,13 +374,13 @@ The dashed outline shows the actual map range.
 
 ![](public/resource/README-media/2026-03-30%2016.07.37.png)
 
-These three modes have similar computational cost, but the outputs differ. Spectral point mode and track mode look like only a few points are computed, but the whole map is still computed.
+These three modes have similar computational cost, but the outputs differ. 2D spectral point calculation and trajectory calculation look like only a few points are computed, but the whole map is still computed.
 
 Regional mode is the standard ww3_ounf output.
 
-Spectral point mode adds ww3_ounp.
+2D spectral point calculation adds ww3_ounp.
 
-Track mode uses ww3_trnc.
+Trajectory calculation uses ww3_trnc.
 
 You can see their configuration differences in step 4.
 
@@ -392,7 +392,7 @@ Standard calculation mode.
 
 
 
-#### Spectral point mode
+#### 2D spectral point calculation
 
 ![](public/resource/README-media/2026-03-30%2016.07.58.png)
 
@@ -413,7 +413,7 @@ Then, in step 4, a points.list file is created in the working directory:
 126 18 '5'
 ```
 
-The three columns are longitude, latitude, and point name. If a working directory contains points.list, opening it will auto-switch to spectral point mode and load the points.
+The three columns are longitude, latitude, and point name. If a working directory contains points.list, opening it will auto-switch to 2D spectral point calculation and load the points.
 
 After WW3 runs, you get ww3.2025_spec.nc in the plotting page.
 
@@ -423,11 +423,11 @@ You can plot 2D spectra:
 ![](workSpace/global/photo/spectrum/spectrum_3_time_20250104_120000.png)
 
 
-#### Track mode
+#### Trajectory calculation
 
 ![](public/resource/README-media/2026-03-30%2016.08.38.png)
 
-Similar to spectral point mode, but with an extra time column. In step 4 a file is generated: track_i.ww3, format:
+Similar to 2D spectral point calculation, but with an extra time column. In step 4 a file is generated: track_i.ww3, format:
 
 ```
 WAVEWATCH III TRACK LOCATIONS DATA 
@@ -447,7 +447,7 @@ Finally, ww3_trnc outputs ww3.2025_trck.nc.
 
 We added wind, water level, and current as forcing fields. Ice can be added, but our grid region has no ice, so it is not shown here.
 
-We use track mode. This mode produces more configuration logs than regional mode, so below we explain the track-mode-specific configs.
+We use trajectory calculation. This mode produces more configuration logs than regional mode, so below we explain the trajectory-calculation-specific configs.
 
 
 ```log
@@ -462,7 +462,7 @@ We use track mode. This mode produces more configuration logs than regional mode
 ✅ Copied and modified ww3_prnc_level.nml: FORCING%FIELD%WATER_LEVELS = T
 ✅ Modified ww3_shel.nml: Updated INPUT%FORCING%* settings
 ✅ Generated track_i.ww3 file
-✅ Modified ww3_shel.nml: Added DATE%TRACK (Track Mode)
+✅ Modified ww3_shel.nml: Added DATE%TRACK (Trajectory Calculation)
 ✅ Modified ww3_trnc.nml: TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
@@ -620,7 +620,7 @@ We edit ww3_shel.nml:
 
 The dates are start/stop dates. The '1800' in DATE%FIELD and DATE%TRACK is the timestep.
 
-DATE%TRACK is added for track mode; it is absent by default.
+DATE%TRACK is added for trajectory calculation; it is absent by default.
 
 ---
 
@@ -699,7 +699,7 @@ Based on selected forcing fields, we update ww3_shel.nml:
 
 ---
 
-Based on the track-mode list (or spectral point list), we generate:
+Based on the trajectory list (or 2D spectral point list), we generate:
 
 ```log
 ✅ Generated track_i.ww3 file
@@ -719,7 +719,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ---
 
 ```log
-✅ Modified ww3_shel.nml: Added DATE%TRACK (Track Mode)
+✅ Modified ww3_shel.nml: Added DATE%TRACK (Trajectory Calculation)
 ```
 
 We also add to ww3_shel.nml:
@@ -751,10 +751,10 @@ We edit ww3_trnc.nml:
 ---
 
 ```log
-✅ Updated namelists.nml: Changed E3D from 0 to 1 (Spectral Point Calculation Mode)
+✅ Updated namelists.nml: Changed E3D from 0 to 1 (2D Spectral Point Calculation)
 ```
 
-For spectral point mode, we also modify namelists.nml:
+For 2D spectral point calculation, we also modify namelists.nml:
 
 ```swift
 &OUTS E3D = 0 /
@@ -766,7 +766,7 @@ For spectral point mode, we also modify namelists.nml:
 
 ![](public/resource/README-media/2026-03-30%2016.12.11.png)
 
-We first generate nested grids and create coarse and fine folders in the working directory, then choose spectral point mode.
+We first generate nested grids and create coarse and fine folders in the working directory, then choose 2D spectral point calculation.
 
 
 ```log
@@ -781,7 +781,7 @@ We first generate nested grids and create coarse and fine folders in the working
 ✅ Copied 8 public/ww3 files to current work directory
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml
 ✅ Updated ww3_ounf.nml: FIELD%TIMESTART=20250103, FIELD%TIMESTRIDE=3600 seconds
-✅ Updated ww3_shel.nml (spectral point calculation mode): Start=20250103, End=20250105, Compute step=1800s，Added TYPE%POINT%FILE = 'points.list'，Added DATE%POINT and DATE%BOUNDARY
+✅ Updated ww3_shel.nml (2D spectral point calculation): Start=20250103, End=20250105, Compute step=1800s，Added TYPE%POINT%FILE = 'points.list'，Added DATE%POINT and DATE%BOUNDARY
 ✅ Modified ww3_prnc.nml: FORCING%FIELD%WINDS = T, FILE%FILENAME = '../wind.nc'
 ✅ Modified ww3_prnc.nml: FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
 ✅ Copied and modified ww3_prnc_current.nml: FORCING%FIELD%CURRENTS = T
@@ -789,9 +789,9 @@ We first generate nested grids and create coarse and fine folders in the working
 ✅ Copied and modified ww3_prnc_ice.nml: FORCING%FIELD%ICE_CONC = T
 ✅ Copied and modified ww3_prnc_ice1.nml: FORCING%FIELD%ICE_PARAM1 = T
 ✅ Modified ww3_shel.nml: Updated INPUT%FORCING%* settings
-✅ Updated namelists.nml: Changed E3D from 0 to 1 (Spectral Point Calculation Mode)
+✅ Updated namelists.nml: Changed E3D from 0 to 1 (2D Spectral Point Calculation)
 ✅ Created points.list file with 4 points
-✅ Updated ww3_ounp.nml: POINT%TIMESTART = '20250103 000000', POINT%TIMESTRIDE = '3600' (Spectral Point Calculation Mode)
+✅ Updated ww3_ounp.nml: POINT%TIMESTART = '20250103 000000', POINT%TIMESTRIDE = '3600' (2D Spectral Point Calculation)
 
 ======================================================================
 🔄 【Inner Grid】Starting to process inner grid...
@@ -799,7 +799,7 @@ We first generate nested grids and create coarse and fine folders in the working
 ✅ Modified spectral partition output scheme in ww3_shel and ww3_ounf
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml
 ✅ Updated ww3_ounf.nml: FIELD%TIMESTART=20250103, FIELD%TIMESTRIDE=3600 seconds
-✅ Updated ww3_shel.nml (spectral point calculation mode): Start=20250103, End=20250105, Compute step=1800s，Added TYPE%POINT%FILE = 'points.list'，Added DATE%POINT and DATE%BOUNDARY
+✅ Updated ww3_shel.nml (2D spectral point calculation): Start=20250103, End=20250105, Compute step=1800s，Added TYPE%POINT%FILE = 'points.list'，Added DATE%POINT and DATE%BOUNDARY
 ✅ Modified ww3_prnc.nml: FORCING%FIELD%WINDS = T, FILE%FILENAME = '../wind.nc'
 ✅ Modified ww3_prnc.nml: FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
 ✅ Copied and modified ww3_prnc_current.nml: FORCING%FIELD%CURRENTS = T
@@ -807,9 +807,9 @@ We first generate nested grids and create coarse and fine folders in the working
 ✅ Copied and modified ww3_prnc_ice.nml: FORCING%FIELD%ICE_CONC = T
 ✅ Copied and modified ww3_prnc_ice1.nml: FORCING%FIELD%ICE_PARAM1 = T
 ✅ Modified ww3_shel.nml: Updated INPUT%FORCING%* settings
-✅ Updated namelists.nml: Changed E3D from 0 to 1 (Spectral Point Calculation Mode)
+✅ Updated namelists.nml: Changed E3D from 0 to 1 (2D Spectral Point Calculation)
 ✅ Created points.list file with 4 points
-✅ Updated ww3_ounp.nml: POINT%TIMESTART = '20250103 000000', POINT%TIMESTRIDE = '3600' (Spectral Point Calculation Mode)
+✅ Updated ww3_ounp.nml: POINT%TIMESTART = '20250103 000000', POINT%TIMESTRIDE = '3600' (2D Spectral Point Calculation)
 ```
 
 We confirm parameters in step 4 and watch the log output:
@@ -878,15 +878,15 @@ Notably, we modify ww3_prnc.nml: FILE%FILENAME = '../wind.nc' to avoid doubling 
 
 
 
-#### Spectral point mode
+#### 2D spectral point calculation
 
 ```log
-✅ Updated namelists.nml: Changed E3D from 0 to 1 (Spectral Point Calculation Mode)
+✅ Updated namelists.nml: Changed E3D from 0 to 1 (2D Spectral Point Calculation)
 ✅ Created points.list file with 4 points
-✅ Updated ww3_ounp.nml: POINT%TIMESTART = '20250103 000000', POINT%TIMESTRIDE = '3600' (Spectral Point Calculation Mode)
+✅ Updated ww3_ounp.nml: POINT%TIMESTART = '20250103 000000', POINT%TIMESTRIDE = '3600' (2D Spectral Point Calculation)
 ```
 
-In the previous section, these three logs are for spectral point mode, and they are easy to understand.
+In the previous section, these three logs are for 2D spectral point calculation, and they are easy to understand.
 
  Log: E3D is changed from 0 to 1, if the spectral partitioning output scheme includes EF, then this will also be executed.
 
@@ -956,7 +956,7 @@ Open a working directory and it will auto-detect converted forcing files (by fil
 
 Auto-read grid range and resolution and fill step 2, detect coarse and fine folders and switch to nested mode.
 
-Auto-detect points.list to switch to point output mode; detect track_i.ww3 to switch to track mode and import the points list.
+Auto-detect points.list to switch to point output mode; detect track_i.ww3 to switch to trajectory calculation and import the points list.
 
 Auto-read Slurm parameters from server.sh to fill step 4, auto-detect ww3_shel.nml precision, time range, spectral partition scheme.
 
