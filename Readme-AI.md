@@ -790,11 +790,17 @@ smc:
 
 计算模式决定 WW3 算一整片海域、只算若干固定点位，还是沿一条移动轨迹算。在 params.yml 的 calc.mode 里设置，GUI 上第三步选择；没有单独的 CLI 子命令，会在 prepare-ww3 或 run-workflow 时自动读取。
 
-| 模式 | calc.mode | 你会在工作目录看到 | 最终常见产物 |
-|------|-------------|-------------------|--------------|
-| 区域尺度计算 | region | 无额外列表文件 | ww3.2025.nc 等场输出 |
-| 谱空间逐点计算 | spectral_point | points.list | ww3.2025_spec.nc 等谱点输出 |
-| 航迹模式 | track | track_i.ww3 | ww3.2025_trck.nc 等航迹输出 |
+#### 模式怎么选
+
+| 模式 | `calc.mode` | 适合场景 | 工作目录文件 | 最终常见产物 |
+|------|-------------|----------|--------------|--------------|
+| 区域尺度计算 | `region` | 要输出整片网格的波高、周期、方向等场 | 无额外列表文件 | `ww3.YYYY.nc` 等场输出 |
+| 谱空间逐点计算 | `spectral_point` | 只关心若干固定站点或论文验证点的二维谱 | `points.list` | `ww3.YYYY_spec.nc` 等谱点输出 |
+| 航迹模式 | `track` | 沿船舶、浮标、台风路径等移动轨迹取值 | `track_i.ww3` | `ww3.YYYY_trck.nc` 等航迹输出 |
+
+最常用的是 `region` 和 `spectral_point`。如果只是为了看上海外海若干验证点的谱，优先用谱点模式，输出更小；如果后续要画空间传播、波场动画或区域诊断，必须用区域模式。
+
+#### 点位来源与恢复规则
 
 典型用法：先在 GUI 或 params.yml 里设好 calc.mode 和点位，再跑第四步。例如区域算例：
 
@@ -845,6 +851,20 @@ python3 run.py run-workflow new
 > 原则很简单：只在模板文件里改和本次算例有关的字段，其余保持 public/{version}_nml/ 模板原样，方便你对照官方示例排错。
 
 下面按你在日志里常见到的阶段说明程序背后做了什么。
+
+#### 确认参数前检查
+
+点“确认参数”或执行 `prepare-ww3` 前，至少确认这些内容：
+
+| 检查项 | 为什么重要 |
+| --- | --- |
+| Step 1 已有标准强迫场 | `wind.nc/current.nc/level.nc/ice.nc` 决定 `ww3_prnc` 和 `INPUT%FORCING` 开关 |
+| Step 2 已生成网格 | `grid.meta`、`grid.bot`、`grid.obst` 会写入 `ww3_grid.nml` |
+| Step 3 模式正确 | 决定是否生成 `points.list` 或 `track_i.ww3` |
+| 计算时间在强迫场时间范围内 | 超出范围会导致 `ww3_prnc` 或主积分失败 |
+| ST 版本和 WW3 版本匹配 | 本地 / 服务器可执行文件必须支持当前网格类型和源项方案 |
+
+第四步成功后，工作目录应该至少出现 `ww3_grid.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`local.sh`、`server.sh`；有谱点或航迹时还会出现 `points.list` 或 `track_i.ww3`。
 
 
 
@@ -1097,6 +1117,20 @@ python3 run.py confirm-slurm hpc_case
 
 在 GUI 第五步，你需要先连上 HPC，确认分区、核数、节点数和 WW3 版本（slurm.server_st）。这些值在 params.yml 里；「确认 Slurm 配置」会写进 server.sh 顶部的 #SBATCH 和 MPI_NPROCS。nml 管物理参数，server.sh 管申请多少核、用哪套可执行文件。
 
+常见配置含义：
+
+| 配置 | 写入位置 | 作用 |
+| --- | --- | --- |
+| `server.ssh_config_host` | SSH 连接 | 优先使用 `~/.ssh/config` 的 Host 别名 |
+| `server.default_remote_dir` | 上传路径 | 远程工作目录根目录 |
+| `slurm.cpu` | `#SBATCH -p` | Slurm 分区 |
+| `slurm.nodes` | `#SBATCH -N` | 申请节点数 |
+| `slurm.cores` | `#SBATCH -n` / `MPI_NPROCS` | MPI 总进程数 |
+| `slurm.mem` | `#SBATCH --mem` | 申请内存 |
+| `slurm.server_st` | `server.sh` 的 PATH | 选择服务器 WW3 可执行文件版本 |
+
+如果只是改服务器资源，不需要重新做 Step 1～4；执行 `confirm-slurm` 或 GUI 的“确认 Slurm 配置”刷新 `server.sh` 即可。
+
 
 
 ### 5.7 上传与运行
@@ -1133,6 +1167,25 @@ python3 run.py local-run local_test
 ```
 
 嵌套算例下载结果时，一般只关心最细层 levelN/ 里的 ww3.*.nc。
+
+推荐执行顺序：
+
+1. `run-workflow` 或依次完成 Step 1～4。
+2. `confirm-slurm` 刷新服务器资源和 ST 路径。
+3. `upload --confirm` 上传工作目录。
+4. `submit` 提交 Slurm。
+5. `check-status` 或 `queue-status` 查看状态。
+6. `download-log` 先拉日志排错。
+7. `download-results` 拉结果文件。
+
+状态判断：
+
+| 标记 / 现象 | 含义 |
+| --- | --- |
+| `success` | 脚本完整跑完 |
+| `fail` | 某一步失败，优先看 `run.log` |
+| Slurm 仍在队列中 | 还没完成，不要急着下载结果 |
+| 没有 `success/fail` | 可能还在运行、脚本未启动，或远程路径不一致 |
 
 
 
@@ -1178,7 +1231,16 @@ python3 run.py plot-spectrum new --mode polar
 
 Step 7 用工作目录里已有的 ww3.*.nc、points.list 等做填色图、方向谱、与 Jason-3 / NDBC 对比，不参与 WW3 积分本身。
 
+常用输入与产物：
 
+| 功能 | 需要的输入 | 输出内容 |
+| --- | --- | --- |
+| `plot-wave-maps` | `ww3.YYYY.nc` | 波高 / 方向等空间图 |
+| `plot-spectrum` | `ww3.YYYY_spec.nc` 和 `points.list` | 点位方向谱或频谱图 |
+| `plot-jason3` / `plot-jason3-swh` | WW3 场输出 + Jason-3 轨道数据 | 卫星过境对比图 |
+| `plot-ndbc` | WW3 输出 + NDBC 观测数据 | 浮标对比图 |
+
+绘图不会重新运行 WW3；如果结果文件缺失，先回到下载结果或运行日志排查。
 
 ## 7. 工作目录结构
 
