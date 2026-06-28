@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import posixpath
 import re
+import subprocess
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -1884,11 +1886,74 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # Only disable the grid button — other buttons remain usable
         self._grid_button.setEnabled(False)
         self._grid_button.setText(tr("step2_create_grid_ing", "生成网格中..."))
+        self._pipeline_updates.post_state(
+            PipelineStepState(
+                is_running=True,
+                action="grid",
+                workdir=str(config.workdir.path),
+            )
+        )
 
         def task():
-            return self._pipeline_vm.generate_grid(config)
+            return self._run_grid_cli_subprocess(config)
 
         self._runner.run(task, self._on_grid_done)
+
+    def _run_grid_cli_subprocess(self, config: PipelineConfig) -> PipelineStepState:
+        """Run Step 2 in a separate Python process so geometry clipping cannot freeze Qt."""
+        root = Path(__file__).resolve().parents[3]
+        cmd = [
+            sys.executable,
+            "-u",
+            str(root / "run.py"),
+            "generate-grid",
+            str(config.workdir.path),
+        ]
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        self._pipeline_updates.post_log(
+            tr("step2_grid_subprocess_start", "▶ 已在独立进程中启动网格生成，界面可继续响应")
+        )
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(root),
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+        except OSError as exc:
+            return PipelineStepState(
+                is_running=False,
+                action="grid",
+                workdir=str(config.workdir.path),
+                error=str(exc),
+            )
+
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            message = line.rstrip()
+            if message:
+                self._pipeline_updates.post_log(message)
+        return_code = proc.wait()
+        if return_code != 0:
+            return PipelineStepState(
+                is_running=False,
+                action="grid",
+                workdir=str(config.workdir.path),
+                error=tr(
+                    "step2_grid_subprocess_failed",
+                    "网格生成子进程失败，退出码：{code}",
+                ).format(code=return_code),
+            )
+        return PipelineStepState(
+            is_running=False,
+            action="grid",
+            workdir=str(config.workdir.path),
+        )
 
     def _reference_data_available(self) -> bool:
         """Check if reference_data files are present. Prompt to download if missing."""
@@ -2847,8 +2912,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _on_grid_done(self, result: object) -> None:
         self._grid_button.setText(tr("step2_create_grid", "生成网格"))
         self._grid_button.setEnabled(True)
-        if isinstance(result, PipelineStepState) and result.error:
-            self._show_error(result.error)
+        if isinstance(result, PipelineStepState):
+            self._pipeline_updates.post_state(result)
+            if result.error:
+                self._show_error(result.error)
         elif isinstance(result, dict) and result.get("error"):
             self._show_error(str(result["error"]))
 

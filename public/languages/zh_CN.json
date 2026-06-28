@@ -322,6 +322,8 @@
   "step2_recommend_need_bounds": "请先设置有效的经纬度范围",
   "step2_recommend_body": "{mesh}（跨度≈{span} km）：{params}",
   "step2_create_grid": "生成网格",
+  "step2_grid_subprocess_start": "▶ 已在独立进程中启动网格生成，界面可继续响应",
+  "step2_grid_subprocess_failed": "网格生成子进程失败，退出码：{code}",
   "step2_level0_params": "level0（最粗）网格参数",
   "step2_compute_step": "积分步:",
   "step2_output_step": "输出步:",

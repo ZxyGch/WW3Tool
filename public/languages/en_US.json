@@ -332,6 +332,8 @@
   "step2_recommend_need_bounds": "Set a valid lon/lat extent first",
   "step2_recommend_body": "{mesh} (span ≈ {span} km): {params}",
   "step2_create_grid": "Generate Grid",
+  "step2_grid_subprocess_start": "▶ Grid generation started in a separate process; the UI remains responsive",
+  "step2_grid_subprocess_failed": "Grid generation subprocess failed with exit code: {code}",
   "step2_level0_params": "level0 (coarsest) grid",
   "step2_compute_step": "Compute step:",
   "step2_output_step": "Output step:",
