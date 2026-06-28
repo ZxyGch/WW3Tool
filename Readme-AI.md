@@ -472,31 +472,49 @@ python3 run.py generate-grid  [work_dir_name]                 # 生成网格
 python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网格间距
 ```
 
-关于网格生成器 WW3Tool/meshgen，他们的详细说明可以查看 meshgen/README.md ，这里不再赘述。
+Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责“把经纬度范围、水深、海岸线、网格类型变成 WW3 可读取的网格输入”，不运行 `ww3_grid`；真正把网格编译成 `mod_def.ww3` 是 Step 4 / 运行脚本中的 `ww3_grid` 完成的。
 
-在生成网格前，我们需要下载水深数据、海岸边界数据 reference_data，我已经把下载功能集成到 WW3Tool 了，你只需点击生成网格就会自动提示你下载。
+关于底层网格生成器 `WW3Tool/meshgen`，详细说明见 `meshgen/README.md`。这里只写 GUI / CLI 使用时最常改、最容易误解的部分。
 
-每次网格生成的文件都会自动缓存到 meshgen/cache/，以参数 hash 为 key，避免重复计算。
+#### GUI 操作逻辑
 
-我们生成的网格文件最终会被 WAVEWATCH III 编译出来的程序：ww3_grid 处理。
+主页 Step 2 的推荐操作顺序：
+
+1. 选择网格类型：普通网格 / 嵌套网格，以及矩形网格 / SMC 网格 / 非结构网格。
+2. 填写主网格范围。界面统一显示为 `纬度`、`经度` 两行，每行两个输入框；对应 yml 中的 `grid.lat: [south, north]` 和 `grid.lon: [west, east]`。
+3. 矩形网格需要填写 `DX/DY`；SMC 和非结构网格会隐藏 `DX/DY`，改用各自的参数卡片。
+4. 点击“推荐网格间距”可按当前范围和网格类型写入一组保守起步参数。
+5. 点击“查看地图”可预览当前网格范围。嵌套网格会显示各层矩形范围，便于检查细层是否完全落在粗层内部。
+6. 点击“生成网格”后，程序调用 `meshgen` 生成对应文件，并写入工作目录。
+
+如果生成网格前缺少水深数据、海岸线数据 `reference_data`，GUI 会提示下载。生成结果会按参数 hash 缓存在 `meshgen/cache/`，同一组参数重复生成时会优先复用缓存。
+
+
+#### 网格类型怎么选
+
+| 类型 | `mesh_type` | 适合场景 | 主要参数 | 主要产物 |
+| --- | --- | --- | --- | --- |
+| 矩形网格 | `structured` | 区域规则、调试、批量事件模拟；目前最稳妥 | `dx/dy`、`lon/lat`、水深/海岸线参数 | `grid.bot`、`grid.obst`、`grid.mask_nobound`、`grid.meta` |
+| 矩形嵌套 | `structured` + `grid_type: nested` | 外圈粗、内圈细；关注局部海域又需要远场传播 | `structured.nested.levels` | `level0/` 至 `levelN/` 各自一套网格文件 |
+| SMC 网格 | `smc` | 全球或大区域多分辨率格点，需配套 SMC 版本 WW3 | `n_levels`、`depmin`、`dshalw` 等 | `grid_cell.dat`、`grid_subtr.dat` 等 |
+| 非结构网格 | `unstructured` | 复杂岸线、局部高分辨率三角网格 | `hmax/hmin/hshr/dhdx` 等 | `grid.ww3`、`unstructured_grid.json` |
+
+日常区域实验优先用矩形网格；需要局部加密时用矩形嵌套；SMC 和非结构网格对 WW3 编译选项、后续 namelist 和可视化要求更高，不建议作为默认路线。
 
 
 #### 网格 yml 参数
 
-```yml
+```yaml
 # ────────────────────────────────────────────────────────────────────
 # Grid generation settings (structured / SMC / unstructured).
 #   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
-#   grid_type – 'normal' (single domain) or 'nested' (multi-level
-#               refinement: level0 coarsest … levelN finest).
+#   grid_type – 'normal' (single domain) or 'nested' (structured only).
 #   gridgen_version – grid generator back-end ('Python' or 'MATLAB').
 #   reference_data_path – path to bathymetry / coastline data bundle;
 #                          null = auto-detect from project defaults.
-#   structured.nested.levels – ordered list (coarse → fine); each level
-#               has dx/dy and lon/lat bounds. nested_contraction_coefficient
-#               is a GUI helper for auto-shrinking bounds between levels.
 #   lon       – [west, east] longitude bounds of the main domain (deg).
 #   lat       – [south, north] latitude bounds of the main domain (deg).
+#   structured.nested.levels – coarse → fine levels when grid_type=nested.
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -511,11 +529,20 @@ grid:
   - 30.0
 ```
 
+关键字段：
 
+| 字段 | 含义 |
+| --- | --- |
+| `grid.mesh_type` | 网格拓扑：`structured`、`smc`、`unstructured` |
+| `grid.grid_type` | 仅矩形网格使用：`normal` 单层，`nested` 嵌套 |
+| `grid.lon` | 主网格经度范围 `[west, east]` |
+| `grid.lat` | 主网格纬度范围 `[south, north]` |
+| `grid.reference_data_path` | 水深/海岸线数据目录；为空时按项目默认路径自动查找 |
+| `grid.structured.nested.levels` | 嵌套网格各层，从粗到细；`level0` 是最外层，`levelN` 是最细层 |
 
 #### 结构化矩形网格
 
-由 pygridgen（gridgen）在规则经纬度上生成矩形格点。grid_type: normal 时只生成一层，产物直接落在工作目录根；grid_type: nested 时按层生成多套网格，见下文。
+由 pygridgen / gridgen 在规则经纬度上生成矩形格点。`grid_type: normal` 时只生成一层，产物直接落在工作目录根；`grid_type: nested` 时按层生成多套网格，见下文。
 
 
 
@@ -610,35 +637,20 @@ structured:
 
 ##### 网格文件
 
-单层时，结构化矩形网格由 gridgen 在工作目录根生成 grid.obst、grid.bot、grid.mask_nobound、grid.meta。嵌套时每一层 levelK/ 下各有同样一套文件。
+单层时，结构化矩形网格由 gridgen 在工作目录根生成 `grid.obst`、`grid.bot`、`grid.mask_nobound`、`grid.meta`。嵌套时每一层 `levelK/` 下各有同样一套文件。
 
-```sh
-grid.bot
-  - 格式：ASCII 文本文件
-  - 内容：网格水深数据(来)
-  - 单位：来(实际值 = 文件值 / 1000)
-  - 尺寸：Ny × Nx
-grid.mask_nobound
-  - 格式：ASCII 文本文件
-  - 内容：陆海掩膜
-  - 值：0 = 陆地，1 = 海洋
-  - 尺寸：Ny × Nx
-grid.obst
-  - 格式：ASCII 文本文件
-  - 内容：x 和 y 方向的障碍物值
-  - 单位：0-1 之间的比例(实际值 = 文件值 / 100)
-  - 尺寸：Ny × Nx(x 方向)，Ny × Nx(y 方向)
-grid.meta (实际上是 ww3_grid.nml，用于同步一些配置)
-  - 格式：ASCII 文本文件
-  - 内容：供 WAVEWATCH III `ww3_grid` 使用的网格描述
-  - 包含：网格尺寸、分辨率、范围等信息
-```
+| 文件 | 说明 |
+| --- | --- |
+| `grid.bot` | 水深网格，ASCII 文本，尺寸通常为 `Ny × Nx`；后续写入 `ww3_grid.nml` 的 bottom 输入 |
+| `grid.mask_nobound` | 陆海掩膜，`0 = 陆地`，`1 = 海洋` |
+| `grid.obst` | x/y 方向阻塞率，供 WW3 obstruction 输入使用 |
+| `grid.meta` | WW3Tool 记录的网格元信息，包含范围、分辨率、格点数等；Step 4 会据此同步 namelist |
 
 
 
 #### 三角形非结构化网格
 
-基于 JIGSAW 生成，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数
+基于 JIGSAW / NOAA `unst_msh_gen` 生成三角网格，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数。非结构网格不使用 `DX/DY`，核心控制量是 `hmax/hmin/hshr`。
 
 
 ##### yml 参数
@@ -679,13 +691,12 @@ unstructured:
 
 ##### 网格文件
 
-| 文件                    | 说明                                                                            |
-| --------------------- | ----------------------------------------------------------------------------- |
-| grid_cell.dat         | SMC 内部单元                                                                      |
-| grid_boundary.dat     | 仅当 grid.global 为 false 且 boundary.generate_boundary_cells 为 true 时生成开边界带。 |
-| grid_arctic_cells.dat | 仅当 grid.global 为 **true** 且 **grid.arctic** 为 **true** 时生成北极单元。           |
-| grid_subtr.dat        | WW3 SMCG 子网格阻障文件（create_grid.py 写 **全零** = 无阻挡）。                            |
-| grid.json             | 网格生成配置                                                                        |
+| 文件 | 说明 |
+| --- | --- |
+| `grid.ww3` | 非结构网格主文件，供 WW3 非结构网格流程使用 |
+| `unstructured_grid.json` | 本次生成时解析后的配置，便于复现和缓存定位 |
+
+非结构网格缓存位于 `meshgen/cache/unst/<hash>/`。如果命中缓存，会直接把 `grid.ww3` 复制到工作目录。
 
 
 
@@ -699,7 +710,7 @@ unstructured:
 
 #### SMC 网格
 
-基于 SMCGTools 生成
+基于 SMCGTools 生成。SMC 网格需要使用支持 SMC 的 WW3 可执行文件和对应 namelist 模板；如果只是普通区域模拟，不建议默认选择 SMC。
 
 
 ##### yml 参数
