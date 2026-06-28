@@ -1007,6 +1007,16 @@ ww3:
   output_step: "3600"   # 输出间隔，秒
 ```
 
+这些时间字段不是重复配置，而是分别给 WW3 的不同程序使用：
+
+| 写入位置 | 作用 |
+| --- | --- |
+| `ww3_shel.nml` 的 `DOMAIN%START/STOP` | 控制主模式积分从什么时候开始、什么时候结束，是整个模拟的总时间窗 |
+| `ww3_shel.nml` 的 `DATE%FIELD` | 控制场输出在主积分过程中什么时候写出、按多长间隔写出 |
+| `ww3_ounf.nml` 的 `FIELD%TIMESTART/TIMESTRIDE` | 控制 `ww3_ounf` 从中间文件导出 NetCDF 场结果的起始时间和输出间隔 |
+| `ww3_ounp.nml` 的 `POINT%TIMESTART/TIMESTRIDE` | 二维谱点计算时，控制谱点 NetCDF 的导出起始时间和输出间隔 |
+| `ww3_prnc.nml` 的 `FORCING%TIMESTART/TIMESTOP` | 控制强迫场预处理读取哪一段时间，通常应覆盖主积分时间窗 |
+
 - 计算时间窗写进 ww3_shel.nml（或嵌套时的 ww3_multi.nml）的 DOMAIN%START/STOP 和 DATE%FIELD 等。
 - NetCDF 场输出间隔写进 ww3_ounf.nml 的 FIELD%TIMESTRIDE。
 - 强迫场预处理 ww3_prnc.nml 的时间窗与计算一致，避免多读无关时段。
