@@ -17,6 +17,7 @@ from netCDF4 import Dataset
 
 from ..runtime_config import PUBLIC_DIR, load_config
 from ...support.translations import tr
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 
 
@@ -295,7 +296,20 @@ class WW3PrncNML(NMLPrimitives):
 
             prefix = f"{grid_label} " if grid_label else ""
             field_name = "CURRENTS" if forcing_field_type == 'CURRENTS' else "WINDS"
-            self.log(prefix + tr("step4_ww3_prnc_modified", "✅ 已修改 ww3_prnc.nml：FORCING%FIELD%{field} = T, FILE%FILENAME = '{file}'").format(field=field_name, file=filename))
+            prnc_assignments: list[Assignment] = [
+                (f"FORCING%FIELD%{field_name}", "T"),
+                ("FILE%FILENAME", f"'{filename}'"),
+            ]
+            for index, var_name in enumerate(var_names, start=1):
+                prnc_assignments.append((f"FILE%VAR({index})", f"'{var_name}'"))
+            self.log(
+                prefix
+                + format_nml_log_message(
+                    "step4_ww3_prnc_modified",
+                    "✅ 已修改 ww3_prnc.nml：\n{details}",
+                    prnc_assignments,
+                )
+            )
 
         except Exception as e:
             self.log(tr("ww3_prnc_modify_error", "❌ 修改 {file}/ww3_prnc.nml 出错：{error}").format(file=os.path.basename(target_dir), error=e))
@@ -399,7 +413,17 @@ class WW3PrncNML(NMLPrimitives):
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
-            self.log(f"{prefix}{tr('step4_ww3_prnc_times_updated', '✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = {start}, FORCING%TIMESTOP = {end}').format(start=start_datetime, end=end_datetime)}")
+            self.log(
+                prefix
+                + format_nml_log_message(
+                    "step4_ww3_prnc_times_updated",
+                    "✅ 已修改 ww3_prnc.nml：\n{details}",
+                    [
+                        ("FORCING%TIMESTART", f"'{start_datetime}'"),
+                        ("FORCING%TIMESTOP", f"'{end_datetime}'"),
+                    ],
+                )
+            )
 
         except Exception as e:
             prefix = f"{grid_label} " if grid_label else ""
@@ -693,7 +717,21 @@ class WW3PrncNML(NMLPrimitives):
 
                     grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
                     prefix = f"[{grid_label}] " if grid_label else ""
-                    self.log(tr("file_copied_modified", "✅ 已复制并修改 {file}：FORCING%FIELD%{field} = T").format(file=output_filename, field=field_name))
+                    copied_assignments: list[Assignment] = [
+                        (f"FORCING%FIELD%{field_name}", "T"),
+                        ("FILE%FILENAME", f"'{filename}'"),
+                    ]
+                    for index, var_name in enumerate(var_names, start=1):
+                        copied_assignments.append((f"FILE%VAR({index})", f"'{var_name}'"))
+                    self.log(
+                        prefix
+                        + format_nml_log_message(
+                            "file_copied_modified",
+                            "✅ 已复制并修改 {file}：\n{details}",
+                            copied_assignments,
+                            file=output_filename,
+                        )
+                    )
 
                 tasks = []
                 if field_key == 'ice':

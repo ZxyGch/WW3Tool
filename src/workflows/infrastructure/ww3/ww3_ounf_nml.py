@@ -18,6 +18,7 @@ import re
 
 from ...support.translations import tr
 from ..runtime_config import load_full_config
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 
 
@@ -113,7 +114,19 @@ class WW3OunfNML(NMLPrimitives):
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
-            self.log(f"{prefix}{tr('step4_ww3_ounf_updated', '✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART={start}，FIELD%TIMESTRIDE={stride}秒').format(start=start_date, stride=stride)}")
+            assignments: list[Assignment] = [
+                ("FIELD%TIMESTART", f"'{start_date} 000000'"),
+                ("FIELD%TIMESTRIDE", f"'{stride}'"),
+                ("FIELD%TIMESPLIT", str(timesplit_value)),
+            ]
+            self.log(
+                prefix
+                + format_nml_log_message(
+                    "step4_ww3_ounf_updated",
+                    "✅ 已更新 ww3_ounf.nml：\n{details}",
+                    assignments,
+                )
+            )
 
         except Exception as e:
             self.log(tr("ww3_ounf_modify_error", "❌ 修改 ww3_ounf.nml 出错: {error}").format(error=e))

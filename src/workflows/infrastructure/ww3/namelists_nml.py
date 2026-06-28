@@ -19,8 +19,10 @@ import os
 import re
 
 from ...support.translations import tr
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 from .smc_open_boundary import BUNDY_FILENAME, count_smc_bundy_points, read_smc_n_levels
+from .smc_ww3_version import normalize_psmc_namelist_lines, resolve_ww3_version
 
 
 class NamelistsNML(NMLPrimitives):
@@ -155,7 +157,13 @@ class NamelistsNML(NMLPrimitives):
             if modified:
                 with open(namelists_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
-                self.log(tr("step4_namelists_e3d_updated", "✅ 已修改 namelists.nml：将 &OUTS 中的 E3D 设为 1"))
+                self.log(
+                    format_nml_log_message(
+                        "step4_namelists_e3d_updated",
+                        "✅ 已修改 namelists.nml：\n{details}",
+                        [("E3D", "1")],
+                    )
+                )
                 return True
             return False
 
@@ -163,10 +171,44 @@ class NamelistsNML(NMLPrimitives):
             self.log(tr("namelists_modify_error", "❌ 修改 namelists.nml 时出错：{error}").format(error=str(e)))
             return False
 
+    def _normalize_smc_psmc_namelist_in_dir(self, target_dir: str) -> bool:
+        """按 ``ww3.version`` 将 ``&PSMC`` 字段名对齐到 6.07 或 7.14 约定。"""
+        namelists_path = os.path.join(target_dir, "namelists.nml")
+        if not os.path.isfile(namelists_path):
+            return False
+
+        ww3_version = resolve_ww3_version(work_dir=target_dir)
+        try:
+            with open(namelists_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            new_lines, modified = normalize_psmc_namelist_lines(
+                lines, ww3_version=ww3_version
+            )
+            if not modified:
+                return False
+            with open(namelists_path, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(new_lines)
+            self.log(
+                tr(
+                    "step4_namelists_smc_psmc_normalized",
+                    "✅ 已按 WW3 {ver} 规范化 namelists.nml &PSMC 字段名",
+                ).format(ver=ww3_version)
+            )
+            return True
+        except Exception as e:
+            self.log(
+                tr(
+                    "step4_namelists_smc_psmc_normalize_failed",
+                    "⚠️ 规范化 namelists.nml &PSMC 失败：{err}",
+                ).format(err=e)
+            )
+            return False
+
     def _sync_smc_psmc_namelist_if_needed(self) -> None:
         """Regional SMC runs: sync ``&PSMC`` ``NBISMC`` / ``LvSMC`` from grid outputs."""
         if not getattr(self, "_is_step2_smc_mesh", lambda: False)():
             return
+        self._normalize_smc_psmc_namelist_in_dir(self.selected_folder)
         self._sync_smc_psmc_namelist_in_dir(self.selected_folder)
 
     def _sync_smc_psmc_namelist_in_dir(self, target_dir: str) -> bool:
@@ -229,16 +271,19 @@ class NamelistsNML(NMLPrimitives):
             with open(namelists_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            parts: list[str] = [f"NBISMC={nbismc}"]
-            if nbismc > 0:
-                parts[0] = f"NBISMC={nbismc} ({BUNDY_FILENAME})"
-            parts.append(f"LvSMC={int(n_levels)}")
-            detail = "，".join(parts)
+            psmc_assignments: list[Assignment] = [
+                (
+                    "NBISMC",
+                    f"{nbismc} ({BUNDY_FILENAME})" if nbismc > 0 else str(nbismc),
+                ),
+                ("LvSMC", str(int(n_levels))),
+            ]
             self.log(
-                tr(
+                format_nml_log_message(
                     "step4_namelists_smc_psmc_updated",
-                    "✅ 已修改 namelists.nml：&PSMC 同步 {detail}",
-                ).format(detail=detail)
+                    "✅ 已修改 namelists.nml：\n{details}",
+                    psmc_assignments,
+                )
             )
             return True
         except Exception as e:

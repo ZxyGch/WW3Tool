@@ -7,6 +7,7 @@ from typing import Callable, Mapping, Optional
 
 from ...support.translations import tr
 from ..runtime_config import load_config
+from .nml_log_format import Assignment, format_nml_log_message
 
 _PARAM_KEYS = (
     "SPECTRUM%XFR",
@@ -67,6 +68,11 @@ def _param_value_lines(parameters: Mapping[str, str]) -> dict[str, dict[str, str
     }
 
 
+def _grid_param_log_assignments(parameters: Mapping[str, str]) -> list[Assignment]:
+    """按 nml 块顺序列出实际写入的谱/时间步字段。"""
+    return [(key, parameters[key]) for key in _PARAM_KEYS if key in parameters]
+
+
 def write_ww3_grid_parameters_to_nml(
     nml_path: str | Path,
     parameters: Mapping[str, str],
@@ -116,13 +122,24 @@ def write_ww3_grid_parameters_to_nml(
 
     path.write_text("".join(new_lines), encoding="utf-8")
     if log is not None:
+        assignments = _grid_param_log_assignments(parameters)
         if level_idx is not None:
             log(
-                tr(
+                format_nml_log_message(
                     "ww3_grid_params_applied_level",
-                    "✅ 【level{idx}】已将频谱参数与时间步长写入 ww3_grid.nml",
-                ).format(idx=level_idx)
+                    "✅ 【level{idx}】已将频谱参数与时间步长写入 ww3_grid.nml：\n{details}",
+                    assignments,
+                    idx=level_idx,
+                    blank_before_prefixes=("TIMESTEPS%",),
+                )
             )
         else:
-            log(tr("ww3_grid_params_applied", "✅ 已将频谱参数与时间步长写入 ww3_grid.nml"))
+            log(
+                format_nml_log_message(
+                    "ww3_grid_params_applied",
+                    "✅ 已将频谱参数与时间步长写入 ww3_grid.nml：\n{details}",
+                    assignments,
+                    blank_before_prefixes=("TIMESTEPS%",),
+                )
+            )
     return True

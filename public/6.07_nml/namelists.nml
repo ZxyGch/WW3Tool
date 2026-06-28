@@ -486,13 +486,13 @@
   LATMIN = 70.0
 /
 ! -------------------------------------------------------------------- !
-! SMC grid propagation    : Namelist PSMC
+! SMC grid propagation    : Namelist PSMC (6.07: CFLTM, DTIME, LATMIN)
 ! -------------------------------------------------------------------- !
 &PSMC
-  CFLSM = 0.7,
-  DTIMS = 360.0,
+  CFLTM = 0.7,
+  DTIME = 360.0,
+  LATMIN = 86.0,
   RFMAXD = 36.0,
-  Arctic = .FALSE.,
   AVERG = .TRUE.,
   UNO3 = .FALSE.,
   LvSMC = 1,

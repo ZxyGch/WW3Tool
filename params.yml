@@ -47,8 +47,8 @@ presets:
     - EF
   server_st:
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
-    ST4: /public/home/weiyl001/software2/ww4/model/exe
     ST6: /public/home/weiyl001/software2/ww6/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
     ST6A: /public/home/weiyl001/software2/ww6a/model/exe
     ST6B: /public/home/weiyl001/software2/ww6b/model/exe
     7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
@@ -421,6 +421,7 @@ desktop:
   theme: AUTO
   run_mode: both
   recent_workdirs:
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_13-08-42
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-27_21-25-51
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-25_13-04-29
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

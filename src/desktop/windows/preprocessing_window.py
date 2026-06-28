@@ -504,6 +504,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._refresh_home_st_and_output_options(config)
         if section in {"st_versions", "local_st_versions"} and hasattr(self, "_local_run_panel"):
             self._local_run_panel.refresh_st_versions()
+        if section == "forcing":
+            self._sync_forcing_options_from_runtime()
 
     def _refresh_home_st_and_output_options(self, config: dict) -> None:
         st_names = self._server_st_names(config)
@@ -578,6 +580,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._mode = self._forcing_panel.mode
         self._auto_associate = self._forcing_panel.auto_associate
         self._forcing_status = self._forcing_panel.status
+        self._sync_forcing_options_from_runtime()
         layout.addWidget(self._forcing_panel.widget)
 
         self._grid_panel = GridStepPanel(
@@ -614,6 +617,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             button_style=self._button_style,
             bounds_provider=self._calc_grid_bounds,
             notify=self._append_log,
+            points_changed=self._persist_step3_points_to_params,
         )
         self._calc_mode_combo = self._calculation_panel.mode_combo
         layout.addWidget(self._calculation_panel.widget)
@@ -757,6 +761,21 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             aa = defaults.get("forcing", {}).get("auto_associate")
         return bool(aa) if aa is not None else True
 
+    def _sync_forcing_options_from_runtime(self) -> None:
+        """从根 params.yml / 设置页同步 Step 1 默认导入方式与自动关联开关。"""
+        try:
+            from workflows.infrastructure.runtime_config import load_full_config
+
+            runtime = load_full_config()
+        except Exception:
+            return
+        aa = runtime.get("AUTO_ASSOCIATE_FIELDS")
+        if aa is not None and hasattr(self, "_auto_associate"):
+            self._auto_associate.setChecked(bool(aa))
+        pm = runtime.get("FORCING_PROCESS_MODE")
+        if pm in {"copy", "move"} and hasattr(self, "_forcing_panel"):
+            self._forcing_panel.set_process_mode(pm)
+
     def _sync_forcing_options_from_config(self, config: PipelineConfig, defaults: dict) -> None:
         pm = config.forcing.process_mode or defaults.get("forcing", {}).get("process_mode") or "copy"
         self._forcing_panel.set_process_mode(pm if pm in {"copy", "move"} else "copy")
@@ -766,6 +785,41 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         crop_bbox = config.forcing.crop_bbox or default_forcing.get("crop_bbox") or None
         self._forcing_panel.set_range_values(time_range=crop_time, bbox=crop_bbox, overwrite_editable=True)
         self._on_forcing_mode_changed()
+
+    def _fill_auto_associated_forcing_slots(self, file_path: str, *, trigger_key: str) -> list[str]:
+        """选择单个 NetCDF 时，按变量检测自动填充其它强迫场槽位。
+
+        仅填充**空槽位**；已有有效选择不会被覆盖。用户点击的 ``trigger_key`` 始终更新为本次所选文件。
+        """
+        labels = self._forcing_field_button_labels()
+        self._set_path_value(trigger_key, file_path, labels[trigger_key])
+        filled: list[str] = [trigger_key]
+        if not self._auto_associate.isChecked():
+            return filled
+        from workflows.infrastructure.forcing.variable_detector import VariableDetector
+
+        detected = VariableDetector.inspect_forcing_fields(file_path).get("detected", {}) or {}
+        log_by_field = {
+            "wind": tr("log_auto_fill_wind", "✅ 检测到风场变量（u10/v10），已自动填充风场"),
+            "current": tr("log_auto_fill_current", "✅ 检测到流场变量（uo/vo），已自动填充流场"),
+            "level": tr("log_auto_fill_level", "✅ 检测到水位场变量 'zos'，已自动填充水位场"),
+            "ice": tr("log_auto_fill_ice", "✅ 检测到海冰场变量 'siconc'，已自动填充海冰场"),
+        }
+        for key in ("wind", "current", "level", "ice"):
+            if key == trigger_key or not detected.get(key):
+                continue
+            if self._paths[key].text().strip():
+                continue
+            self._set_path_value(key, file_path, labels[key])
+            filled.append(key)
+            self._append_log(log_by_field[key])
+        if len(filled) > 1:
+            self._append_log(
+                tr("log_detected_multi_forcing", "ℹ️ 检测到文件包含多个强迫场: {fields}").format(
+                    fields=", ".join(filled)
+                )
+            )
+        return filled
 
     def _scan_and_fill_forcing_buttons(self, workdir: str, *, auto_associate: bool | None = None) -> None:
         if not workdir or not os.path.isdir(workdir):
@@ -1019,6 +1073,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if selected:
             self._set_path_value(key, selected)
             if key in {"wind", "current", "level", "ice"}:
+                self._prune_stale_forcing_paths()
+                self._fill_auto_associated_forcing_slots(selected, trigger_key=key)
                 self._show_selected_forcing_file_info(key, selected)
                 if not self._paths["workdir"].text().strip():
                     self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
@@ -1260,6 +1316,21 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 labels.append(tr("step2_level_n", "level{i}").format(i=i))
         return bounds_from_level_regions(levels, level_labels=labels)
 
+    def _persist_step3_points_to_params(self) -> None:
+        """第三步点位表变更后立即写回工作目录 params.yml（不校验点位是否为空）。"""
+        self._persist_current_form_to_workdir_params(validation_stage="grid", log=False)
+
+    def _validate_calc_points(self) -> bool:
+        """谱点/航迹模式下要求点位表非空（第四步确认参数前校验）。"""
+        mode = self._calculation_panel.mode
+        if mode == "spectral_point" and not self._calculation_panel.points():
+            self._show_error(tr("step3_spectral_points_required", "谱空间逐点计算需至少一个谱点"))
+            return False
+        if mode == "track" and not self._calculation_panel.track_points():
+            self._show_error(tr("step3_track_points_required", "航迹模式需至少一个航迹点"))
+            return False
+        return True
+
     def _persist_params(self) -> bool:
         # [EN] Write current form (including step 3 points) back to params.yml; report error and return False if points are incomplete.
         # [EN] Called alongside step 4 "Confirm Parameters" to persist form edits to disk.
@@ -1267,12 +1338,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         在第四步「确认参数」时顺带调用，使表单编辑落盘。
         """
-        mode = self._calculation_panel.mode
-        if mode == "spectral_point" and not self._calculation_panel.points():
-            self._show_error(tr("step3_spectral_points_required", "谱空间逐点计算需至少一个谱点"))
-            return False
-        if mode == "track" and not self._calculation_panel.track_points():
-            self._show_error(tr("step3_track_points_required", "航迹模式需至少一个航迹点"))
+        if not self._validate_calc_points():
             return False
         return self._persist_current_form_to_workdir_params() is not None
 
@@ -1291,11 +1357,38 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _forcing_process_mode(self) -> str:
         return self._forcing_panel.process_mode_value() if hasattr(self, "_forcing_panel") else "copy"
 
+    def _forcing_path_is_readable(self, value: str) -> bool:
+        if not value:
+            return False
+        try:
+            return Path(value).expanduser().is_file()
+        except OSError:
+            return False
+
+    def _prune_stale_forcing_paths(self) -> list[str]:
+        """清除 UI 中指向不存在文件的强迫场路径，避免公共范围读取失败。"""
+        labels = self._forcing_field_button_labels()
+        removed: list[str] = []
+        for key in ("wind", "current", "level", "ice"):
+            value = self._paths[key].text().strip()
+            if not value or self._forcing_path_is_readable(value):
+                continue
+            self._set_path_value(key, "", labels[key])
+            removed.append(value)
+        if removed:
+            self._append_log(
+                tr(
+                    "step1_stale_forcing_paths_cleared",
+                    "ℹ️ 已清除不存在的强迫场路径：{paths}",
+                ).format(paths=", ".join(removed))
+            )
+        return removed
+
     def _selected_forcing_paths(self) -> list[str]:
         paths = []
         for key in ("wind", "current", "level", "ice"):
             value = self._paths[key].text().strip()
-            if value:
+            if value and self._forcing_path_is_readable(value):
                 paths.append(value)
         return paths
 
@@ -1361,6 +1454,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             try:
                 path.expanduser().resolve().unlink()
                 self._append_log(tr("step1_forcing_file_deleted", "🗑️ 已删除工作目录强迫场文件：{path}").format(path=value))
+            except FileNotFoundError:
+                self._append_log(
+                    tr(
+                        "step1_forcing_file_already_missing",
+                        "ℹ️ 强迫场文件已不存在，仅清除引用：{path}",
+                    ).format(path=value)
+                )
             except OSError as exc:
                 self._show_error(tr("step1_forcing_file_delete_failed", "删除强迫场文件失败：{error}").format(error=exc))
                 return
@@ -1382,6 +1482,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 )
             )
         self._refresh_forcing_common_ranges(clear_if_empty=True)
+        self._persist_current_form_to_workdir_params(validation_stage="plot", log=False)
 
     def _forcing_crop_time_range(self, *, silent: bool = False) -> list[str] | None:
         values = self._forcing_panel.crop_time_range()
@@ -1405,6 +1506,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _prepare_selected_forcing(self, *, apply_crop: bool) -> None:
         if self._busy:
             return
+        self._prune_stale_forcing_paths()
         if not self._paths["workdir"].text().strip():
             self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
             return
@@ -1444,21 +1546,19 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         return (regions, region_labels) if regions else None
 
     def _forcing_map_aspect(self, regions: list[GridRegion]) -> float:
-        import numpy as np
+        from workflows.domain.grid_bounds import regional_map_extent
 
         all_lon = [value for region in regions for value in (region.lon or [])]
         all_lat = [value for region in regions for value in (region.lat or [])]
         if not all_lon or not all_lat:
             return 4.0 / 3.0
-        lat_center = (min(all_lat) + max(all_lat)) / 2.0
-        lon_span = max(max(all_lon) - min(all_lon), 1e-6)
-        lat_span = max(max(all_lat) - min(all_lat), 1e-6)
-        cos_ref = max(abs(np.cos(np.radians(lat_center))), 0.08)
-        return float(np.clip((lon_span * cos_ref) / lat_span, 0.2, 14.0))
+        map_meta = regional_map_extent([min(all_lon), max(all_lon)], [min(all_lat), max(all_lat)])
+        return float(map_meta["aspect_wh"])
 
     def _view_forcing_region_map(self) -> None:
         if self._busy:
             return
+        self._prune_stale_forcing_paths()
         try:
             regions_and_labels = self._forcing_map_regions()
         except Exception as exc:
@@ -1511,6 +1611,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._forcing_panel.clear_range_values()
 
     def _refresh_forcing_common_ranges(self, *, clear_if_empty: bool = False) -> None:
+        self._prune_stale_forcing_paths()
         if not self._selected_forcing_paths():
             if clear_if_empty:
                 self._clear_forcing_common_ranges()
@@ -1640,16 +1741,59 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         self._runner.run(task, self._on_bounds_done)
 
+    def _current_workdir_path(self) -> Path | None:
+        """当前工作目录：selected_folder → 隐藏 workdir 框 → 已载入 config。"""
+        candidates: list[str] = []
+        folder = getattr(self, "selected_folder", None)
+        if folder:
+            candidates.append(str(folder))
+        if "workdir" in self._paths:
+            text = self._paths["workdir"].text().strip()
+            if text:
+                candidates.append(text)
+        loaded = getattr(self, "_loaded_config", None)
+        if loaded is not None and loaded.workdir.path:
+            candidates.append(str(loaded.workdir.path))
+        seen: set[str] = set()
+        for raw in candidates:
+            key = os.path.abspath(os.path.normpath(os.path.expanduser(raw)))
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                path = Path(raw).expanduser().resolve()
+            except OSError:
+                continue
+            if path.is_dir():
+                return path
+        return None
+
     def _resolve_wind_nc(self) -> Path | None:
-        workdir_text = self._paths["workdir"].text().strip()
-        if workdir_text:
-            workdir = Path(workdir_text).expanduser().resolve()
-            wind_nc = workdir / "wind.nc"
-            if wind_nc.is_file():
-                return wind_nc
-            matches = sorted(workdir.glob("*wind*.nc"))
-            if matches:
-                return matches[0]
+        from workflows.application.grid_tools import resolve_wind_nc_in_workdir
+
+        workdir = self._current_workdir_path()
+        if workdir is not None:
+            auto_associate = self._auto_associate.isChecked() if hasattr(self, "_auto_associate") else True
+            resolved = resolve_wind_nc_in_workdir(workdir, auto_associate=auto_associate)
+            if resolved is not None:
+                selected = self._paths["wind"].text().strip()
+                if selected:
+                    try:
+                        if Path(selected).expanduser().resolve() != resolved:
+                            self._append_log(
+                                tr(
+                                    "step2_using_workdir_wind",
+                                    "ℹ️ 从风场读取范围：使用工作目录内已转换文件 {path}",
+                                ).format(path=resolved)
+                            )
+                    except OSError:
+                        self._append_log(
+                            tr(
+                                "step2_using_workdir_wind",
+                                "ℹ️ 从风场读取范围：使用工作目录内已转换文件 {path}",
+                            ).format(path=resolved)
+                        )
+                return resolved
         selected = self._paths["wind"].text().strip()
         return Path(selected).expanduser().resolve() if selected else None
 
@@ -1664,6 +1808,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         bounds = result.result
         if bounds is None:
             return
+        if getattr(bounds, "source_path", None):
+            labels = self._forcing_field_button_labels()
+            self._set_path_value("wind", bounds.source_path, labels["wind"])
         # wind.nc 的范围即整个计算域 = level0（最外层）；内层由用户在层卡中自定义
         self._grid_panel.set_bounds(
             "grid",
@@ -1787,16 +1934,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
 
         # Calculate map aspect ratio from grid extent so the dialog sizes correctly
-        import numpy as np
-        # 取所有嵌套层的并集（level0 最外即已覆盖全部，但稳妥起见汇总各层）
+        from workflows.domain.grid_bounds import regional_map_extent
+
         levels = config.grid.nested_levels or [config.grid.outer]
         all_lon = [v for lv in levels for v in lv.lon]
         all_lat = [v for lv in levels for v in lv.lat]
-        lat_center = (min(all_lat) + max(all_lat)) / 2.0
-        lon_span = max(max(all_lon) - min(all_lon), 1e-6)
-        lat_span = max(max(all_lat) - min(all_lat), 1e-6)
-        cos_ref = max(abs(np.cos(np.radians(lat_center))), 0.08)
-        map_aspect_wh = float(np.clip((lon_span * cos_ref) / lat_span, 0.2, 14.0))
+        map_meta = regional_map_extent([min(all_lon), max(all_lon)], [min(all_lat), max(all_lat)])
+        map_aspect_wh = float(map_meta["aspect_wh"])
 
         handle, output = tempfile.mkstemp(suffix="_region_map.png", prefix="ww3tool_")
         os.close(handle)
@@ -2851,6 +2995,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _apply_ww3_params_only(self) -> None:
         """Apply WW3 namelist parameters without re-running forcing or grid generation."""
+        if not self._validate_calc_points():
+            return
         if not self._confirm_ww3_time_within_forcing_range():
             return
         # Use "plot" stage to skip forcing-path existence checks — files are
@@ -2991,7 +3137,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 value = getattr(state.files, key, None)
                 if value:
                     self._set_path_value(key, str(value), empty_text)
+            self._prune_stale_forcing_paths()
             self._refresh_forcing_common_ranges(clear_if_empty=False)
+            self._persist_current_form_to_workdir_params(validation_stage="plot", log=False)
         else:
             self._forcing_status.setText(tr("status_waiting", "等待执行"))
 

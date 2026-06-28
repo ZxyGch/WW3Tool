@@ -26,6 +26,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from qfluentwidgets import MessageBoxBase, PrimaryPushButton
+from workflows.domain.grid_bounds import (
+    GLOBAL_LAT,
+    GLOBAL_LON,
+    lon_span_deg,
+    normalize_longitude,
+    point_in_lon_lat_bounds,
+    regional_map_extent,
+)
 from workflows.support.translations import tr
 
 _TITLE = "在地图上选点（点击地图选择点位，可多选）"
@@ -63,25 +71,25 @@ class MapPointPickerDialog(MessageBoxBase):
             self.setClosableOnMaskClicked(False)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self._reject)
 
-        lon_range = bounds["lon_max"] - bounds["lon_min"]
-        lat_range = bounds["lat_max"] - bounds["lat_min"]
-        mlon = max(lon_range * 0.1, 2.0)
-        mlat = max(lat_range * 0.1, 2.0)
-        self._ext = [
-            bounds["lon_min"] - mlon,
-            min(bounds["lon_max"] + mlon, 185.0),
-            max(bounds["lat_min"] - mlat, -90.0),
-            min(bounds["lat_max"] + mlat, 90.0),
-        ]
-        self._central_lon = 0.5 * (self._ext[0] + self._ext[1])
+        map_meta = regional_map_extent(
+            [bounds["lon_min"], bounds["lon_max"]],
+            [bounds["lat_min"], bounds["lat_max"]],
+            padding_frac=0.1,
+            min_padding_deg=2.0,
+        )
+        self._ext = list(map_meta["extent"])  # type: ignore[arg-type]
+        self._central_lon = float(map_meta["central_lon"])
+        self._is_global_view = self._ext == [GLOBAL_LON[0], GLOBAL_LON[1], GLOBAL_LAT[0], GLOBAL_LAT[1]]
 
         _configure_cjk_fonts()
         self._fig = Figure(figsize=(10, 8), dpi=100)
         self._canvas = FigureCanvas(self._fig)
         self._canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._ax = self._fig.add_subplot(
-            1, 1, 1, projection=ccrs.PlateCarree(central_longitude=self._central_lon)
-        )
+        if self._is_global_view:
+            projection = ccrs.PlateCarree()
+        else:
+            projection = ccrs.PlateCarree(central_longitude=self._central_lon)
+        self._ax = self._fig.add_subplot(1, 1, 1, projection=projection)
         self._canvas.mpl_connect("button_press_event", self._on_click)
 
         content = QWidget()
@@ -158,6 +166,12 @@ class MapPointPickerDialog(MessageBoxBase):
             ]
         n = len(levels)
         for i, lv in enumerate(levels):
+            west = float(lv["lon_min"])
+            east = float(lv["lon_max"])
+            south = float(lv["lat_min"])
+            north = float(lv["lat_max"])
+            if lon_span_deg((west, east)) >= 359.0 and abs(north - south) >= 179.0:
+                continue
             color = cm.rainbow(i / max(n - 1, 1))
             bx = [
                 lv["lon_min"],
@@ -217,16 +231,36 @@ class MapPointPickerDialog(MessageBoxBase):
     def _update_delete_button(self) -> None:
         self._delete_last_btn.setEnabled(bool(self._points))
 
+    def _click_lon_lat(self, event) -> tuple[float, float] | None:
+        """Map canvas click to geographic lon/lat (PlateCarree)."""
+        if event.inaxes != self._ax or event.xdata is None or event.ydata is None:
+            return None
+        lon, lat = self._ccrs.Geodetic().transform_point(
+            event.xdata,
+            event.ydata,
+            self._ax.projection,
+        )
+        lon = float(lon)
+        lat = float(lat)
+        if np.isnan(lon) or np.isnan(lat):
+            return None
+        return lon, lat
+
     def _on_click(self, event) -> None:
-        if event.inaxes != self._ax:
+        clicked = self._click_lon_lat(event)
+        if clicked is None:
             return
-        cl = self._ax.projection.proj4_params.get("lon_0", 0)
-        lon = event.xdata + cl
-        lat = event.ydata
-        if lon is None or lat is None or np.isnan(lon) or np.isnan(lat):
-            return
+        lon, lat = clicked
+        lon = normalize_longitude(lon)
         b = self._bounds
-        if not (b["lon_min"] <= lon <= b["lon_max"] and b["lat_min"] <= lat <= b["lat_max"]):
+        if not point_in_lon_lat_bounds(
+            lon,
+            lat,
+            lon_min=b["lon_min"],
+            lon_max=b["lon_max"],
+            lat_min=b["lat_min"],
+            lat_max=b["lat_max"],
+        ):
             return
         for p in self._points:
             if abs(p["lon"] - lon) < 1e-3 and abs(p["lat"] - lat) < 1e-3:

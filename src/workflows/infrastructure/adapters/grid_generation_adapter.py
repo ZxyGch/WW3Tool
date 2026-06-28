@@ -649,6 +649,7 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
         if cache_path:
             _load_smc_cache(cache_path, config.workdir.path)
             logger.log(tr("grid_smc_cache_hit", "✅ 找到匹配的 SMC 网格缓存，已复制到：{path}").format(path=config.workdir.path))
+            _ensure_smc_forcing_after_grid(config, logger)
             return
 
     logger.log(tr("grid_smc_start", "🔄 开始生成 SMC 网格...") if not use_cache else tr("grid_smc_cache_miss", "ℹ️ 未找到匹配的 SMC 网格缓存，开始生成新网格..."))
@@ -667,6 +668,13 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
             logger.log(tr("grid_smc_saved", "✅ 已保存 SMC 网格到缓存（{key}...）").format(key=cache_key[:8]))
         except Exception as exc:
             logger.log(tr("grid_smc_save_failed", "❌ 保存 SMC 网格缓存失败：{error}").format(error=exc))
+    _ensure_smc_forcing_after_grid(config, logger)
+
+
+def _ensure_smc_forcing_after_grid(config: PipelineConfig, logger: CoreLogger) -> None:
+    from ..ww3.smc_forcing_alignment import ensure_smc_forcing_covers_ww3_rect
+
+    ensure_smc_forcing_covers_ww3_rect(config, logger)
 
 
 def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:

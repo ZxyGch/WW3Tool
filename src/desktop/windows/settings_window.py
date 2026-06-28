@@ -1285,6 +1285,7 @@ class SettingsInterface(QWidget):
     def _save_config_now(self) -> None:
         self._vm.save(self._collect_config())
         self._config = self._vm.load()
+        self._notify_config_changed("forcing")
 
     def _save_unst_now(self) -> None:
         self._vm.save_unst(self._collect_nested(self._unst_fields))

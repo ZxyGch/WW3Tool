@@ -18,8 +18,89 @@ from ...support.translations import tr
 from ..runtime_config import PUBLIC_DIR, load_config
 from ..grid_visualization.structured_grid_paths import structured_grid_desc_path
 from ..grid_visualization.rect_grid_desc_parse import parse_ww3_grid_meta_for_sync
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 from .smc_open_boundary import BUNDY_FILENAME
+from .smc_ww3_version import resolve_ww3_version, smc_grid_type_for_version
+
+
+def grid_meta_sync_assignments(sync: dict) -> list[Assignment]:
+    """从 parse_ww3_grid_meta_for_sync 结果构建日志字段列表。"""
+    assignments: list[Assignment] = []
+    if "grid_type" in sync:
+        assignments.append(("GRID%TYPE", f"'{sync['grid_type']}'"))
+    if "grid_coord" in sync:
+        assignments.append(("GRID%COORD", f"'{sync['grid_coord']}'"))
+    if "grid_clos" in sync:
+        assignments.append(("GRID%CLOS", f"'{sync['grid_clos']}'"))
+    if "nx" in sync:
+        assignments.append(("RECT%NX", str(int(sync["nx"]))))
+    if "ny" in sync:
+        assignments.append(("RECT%NY", str(int(sync["ny"]))))
+    if "sx" in sync:
+        assignments.append(("RECT%SX", f"{float(sync['sx']):15.12f}"))
+    if "sy" in sync:
+        assignments.append(("RECT%SY", f"{float(sync['sy']):15.12f}"))
+    if "x0" in sync:
+        assignments.append(("RECT%X0", f"{float(sync['x0']):8.4f}"))
+    if "y0" in sync:
+        assignments.append(("RECT%Y0", f"{float(sync['y0']):8.4f}"))
+    if "depth_sf" in sync:
+        assignments.append(("DEPTH%SF", f"{float(sync['depth_sf']):.6f}"))
+    if "obst_sf" in sync:
+        assignments.append(("OBST%SF", f"{float(sync['obst_sf']):.6f}"))
+    return assignments
+
+
+def unstructured_mesh_assignments() -> list[Assignment]:
+    """非结构网格实际写入的 nml 字段（被注释的块见日志标题说明）。"""
+    return [
+        ("GRID%TYPE", "'UNST'"),
+        ("UNST%FILENAME", "'grid.ww3'"),
+        ("FLAGTR", "0"),
+    ]
+
+
+def smc_rect_assignments(wr_rect: dict | None) -> list[Assignment]:
+    if not wr_rect:
+        return []
+    return [
+        ("RECT%NX", str(int(wr_rect["nx"]))),
+        ("RECT%NY", str(int(wr_rect["ny"]))),
+        ("RECT%SX", f"{float(wr_rect['sx']):15.12f}"),
+        ("RECT%SY", f"{float(wr_rect['sy']):15.12f}"),
+        ("RECT%X0", f"{float(wr_rect['x0']):8.4f}"),
+        ("RECT%Y0", f"{float(wr_rect['y0']):8.4f}"),
+        ("RECT%SF", "1.00"),
+        ("RECT%SF0", "1.00"),
+    ]
+
+
+def smc_mesh_assignments(
+    wr_rect: dict | None,
+    *,
+    has_bundy: bool,
+    has_mbarc: bool,
+    ww3_version: str | None = None,
+) -> list[Assignment]:
+    """SMC 网格 ww3_grid.nml 实际写入的 nml 字段。"""
+    grid_type = smc_grid_type_for_version(ww3_version)
+    assignments: list[Assignment] = [(f"GRID%TYPE", f"'{grid_type}'")]
+    assignments.extend(smc_rect_assignments(wr_rect))
+    assignments.extend(
+        [
+            ("SMC%MCELS%FILENAME", "'grid_cell.dat'"),
+            ("SMC%ISIDE%FILENAME", "'grid_iside.dat'"),
+            ("SMC%JSIDE%FILENAME", "'grid_jside.dat'"),
+            ("SMC%SUBTR%FILENAME", "'grid_subtr.dat'"),
+        ]
+    )
+    if has_bundy:
+        assignments.append(("SMC%BUNDY%FILENAME", f"'{BUNDY_FILENAME}'"))
+    if has_mbarc:
+        assignments.append(("SMC%MBARC%FILENAME", "'grid_arctic_cells.dat'"))
+    assignments.append(("DEPTH%SF", "-1.0"))
+    return assignments
 
 
 class WW3GridNML(NMLPrimitives):
@@ -116,6 +197,15 @@ class WW3GridNML(NMLPrimitives):
 
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(out)
+            self.log(
+                format_nml_log_message(
+                    "step4_unst_nml_applied",
+                    "✅ 非结构网格：已更新 ww3_grid.nml 与 namelists.nml"
+                    "（&RECT_NML、&DEPTH_NML、&MASK_NML、&OBST_NML 整段已用 ! 注释）：\n{details}",
+                    unstructured_mesh_assignments(),
+                    blank_before_prefixes=("FLAGTR",),
+                )
+            )
         except Exception as e:
             self.log(
                 tr(
@@ -159,6 +249,31 @@ class WW3GridNML(NMLPrimitives):
         lon_e = lon_w + (int(wr["nx"]) - 1) * float(wr["sx"])
         lat_n = lat_s + (int(wr["ny"]) - 1) * float(wr["sy"])
         return lon_w, lon_e, lat_s, lat_n
+
+    def _smc_ensure_forcing_covers_ww3_rect(self, work_dir: str, *, grid_label: str = "") -> None:
+        """SMC：检查风场是否覆盖 ww3_rect_geo；必要时从 Step 1 源文件自动重新裁剪。"""
+        if not self._is_step2_smc_mesh() or not work_dir:
+            return
+        params_path = os.path.join(work_dir, "params.yml")
+        if not os.path.isfile(params_path):
+            self._smc_warn_forcing_covers_ww3_rect(work_dir, grid_label=grid_label)
+            return
+        try:
+            from ...application.configuration import load_pipeline_config
+            from ...support.logging import CoreLogger
+            from .smc_forcing_alignment import ensure_smc_forcing_covers_ww3_rect
+
+            config = load_pipeline_config(params_path, validation_stage="full")
+            logger = CoreLogger(callback=self.log)
+            ensure_smc_forcing_covers_ww3_rect(config, logger, grid_label=grid_label)
+        except Exception as exc:
+            self.log(
+                tr(
+                    "step4_smc_forcing_align_failed",
+                    "⚠️ SMC 强迫场范围对齐失败：{err}",
+                ).format(err=exc)
+            )
+            self._smc_warn_forcing_covers_ww3_rect(work_dir, grid_label=grid_label)
 
     def _smc_warn_forcing_covers_ww3_rect(self, work_dir: str, *, grid_label: str = "") -> None:
         """SMC: ww3_prnc uses the full RECT; regional wind often only covers regional_bounds."""
@@ -339,9 +454,9 @@ class WW3GridNML(NMLPrimitives):
         return self._ww3_nml_assign_line(lhs_u, val)
 
     def _transform_ww3_grid_nml_for_smcc(self, nml_path: str) -> None:
-        """DEPTH/MASK/OBST 注释；GRID%TYPE → SMCG；启用 &SMC_NML；保留并校正 &RECT_NML。
+        """DEPTH/MASK/OBST 注释；GRID%TYPE → RECT(6.07) 或 SMCG(7.14)；启用 &SMC_NML；保留并校正 &RECT_NML。
 
-        SMCG 与 RECT 共用底网格尺度（NOAA WW3 w3gridmd.F90：NML_RECT%NX/NY 等为 0 时
+        SMC 底网格与 RECT 共用尺度（NOAA WW3 w3gridmd.F90：NML_RECT%NX/NY 等为 0 时
         NX=MAX(3,NX) 会得到 NX=3，胞元 i 指标会报 LONGITUDE RANGE OUTSIDE）。
 
         WW3 w3gridmd.F90 在读完 MCELS 后会依次无条件 OPEN：ISIDE、JSIDE、SUBTR（见 develop
@@ -355,6 +470,8 @@ class WW3GridNML(NMLPrimitives):
         work_dir = getattr(self, "selected_folder", None) or os.path.dirname(
             os.path.abspath(nml_path)
         )
+        ww3_version = resolve_ww3_version(work_dir=work_dir)
+        smc_grid_type = smc_grid_type_for_version(ww3_version)
         has_bundy = os.path.isfile(os.path.join(work_dir, BUNDY_FILENAME))
         has_mbarc = os.path.isfile(os.path.join(work_dir, "grid_arctic_cells.dat"))
         cell_p = os.path.join(work_dir, "grid_cell.dat")
@@ -484,14 +601,14 @@ class WW3GridNML(NMLPrimitives):
 
                 if ls and not ls.startswith("!") and "GRID%TYPE" in line and "=" in line:
                     nl = re.sub(
-                        r"GRID%TYPE\s*=\s*'[^']*'",
-                        "GRID%TYPE         =  'SMCG'",
+                        rf"GRID%TYPE\s*=\s*'[^']*'",
+                        f"GRID%TYPE         =  '{smc_grid_type}'",
                         line,
                         count=1,
                     )
                     nl = re.sub(
-                        r'GRID%TYPE\s*=\s*"[^"]*"',
-                        'GRID%TYPE         =  "SMCG"',
+                        rf'GRID%TYPE\s*=\s*"[^"]*"',
+                        f'GRID%TYPE         =  "{smc_grid_type}"',
                         nl,
                         count=1,
                     )
@@ -558,6 +675,20 @@ class WW3GridNML(NMLPrimitives):
 
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(out)
+            self.log(
+                format_nml_log_message(
+                    "step4_smcc_nml_applied",
+                    "✅ SMC 网格：已更新 ww3_grid.nml"
+                    "（模板 &DEPTH_NML、&MASK_NML、&OBST_NML 已用 ! 注释；另追加 &DEPTH_NML DEPTH%SF）：\n{details}",
+                    smc_mesh_assignments(
+                        wr_rect,
+                        has_bundy=has_bundy,
+                        has_mbarc=has_mbarc,
+                        ww3_version=ww3_version,
+                    ),
+                    blank_before_prefixes=("RECT%", "SMC%", "DEPTH%"),
+                )
+            )
             for aux in ("grid_iside.dat", "grid_jside.dat", "grid_subtr.dat"):
                 ap = os.path.join(work_dir, aux)
                 if not os.path.isfile(ap):
@@ -865,7 +996,15 @@ class WW3GridNML(NMLPrimitives):
                 f.writelines(new_lines)
 
             prefix = f"{grid_label} " if grid_label else ""
-            self.log(f"{prefix}{tr('step4_grid_meta_synced', '✅ 已成功同步 grid.meta 参数到 ww3_grid.nml')}")
+            self.log(
+                prefix
+                + format_nml_log_message(
+                    "step4_grid_meta_synced",
+                    "✅ 已成功同步 grid.meta 参数到 ww3_grid.nml：\n{details}",
+                    grid_meta_sync_assignments(sync),
+                    blank_before_prefixes=("RECT%", "DEPTH%", "OBST%"),
+                )
+            )
         except Exception as e:
             prefix = f"{grid_label} " if grid_label else ""
             self.log(prefix + tr("step4_grid_meta_sync_failed", "⚠️ 同步 grid.meta 到 ww3_grid.nml 失败: {error}").format(error=e))
@@ -947,7 +1086,14 @@ class WW3GridNML(NMLPrimitives):
 
             if clos != "NONE":
                 prefix = f"[{grid_label}] " if grid_label else ""
-                self.log(prefix + tr("step4_grid_clos_updated", "✅ 已更新 ww3_grid.nml 的 GRID%CLOS：{value}").format(value=clos))
+                self.log(
+                    prefix
+                    + format_nml_log_message(
+                        "step4_grid_clos_updated",
+                        "✅ 已更新 ww3_grid.nml：\n{details}",
+                        [("GRID%CLOS", f"'{clos}'")],
+                    )
+                )
 
         except Exception as e:
             prefix = f"[{grid_label}] " if grid_label else ""

@@ -276,11 +276,8 @@ class ModifyWW3NML(
 
             # [EN] After copying files, apply spectral partition output scheme to working directory
             # 在复制文件后，应用谱分区输出方案到工作目录
-            applied_scheme = False
             if has_output_scheme:
-                applied_scheme = self._apply_output_scheme_to_dir(self.selected_folder)
-                if applied_scheme:
-                    self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
+                self._apply_output_scheme_to_dir(self.selected_folder)
             
             # [EN] Update server.sh file
             # 更新 server.sh 文件
@@ -347,23 +344,11 @@ class ModifyWW3NML(
             self._transform_ww3_grid_nml_for_unstructured(wgp)
             nlp = os.path.join(self.selected_folder, "namelists.nml")
             self._set_namelists_misc_flagtr_zero(nlp)
-            self.log(
-                tr(
-                    "step4_unst_nml_applied",
-                    "✅ 非结构网格：已将 ww3_grid.nml 设为 UNST（RECT/DEPTH/MASK/OBST 已注释，UNST_NML 启用），namelists.nml 中 FLAGTR=0",
-                )
-            )
         elif self._is_step2_smc_mesh():
             wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
             self._transform_ww3_grid_nml_for_smcc(wgp)
             self._sync_smc_psmc_namelist_if_needed()
-            self.log(
-                tr(
-                    "step4_smcc_nml_applied",
-                    "✅ SMC 网格：已将 ww3_grid.nml 设为 SMCG（RECT/DEPTH/MASK/OBST 已注释，SMC_NML 启用；grid_cell / grid_subtr 由 smc_generator，ISIDE/JSIDE 见 README；存在 grid_bundy.dat 时写入 BUNDY 并同步 namelists.nml &PSMC NBISMC/LvSMC）",
-                )
-            )
-            self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="")
+            self._smc_ensure_forcing_covers_ww3_rect(self.selected_folder, grid_label="")
         else:
             self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
             self._update_grid_closure_from_meta(self.selected_folder)
@@ -497,7 +482,6 @@ class ModifyWW3NML(
 
         self._export_points_to_file()
 
-        scheme_applied = False
         for dir_path, idx in level_dirs:
             self.log("")
             self.log("=" * 70)
@@ -505,7 +489,7 @@ class ModifyWW3NML(
 
             self._copy_public_files_to_dir(dir_path, grid_label="")
             if has_output_scheme:
-                scheme_applied = self._apply_output_scheme_to_dir(dir_path) or scheme_applied
+                self._apply_output_scheme_to_dir(dir_path)
             self._sync_grid_meta_to_grid_nml_in_dir(dir_path, grid_label="")
             self._update_grid_closure_from_meta(dir_path, grid_label="")
             self._apply_ww3_params_to_dir(dir_path, output_stride, grid_label="")
@@ -519,10 +503,8 @@ class ModifyWW3NML(
             # 按各层自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
             self._apply_cfl_timesteps_to_grid_nml(dir_path)
 
-        if has_output_scheme and scheme_applied:
-            self.log(tr("output_scheme_applied", "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案"))
         if self._is_step2_smc_mesh():
-            self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
+            self._smc_ensure_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
 
     def _apply_ww3_params_nested(self):
         """嵌套网格模式：对 level0…levelN 逐层应用 WW3 运行参数。

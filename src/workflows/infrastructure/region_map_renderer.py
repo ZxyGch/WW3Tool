@@ -1,7 +1,8 @@
 """将配置的网格区域渲染为地理 PNG 预览图。
 
 在 Step 2 网格设置阶段，根据 ``GridConfig`` 中外/内（嵌套）矩形范围，
-用 cartopy 绘制 Mercator 底图与范围框，供用户确认模拟域位置。
+用 cartopy 绘制底图与范围框，供用户确认模拟域位置。
+近全球范围使用 PlateCarree，避免 Mercator 在极高纬度产生 NaN/Inf。
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from ..domain.config_models import GridConfig
+from ..domain.grid_bounds import lon_span_deg, regional_map_extent
 
 
 def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequence[str] | None = None) -> None:
@@ -23,8 +25,6 @@ def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequen
         grid: 含 outer/inner 经纬度范围的网格配置
         output_path: 输出 PNG 路径（父目录需已存在或由调用方创建）
     """
-    import math
-
     import matplotlib
 
     matplotlib.use("Agg")
@@ -33,24 +33,18 @@ def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequen
     import matplotlib.pyplot as plt
 
     _configure_chinese_font(matplotlib)
-    # 逐层（level0 最粗 … levelN 最细）；normal 时只有一层
     levels = grid.nested_levels or [grid.outer]
     all_lon = [v for lv in levels for v in lv.lon]
     all_lat = [v for lv in levels for v in lv.lat]
-    # 以域中心为投影中央经线、并把经度钳制到 [-180,180]，避免贴/跨 180°E 时的回绕
-    central_lon = 0.5 * (min(all_lon) + max(all_lon))
-    extent = [
-        max(-180.0, min(all_lon) - 2), min(180.0, max(all_lon) + 2),
-        min(all_lat) - 2, max(all_lat) + 2,
-    ]
+    map_meta = regional_map_extent(
+        [min(all_lon), max(all_lon)],
+        [min(all_lat), max(all_lat)],
+    )
+    extent = list(map_meta["extent"])  # type: ignore[arg-type]
+    central_lon = float(map_meta["central_lon"])
+    projection = str(map_meta["projection"])
+    aspect_wh = float(map_meta["aspect_wh"])
 
-    # Calculate figure size to match the map's geographic aspect ratio so the
-    # rendered PNG fills the dialog without extra white margins.
-    lat_center = (extent[2] + extent[3]) / 2.0
-    lon_span = max(extent[1] - extent[0], 1e-6)
-    lat_span = max(extent[3] - extent[2], 1e-6)
-    cos_ref = max(abs(math.cos(math.radians(lat_center))), 0.08)
-    aspect_wh = max(0.2, min((lon_span * cos_ref) / lat_span, 14.0))
     fig_base = 8.0
     fig_min = 3.5
     if aspect_wh >= 1.0:
@@ -60,10 +54,14 @@ def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequen
         fig_h = max(fig_base, fig_min / aspect_wh)
         fig_w = fig_h * aspect_wh
 
-    # 240 DPI covers Retina / HiDPI displays (2× logical-to-physical ratio)
     render_dpi = 240
     figure = plt.figure(figsize=(fig_w, fig_h), dpi=render_dpi)
-    axis = figure.add_subplot(1, 1, 1, projection=ccrs.Mercator(central_longitude=central_lon))
+    if projection == "mercator":
+        axis = figure.add_subplot(1, 1, 1, projection=ccrs.Mercator(central_longitude=central_lon))
+    else:
+        axis = figure.add_subplot(
+            1, 1, 1, projection=ccrs.PlateCarree(central_longitude=central_lon)
+        )
     axis.set_extent(extent, crs=ccrs.PlateCarree())
     axis.add_feature(cfeature.OCEAN, facecolor="#a4d6ff")
     axis.add_feature(cfeature.LAND, facecolor="#e6e6e6")
@@ -71,12 +69,12 @@ def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequen
 
     transform = ccrs.PlateCarree()
     from matplotlib import cm
+
     n_levels = len(levels)
     for i, lv in enumerate(levels):
-        # 由粗到细颜色渐变；单层时标“网格范围”，多层时标 levelI
         color = cm.rainbow(i / max(n_levels - 1, 1))
         label = str(labels[i]) if labels and i < len(labels) else ("网格范围" if n_levels == 1 else f"level{i}")
-        _draw_rectangle(axis, lv.lon, lv.lat, color, label, transform)
+        _draw_lon_lat_box(axis, lv.lon, lv.lat, color, label, transform)
     axis.legend(loc="upper right", fontsize=10)
 
     lines = axis.gridlines(draw_labels=True, linewidth=0.8, color="gray", alpha=0.7, linestyle="--")
@@ -105,14 +103,22 @@ def _configure_chinese_font(matplotlib) -> None:
         matplotlib.rcParams["axes.unicode_minus"] = False
 
 
-def _draw_rectangle(axis, lon: list[float], lat: list[float], color: str, label: str, transform) -> None:
+def _draw_lon_lat_box(axis, lon: list[float], lat: list[float], color, label: str, transform) -> None:
     """在地图上绘制经纬度矩形框并加入图例。"""
     import matplotlib.pyplot as plt
 
+    west, east = float(lon[0]), float(lon[1])
+    south, north = float(lat[0]), float(lat[1])
+    if lon_span_deg((west, east)) >= 359.0 or abs(north - south) >= 179.0:
+        xs = [west, east, east, west, west]
+        ys = [south, south, north, north, south]
+        axis.plot(xs, ys, color=color, linestyle="--", linewidth=1.0, transform=transform, label=label)
+        return
+
     rectangle = plt.Rectangle(
-        (lon[0], lat[0]),
-        lon[1] - lon[0],
-        lat[1] - lat[0],
+        (west, south),
+        east - west,
+        north - south,
         linewidth=1.0,
         edgecolor=color,
         facecolor="none",

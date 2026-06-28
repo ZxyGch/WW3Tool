@@ -4,8 +4,8 @@
 表格样式对齐 src：表头作为第 0 行、隐藏 Qt 列头、无边框、无竖向表头与滚动条、
 按内容自适应高度；按钮为「新增 / 修改 / 删除」一行 + 整宽「导入」。
 点位通过 :class:`PointEditDialog` 录入/编辑，或从文件导入（:mod:`point_io`），
-均按当前网格包围盒（``bounds_provider``）校验。``points()`` / ``track_points()``
-供窗口注入运行配置与（在第四步确认参数时）写回 params.yml。
+均按当前网格包围盒（``bounds_provider``）校验。点位变更后通过 ``points_changed`` 回调
+立即写回工作目录 ``params.yml``。``points()`` / ``track_points()`` 供窗口注入运行配置。
 
 [EN] Step 3 panel: calculation mode selection + spectral/track point editing.
 
@@ -15,9 +15,9 @@ follows src: headers as row 0, Qt column headers hidden, no borders, no vertical
 headers or scrollbars, height auto-fits content; buttons are "Add / Edit / Delete"
 in one row + full-width "Import". Points are entered/edited via
 :class:`PointEditDialog` or imported from files (:mod:`point_io`), all validated
-against the current grid bounding box (``bounds_provider``). ``points()`` /
-``track_points()`` are used by the window to inject run configuration and write
-back to params.yml (when confirming parameters in step 4).
+against the current grid bounding box (``bounds_provider``). After any point change,
+``points_changed`` writes the workdir ``params.yml`` immediately. ``points()`` /
+``track_points()`` are used by the window to inject run configuration.
 """
 
 from __future__ import annotations
@@ -82,11 +82,13 @@ class CalculationStepPanel:
         button_style: Callable[[], str] | None = None,
         bounds_provider: Callable[[], dict | None] | None = None,
         notify: Callable[[str], None] | None = None,
+        points_changed: Callable[[], None] | None = None,
     ) -> None:
         self._input_style = input_style or (lambda: "")
         self._button_style = button_style or (lambda: "")
         self._bounds_provider = bounds_provider or (lambda: None)
         self._notify = notify or (lambda _msg: None)
+        self._points_changed = points_changed or (lambda: None)
         group, layout = create_header_card(parent, tr("step3_title", "第三步：计算模式"))
 
         grid = QGridLayout()
@@ -216,6 +218,7 @@ class CalculationStepPanel:
                 self._notify(tr("step3_duplicate_point", "⚠️ 点位重复（名称或坐标已存在），已跳过"))
             else:
                 self._append_point(kind, dialog.value)
+                self._notify_points_changed()
 
     def _edit(self, kind: str) -> None:
         row = self._selected_data_row(kind)
@@ -235,6 +238,7 @@ class CalculationStepPanel:
                 self._notify(tr("step3_duplicate_point", "⚠️ 点位重复（名称或坐标已存在），已跳过"))
             else:
                 self._write_row(kind, row, dialog.value)
+                self._notify_points_changed()
 
     def _select_on_map(self, kind: str) -> None:
         bounds = self._bounds_provider()
@@ -260,6 +264,7 @@ class CalculationStepPanel:
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self._replace_points_from_map(kind, dialog.result_points)
+        self._notify_points_changed()
 
     def _replace_points_from_map(self, kind: str, points: list[dict]) -> None:
         """用地图选点结果覆盖当前点位表（含删除已有/新增）。"""
@@ -280,6 +285,7 @@ class CalculationStepPanel:
         table = self._table(kind)
         table.removeRow(row)
         self._resize_table_to_content(table)
+        self._notify_points_changed()
 
     def _import(self, kind: str) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -300,23 +306,30 @@ class CalculationStepPanel:
             self._notify(tr("step3_read_file_failed", "读取文件失败：{error}").format(error=exc))
             return
         skipped = 0
+        added = 0
         for point in imported:
             if self._is_duplicate(kind, point):
                 skipped += 1
             else:
                 self._append_point(kind, point)
+                added += 1
         for warning in warnings:
             self._notify(f"⚠️ {warning}")
         if skipped:
             self._notify(tr("step3_points_imported_skipped_dup", "已从 {file} 导入 {count} 个点位，跳过 {skipped} 个重复点").format(file=Path(path).name, count=len(imported) - skipped, skipped=skipped))
         else:
             self._notify(tr("step3_points_imported_from_file", "已从 {file} 导入 {count} 个点位").format(file=Path(path).name, count=len(imported)))
+        if added:
+            self._notify_points_changed()
 
     @staticmethod
     def _headers(kind: str) -> list[tuple[str, Qt.AlignmentFlag]]:
         return [(tr(key, default), align) for key, default, align in _HEADER_KEYS[kind]]
 
     # ── helpers ─────────────────────────────────────────────────────────────
+
+    def _notify_points_changed(self) -> None:
+        self._points_changed()
 
     def _table(self, kind: str) -> EdgeAlignedTableWidget:
         return self.track_table if kind == "track" else self.spectral_table

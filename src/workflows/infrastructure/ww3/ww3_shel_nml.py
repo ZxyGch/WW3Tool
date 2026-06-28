@@ -12,7 +12,77 @@ import shutil
 
 from ...support.translations import tr
 from ..runtime_config import get_nml_template_dir
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
+
+_SHEL_GROUP_PREFIXES = ("TYPE%", "DATE%POINT", "DATE%BOUNDARY")
+
+
+def _ww3_shel_time_assignments(
+    start_date: str,
+    end_date: str,
+    main_step: str,
+    *,
+    modified_point_file: bool = False,
+    modified_date_point: bool = False,
+) -> list[Assignment]:
+    """ww3_shel.nml 时间/输出相关实际写入项。"""
+    field_triple = f"'{start_date} 000000' '{main_step}' '{end_date} 235959'"
+    assignments: list[Assignment] = [
+        ("DOMAIN%START", f"'{start_date} 000000'"),
+        ("DOMAIN%STOP", f"'{end_date} 235959'"),
+        ("OUTPUT%FIELD%TIMESTART", f"'{start_date} 000000'"),
+        ("OUTPUT%FIELD%TIMESTRIDE", f"'{main_step}'"),
+        ("DATE%FIELD", field_triple),
+        ("DATE%RESTART%START", f"'{start_date} 000000'"),
+        ("DATE%RESTART%STOP", f"'{end_date} 235959'"),
+    ]
+    if modified_point_file:
+        assignments.append(("TYPE%POINT%FILE", "'points.list'"))
+    if modified_date_point:
+        assignments.extend(
+            [
+                ("DATE%POINT", field_triple),
+                ("DATE%BOUNDARY", f"'{start_date} 000000' '86400' '{end_date} 235959'"),
+            ]
+        )
+    return assignments
+
+
+def format_spectral_point_shel_log_message(
+    start_date: str,
+    end_date: str,
+    main_step: str,
+    *,
+    modified_point_file: bool = False,
+    modified_date_point: bool = False,
+) -> str:
+    """生成谱点模式 ww3_shel.nml 更新日志（多行、等号对齐）。"""
+    return format_nml_log_message(
+        "step4_ww3_shel_spectral_point_updated",
+        "✅ 已更新 ww3_shel.nml：\n{details}",
+        _ww3_shel_time_assignments(
+            start_date,
+            end_date,
+            main_step,
+            modified_point_file=modified_point_file,
+            modified_date_point=modified_date_point,
+        ),
+        blank_before_prefixes=_SHEL_GROUP_PREFIXES,
+    )
+
+
+def format_ww3_shel_time_log_message(
+    start_date: str,
+    end_date: str,
+    main_step: str,
+) -> str:
+    """生成普通模式 ww3_shel.nml 时间更新日志。"""
+    return format_nml_log_message(
+        "step4_ww3_shel_updated",
+        "✅ 已更新 ww3_shel.nml：\n{details}",
+        _ww3_shel_time_assignments(start_date, end_date, main_step),
+    )
 
 
 class WW3ShelNML(NMLPrimitives):
@@ -102,6 +172,19 @@ class WW3ShelNML(NMLPrimitives):
 
         if modified_any and self._output_scheme_contains_var("EF"):
             self._modify_namelists_e3d_in_dir(target_dir)
+
+        if modified_any:
+            assignments: list[Assignment] = [
+                ("TYPE%FIELD%LIST", f"'{var_list_str}'"),
+                ("FIELD%LIST", f"'{var_list_str}'"),
+            ]
+            self.log(
+                format_nml_log_message(
+                    "output_scheme_applied",
+                    "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案：\n{details}",
+                    assignments,
+                )
+            )
 
         return modified_any
 
@@ -226,19 +309,16 @@ class WW3ShelNML(NMLPrimitives):
                 modified_point_file = self._modify_ww3_shel_point_file_in_dir(target_dir, silent=True)
                 modified_date_point = self._modify_ww3_shel_date_point_in_dir(target_dir, start_date, end_date, main_step, silent=True)
 
-                # 构建合并的日志消息
-                parts = []
-                parts.append(tr("step4_date_range_output_step", "起始={start}, 结束={end}, 输出步长={step}s").format(start=start_date, end=end_date, step=main_step))
-                if modified_point_file:
-                    parts.append(tr("step4_added_type_point_file", "添加 TYPE%POINT%FILE = 'points.list'"))
-                if modified_date_point:
-                    parts.append(tr("step4_added_date_point_boundary", "添加 DATE%POINT 和 DATE%BOUNDARY"))
-
-                log_msg = prefix + tr("step4_ww3_shel_spectral_point_updated", "✅ 已更新 ww3_shel.nml（谱空间逐点计算模式）：{details}").format(details="，".join(parts))
+                log_msg = prefix + format_spectral_point_shel_log_message(
+                    start_date,
+                    end_date,
+                    main_step,
+                    modified_point_file=modified_point_file,
+                    modified_date_point=modified_date_point,
+                )
                 self.log(log_msg)
             else:
-                # 普通模式：只显示时间更新
-                self.log(f"{prefix}{tr('step4_ww3_shel_updated', '✅ 已更新 ww3_shel.nml：DOMAIN%START={start}, DOMAIN%STOP={end}, DATE%FIELD%STRIDE={step}s').format(start=start_date, end=end_date, step=main_step)}")
+                self.log(prefix + format_ww3_shel_time_log_message(start_date, end_date, main_step))
 
         except Exception as e:
             self.log(tr("ww3_shel_modify_error", "❌ 修改 {file}/ww3_shel.nml 出错：{error}").format(file=os.path.basename(target_dir), error=e))
@@ -379,7 +459,22 @@ class WW3ShelNML(NMLPrimitives):
 
             prefix = f"{grid_label} " if grid_label else ""
             file_name = os.path.basename(ww3_shel_path)
-            self.log(tr("file_modified_forcing", "{prefix}✅ 已修改 {file}：更新 INPUT%FORCING%* 设置").format(prefix=prefix, file=file_name))
+            forcing_assignments: list[Assignment] = [
+                ("INPUT%FORCING%WINDS", f"'{'T' if has_wind else 'F'}'"),
+                ("INPUT%FORCING%WATER_LEVELS", f"'{'T' if has_level else 'F'}'"),
+                ("INPUT%FORCING%CURRENTS", f"'{'T' if has_current else 'F'}'"),
+                ("INPUT%FORCING%ICE_CONC", f"'{'T' if has_ice else 'F'}'"),
+                ("INPUT%FORCING%ICE_PARAM1", f"'{'T' if has_ice_param1 else 'F'}'"),
+            ]
+            self.log(
+                prefix
+                + format_nml_log_message(
+                    "file_modified_forcing",
+                    "✅ 已修改 {file}：\n{details}",
+                    forcing_assignments,
+                    file=file_name,
+                )
+            )
 
         except Exception as e:
             prefix = f"{grid_label} " if grid_label else ""
@@ -473,8 +568,13 @@ class WW3ShelNML(NMLPrimitives):
                 with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 if not silent:
-                    log_msg = tr("step4_ww3_shel_type_point_only", "✅ 已修改 ww3_shel.nml：添加 TYPE%POINT%FILE = 'points.list'")
-                    self.log(log_msg)
+                    self.log(
+                        format_nml_log_message(
+                            "step4_ww3_shel_type_point_only",
+                            "✅ 已修改 ww3_shel.nml：\n{details}",
+                            [("TYPE%POINT%FILE", "'points.list'")],
+                        )
+                    )
                 return True
             return False
 
@@ -600,7 +700,22 @@ class WW3ShelNML(NMLPrimitives):
                 with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 if not silent:
-                    self.log(tr("step4_ww3_shel_date_updated", "✅ 已修改 ww3_shel.nml：添加 DATE%POINT 和 DATE%BOUNDARY（谱空间逐点计算模式）"))
+                    field_triple = (
+                        f"'{start_date} 000000' '{output_stride}' '{end_date} 235959'"
+                    )
+                    self.log(
+                        format_nml_log_message(
+                            "step4_ww3_shel_date_updated",
+                            "✅ 已修改 ww3_shel.nml：\n{details}",
+                            [
+                                ("DATE%POINT", field_triple),
+                                (
+                                    "DATE%BOUNDARY",
+                                    f"'{start_date} 000000' '86400' '{end_date} 235959'",
+                                ),
+                            ],
+                        )
+                    )
                 return True
             return False
 
@@ -738,7 +853,16 @@ class WW3ShelNML(NMLPrimitives):
             if modified:
                 with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
-                self.log(tr("step4_ww3_shel_date_track_updated", "✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（航迹模式）"))
+                track_triple = (
+                    f"'{start_datetime}' '{output_stride}' '{end_datetime}'"
+                )
+                self.log(
+                    format_nml_log_message(
+                        "step4_ww3_shel_date_track_updated",
+                        "✅ 已修改 ww3_shel.nml：\n{details}",
+                        [("DATE%TRACK", track_triple)],
+                    )
+                )
             else:
                 if not found_output_date_nml:
                     self.log(tr("output_date_nml_not_found", "⚠️ 航迹模式：未找到 &OUTPUT_DATE_NML 块，无法添加 DATE%TRACK"))

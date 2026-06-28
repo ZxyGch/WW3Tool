@@ -7,6 +7,7 @@ import traceback
 
 from ...support.translations import tr
 from ..runtime_config import DEFAULT_OUTPUT_VARS_SCHEME_VARS
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 
 
@@ -424,46 +425,81 @@ class WW3MultiNML(NMLPrimitives):
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            # 构建日志消息
-            log_parts = []
-            log_parts.append(tr("step4_date_range_output_step", "起始={start}, 结束={end}, 输出步长={step}s").format(start=start_date, end=end_date, step=output_stride))
-
-            # 添加强迫场开关信息
-            forcing_fields = []
-            if has_wind:
-                forcing_fields.append(tr("step4_forcing_field_wind", "风场"))
-            if has_current:
-                forcing_fields.append(tr("step4_forcing_field_current", "流场"))
-            if has_level:
-                forcing_fields.append(tr("step4_forcing_field_level", "水位场"))
-            if has_ice:
-                forcing_fields.append(tr("step4_forcing_field_ice", "海冰场"))
-            if has_ice_param1:
-                forcing_fields.append(tr("step4_forcing_field_ice_param1", "海冰厚度"))
-
-            if forcing_fields:
-                forcing_str = tr("step4_forcing_fields_enabled", "强迫场={fields}").format(fields="、".join(forcing_fields))
-            else:
-                forcing_str = tr("step4_forcing_fields_none", "强迫场=无")
-            log_parts.append(forcing_str)
-
-            # 添加计算资源信息（各层进程占比）
+            # 构建日志：列出实际写入的 nml 字段
+            field_triple = (
+                f"'{start_date} 000000' '{output_stride}' '{end_date} 235959'"
+            )
+            multi_assignments: list[Assignment] = []
             if level_resources:
-                ratios = ", ".join(f"{name}={hi - lo:.2f}" for name, _rank, lo, hi in level_resources)
-                resource_str = tr("step4_resource_ratio", "计算资源：{ratios}").format(ratios=ratios)
-                log_parts.append(resource_str)
-
+                multi_assignments.append(("DOMAIN%NRGRD", str(len(level_resources))))
+            multi_assignments.extend(
+                [
+                    ("DOMAIN%START", f"'{start_date} 000000'"),
+                    ("DOMAIN%STOP", f"'{end_date} 235959'"),
+                    ("DOMAIN%FLGHG1", "T"),
+                    ("DOMAIN%FLGHG2", "T"),
+                    ("ALLDATE%FIELD", field_triple),
+                    ("ALLDATE%RESTART%START", f"'{start_date} 000000'"),
+                    ("ALLDATE%RESTART%STOP", f"'{end_date} 235959'"),
+                ]
+            )
+            multi_assignments.extend(
+                [
+                    ("INPUT(1)%FORCING%WINDS", "T" if has_wind else "F"),
+                    ("INPUT(2)%FORCING%CURRENTS", "T" if has_current else "F"),
+                    ("INPUT(3)%FORCING%WATER_LEVELS", "T" if has_level else "F"),
+                    ("INPUT(4)%FORCING%ICE_CONC", "T" if has_ice else "F"),
+                    (
+                        "INPUT(5)%FORCING%ICE_PARAM1",
+                        "T" if (has_ice and has_ice_param1) else "F",
+                    ),
+                ]
+            )
+            if level_resources:
+                forcing_native = [
+                    ("WINDS", "'native'" if has_wind else "'no'"),
+                    ("CURRENTS", "'native'" if has_current else "'no'"),
+                    ("WATER_LEVELS", "'native'" if has_level else "'no'"),
+                    ("ICE_CONC", "'native'" if has_ice else "'no'"),
+                    (
+                        "ICE_PARAM1",
+                        "'native'" if (has_ice and has_ice_param1) else "'no'",
+                    ),
+                ]
+                for name, rank, lo, hi in level_resources:
+                    multi_assignments.append((f"MODEL({rank})%NAME", f"'{name}'"))
+                    for fkey, fval in forcing_native:
+                        multi_assignments.append((f"MODEL({rank})%FORCING%{fkey}", fval))
+                    multi_assignments.append(
+                        (f"MODEL({rank})%RESOURCE", f"{rank} 1 {lo:.2f} {hi:.2f} F")
+                    )
             if modified_alltype_point_file:
-                log_parts.append(tr("step4_alltype_point_file_value", "ALLTYPE%POINT%FILE = '{path}'").format(path="points.list"))
-
+                multi_assignments.extend(
+                    [
+                        ("ALLTYPE%POINT%FILE", "'points.list'"),
+                        ("ALLTYPE%POINT%NAME", f"'{finest_name}'"),
+                    ]
+                )
             if modified_alldate_point:
-                log_parts.append(tr("step4_alldate_point_value", "ALLDATE%POINT = '{start} 000000' '{precision}' '{end} 235959'").format(start=start_date, precision=output_stride, end=end_date))
-
+                multi_assignments.append(("ALLDATE%POINT", field_triple))
             if modified_alltype_field_list and alltype_field_list_value:
-                log_parts.append(tr("step4_alltype_field_list_set", "ALLTYPE%FIELD%LIST = '{value}' (谱分区输出)").format(value=alltype_field_list_value))
+                multi_assignments.append(
+                    ("ALLTYPE%FIELD%LIST", f"'{alltype_field_list_value}'")
+                )
 
-            log_msg = tr("step4_ww3_multi_updated_details", "✅ 已更新 ww3_multi.nml：{details}").format(details="，".join(log_parts))
-            self.log(log_msg)
+            self.log(
+                format_nml_log_message(
+                    "step4_ww3_multi_updated_details",
+                    "✅ 已更新 ww3_multi.nml：\n{details}",
+                    multi_assignments,
+                    blank_before_prefixes=(
+                        "ALLTYPE%",
+                        "ALLDATE%POINT",
+                        "INPUT(",
+                        "MODEL(",
+                    ),
+                )
+            )
 
         except Exception as e:
             self.log(tr("ww3_multi_modify_error", "❌ 修改 ww3_multi.nml 出错：{error}").format(error=e))
@@ -538,9 +574,15 @@ class WW3MultiNML(NMLPrimitives):
                 with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
                 self.log(
-                    tr(
+                    format_nml_log_message(
                         "step4_ww3_multi_alldate_track_updated",
-                        "✅ 已修改 ww3_multi.nml：ALLDATE%TRACK（嵌套航迹模式）",
+                        "✅ 已修改 ww3_multi.nml：\n{details}",
+                        [
+                            (
+                                "ALLDATE%TRACK",
+                                f"'{start_datetime}' '{output_stride}' '{end_datetime}'",
+                            )
+                        ],
                     )
                 )
         except Exception as e:

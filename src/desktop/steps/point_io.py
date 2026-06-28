@@ -21,6 +21,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from workflows.domain.grid_bounds import point_in_lon_lat_bounds
+
 # [EN] ``lon lat 'name'``: longitude, latitude, optional quoted name.
 # ``lon lat 'name'``：经度、纬度、可带引号的名称。
 _SPECTRAL_LINE = re.compile(r"(\S+)\s+(\S+)\s+['\"]?([^'\"]+)['\"]?")
@@ -36,9 +38,13 @@ def _in_global_range(lon: float, lat: float) -> bool:
 def _in_bounds(lon: float, lat: float, bounds: dict | None) -> bool:
     if not bounds:
         return True
-    return (
-        bounds["lon_min"] <= lon <= bounds["lon_max"]
-        and bounds["lat_min"] <= lat <= bounds["lat_max"]
+    return point_in_lon_lat_bounds(
+        lon,
+        lat,
+        lon_min=bounds["lon_min"],
+        lon_max=bounds["lon_max"],
+        lat_min=bounds["lat_min"],
+        lat_max=bounds["lat_max"],
     )
 
 

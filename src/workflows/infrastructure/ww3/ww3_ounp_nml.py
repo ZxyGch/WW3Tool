@@ -16,7 +16,9 @@ import os
 import re
 
 from ...support.translations import tr
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
+from .ww3_shel_nml import format_spectral_point_shel_log_message
 
 
 class WW3OunpNML(NMLPrimitives):
@@ -120,17 +122,16 @@ class WW3OunpNML(NMLPrimitives):
             end_date_for_log = self.shel_end_edit.text().strip()
             output_stride_for_log = output_precision if output_precision else self.output_precision_edit.text().strip()
 
-            parts = []
             if start_date_for_log and end_date_for_log and output_stride_for_log:
-                parts.append(tr("step4_date_range_output_step", "起始={start}, 结束={end}, 输出步长={step}s").format(start=start_date_for_log, end=end_date_for_log, step=output_stride_for_log))
-            if modified_point_file:
-                parts.append(tr("step4_added_type_point_file", "添加 TYPE%POINT%FILE = 'points.list'"))
-            if modified_date_point:
-                parts.append(tr("step4_added_date_point_boundary", "添加 DATE%POINT 和 DATE%BOUNDARY"))
-
-            if parts:
-                log_msg = tr("step4_ww3_shel_spectral_point_updated", "✅ 已更新 ww3_shel.nml（谱空间逐点计算模式）：{details}").format(details="，".join(parts))
-                self.log(log_msg)
+                self.log(
+                    format_spectral_point_shel_log_message(
+                        start_date_for_log,
+                        end_date_for_log,
+                        output_stride_for_log,
+                        modified_point_file=modified_point_file,
+                        modified_date_point=modified_date_point,
+                    )
+                )
 
         # [EN] Modify ww3_ounp.nml
         # 修改 ww3_ounp.nml
@@ -367,23 +368,21 @@ class WW3OunpNML(NMLPrimitives):
                     f.writelines(new_lines)
                 if removed_spectra_type:
                     self.log(tr("step4_ww3_ounp_drop_spectra_type", "✅ 已按 WW3 {ver} 从 ww3_ounp.nml 移除不支持的 SPECTRA%TYPE 行").format(ver=ww3_version))
-                if modified_start and modified_stride:
-                    log_msg = tr("step4_ww3_ounp_updated", "✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '{start}'，POINT%TIMESTRIDE = '{stride}'（谱空间逐点计算模式）").format(
-                        start=f"{start_date} 000000", stride=output_precision
+                ounp_assignments: list[Assignment] = []
+                if modified_start:
+                    ounp_assignments.append(("POINT%TIMESTART", f"'{start_date} 000000'"))
+                if modified_stride:
+                    ounp_assignments.append(("POINT%TIMESTRIDE", f"'{output_precision}'"))
+                if modified_split:
+                    ounp_assignments.append(("POINT%TIMESPLIT", str(timesplit_value)))
+                if ounp_assignments:
+                    self.log(
+                        format_nml_log_message(
+                            "step4_ww3_ounp_updated",
+                            "✅ 已修改 ww3_ounp.nml：\n{details}",
+                            ounp_assignments,
+                        )
                     )
-                elif modified_start:
-                    log_msg = tr("step4_ww3_ounp_start_only", "✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '{start}'（谱空间逐点计算模式）").format(
-                        start=f"{start_date} 000000"
-                    )
-                elif modified_stride:
-                    log_msg = tr("step4_ww3_ounp_stride_only", "✅ 已修改 ww3_ounp.nml：POINT%TIMESTRIDE = '{stride}'（谱空间逐点计算模式）").format(
-                        stride=output_precision
-                    )
-                else:
-                    log_msg = tr("step4_ww3_ounp_timesplit_only", "✅ 已修改 ww3_ounp.nml：POINT%TIMESPLIT = {split}（谱空间逐点计算模式）").format(
-                        split=timesplit_value
-                    )
-                self.log(log_msg)
 
         except Exception as e:
             self.log(tr("ww3_ounp_modify_error", "❌ 修改 ww3_ounp.nml 时出错：{error}").format(error=str(e)))

@@ -16,6 +16,7 @@ import os
 import re
 
 from ...support.translations import tr
+from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 
 
@@ -353,7 +354,20 @@ class WW3TrncNML(NMLPrimitives):
             if modified:
                 with open(ww3_trnc_path, "w", encoding="utf-8", newline="\n") as f:
                     f.writelines(new_lines)
-                self.log(tr("step4_ww3_trnc_track_updated", "✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '{start}', TRACK%TIMESTRIDE = '{stride}'").format(start=start_datetime, stride=output_precision))
+                trnc_assignments: list[Assignment] = []
+                if timestart_modified:
+                    trnc_assignments.append(("TRACK%TIMESTART", f"'{start_datetime}'"))
+                if timestride_modified:
+                    trnc_assignments.append(("TRACK%TIMESTRIDE", f"'{output_precision}'"))
+                if timesplit_modified:
+                    trnc_assignments.append(("TRACK%TIMESPLIT", str(timesplit_value)))
+                self.log(
+                    format_nml_log_message(
+                        "step4_ww3_trnc_track_updated",
+                        "✅ 已修改 ww3_trnc.nml：\n{details}",
+                        trnc_assignments,
+                    )
+                )
 
         except Exception as e:
             self.log(tr("ww3_trnc_modify_error", "❌ 修改 ww3_trnc.nml 时出错：{error}").format(error=str(e)))

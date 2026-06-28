@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import os
 import re
 import shutil
@@ -1416,6 +1417,15 @@ def main() -> None:
             run_doc["ww3_rect"]["y0"] + (int(run_doc["ww3_rect"]["ny"]) - 1) * run_doc["ww3_rect"]["sy"]
         ),
     }
+    if not global_grid:
+        _rg = run_doc["ww3_rect_geo"]
+        _snap = 0.25
+        run_doc["recommended_forcing_bbox"] = {
+            "west_lon": _snap * math.floor(float(_rg["lon_west"]) / _snap),
+            "east_lon": _snap * math.ceil(float(_rg["lon_east"]) / _snap),
+            "south_lat": _snap * math.floor(float(_rg["lat_south"]) / _snap),
+            "north_lat": _snap * math.ceil(float(_rg["lat_north"]) / _snap),
+        }
     if not global_grid:
         _enforce_regional_bounds_policy(
             requested_bounds=requested_bounds,

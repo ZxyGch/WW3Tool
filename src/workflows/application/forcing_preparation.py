@@ -26,6 +26,7 @@ Input/Output
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Iterable
 
 from ..domain.forcing_fields import ForcingField, Step1Files
@@ -34,7 +35,6 @@ from ..infrastructure.forcing.file_path_manager import FilePathManager
 from ..infrastructure.forcing.file_service import FileService
 from ..infrastructure.forcing.use_cases import AutoAssociateUseCase, ImportForcingFileUseCase
 from ..infrastructure.forcing.variable_detector import VariableDetector
-from ..support.logging import CoreLogger
 from ..support.translations import tr
 
 
@@ -113,20 +113,33 @@ def prepare_forcing(
         (ForcingField.LEVEL, config.forcing.level),
         (ForcingField.ICE, config.forcing.ice),
     ]
+    processed_sources: set[str] = set()
+    crop_bbox = config.forcing.crop_bbox or None
     for field, path in all_fields:
         if field not in requested_fields or path is None:
             continue
+        source_path = str(Path(path).expanduser().resolve())
+        if config.forcing.auto_associate and source_path in processed_sources:
+            logger.log(
+                tr(
+                    "step1_skip_duplicate_forcing_source",
+                    "ℹ️ 源文件已在本次导入中处理，跳过重复裁剪：{path}",
+                ).format(path=source_path)
+            )
+            continue
         result = importer.execute(
             field,
-            str(path),
+            source_path,
             str(workdir),
             config.forcing.auto_associate,
             config.forcing.process_mode,
             crop_time_range=config.forcing.crop_time_range or None,
-            crop_bbox=config.forcing.crop_bbox or None,
+            crop_bbox=crop_bbox,
         )
         if not result.success:
             raise RuntimeError(_forcing_import_error_message(result))
+        if config.forcing.auto_associate:
+            processed_sources.add(source_path)
         files = _merge(files, result.files_patch)
 
     return files

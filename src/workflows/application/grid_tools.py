@@ -32,8 +32,34 @@ from collections.abc import Sequence
 from typing import Optional
 
 from ..domain.config_models import GridConfig, GridRegion, PipelineConfig
+from ..domain.forcing_fields import ForcingField
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
+
+
+def resolve_wind_nc_in_workdir(
+    workdir: str | Path,
+    *,
+    auto_associate: bool = True,
+) -> Path | None:
+    """在工作目录中解析已转换风场 NetCDF（与 Step 1 扫描规则一致）。
+
+    优先 ``scan_forcing_files`` 结果，其次 ``wind.nc``，再回退 ``*wind*.nc``。
+  """
+    from ..infrastructure.forcing.file_service import FileService
+
+    root = Path(workdir).expanduser().resolve()
+    if not root.is_dir():
+        return None
+    scanned = FileService().scan_forcing_files(str(root), auto_associate=auto_associate)
+    wind = scanned.get(ForcingField.WIND)
+    if wind and Path(wind).is_file():
+        return Path(wind).resolve()
+    wind_nc = root / "wind.nc"
+    if wind_nc.is_file():
+        return wind_nc.resolve()
+    matches = sorted(root.glob("*wind*.nc"))
+    return matches[0].resolve() if matches else None
 
 
 @dataclass(frozen=True)
