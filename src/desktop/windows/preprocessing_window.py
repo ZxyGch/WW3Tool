@@ -1017,6 +1017,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if selected:
             self._set_path_value(key, selected)
             if key in {"wind", "current", "level", "ice"}:
+                self._show_selected_forcing_file_info(key, selected)
                 if not self._paths["workdir"].text().strip():
                     self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
                     return
@@ -1027,6 +1028,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                         "已选择强迫场文件。请确认导入方式后点击导入按钮。",
                     )
                 )
+
+    def _show_selected_forcing_file_info(self, key: str, path: str) -> None:
+        files = Step1Files()
+        files.set(ForcingField(key), path)
+
+        def task():
+            return self._forcing_vm.report_file_overviews(files)
+
+        self._runner.run(task, self._on_forcing_info_done)
 
     def _show_forcing_files_info(self) -> None:
         if self._busy:
