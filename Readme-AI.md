@@ -1376,15 +1376,40 @@ Step5 只负责连接服务器、查看资源、确认 Slurm 参数并刷新 `se
 
 ```yaml
 server:
+  # 优先使用 ~/.ssh/config 里的 Host 别名；使用它时 host/user/password/key_file 可以为空
   ssh_config_host: SHOU
+  host: null
+  port: 22
+  user: null
+  password: null
+  key_file: null
+
+  # 上传时使用的远程工作根目录；remote_dir 通常由程序按工作目录名自动生成
   default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
 
 slurm:
-  cpu: CPU6240R
+  # job_name 为空时默认使用工作目录名
+  job_name: null
+  partition: CPU6240R
   nodes: 1
   cores: 48
-  mem: 360G
-  server_st: ST2
+  mem: 190G
+
+  # 兼容旧字段；当前分区主要看 partition
+  cpu: CPU6240R
+
+  # server_st.use 是当前选中的服务器 WW3 版本
+  server_st:
+    use: ST2
+    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
+    ST6: /public/home/weiyl001/software2/ww6/model/exe
+    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
+    ST6B: /public/home/weiyl001/software2/ww6b/model/exe
+    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
+    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
+    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
 ```
 
 ```sh
@@ -1401,7 +1426,8 @@ python3 run.py confirm-slurm hpc_case
 python3 run.py queue-status
 ```
 
-如果只是改 `slurm.cpu`、`slurm.nodes`、`slurm.cores`、`slurm.mem` 或 `slurm.server_st`，不需要重新执行 Step1～Step4，直接重新运行 `confirm-slurm` 即可。
+如果只是改 `slurm.partition`、`slurm.cpu`、`slurm.nodes`、`slurm.cores`、`slurm.mem` 或 `slurm.server_st.use`，不需要重新执行 Step1～Step4，直接重新运行 `confirm-slurm` 即可。
+
 
 
 #### ST 版本管理
