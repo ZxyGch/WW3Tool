@@ -69,7 +69,7 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 |      | merge-forcing <in1.nc> [...] -o <out.nc>                      | 独立工具：校验并合并强迫场 NetCDF |
 |      | generate-grid [workdir]                                       | 生成网格（Step 2）         |
 |      | recommend-grid [workdir] [--coarse\|--fine]                   | 按区域范围推荐网格间距          |
-|      | recommend-cfl [workdir]                                       | 按 CFL 公式推荐时间步长       |
+|      | recommend-cfl [workdir] [--mode safe\|fast\|faster] [--factor X] | 按 CFL 公式推荐时间步长       |
 |      | prepare-ww3 [workdir]                                         | 仅生成 WW3 namelist     |
 |      | run-workflow [workdir]                                        | 完整预处理流程              |
 |      | local-run [workdir]                                           | 执行 local.sh          |
@@ -762,10 +762,13 @@ python3 run.py prepare-ww3 nested_case
 
 #### 5.5.3 按 CFL 推荐时间步（自动配置时间步）
 
-GUI 点「自动配置时间步」，或 CLI 执行 recommend-cfl，会按 CFL 稳定性给出 TIMESTEPS%DTXY、DTMAX、DTKTH、DTMIN 的建议，并写入 params.yml 的 ww3_grid 段；确认第四步时再写进各层 ww3_grid.nml。
+GUI 点「自动配置时间步」，或 CLI / Shell 执行 recommend-cfl，会按 CFL 稳定性给出 TIMESTEPS%DTXY、DTMAX、DTKTH、DTMIN 的建议，并写入 params.yml 的 ww3_grid 段；确认第四步时再写进各层 ww3_grid.nml。
 
 ```sh
-python3 run.py recommend-cfl new
+python3 run.py recommend-cfl new                         # 默认 safe，CFL 系数 0.9
+python3 run.py recommend-cfl new --mode fast             # 更激进，CFL 系数 1.05
+python3 run.py recommend-cfl new --mode faster           # 最激进内置档，CFL 系数 1.15
+python3 run.py recommend-cfl new --factor 1.2            # 手动指定 CFL 系数，自动上限 1.25
 python3 run.py prepare-ww3 new
 ```
 
@@ -781,11 +784,18 @@ WW3 官方在 ww3_grid.nml 注释里的思路是：波浪在网格上传播时�
 T_{\mathrm{cfl}} = \frac{\Delta x}{C_g} = \frac{\Delta x \cdot f_1 \cdot 4\pi}{g}
 \]
 
-WW3Tool 在此基础上取略保守的整数秒（默认乘 0.9 安全系数），并级联得到：
+WW3Tool 在此基础上取整数秒，并级联得到：
+
+| 模式 | CFL 系数 | 说明 |
+|------|----------|------|
+| safe | 0.90 | 默认保守设置 |
+| fast | 1.05 | 更激进，减少步数，适合已有经验的复跑 |
+| faster | 1.15 | 最激进内置档，需关注稳定性 |
+| --factor X | 自定义，最高 1.25 | 直接指定 CFL 乘子 |
 
 | 参数 | 含义 | 推荐关系 |
 |------|------|----------|
-| DTXY | 空间传播时间步 | \(\approx 0.9 \times T_{\mathrm{cfl}}\) |
+| DTXY | 空间传播时间步 | \(\approx \mathrm{CFL系数} \times T_{\mathrm{cfl}}\) |
 | DTMAX | 积分主时间步上限 | \(\approx 3 \times \mathrm{DTXY}\) |
 | DTKTH | 谱源汇时间步 | 无强流时 \(\approx \mathrm{DTMAX}/2\)；有强流时更细 |
 | DTMIN | 最小时间步 | 默认 15 s，一般不动 |
