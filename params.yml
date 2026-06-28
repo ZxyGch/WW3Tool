@@ -2,10 +2,6 @@
 # Preset definitions: reusable named lists that are referenced by name
 # in other sections. Avoids duplicating long lists across configs.
 #
-#   output_scheme  – named lists of WW3 output field abbreviations.
-#     'standard'      : essential wave parameters (HS, DIR, FP, T02 …).
-#     'with_spectrum'  : standard + 2-D energy density (EF).
-#     'all_fields'     : every available WW3 output variable.
 #   server_st           – server WW3 binary paths keyed by scheme name
 #                          (ST2 / ST4 / ST6 / ST6A / ST6B).
 #   local_st           – local WW3 binary paths keyed by scheme name
@@ -19,32 +15,6 @@
 #                          (single / hour / day / month / year).
 # ────────────────────────────────────────────────────────────────────
 presets:
-  output_scheme:
-    standard:
-    - HS
-    - DIR
-    - FP
-    - T02
-    - WND
-    - PHS
-    - PTP
-    - PDIR
-    - PWS
-    - PNR
-    - TWS
-    with_spectrum:
-    - HS
-    - DIR
-    - FP
-    - T02
-    - WND
-    - PHS
-    - PTP
-    - PDIR
-    - PWS
-    - PNR
-    - TWS
-    - EF
   server_st:
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
     ST6: /public/home/weiyl001/software2/ww6/model/exe
@@ -267,7 +237,7 @@ calc:
 #   start_date / end_date – simulation period (YYYYMMDD).
 #   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.
 #   file_split        – output file splitting: single | hour | day | month | year.
-#   output_scheme     – named preset from presets.output_scheme.
+#   output_scheme     – output scheme name and WW3 output field abbreviations.
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
@@ -276,7 +246,9 @@ ww3:
   end_date: '20250103'
   output_step: 3600
   file_split: single
-  output_scheme: standard
+  output_scheme:
+    name: standard
+    fields: 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
 # Keys follow the Fortran namelist syntax with '%' as sub-key separator.

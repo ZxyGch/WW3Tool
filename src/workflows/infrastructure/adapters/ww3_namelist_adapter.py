@@ -219,12 +219,16 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
         for name, executable_dir in config.presets.server_st.items()
     ]
 
-    # 谱分区输出方案：全部来自 PipelineConfig.presets.output_scheme (params.yml)
-    # [EN] Spectral partition output scheme: all from PipelineConfig.presets.output_scheme (params.yml)
+    # 谱分区输出方案：优先使用 ww3.output_scheme.fields，兼容旧 presets.output_scheme。
+    # [EN] Spectral partition output scheme: prefer ww3.output_scheme.fields,
+    # while keeping compatibility with legacy presets.output_scheme.
     schemes = copy.deepcopy(config.presets.output_scheme)
     # 追加当前项目方案作为 __params__，供下游 namelist 模板使用
     # [EN] Append the current project scheme as __params__ for use by downstream namelist templates
-    if config.ww3.output_scheme in config.presets.output_scheme:
+    if config.ww3.output_fields:
+        schemes[str(config.ww3.output_scheme or "standard")] = list(config.ww3.output_fields)
+        schemes["__params__"] = list(config.ww3.output_fields)
+    elif config.ww3.output_scheme in config.presets.output_scheme:
         schemes["__params__"] = list(config.presets.output_scheme[config.ww3.output_scheme])
     merged["OUTPUT_VARS_SCHEMES"] = schemes
     merged["WW3_VERSION"] = config.ww3.version

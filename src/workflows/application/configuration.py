@@ -264,10 +264,16 @@ def _file_split(value: Any) -> str:
 
 
 def _output_fields(value: Any, name: str) -> List[str]:
-    if not isinstance(value, list) or not value:
-        raise ConfigError(f"{name} 必须是非空字段数组")
+    if isinstance(value, str):
+        raw_fields = value.replace(",", " ").split()
+    elif isinstance(value, list):
+        raw_fields = value
+    else:
+        raise ConfigError(f"{name} 必须是非空字段数组或空格分隔字符串")
+    if not raw_fields:
+        raise ConfigError(f"{name} 必须是非空字段数组或空格分隔字符串")
     fields: List[str] = []
-    for field in value:
+    for field in raw_fields:
         code = str(field).strip().upper()
         if code not in OUTPUT_FIELD_OPTIONS:
             raise ConfigError(f"{name} 包含未知输出字段：{field}")
@@ -276,18 +282,38 @@ def _output_fields(value: Any, name: str) -> List[str]:
     return fields
 
 
-def _selected_output_scheme(value: Any, presets: ParameterPresets) -> str:
+def _selected_output_scheme(value: Any, presets: ParameterPresets) -> tuple[str, List[str]]:
     if value is None:
         raise ConfigError("ww3.output_scheme 不能为空")
+    if isinstance(value, dict):
+        name = str(value.get("name") or "").strip()
+        fields = _output_fields(value.get("fields"), "ww3.output_scheme.fields")
+        if not name:
+            raise ConfigError("ww3.output_scheme.name 不能为空")
+        return name, fields
     name = str(value).strip()
     if not name:
         raise ConfigError("ww3.output_scheme 不能为空")
-    if name not in presets.output_scheme:
+    if name in presets.output_scheme:
+        return name, list(presets.output_scheme[name])
+    if name in DEFAULT_OUTPUT_SCHEME_PRESETS:
+        return name, list(DEFAULT_OUTPUT_SCHEME_PRESETS[name])
+    raise ConfigError(
+        "ww3.output_scheme 使用字符串格式时，必须使用 presets.output_scheme 中定义的名称；"
+        "若要直接在 ww3 中定义内容，请使用 output_scheme.name / output_scheme.fields"
+    )
+
+
+def _selected_output_fields(raw: Dict[str, Any], presets: ParameterPresets) -> tuple[str, List[str]]:
+    scheme_name, fields = _selected_output_scheme(raw.get("output_scheme"), presets)
+    explicit = raw.get("output_fields")
+    if explicit is not None:
+        fields = _output_fields(explicit, "ww3.output_fields")
+    if not fields:
         raise ConfigError(
-            "ww3.output_scheme 必须使用 presets.output_scheme 中定义的名称："
-            + "、".join(presets.output_scheme)
+            "ww3.output_scheme.fields 不能为空"
         )
-    return name
+    return scheme_name, fields
 
 
 def _st(value: Any) -> Optional[str]:
@@ -354,9 +380,7 @@ def _parameter_presets(value: Any) -> ParameterPresets:
                 f"presets.output_scheme.{preset_name}",
             )
     else:
-        output_schemes = {
-            name: list(fields) for name, fields in DEFAULT_OUTPUT_SCHEME_PRESETS.items()
-        }
+        output_schemes = {}
     return ParameterPresets(
         output_scheme=output_schemes,
         server_st=_server_st_presets(raw.get("server_st")),
@@ -899,12 +923,15 @@ def parse_pipeline_config(
         or ww3_raw.get("compute_precision")
         or ""
     ).strip()
+    output_scheme_name, output_fields = _selected_output_fields(ww3_raw, presets)
+    presets.output_scheme[output_scheme_name] = list(output_fields)
     ww3 = WW3Config(
         start_date=str(ww3_raw.get("start_date") or "").strip(),
         end_date=str(ww3_raw.get("end_date") or "").strip(),
         output_step=output_step,
         file_split=_file_split(ww3_raw.get("file_split")),
-        output_scheme=_selected_output_scheme(ww3_raw.get("output_scheme"), presets),
+        output_scheme=output_scheme_name,
+        output_fields=output_fields,
         st=_st(ww3_raw.get("st")),
         version=str(ww3_raw.get("version") or "6.07").strip(),
     )
@@ -1084,19 +1111,6 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
 # 涵盖 presets、workdir、forcing、grid、calc、ww3、slurm、plot、server 各段。
 EXAMPLE_YAML = """# Headless preprocessing example
 presets:
-  # [EN] Define output field schemes here; ww3.output_scheme selects one name only
-  # 在这里完整定义输出字段方案，ww3.output_scheme 只选择一个名称
-  output_scheme:
-    standard: [HS, DIR, FP, T02, WND, PHS, PTP, PDIR, PWS, PNR, TWS]
-    with_spectrum: [HS, DIR, FP, T02, WND, PHS, PTP, PDIR, PWS, PNR, TWS, EF]
-    all_fields: [DPT, CUR, WND, AST, WLV, ICE, IBG, D50, IC1, IC5,
-      HS, LM, T02, T0M1, T01, FP, DIR, SPR, DP, HIG,
-      EF, TH1M, STH1M, TH2M, STH2M, WN,
-      PHS, PTP, PLP, PDIR, PSPR, PWS, PDP, PQP, PPE, PGW, PSW, PTM10, PT01, PT02, PEP, TWS, PNR,
-      UST, CHA, CGE, FAW, TAW, TWA, WCC, WCF, WCH, WCM, FWS,
-      SXY, TWO, BHD, FOC, TUS, USS, P2S, USF, P2L, TWI, FIC, USP, TOC,
-      ABR, UBR, BED, FBB, TBB, MSS, MSC, MSD, MCD, QP, QKK, SKW, EMB,
-      DTD, FC, CFX, CFD, CFK]
   # [EN] ST values are executable directories on the server; directory names are unrestricted
   # [EN] Configure according to your actual server environment, example:
   # ST 值是服务器上的可执行文件所在目录，目录名不限；ww3.st 从这些名称中选择一个
@@ -1208,8 +1222,9 @@ ww3:
   end_date: "20250103"
   output_step: "3600"
   file_split: year
-  output_scheme: standard          # [EN] Select one scheme defined in presets.output_scheme
-                                   # 选择 presets.output_scheme 中定义的一个方案
+  output_scheme:
+    name: standard
+    fields: "HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS"
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml

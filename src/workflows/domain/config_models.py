@@ -327,7 +327,8 @@ class WW3Config:
     关键字段：
     - ``start_date`` / ``end_date``：模拟起止时间
     - ``output_step``：输出时间步（秒），同时写入 ww3_shel / ww3_ounp / ww3_ounf
-    - ``output_scheme`` / ``st``：输出场方案与源项物理包（``st`` 已迁移至 ``slurm.server_st``，保留向后兼容）
+    - ``output_scheme`` / ``output_fields``：输出场方案名与变量列表
+    - ``st``：源项物理包（已迁移至 ``slurm.server_st``，保留向后兼容）
     - ``version``：WW3 版本（``6.07`` / ``7.14``），决定 ``public/{version}_nml`` 模板目录
 
     [EN] WAVEWATCH III run period and output scheme (corresponds to YAML ``ww3:`` section).
@@ -335,7 +336,7 @@ class WW3Config:
     Key fields:
     - ``start_date`` / ``end_date``: simulation start and end times
     - ``output_step``: output time step (seconds) for ww3_shel, ww3_ounp, and ww3_ounf
-    - ``output_scheme``: output field scheme
+    - ``output_scheme`` / ``output_fields``: output field scheme name and variables
     - ``st``: DEPRECATED — use ``slurm.server_st`` instead; kept for backward compatibility
     - ``version``: WW3 version (``6.07`` / ``7.14``), selects ``public/{version}_nml`` templates
     """
@@ -345,6 +346,7 @@ class WW3Config:
     output_step: Optional[str] = None
     file_split: Optional[str] = None
     output_scheme: Optional[str] = None
+    output_fields: List[str] = field(default_factory=list)
     st: Optional[str] = None
     version: str = "6.07"
 

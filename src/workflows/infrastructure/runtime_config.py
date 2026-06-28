@@ -711,10 +711,6 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# Preset definitions: reusable named lists that are referenced by name\n"
      "# in other sections. Avoids duplicating long lists across configs.\n"
      "#\n"
-     "#   output_scheme  – named lists of WW3 output field abbreviations.\n"
-     "#     'standard'      : essential wave parameters (HS, DIR, FP, T02 …).\n"
-     "#     'with_spectrum'  : standard + 2-D energy density (EF).\n"
-     "#     'all_fields'     : every available WW3 output variable.\n"
      "#   server_st           – server WW3 binary paths keyed by scheme name\n"
      "#                          (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "#   local_st           – local WW3 binary paths keyed by scheme name\n"
@@ -821,7 +817,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   start_date / end_date – simulation period (YYYYMMDD).\n"
      "#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.\n"
      "#   file_split        – output file splitting: single | hour | day | month | year.\n"
-     "#   output_scheme     – named preset from presets.output_scheme.\n"
+     "#   output_scheme     – output scheme name and WW3 output field abbreviations.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("ww3_grid:",
@@ -1160,6 +1156,22 @@ def _coerce_yaml_value(value):
     return value
 
 
+def _output_fields_from_value(value) -> list[str]:
+    """解析输出变量字段，支持空格分隔字符串或数组。"""
+    if isinstance(value, str):
+        raw = value.replace(",", " ").split()
+    elif isinstance(value, list):
+        raw = value
+    else:
+        return []
+    fields: list[str] = []
+    for item in raw:
+        field = str(item).strip().upper()
+        if field and field not in fields:
+            fields.append(field)
+    return fields
+
+
 def _set_nested(data: dict, dotted: str, value) -> None:
     """按点号路径写入嵌套值（自动创建中间字典层）；数字段对列表取下标，越界则放弃写入。"""
     parts = dotted.split(".")
@@ -1197,10 +1209,26 @@ def load_full_config() -> dict:
             merged[flat_key] = value
     # WW3_CONFIG_PATH 是派生路径（public/{version}_nml），不存 yml，仅只读展示/打开用
     merged["WW3_CONFIG_PATH"] = get_nml_template_dir(params_path=PARAMS_FILE)
-    # presets 段：输出方案与 ST 版本
+    # 输出方案：新格式来自 ww3.output_scheme.name/fields；旧格式兼容 presets.output_scheme。
+    ww3 = root.get("ww3") or {}
+    ww3_scheme = ww3.get("output_scheme") if isinstance(ww3, dict) else None
+    output_schemes = {}
     presets = root.get("presets") or {}
     if isinstance(presets.get("output_scheme"), dict):
-        merged["OUTPUT_VARS_SCHEMES"] = presets["output_scheme"]
+        output_schemes.update(presets["output_scheme"])
+    if isinstance(ww3_scheme, dict):
+        scheme_name = str(ww3_scheme.get("name") or "").strip()
+        fields = _output_fields_from_value(ww3_scheme.get("fields"))
+        if scheme_name and fields:
+            output_schemes[scheme_name] = fields
+            output_schemes["__params__"] = fields
+            merged["OUTPUT_SCHEME_NAME"] = scheme_name
+    elif isinstance(ww3_scheme, str):
+        merged["OUTPUT_SCHEME_NAME"] = ww3_scheme.strip()
+
+    # presets 段：ST 版本等；输出方案仅作旧格式兼容
+    if output_schemes:
+        merged["OUTPUT_VARS_SCHEMES"] = output_schemes
     if isinstance(presets.get("server_st"), dict):
         st_dict = presets["server_st"]
         merged["ST_VERSIONS"] = [{"name": k, "path": v} for k, v in st_dict.items()]
@@ -1235,9 +1263,23 @@ def save_full_config(config: dict) -> bool:
             elif flat_key in ("SERVER_KEY_FILE", "SERVER_PASSWORD", "SERVER_SSH_CONFIG_HOST"):
                 _set_nested(root, yaml_path, None)
                 written_paths.add(yaml_path)
-    # presets 段
+    # 输出方案设置页保存：写回 ww3.output_scheme，不再写 presets.output_scheme。
     if "OUTPUT_VARS_SCHEMES" in config:
-        root.setdefault("presets", {})["output_scheme"] = config["OUTPUT_VARS_SCHEMES"]
+        schemes = config["OUTPUT_VARS_SCHEMES"]
+        if isinstance(schemes, dict) and schemes:
+            current = str(config.get("OUTPUT_SCHEME_NAME") or "").strip()
+            if current not in schemes:
+                current = next((str(k) for k in schemes if str(k) != "__params__"), next(iter(schemes)))
+            fields = _output_fields_from_value(schemes.get(current))
+            if fields:
+                root.setdefault("ww3", {})["output_scheme"] = {
+                    "name": current,
+                    "fields": " ".join(fields),
+                }
+        presets = root.get("presets")
+        if isinstance(presets, dict):
+            presets.pop("output_scheme", None)
+    # presets 段
     if "ST_VERSIONS" in config:
         versions = config["ST_VERSIONS"]
         if isinstance(versions, list):

@@ -153,6 +153,7 @@ class WW3StepPanel:
         self._display_line(wave_grid, 2, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
         self._display_line(wave_grid, 3, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self.output_scheme_combo = ComboBox()
+        self._output_scheme_fields_by_name: dict[str, list[str]] = {}
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
@@ -213,7 +214,14 @@ class WW3StepPanel:
         self.nml_version_combo.setCurrentText(version)
         self.nml_version_combo.blockSignals(False)
         self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
-        self._replace_combo_items(self.output_scheme_combo, sorted(config.presets.output_scheme), ww3.output_scheme)
+        output_schemes = dict(config.presets.output_scheme)
+        if getattr(ww3, "output_fields", None):
+            output_schemes[str(ww3.output_scheme or "standard")] = list(ww3.output_fields)
+        self._output_scheme_fields_by_name = {
+            str(name): [str(v).strip().upper() for v in values if str(v).strip()]
+            for name, values in output_schemes.items()
+        }
+        self._replace_combo_items(self.output_scheme_combo, sorted(self._output_scheme_fields_by_name), ww3.output_scheme)
         self._set_file_split_combo(ww3.file_split)
         self._replace_combo_items(self.cpu_combo, [config.slurm.cpu] if config.slurm.cpu else [], config.slurm.cpu or "")
         params = config.ww3_grid.parameters
@@ -322,12 +330,17 @@ class WW3StepPanel:
         out.update({k: e.text().strip() for k, e in self._timesteps_fields.items() if e.text().strip()})
         return out
 
-    def ww3_overrides(self) -> dict[str, str]:
+    def ww3_overrides(self) -> dict[str, object]:
+        scheme_name = self.output_scheme_combo.currentText().strip()
+        scheme_fields = self._output_scheme_fields_by_name.get(scheme_name, [])
         return {
             "start_date": self.fields["ww3_start"].text().strip(),
             "end_date": self.fields["ww3_end"].text().strip(),
             "output_step": self.fields["ww3_output"].text().strip(),
-            "output_scheme": self.output_scheme_combo.currentText().strip(),
+            "output_scheme": {
+                "name": scheme_name,
+                "fields": " ".join(scheme_fields),
+            },
             "file_split": current_file_split_from_combo(self.file_split_combo),
             "version": self.nml_version_combo.currentText().strip(),
         }
