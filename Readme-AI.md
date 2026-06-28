@@ -96,40 +96,81 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 
 
 
-## 3. 项目结构
+## 3. 工作目录结构
 
-```
-WW3Tool/
-├── run.py                  # 唯一入口：依赖检查 → 语言切换 → 分发到 GUI / Shell / CLI
-├── params.yml              # 算例参数模板（勿直接运行；用 workdir 创建副本后编辑）
-├── public/                 # 全局资源
-│   ├── languages/          #   zh_CN.json / en_US.json 翻译文件
-│   ├── 7.14_nml/           #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
-│   ├── 6.07_nml/           #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
-│   ├── scripts/            #   远程脚本（ww3_ntfy_watch.sh 等）
-│   └── forcing/            #   示例强迫场文件（测试用）
-├── meshgen/                # 网格生成器
-│   ├── structured_generator/  # 结构化矩形网格（含 pygridgen）
-│   ├── unst_generator/        # JIGSAW 非结构化网格
-│   ├── smc_generator/         # SMC 网格
-│   ├── reference_data/        # 水深/海岸线数据（GEBCO, ETOPO 等，约 6.5GB）
-│   └── cache/                 # 网格缓存（按参数 hash 索引）
-├── workSpace/              # 默认工作目录根；每个子文件夹是一个独立算例
-└── src/
-    ├── desktop/            # PyQt6 图形界面层
-    │   ├── windows/        #   主窗口（preprocessing_window.py）、设置窗口
-    │   ├── steps/          #   各步骤面板（ww3_panel, server_connect_panel 等）
-    │   ├── view_models/    #   视图模型（remote.py, pipeline.py 等）
-    │   └── components/     #   可复用 UI 组件
-    └── workflows/          # 核心业务逻辑（DDD 风格分层）
-        ├── interfaces/     #   入口适配器：command_line.py, interactive_cli.py, workdir_setup.py
-        ├── application/    #   用例层：configuration.py, preprocessing_workflow.py, remote_ops.py, slurm_ops.py, forcing_merge.py 等
-        ├── domain/         #   领域模型：config_models.py, forcing_fields.py, grid_spacing_recommendation.py 等
-        ├── infrastructure/ #   基础设施：adapters/, forcing/, remote/, plot/, ww3/ 等
-        └── support/        #   工具类：日志、异常等
+工作目录是一整个 WW3 算例的运行沙盒。GUI、Shell、CLI 打开工作目录时，首先读取这里的 `params.yml`；除 Step 1 会扫描标准化后的 `wind.nc`、`current.nc`、`level.nc`、`ice.nc` 来回显强迫场按钮外，其它表单状态不从 namelist、脚本或结果文件反推。
+
+一个普通单层算例常见结构如下：
+
+```text
+work_dir_name/
+├── params.yml                         # 该算例的唯一权威配置；GUI 表单恢复以它为准
+├── run.log                            # local.sh / server.sh 追加写入的运行日志
+├── local.sh                           # 本地运行脚本，由 public/scripts/local.sh 复制并按算例修正
+├── server.sh                          # 服务器 Slurm 运行脚本，由 public/scripts/server.sh 复制并按算例修正
+├── success / fail                     # 空标记文件，表示最近一次运行成功或失败
+│
+├── wind.nc                            # 标准化后的风场强迫，通常来自 Step 1
+├── current.nc                         # 标准化后的流场强迫，可选
+├── level.nc                           # 标准化后的水位强迫，可选
+├── ice.nc                             # 标准化后的海冰强迫，可选
+│
+├── grid.bot                           # 水深网格，Step 2 生成或导入
+├── grid.obst                          # 阻塞网格，结构化网格常见
+├── grid.meta                          # WW3Tool 记录的网格元信息
+├── mod_def.ww3                        # ww3_grid 生成的 WW3 网格定义文件
+│
+├── ww3_grid.nml                       # 网格与谱参数 namelist
+├── ww3_prnc.nml                       # 强迫场预处理 namelist
+├── ww3_shel.nml                       # 主计算 namelist
+├── ww3_ounf.nml                       # 场输出 namelist
+├── ww3_ounp.nml                       # 点位谱输出 namelist
+├── ww3_trnc.nml                       # 轨迹输出 namelist，如启用航迹
+├── namelists.nml                      # 部分 WW3 版本使用的合并 namelist
+│
+├── points.list                        # 定点谱输出点位，由 params.yml 的 calc.points 生成
+├── track_i.ww3                        # 航迹输入文件，由 params.yml 的 calc.track_points 生成
+│
+├── wind.ww3 / current.ww3 / level.ww3 # ww3_prnc 产生的 WW3 二进制强迫文件
+├── out_grd.ww3                        # ww3_shel 产生的场输出中间文件
+├── out_pnt.ww3                        # ww3_shel 产生的点位谱中间文件
+├── track_o.ww3                        # ww3_shel 产生的航迹输出中间文件
+├── restart*.ww3                       # 重启动文件，如启用 restart
+│
+├── ww3.YYYY.nc                        # 场输出 NetCDF，通常由 ww3_ounf 产生
+├── ww3.YYYY_spec.nc                   # 点位谱 NetCDF，通常由 ww3_ounp 产生
+├── ww3.YYYY_trck.nc                   # 航迹 NetCDF，通常由 ww3_trnc 产生
+└── photo/                             # GUI 或后处理保存的图片目录，如有
 ```
 
-GUI 模式和 Shell 模式最终都调用 src/workflows/application/ 中的用例函数。
+嵌套网格算例会在根目录保留总控文件，并为每一层生成独立目录：
+
+```text
+work_dir_name/
+├── params.yml
+├── ww3_multi.nml                      # 多网格耦合主控 namelist
+├── local.sh / server.sh / run.log
+├── wind.nc / current.nc / level.nc    # 根目录保留标准化强迫场源文件
+├── level0/
+│   ├── grid.bot / grid.obst / grid.meta
+│   ├── ww3_grid.nml / ww3_prnc.nml / ww3_shel.nml / ww3_ounf.nml
+│   ├── mod_def.ww3
+│   ├── out_grd.ww3 / out_pnt.ww3
+│   └── ww3.YYYY.nc / ww3.YYYY_spec.nc
+├── level1/
+│   └── ...
+└── levelN/
+    └── ...
+```
+
+关键约定：
+
+1. `params.yml` 是唯一权威配置。打开已有工作目录时，第三步计算模式和点位只读取 `calc.mode`、`calc.points`、`calc.track_points`；即使目录里已经存在 `points.list` 或 `track_i.ww3`，也不会据此自动切换模式。
+2. `ww3_*.nml`、`local.sh`、`server.sh` 是由当前参数生成的执行文件，不作为 GUI 反填配置的来源。修改参数后应重新确认参数或重新生成脚本。
+3. `run.log` 必须追加写入，不应在重新执行 `local.sh` 或 `server.sh` 时清空旧日志。
+4. `*.nc`、`*.ww3`、图片、视频、Slurm 输出和临时下载文件都属于运行产物，默认不要提交到 Git。
+5. 大规模工作目录默认放在外置盘 `/Volumes/Zxy's Disk/WW3Tool_workSpace/`；仓库内 `workSpace/` 只适合少量测试或历史算例。
+
 
 
 
