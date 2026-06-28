@@ -918,9 +918,9 @@ python3 run.py prepare-ww3 new
 
 WW3 官方在 ww3_grid.nml 注释里的思路是：波浪在网格上传播时，一个时间步内波群走过的距离不能超过一个网格间距。记：
 
-- \(\Delta x\)：网格最小间距（米）。结构化/SMC 由 dx、dy 和纬度换算；非结构用 hmin（km）直接当最细尺度。
-- \(f_1\)：谱最低频率 SPECTRUM%FREQ1（Hz）。
-- 深水近似下，最低频波的群速度 \(C_g \approx g / (4\pi f_1)\)（\(g=9.8\,\mathrm{m/s^2}\)）。
+- $\Delta x$：网格最小间距（米）。结构化/SMC 由 dx、dy 和纬度换算；非结构用 hmin（km）直接当最细尺度。
+- $f_1$：谱最低频率 SPECTRUM%FREQ1（Hz）。
+- 深水近似下，最低频波的群速度 $C_g \approx g / (4\pi f_1)$（$g=9.8\,\mathrm{m/s^2}$）。
 
 则 CFL 时间尺度：
 
@@ -940,9 +940,9 @@ WW3Tool 在此基础上取整数秒，并级联得到：
 
 | 参数 | 含义 | 推荐关系 |
 |------|------|----------|
-| DTXY | 空间传播时间步 | \(\approx \mathrm{CFL 系数} \times T_{\mathrm{cfl}}\) |
-| DTMAX | 积分主时间步上限 | \(\approx 3 \times \mathrm{DTXY}\) |
-| DTKTH | 谱源汇时间步 | 无强流时 \(\approx \mathrm{DTMAX}/2\)；有强流时更细 |
+| DTXY | 空间传播时间步 | $\approx \mathrm{CFL 系数} \times T_{\mathrm{cfl}}$ |
+| DTMAX | 积分主时间步上限 | $\approx 3 \times \mathrm{DTXY}$ |
+| DTKTH | 谱源汇时间步 | 无强流时 $\approx \mathrm{DTMAX}/2$；有强流时更细 |
 | DTMIN | 最小时间步 | 默认 15 s，一般不动 |
 
 嵌套网格时每一层 dx/dy 不同，会逐层重算 CFL：细网格间距小 → DTXY 更小 → 同样模拟时长内步数更多，计算更重。这和 ww3_multi.nml 里进程分配有关（见 5.5.7）。
