@@ -506,15 +506,15 @@ Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责�
 
 ```yaml
 # ────────────────────────────────────────────────────────────────────
-# Grid generation settings (structured / SMC / unstructured).
-#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
-#   grid_type – 'normal' (single domain) or 'nested' (structured only).
-#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').
-#   reference_data_path – path to bathymetry / coastline data bundle;
-#                          null = auto-detect from project defaults.
-#   lon       – [west, east] longitude bounds of the main domain (deg).
-#   lat       – [south, north] latitude bounds of the main domain (deg).
-#   structured.nested.levels – coarse → fine levels when grid_type=nested.
+# 网格生成配置（矩形 / SMC / 非结构）。
+#   mesh_type – 网格拓扑：'structured' | 'smc' | 'unstructured'。
+#   grid_type – 'normal' 表示单层网格；'nested' 表示嵌套网格（仅矩形网格）。
+#   gridgen_version – 网格生成后端：'Python' 或 'MATLAB'。
+#   reference_data_path – 水深 / 海岸线数据目录；
+#                         null 表示按项目默认路径自动查找。
+#   lon       – 主网格经度范围 [west, east]，单位：度。
+#   lat       – 主网格纬度范围 [south, north]，单位：度。
+#   structured.nested.levels – grid_type=nested 时的嵌套层级，从粗到细。
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -588,17 +588,17 @@ python3 run.py local-run nested_demo
 单层（grid_type: normal）时 levels 只保留一项即可；嵌套时至少两项。
 
 ```yml
-# Structured grid options:
-#   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
-#   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).
-#   min_dist         – minimum distance filter between adjacent grid points (km).
-#   cut_off          – land-sea mask cut-off: 0 = keep all sea points.
-#   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).
-#   lim_val          – masking threshold for cell classification (0–1).
-#   split_lim        – split-cell limit: 0 = disabled.
-#   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.
-#   nested.levels    – coarse → fine; level0 = levels[0], finest = levels[-1].
-#   nested.nested_contraction_coefficient – GUI shrink ratio between levels (≥ 1).
+# 矩形网格参数：
+#   bathymetry       – 水深数据集名称（见 presets.structured_bathymetry）。
+#   coastline_precision – GSHHG 海岸线精度（full/high/inter/low/coarse）。
+#   min_dist         – 相邻网格点的最小距离过滤阈值，单位：km。
+#   cut_off          – 陆海掩膜截断阈值；0 表示保留所有海点。
+#   lim_bathy        – 基于水深的格点保留阈值，表示单元内湿点比例。
+#   lim_val          – 格点分类的掩膜阈值，范围 0–1。
+#   split_lim        – 分裂单元阈值；0 表示禁用。
+#   lake_tol         – 保留湖泊的最小面积（以格点数计）；更小湖泊会被填充。
+#   nested.levels    – 嵌套层级，从粗到细；level0 = levels[0]，最细层 = levels[-1]。
+#   nested.nested_contraction_coefficient – GUI 自动套娃时的层间范围收缩系数（≥ 1）。
 structured:
   nested:
     nested_contraction_coefficient: 1.3
@@ -656,18 +656,18 @@ structured:
 ##### yml 参数
 
 ```yaml
-# Unstructured (triangular) grid spacing parameters:
-# hmax – maximum element spacing in deep water (km).
-# hmin – minimum allowed spacing everywhere (km).
-# hshr – target spacing near shorelines (km).
-# nwav – number of wavelengths per element for resolution.
-# dhdx – rate of spacing change with depth gradient.
-# deep_ocean_threshold_m – depth (m) above which hmax applies.
-# margin_deg – buffer margin around domain boundary (degrees).
-# edge_segments – number of segments along coastlines.
-# options.data – optional mask / exclusion file.
-# options.command_line_args – extra JIGSAW CLI flags.
-# options.regional – stereographic projection centre (stereo_lon/lat).
+# 非结构（三角形）网格间距参数：
+# hmax – 深水区最大单元间距，单位：km。
+# hmin – 全域允许的最小单元间距，单位：km。
+# hshr – 近岸目标间距，单位：km。
+# nwav – 每个单元解析的波长数量。
+# dhdx – 随水深梯度变化的网格间距变化率。
+# deep_ocean_threshold_m – 深水阈值，水深大于该值时使用 hmax，单位：m。
+# margin_deg – 区域边界外扩缓冲，单位：度。
+# edge_segments – 海岸线边界分段数量。
+# options.data – 可选的掩膜 / 排除区域文件。
+# options.command_line_args – 额外传给 JIGSAW 的 CLI 参数。
+# options.regional – 区域投影中心（stereo_lon / stereo_lat）。
 
 unstructured:
 	hmax: 100
@@ -716,18 +716,18 @@ unstructured:
 ##### yml 参数
 
 ```yml
-# SMC (Spherical Multi-Cell) grid options:
-#   bathymetry       – dataset name (see presets.smc_bathymetry).
-#   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).
-#   n_levels         – number of cell-size refinement levels.
-#   wlevel           – water-level reference index.
-#   depmin           – minimum depth below which cells are excluded (m).
-#   dshalw           – shallow-water depth threshold for extra refinement (m).
-#   generate_boundary_cells – whether to create open-boundary ghost cells.
-#   msea             – minimum cell count across straits.
-#   options.input    – low-level input pre-processing (auto-flip, tolerances).
-#   options.grid     – grid identity & projection (global, arctic, origin).
-#   options.output   – output file naming and formatting.
+# SMC（Spherical Multi-Cell）网格参数：
+#   bathymetry       – 水深数据集名称（见 presets.smc_bathymetry）。
+#   bathy_convention – 水深数据约定：'elevation' 表示向上为正，'depth' 表示向下为正。
+#   n_levels         – 单元尺度加密层数。
+#   wlevel           – 水位参考索引。
+#   depmin           – 最小水深阈值，浅于该值的单元会被剔除，单位：m。
+#   dshalw           – 浅水额外加密的水深阈值，单位：m。
+#   generate_boundary_cells – 是否生成开边界虚拟单元。
+#   msea             – 海峡中保留的最小单元数。
+#   options.input    – 底层输入预处理参数（自动翻转、容差等）。
+#   options.grid     – 网格身份与投影参数（全球、北极、原点等）。
+#   options.output   – 输出文件命名与格式化参数。
 smc:
   bathymetry: ETOPO2
   bathy_convention: elevation
