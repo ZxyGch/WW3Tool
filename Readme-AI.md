@@ -998,7 +998,14 @@ Step 2 生成的 grid.meta 本质是 ww3_grid.nml 的精简版（格点数 NX/NY
 
 日志：已更新 ww3_shel.nml：DOMAIN%START=… / 已更新 ww3_ounf.nml：FIELD%TIMESTART=…
 
-来自 params.yml 的 ww3.start_date、ww3.end_date、ww3.output_step（输出间隔，秒）：
+对应的 yml 参数：
+
+```yaml
+ww3:
+  start_date: "20250103"
+  end_date: "20250105"
+  output_step: "3600"   # 输出间隔，秒
+```
 
 - 计算时间窗写进 ww3_shel.nml（或嵌套时的 ww3_multi.nml）的 DOMAIN%START/STOP 和 DATE%FIELD 等。
 - NetCDF 场输出间隔写进 ww3_ounf.nml 的 FIELD%TIMESTRIDE。
