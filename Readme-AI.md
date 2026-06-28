@@ -289,6 +289,37 @@ flowchart LR
   I --> J[后处理绘图
   波高图 / 谱图 / 检验等]
 ```
+
+CLI 调用流程：
+
+```mermaid
+flowchart TD
+  A[python3 run.py 子命令] --> B[run.py 启动入口]
+  B --> C[检查虚拟环境与依赖]
+  C --> D[把 src 加入 sys.path]
+  D --> E[workflows.interfaces.command_line.main]
+  E --> F[argparse 解析子命令与参数]
+  F --> G{是否需要工作目录}
+  G -->|workdir / print-example| H[轻量命令直接执行]
+  G -->|普通命令| I[resolve_params_path 查找工作目录 params.yml]
+  I --> J[拒绝直接使用根目录 params.yml]
+  J --> K[sanitize_root_params_paths 修正失效默认路径]
+  K --> L[load_pipeline_config 读取并校验 YAML]
+  L --> M{命令类型}
+  M -->|prepare-forcing| N[application.preprocessing_workflow.run_prepare_forcing]
+  M -->|generate-grid| O[application.grid_preparation.run_generate_grid]
+  M -->|prepare-ww3| P[infrastructure.adapters.ww3_namelist_adapter.prepare_ww3_files]
+  M -->|server / slurm| Q[application.remote_ops / slurm_ops]
+  M -->|plot| R[application / infrastructure.plot 相关适配器]
+  N --> S[domain + infrastructure 执行业务逻辑]
+  O --> S
+  P --> S
+  Q --> S
+  R --> S
+  S --> T[日志输出到 stdout，返回退出码]
+```
+
+简单理解：`run.py` 只负责启动环境和分发入口；`interfaces/command_line.py` 负责解析 CLI、找到工作目录、加载 `params.yml`；真正的业务逻辑在 `workflows/application/`，具体文件读写、NetCDF、meshgen、SSH、Slurm、绘图等细节由 `workflows/infrastructure/` 里的适配器完成。
 我会在接下来的章节中，详细的和你说明每一步具体在做什么，让你放心的使用这个软件
 
 
