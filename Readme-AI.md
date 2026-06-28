@@ -30,12 +30,12 @@ python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤
 三种模式共享同一套业务逻辑（src/workflows/application/），差别仅在交互层。
 
 
-### 2.1 GUI 
+### 2.1 GUI
 
 ![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
 
 ```bash
-python3 run.py  
+python3 run.py
 ```
 
 这是我们最常用的模式
@@ -53,7 +53,7 @@ python3 run.py shell              # 交互式终端
 这个模式更适合远程在服务器使用
 
 
-### 2.3 无界面 CLI 
+### 2.3 无界面 CLI
 
 ```sh
 python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
@@ -77,7 +77,7 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 |      | local-run [workdir]                                           | 执行 local.sh          |
 | 远程运维 | connect-test [workdir]                                        | 测试 SSH 连接            |
 |      | ssh [workdir]                                                 | 打开交互式 SSH 终端         |
-|      | slurm-idle [workdir]                                          | 查看 Slurm 空闲 CPU      |
+|      | slurm-idle [workdir]                                          | 查看 Slurm 空闲分区      |
 |      | confirm-slurm [workdir]                                       | 写 server.sh          |
 |      | upload [workdir] --confirm                                    | 上传工作目录到远程            |
 |      | submit [workdir]                                              | 提交 server.sh         |
@@ -105,7 +105,7 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 ## 3. 工作目录结构
 
 > 工作目录是什么？
-> 
+>
 > 想象一个场景：我们现在想要对 110E ~ 130E，10N~30N 的区域进行海浪模拟，先使用 gridgen 生成了网格文件，然后下载了 2025 年 1 月 3 号到   2025 年 1 月 5 号的 ERA5 再分析风场数据做强迫场，配置了相关的 WW3 NML 文件，这一大堆文件都需要一个存放的位置：工作目录。
 
 一个普通单层算例常见结构如下：
@@ -233,25 +233,25 @@ GUI 模式下，你填写的表单，程序会先在内存中保存参数，然�
 在 Shell 和 CLI 模式下，有一个专门的指令用于校验 params.yml 。
 
 ```sh
-python run.py validate [work_dir_name] 
+python run.py validate [work_dir_name]
 ```
 
- 
+
 ### 路径验证
 
-执行每个步骤的功能的时候，例如 
+执行每个步骤的功能的时候，例如
 
 ```swift
 python3 run.py prepare-forcing [work_dir_name]
 ```
 
-都会自动校验带有路径的参数有效性，比如 
+都会自动校验带有路径的参数有效性，比如
 
 ```swift
 paths:
 	matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
 	jason_path: /Users/zxy/ocean/Paper/WW3Tool/jason3
-	ndbc_path: null 
+	ndbc_path: null
 	jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
 ```
 
@@ -281,7 +281,7 @@ flowchart LR
   B --> C[Step 2 网格生成]
   C --> D[Step 3 计算模式
   区域 / 谱点 / 航迹]
-  D --> E[Step 4 WW3 配置 
+  D --> E[Step 4 WW3 配置
   namelist / 脚本]
   E --> F{运行方式}
   F -->|本地| G[local.sh]
@@ -341,8 +341,8 @@ python run.py workdir [work_dir_name]
 在 CLI 模式中，尝试不指定工作目录：
 
 ```bash
-python3 run.py prepare-forcing 
-    
+python3 run.py prepare-forcing
+
 ---------------------------------------------------------------
 
 Using project virtual environment: /Users/zxy/ocean/Paper/WW3Tool/.venv
@@ -355,7 +355,7 @@ Please create or load a working directory first:
 在 shll 模式下不使用 workdir 指令，你是无法进行任何操作的。
 
 ```sh
-ww3>  config  
+ww3>  config
 ⚠ No configuration loaded. Use 'workdir <path>' first.
 ww3> queue-status
 ⚠ No configuration loaded. Use 'workdir <path>' first.
@@ -616,7 +616,7 @@ python3 run.py workdir nested_demo
 #   grid.grid_type: nested
 #   grid.structured.nested.levels: [ level0 粗, level1 细 ]
 python3 run.py generate-grid nested_demo
-python3 run.py recommend-cfl nested_demo    # 逐层按 CFL 算时间步
+python3 run.py recommend-cfl nested_demo    # 按 level0 格距估算一组时间步写 params（逐层以 Step 4 为准）
 python3 run.py prepare-ww3 nested_demo
 python3 run.py local-run nested_demo
 ```
@@ -833,6 +833,8 @@ smc:
 | 二维谱点计算 | `spectral_point` | 验证点的二维谱            | `points.list` | `ww3.YYYY_spec.nc` 等谱点输出 |
 | 轨迹计算    | `track`          | 沿船舶、浮标、台风路径等移动轨迹取值 | `track_i.ww3` | `ww3.YYYY_trck.nc` 等航迹输出 |
 
+如果你不了解，用区域尺度计算就行了，这是最常用的。
+
 
 #### params.yml 参数
 
@@ -861,14 +863,6 @@ calc:
   track_points: []
 ```
 
-关键字段：
-
-| 字段 | 含义 |
-| --- | --- |
-| `calc.mode` | 计算模式：`region` 区域场输出，`spectral_point` 固定点二维谱输出，`track` 航迹输出 |
-| `calc.points` | 谱点模式使用的固定点列表，每个点包含 `lon`、`lat`、`name` |
-| `calc.track_points` | 轨迹计算使用的移动点列表；每个点通常需要时间、经度、纬度等信息 |
-
 使用注意：
 
 1. `region` 模式不需要填写 `points` 或 `track_points`。
@@ -883,18 +877,12 @@ calc:
 
 > 第四步在做什么？
 >
-> 前三步已经把风场、网格、计算模式准备好了。第四步根据工作目录里的 params.yml，把 WW3 需要的一整套 namelist 配好。  
-> 
+> 前三步已经把风场、网格、计算模式准备好了。第四步根据工作目录里的 params.yml，把 WW3 需要的一整套 namelist 配好。
+>
 原则很简单：只在模板文件里改和本次算例有关的字段，其余保持 public/nml/ 模板原样，方便你对照官方示例排错。
 
+![](public/resource/README-media/截屏2026-06-28%2016.34.00.png)
 
-
-
-下面按你在日志里常见到的阶段说明程序背后做了什么。
-
-```log
-
-```
 
 
 #### 5.5.3 按 CFL 推荐时间步
@@ -903,9 +891,22 @@ calc:
 📐 CFL-based timesteps: DXY≈5230 m, Tcfl≈252 s → DTXY=226, DTMAX=678, DTKTH=339, DTMIN=15
 ```
 
-GUI 点「自动配置时间步」，或 CLI / Shell 执行 recommend-cfl，会按 CFL 稳定性给出 TIMESTEPS%DTXY、DTMAX、DTKTH、DTMIN 的建议，并写入 params.yml 的 ww3_grid 段；确认第四步时再写进各层 ww3_grid.nml。
+第四步的「自动配置时间步」会按 CFL 稳定性给出数值积分时间步长的建议，点击确认参数后会写进 ww3_grid.nml。
 
-对应 params.yml 与 CLI：
+```swift
+✅ Spectral parameters and time steps have been written to ww3_grid.nml:
+  SPECTRUM%XFR    = 1.1
+  SPECTRUM%FREQ1  = 0.0375
+  SPECTRUM%NK     = 35
+  SPECTRUM%NTH    = 36
+
+  TIMESTEPS%DTMAX = 678
+  TIMESTEPS%DTXY  = 226
+  TIMESTEPS%DTKTH = 339
+  TIMESTEPS%DTMIN = 15
+```
+
+自动配置时间步对应的 CLI 指令：
 
 ```sh
 # 写入 params.yml 的 ww3_grid.parameters.TIMESTEPS%*
@@ -915,6 +916,10 @@ python3 run.py recommend-cfl new --mode faster           # 最激进内置档，
 python3 run.py recommend-cfl new --factor 1.2            # 手动指定 CFL 系数，自动上限 1.25
 python3 run.py prepare-ww3 new
 ```
+
+
+
+##### CFL 推荐步长的计算方式
 
 WW3 官方在 ww3_grid.nml 注释里的思路是：波浪在网格上传播时，一个时间步内波群走过的距离不能超过一个网格间距。记：
 
@@ -968,35 +973,94 @@ WW3Tool 在此基础上取整数秒，并级联得到：
 
 - 从 public/6.07_nml/ 或 public/7.14_nml/（根据你的 NML Version 选择）复制 ww3_grid.nml、ww3_prnc.nml、ww3_shel.nml、ww3_ounf.nml 等到工作目录。
 
-- 从 public/scripts/ 复制  local.sh（本机跑）和 server.sh（服务器 Slurm 跑）。两个脚本的计算流程相同；差别见 §5.5.8。
+- 从 public/scripts/ 复制  local.sh 和 server.sh。两个脚本的计算流程相同；差别见 §5.5.8。
+
+他们决定了 WW3 的程序（例如 ww3_grid、ww3_shel）执行流程， local.sh 是在本地运行的脚本， server.sh 是在 Slurm 运行的脚本。
 
 
 #### 5.5.2 把网格写进 ww3_grid.nml
 
-Step 2 生成的是 WW3Tool 自己的网格产物，Step 4 才把它们翻译成 WW3 能读的 `ww3_grid.nml`。不同网格类型写法不一样：
-
-| 网格类型 | Step 2 主要产物 | Step 4 写入方式 |
-| --- | --- | --- |
-| 结构化矩形网格 | `grid.meta`、`grid.bot`、`grid.obst` | 写 `GRID%TYPE='RECT'`、`RECT%NX/NY/SX/SY/X0/Y0`，并指向水深和障碍物文件 |
-| 非结构化三角网格 | `grid.ww3` | 写 `GRID%TYPE='UNST'` 和 `UNST%FILENAME='grid.ww3'`，同时关闭矩形网格相关块 |
-| SMC 网格 | `grid_cell.dat`、`grid_*side.dat`、`grid_bundy.dat` 等 | 保留 SMC 所需的矩形包络参数，并写入 `SMC%...%FILENAME` 与 `NBISMC/LvSMC` |
-
-因此，矩形网格主要是“把范围、分辨率、水深文件写进去”；非结构网格主要是“告诉 WW3 直接读 `grid.ww3`”；SMC 网格则是“写入包络矩形 + SMC cell/side/boundary 文件”。这三类都由第四步自动完成，不建议手改生成后的 `ww3_grid.nml`。
+Step 2 生成的网格文件需要 Step 4  配置 `ww3_grid.nml` 的网格相关的参数才能让 WW3 能正确读取。不同网格类型写法不一样：
 
 ```log
-✅ Successfully synced grid.meta parameters to ww3_grid.nml
+✅ Successfully synced grid.meta parameters to ww3_grid.nml:
+  GRID%TYPE  = 'RECT'
+  GRID%COORD = 'SPHE'
+  GRID%CLOS  = 'NONE'
+
+  RECT%NX    = 401
+  RECT%NY    = 401
+  RECT%SX    = 0.050000000000
+  RECT%SY    = 0.050000000000
+  RECT%X0    = 110.0000
+  RECT%Y0    = 10.0000
+  DEPTH%SF   = 0.001000
+  OBST%SF    = 0.010000
 ```
 
-Step 2 生成的 grid.meta 本质是 ww3_grid.nml 的精简版（格点数 NX/NY、分辨率、范围、水深/障碍物文件名等）。第四步把这些数抄回对应层的 ww3_grid.nml，保证 WW3 读到的网格和 gridgen 生成的一致。
+```log
+✅ Unstructured mesh: updated ww3_grid.nml and namelists.nml (&RECT_NML, &DEPTH_NML, &MASK_NML, &OBST_NML blocks commented with !):
+  GRID%TYPE     = 'UNST'
+  UNST%FILENAME = 'grid.ww3'
+
+  FLAGTR        = 0
+```
+
+```log
+✅ SMC mesh: updated ww3_grid.nml (template &DEPTH_NML, &MASK_NML, &OBST_NML commented with !; appended &DEPTH_NML DEPTH%SF):
+  GRID%TYPE          = 'RECT'
+
+  RECT%NX            = 570
+  RECT%NY            = 598
+  RECT%SX            = 0.033332824707
+  RECT%SY            = 0.033332824707
+  RECT%X0            = 109.9983
+  RECT%Y0            = 9.9985
+  RECT%SF            = 1.00
+  RECT%SF0           = 1.00
+  SMC%MCELS%FILENAME = 'grid_cell.dat'
+  SMC%ISIDE%FILENAME = 'grid_iside.dat'
+  SMC%JSIDE%FILENAME = 'grid_jside.dat'
+  SMC%SUBTR%FILENAME = 'grid_subtr.dat'
+  SMC%BUNDY%FILENAME = 'grid_bundy.dat'
+  DEPTH%SF           = -1.0
+✅ Updated namelists.nml:
+  NBISMC = 341 (grid_bundy.dat)
+  LvSMC  = 2
+```
+
+矩形网格主要是“把范围、分辨率、水深文件写进去”；非结构网格主要是“告诉 WW3 直接读 `grid.ww3`”；SMC 网格则是“写入包络矩形 + SMC cell/side/boundary 文件”。这三类都由第四步自动完成。
 
 
 
 
 #### 5.5.4 时间与输出步长
 
+```log
+✅ Updated ww3_ounp.nml:
+  POINT%TIMESTART  = '20250103 000000'
+  POINT%TIMESTRIDE = '3600'
+  POINT%TIMESPLIT  = 0
+✅ Updated ww3_ounf.nml:
+  FIELD%TIMESTART  = '20250103 000000'
+  FIELD%TIMESTRIDE = '3600'
+  FIELD%TIMESPLIT  = 0
+✅ Updated ww3_shel.nml:
+  DOMAIN%START            = '20250103 000000'
+  DOMAIN%STOP             = '20250105 235959'
+  OUTPUT%FIELD%TIMESTART  = '20250103 000000'
+  OUTPUT%FIELD%TIMESTRIDE = '3600'
+  DATE%FIELD              = '20250103 000000' '3600' '20250105 235959'
+  DATE%RESTART%START      = '20250103 000000'
+  DATE%RESTART%STOP       = '20250105 235959'
 
-
-日志：已更新 ww3_shel.nml：DOMAIN%START=… / 已更新 ww3_ounf.nml：FIELD%TIMESTART=…
+  TYPE%POINT%FILE         = 'points.list'
+  DATE%POINT              = '20250103 000000' '3600' '20250105 235959'
+  DATE%BOUNDARY           = '20250103 000000' '86400' '20250105 235959'
+✅ Modified ww3_prnc.nml:
+  FORCING%TIMESTART = '20250103 000000'
+  FORCING%TIMESTOP  = '20250105 235959'
+```
 
 对应的 yml 参数：
 
@@ -1009,118 +1073,214 @@ ww3:
 
 这些时间字段不是重复配置，而是分别给 WW3 的不同程序使用：
 
-| 写入位置 | 作用 |
-| --- | --- |
-| `ww3_shel.nml` 的 `DOMAIN%START/STOP` | 控制主模式积分从什么时候开始、什么时候结束，是整个模拟的总时间窗 |
-| `ww3_shel.nml` 的 `DATE%FIELD` | 控制场输出在主积分过程中什么时候写出、按多长间隔写出 |
-| `ww3_ounf.nml` 的 `FIELD%TIMESTART/TIMESTRIDE` | 控制 `ww3_ounf` 从中间文件导出 NetCDF 场结果的起始时间和输出间隔 |
-| `ww3_ounp.nml` 的 `POINT%TIMESTART/TIMESTRIDE` | 二维谱点计算时，控制谱点 NetCDF 的导出起始时间和输出间隔 |
-| `ww3_prnc.nml` 的 `FORCING%TIMESTART/TIMESTOP` | 控制强迫场预处理读取哪一段时间，通常应覆盖主积分时间窗 |
-
-- 计算时间窗写进 ww3_shel.nml（或嵌套时的 ww3_multi.nml）的 DOMAIN%START/STOP 和 DATE%FIELD 等。
-- NetCDF 场输出间隔写进 ww3_ounf.nml 的 FIELD%TIMESTRIDE。
-- 强迫场预处理 ww3_prnc.nml 的时间窗与计算一致，避免多读无关时段。
-
-CLI 下直接改 params.yml 后重新生成 nml 即可，例如：
-
-```sh
-# params.yml 片段示例
-# ww3:
-#   start_date: "20250103"
-#   end_date: "20250105"
-#   output_step: "3600"
-python3 run.py prepare-ww3 new
-```
-
-GUI 上「从 wind.nc 读取时间范围」只读风场文件头里的起止时间填回表单，不会从旧 nml 反填界面。
+| 写入位置                                          | 作用                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `ww3_shel.nml` 的 `DOMAIN%START/STOP`          | 控制主模式积分从什么时候开始、什么时候结束，是整个模拟的总时间窗                                 |
+| `ww3_shel.nml` 的 `DATE%FIELD`                 | 控制场输出在主积分过程中什么时候写出、按多长间隔写出，步长越小，`out_grd.ww3` 和后续 `ww3.*.nc` 越大。 |
+| `ww3_ounf.nml` 的 `FIELD%TIMESTART/TIMESTRIDE` | 控制 `ww3_ounf` 从中间文件导出 NetCDF 场结果的起始时间和输出间隔                       |
+| `ww3_ounp.nml` 的 `POINT%TIMESTART/TIMESTRIDE` | 二维谱点计算时，控制谱点 NetCDF 的导出起始时间和输出间隔                                 |
+| `ww3_prnc.nml` 的 `FORCING%TIMESTART/TIMESTOP` | 控制强迫场预处理读取哪一段时间，通常应覆盖主积分时间窗                                      |
 
 
 
 #### 5.5.5 谱分区输出方案
 
-日志：已修改 ww3_shel，ww3_ounf 的谱分区输出方案
+![](public/resource/README-media/截屏2026-06-28%2019.03.05.png)
 
-在设置页配置的 presets.output_scheme（如 standard、minimal）是一组变量缩写列表（HS、DIR、FP…）。第四步把同一份列表写入 ww3_shel.nml 的 TYPE%FIELD%LIST 和 ww3_ounf.nml 的 FIELD%LIST。嵌套时还会同步到 ww3_multi.nml 的 ALLTYPE%FIELD%LIST。
+在设置页可以配置谱分区输出方案，你可以在这里新增、修改、删除方案。
 
-```sh
-# params.yml 片段示例
-# ww3:
-#   output_scheme: standard
-python3 run.py prepare-ww3 new
+```log
+✅ Modified spectral partition output scheme in ww3_shel and ww3_ounf:
+  TYPE%FIELD%LIST = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
+  FIELD%LIST      = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
 ```
 
-方案名只存在 params.yml 里，不会从已有 shel 反推回 GUI。
+第四步谱分区输出方案写入 ww3_shel.nml 和 ww3_ounf.nml 。嵌套时还会同步到 ww3_multi.nml 的 ALLTYPE%FIELD%LIST。
+
+对应的 yml 参数：
+
+```swift
+ww3:
+  output_scheme:
+    use: with_spectrum
+    standard: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS
+    with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
+```
 
 
 
 #### 5.5.6 强迫场开关与多套 prnc
 
-日志：已修改 ww3_shel.nml：更新 INPUT%FORCING%*；运行阶段日志里会出现 Running ww3_prnc (wind)、Running ww3_prnc (current) 等。
+![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
 
-Step 1 放了哪些 wind.nc、current.nc 等，shel/multi 里对应强迫开关就为 T，否则为 F。ww3_prnc 一次只能处理一种强迫场，因此除风场外每种场有独立的 ww3_prnc_current.nml 等；local.sh / server.sh 会轮流改名为 ww3_prnc.nml 再执行（见 §5.5.8）。
+当第一步导入了多个强迫场，那么在第四步会显示可选的强迫场多选，其中风场是必选的，其他强迫场可以选择是否使用。
 
-只有风场时，预处理链通常是：
+在确认参数时，会根据强迫场生成不同的 ww3_prnc.nml
 
-```sh
-python3 run.py prepare-forcing new
-python3 run.py prepare-ww3 new
-python3 run.py local-run new
+```log
+✅ Copied and modified ww3_prnc_current.nml:
+  FORCING%FIELD%CURRENTS = T
+  FILE%FILENAME          = 'current_level.nc'
+  FILE%VAR(1)            = 'uo'
+  FILE%VAR(2)            = 'vo'
+✅ Copied and modified ww3_prnc_level.nml:
+  FORCING%FIELD%WATER_LEVELS = T
+  FILE%FILENAME              = 'current_level.nc'
+  FILE%VAR(1)                = 'zos'
+```
+
+默认的  ww3_prnc.nml 是处理风场的，由于 ww3_prnc 一次只能处理一个 nml ，因此我们复制了风场的   ww3_prnc.nml ，然后修改其中的变量，最终在 ww3_prnc 运行的时候我们还会更改 nml 的名字以满足 ww3_prnc  的要求，这会在 local.sh 或者 server.sh 中自动完成。
+
+
+
+#### 5.5.7 嵌套网格
+
+![](public/resource/README-media/截屏2026-06-28%2019.21.54.png)
+
+
+如果当前是嵌套网格，那么 WW3Tool  会在工作目录根下放 ww3_multi.nml 和 points.list（谱点模式）；各层 level0/、level1/… 各有自己的 ww3_grid.nml、mod_def 等。
+
+![](public/resource/README-media/截屏2026-06-28%2022.40.04.png)
+
+
+##### ww3_multi.nml
+
+```nml
+&INPUT_GRID_NML
+  INPUT(1)%NAME                  = 'wind'
+  INPUT(1)%FORCING%WINDS         = T
+
+  INPUT(2)%NAME                  = 'current'
+  INPUT(2)%FORCING%CURRENTS      = T
+
+  INPUT(3)%NAME                  = 'level'
+  INPUT(3)%FORCING%WATER_LEVELS  = T
+
+  INPUT(4)%NAME                  = 'ice'
+  INPUT(4)%FORCING%ICE_CONC      = F
+
+  INPUT(5)%NAME                  = 'ice1'
+  INPUT(5)%FORCING%ICE_PARAM1    = F
+/
+
+&MODEL_GRID_NML
+
+  MODEL(1)%NAME                  = 'level0'
+  MODEL(1)%FORCING%WINDS         = 'native'
+  MODEL(1)%FORCING%CURRENTS      = 'native'
+  MODEL(1)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(1)%FORCING%ICE_CONC      = 'no'
+  MODEL(1)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(1)%RESOURCE              = 1 1 0.00 0.08 F
+
+  MODEL(2)%NAME                  = 'level1'
+  MODEL(2)%FORCING%WINDS         = 'native'
+  MODEL(2)%FORCING%CURRENTS      = 'native'
+  MODEL(2)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(2)%FORCING%ICE_CONC      = 'no'
+  MODEL(2)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(2)%RESOURCE              = 2 1 0.08 0.24 F
+
+  MODEL(3)%NAME                  = 'level2'
+  MODEL(3)%FORCING%WINDS         = 'native'
+  MODEL(3)%FORCING%CURRENTS      = 'native'
+  MODEL(3)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(3)%FORCING%ICE_CONC      = 'no'
+  MODEL(3)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(3)%RESOURCE              = 3 1 0.24 1.00 F
+/
+```
+
+`ww3_multi.nml` 把各嵌套层串成一次 `mpirun ww3_multi` 积分。`MODEL_GRID_NML` 里每个 `MODEL(i)%NAME` 对应一层目录（如 `level2`），并经由 `MODEL(i)%RESOURCE` 声明该层在嵌套与 MPI 并行中的角色。
+
+`MODEL(i)%RESOURCE` 写成一行五个字段，等价于 ：
+
+| 字段           | 含义                                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| `RANK_ID`    | **嵌套层级序号**：`level0`（最粗）= 1，向细层递增。。                                                                       |
+| `GROUP_ID`   | MPI 进程组号；WW3Tool 默认各层均为 `1`（同一通信域内跑 multi-grid）。                                                         |
+| `COMM_FRAC`  | **进程份额区间** `[下界, 上界]`，取值 0–1，各层区间首尾相接且覆盖全体 MPI 进程。例如总进程 48、`0.24 1.00` 表示最细层约占用 24%–100% 的进程（约 37–48 个）。 |
+| `BOUND_FLAG` | 是否输出该层供细层嵌套用的边界文件 `nest.<NAME>`；WW3Tool 默认 `F`。                                                          |
+
+WW3Tool 在 Step 4 会按各层 `ww3_grid.nml` 中的格点数（`RECT%NX × NY`）和传播步 `TIMESTEPS%DTXY` 估算相对计算量 `点数 / DTXY`，再自动写入 `COMM_FRAC`。
+
+
+
+
+##### 同强迫场
+
+强迫场文件放在根目录，各层 ww3_prnc.nml 用 ../wind.nc 引用。
+
+```log
+✅ Modified ww3_prnc.nml:
+  FORCING%FIELD%WINDS = T
+  FILE%FILENAME       = '../wind.nc'
+  FILE%VAR(1)         = 'u10'
+  FILE%VAR(2)         = 'v10'
+
+✅ Copied and modified ww3_prnc_current.nml:
+  FORCING%FIELD%CURRENTS = T
+  FILE%FILENAME          = '../current_level.nc'
+  FILE%VAR(1)            = 'uo'
+  FILE%VAR(2)            = 'vo'
+
+✅ Copied and modified ww3_prnc_level.nml:
+  FORCING%FIELD%WATER_LEVELS = T
+  FILE%FILENAME              = '../current_level.nc'
+  FILE%VAR(1)                = 'zos'
 ```
 
 
 
-#### 5.5.7 嵌套网格（level0 … levelN）
-
-> 嵌套网格仍在演进中，使用前请阅读 嵌套网格设计与问题分析.md。
-
-日志结构大致是：
+##### 二维谱点计算
 
 ```
-======================================================================
-🔄 【工作目录】开始处理公共文件...     ← server.sh、ww3_multi.nml、points.list 等
-======================================================================
-🔄 【level0】开始处理网格...           ← 最粗层
-======================================================================
-🔄 【level1】…
-======================================================================
-🔄 【level2】…                        ← 最细层
+&DOMAIN_NML
+  DOMAIN%NRINP  = 0
+  DOMAIN%NRGRD  = 3
+  DOMAIN%UNIPTS = F
+  DOMAIN%FLGHG1 = T
+  DOMAIN%FLGHG2 = T
+  DOMAIN%START  = '20250103 000000'
+  DOMAIN%STOP   = '20250105 235959'
+/
+
+&OUTPUT_TYPE_NML
+  ALLTYPE%FIELD%LIST     = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
+  ALLTYPE%POINT%FILE     = 'points.list'
+  ALLTYPE%POINT%NAME     = 'level2'
+/
 ```
 
-嵌套算例 CLI 示例：
+WW3Tool 采用 `DOMAIN%UNIPTS = F`（不合并各层谱点 raw）。
 
-```sh
-python3 run.py workdir nested_demo
-# params.yml → grid.grid_type: nested，并配置 structured.nested.levels
-python3 run.py prepare-forcing nested_demo
-python3 run.py generate-grid nested_demo
-python3 run.py recommend-cfl nested_demo
-python3 run.py prepare-ww3 nested_demo
-python3 run.py local-run nested_demo
+`points.list` 只在工作目录根目录生成一份，谱点坐标须落在最细层 `levelN` 网格内。`ww3_multi` 积分后，有效谱点 raw 为根目录的 `out_pnt.<最细层 MODEL%NAME>`（三层嵌套例：`out_pnt.level2`）；
+
+`local.sh` / `server.sh` 会将其移入 `levelN/out_pnt.ww3`，再于最细层目录执行 `ww3_ounp` 导出 NetCDF。粗层不单独维护谱点列表，也不使用 `UNIPTS = T` 的统一点输出路径。
+
+
+
+##### 各层自动 CFL 时间步
+
+嵌套各层的 `dx` / `dy` 不同（`level0` 最粗、`levelN` 最细），**传播时间步不能共用一套**：CFL 要求 `DTXY ∝ Δx`，若细层仍用粗层的 `DTXY`，细网格会数值不稳定。
+
+Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处理时，会在写入该层 `ww3_grid.nml` 的谱参数与 `grid.meta` 同步之后，**自动**调用 CFL 重算（`TIMESTEPS%DTXY`、`DTMAX`、`DTKTH`、`DTMIN`），写回**该层目录**下的 `ww3_grid.nml`
+
+```log
+✅ Recomputed CFL timesteps: DTXY=189, DTMAX=567, DTKTH=284 (bathy Cg=24.9m/s)
 ```
 
-要点：
-
-- 工作目录根下放 ww3_multi.nml 和 points.list（谱点模式）；各层 level0/、level1/… 各有自己的 ww3_grid.nml、mod_def 等。
-- ww3_multi.nml 里每个 MODEL(i)%NAME 对应一层（如 level2），并设置嵌套层级 RANK_ID 与 MPI 资源区间 COMM_FRAC。
-- 强迫场 NetCDF 通常放在根目录，各层 prnc 用 ../wind.nc 引用。
-- 谱点列表在根目录一份即可。默认 UNIPTS=F 时，谱点 raw 文件跟最细层 MODEL%NAME 走（如 out_pnt.level2）。
-
-DOMAIN%FLGHG1/FLGHG2 控制双向嵌套掩膜；若未正确配置或层间几何不匹配，运行日志里可能出现 NBI=0 AND RANK > 1、OUTPUT POINT OUT OF GRID 等 WW3 警告。
 
 
 
 #### 5.5.8 local.sh 与 server.sh 在算什么
 
-两个脚本都是按固定顺序调用 WW3 官方可执行文件；任一步失败就停止，并在工作目录留下空文件 fail（成功则 success）。全程追加写入 run.log。
+两个脚本都是按固定顺序调用 WW3 官方可执行文件；任一步失败就停止，并在工作目录留下空文件 fail（成功则 success）。运行日志全部追加写入 run.log。
 
 本机跑：
 
 ```sh
 python3 run.py local-run new
-# 或进入工作目录
-cd workSpace/new && bash local.sh
-# 指定 MPI 进程数
-WW3_MPI_NPROCS=8 python3 run.py local-run new
 ```
 
 服务器跑（先上传、再提交）：
@@ -1132,74 +1292,139 @@ python3 run.py check-status new
 python3 run.py download-log new
 ```
 
-公共前半段（每层或单层都要做）：
+公共前半段（无论是否是嵌套网格）：
 
-1. ww3_grid — 读 grid.bot / grid.meta 等，生成 mod_def.ww3。
+1. ww3_grid — 读网格文件，生成 mod_def.ww3。
 2. ww3_prnc — 把 NetCDF 强迫场插值到波浪网格，得到 wind.ww3 等（多种强迫场则 wind → current → level → ice 依次跑）。
 3. ww3_strt — 初始场或冷启动。
 
-普通网格（grid_type: normal）：
+普通网格：
 
 4. mpirun ww3_shel（失败会尝试单进程 ww3_shel）— 主积分，生成 out_grd.ww3 等。
-5. 按 params.yml 的 calc.mode 决定后处理：spectral_point → 生成 points.list 并运行 ww3_ounp；track → 生成 track_i.ww3 并运行 ww3_trnc。
+5. 按 params.yml 的 calc.mode 决定后处理：spectral_point → 运行 ww3_ounp；track → 生成 track_i.ww3 并运行 ww3_trnc。
 6. ww3_ounf — 把 out_grd.ww3 转成 ww3.YYYY.nc。
 
-嵌套网格（grid_type: nested）：
+嵌套网格：
 
-1. 对每个 level* 重复 grid + prnc + strt。
+1. 对每个 level* 重复  ww3_grid + ww3_prnc + ww3_strt。
 2. 把各层 mod_def.ww3、wind.ww3 等搬到工作目录根，改名为 mod_def.level0、wind.level1… 供 ww3_multi 识别。
 3. mpirun ww3_multi — 多网格积分（替代单层 ww3_shel）。
 4. 把 out_grd.levelN、out_pnt.levelN 等移回最细层 levelN/，再跑 ww3_ounp / ww3_trnc / ww3_ounf。
 
 local.sh 与 server.sh 的差别：
 
-| | local.sh | server.sh |
-|---|----------|-----------|
-| 触发 | 本机 bash local.sh 或 local-run | 登录节点 sbatch server.sh 或 submit |
-| 核数 | WW3_MPI_NPROCS，否则本机逻辑 CPU 数 | #SBATCH -n 与脚本内 MPI_NPROCS |
-| 日志 | 终端 + run.log（tee） | 主要写入 run.log |
+|        | local.sh       | server.sh               |
+| ------ | -------------- | ----------------------- |
+| 触发     | 本地运行           | 提交任务                    |
+| 核数     | 本机逻辑 CPU 数     | `slurm.cores` / `#SBATCH -n` / `MPI_NPROCS` |
 | WW3 路径 | 本机 PATH 里的 WW3 | export PATH=… 指向服务器编译版本 |
 
 第四步改 nml，脚本按顺序调程序；run.log 里 Running ww3_grid、Running mpirun ww3_shel 等分隔线对应当前步骤。
 
 
 
-### 5.6 连接服务器与 Slurm
+### 5.6 Step5 —  Slurm 配置
 
-在 GUI 第五步，你需要先连上 HPC，确认分区、核数、节点数和 WW3 版本（slurm.server_st）。这些值在 params.yml 里；「确认 Slurm 配置」会写进 server.sh 顶部的 #SBATCH 和 MPI_NPROCS。nml 管物理参数，server.sh 管申请多少核、用哪套可执行文件。
+#### 服务器配置
 
-常见配置含义：
+你需要先配置服务器的连接方式才能连接服务器， WW3Tool 提供了三种 SSH 方式。
 
-| 配置 | 写入位置 | 作用 |
-| --- | --- | --- |
-| `server.ssh_config_host` | SSH 连接 | 优先使用 `~/.ssh/config` 的 Host 别名 |
-| `server.default_remote_dir` | 上传路径 | 远程工作目录根目录 |
-| `slurm.cpu` | `#SBATCH -p` | Slurm 分区 |
-| `slurm.nodes` | `#SBATCH -N` | 申请节点数 |
-| `slurm.cores` | `#SBATCH -n` / `MPI_NPROCS` | MPI 总进程数 |
-| `slurm.mem` | `#SBATCH --mem` | 申请内存 |
-| `slurm.server_st` | `server.sh` 的 PATH | 选择服务器 WW3 可执行文件版本 |
+![](public/resource/README-media/截屏2026-06-28%2020.48.27.png)
 
-如果只是改服务器资源，不需要重新做 Step 1～4；执行 `confirm-slurm` 或 GUI 的“确认 Slurm 配置”刷新 `server.sh` 即可。
+其中服务器路径是用于默认存储上传的工作目录位置。
+
+
+
+
+#### 任务列表与空闲资源列表
+
+这些列表的作用不用多说，当然是为了更好的利用计算资源了。
+
+![](public/resource/README-media/截屏2026-06-28%2021.03.35.png)
+
+
+#### Slurm 配置
+
+下面关于 Slurm 的配置只是提供一个默认值，在主页第五步连接服务器后可以自行修改。
+
+![](public/resource/README-media/截屏2026-06-28%2020.48.51.png)
+
+```log
+✅ Updated server.sh:
+  #SBATCH -J    = 2026-06-28_21-10-11
+  #SBATCH -p    = CPU6240R
+  #SBATCH -n    = 48
+  #SBATCH -N    = 1
+  #SBATCH --mem = 360G
+  MPI_NPROCS    = 48
+  ST            = ST2
+  export PATH   = /public/home/weiyl001/software/wavewatch3/model/exe
+```
+
+在第五步我们有自动解析服务器分区的功能，设置页面的服务器分区只是提供一个兜底的默认值，只有在无法正确解析服务器分区列表的情况下，才会使用。
+
+如果解析的服务器分区列表包含这个默认值，那么会默认使用该分区。
+
+
+
+
+#### CLI 总例子
+
+Step5 只负责连接服务器、查看资源、确认 Slurm 参数并刷新 `server.sh`，不负责上传和提交。上传与提交放在 Step6。
 
 对应 params.yml 与 CLI：
 
-```sh
-python3 run.py connect-test work_dir_name    # 测试 SSH
-python3 run.py slurm-idle work_dir_name      # 看集群空闲核数
-python3 run.py queue-status work_dir_name    # 看作业队列
-python3 run.py confirm-slurm work_dir_name   # 按 params.yml 刷新 server.sh
-python3 run.py ssh work_dir_name             # 打开交互式 SSH 终端
+```yaml
+server:
+  ssh_config_host: SHOU
+  default_remote_dir: /public/home/weiyl001/workSpace/
 
-# 示例
-python3 run.py connect-test hpc_case
-python3 run.py slurm-idle hpc_case
-python3 run.py confirm-slurm hpc_case
+slurm:
+  cpu: CPU6240R
+  nodes: 1
+  cores: 48
+  mem: 360G
+  server_st: ST2
 ```
 
+```sh
+# 1. 测试 SSH 是否能连通
+python3 run.py connect-test hpc_case
+
+# 2. 查看服务器空闲分区和核心
+python3 run.py slurm-idle hpc_case
+
+# 3. 写入/刷新 server.sh 顶部的 #SBATCH、MPI_NPROCS 和 ST 路径
+python3 run.py confirm-slurm hpc_case
+
+# 4. 可选：查看当前用户队列
+python3 run.py queue-status
+```
+
+如果只是改 `slurm.cpu`、`slurm.nodes`、`slurm.cores`、`slurm.mem` 或 `slurm.server_st`，不需要重新执行 Step1～Step4，直接重新运行 `confirm-slurm` 即可。
 
 
-### 5.7 上传与运行
+#### ST 版本管理
+
+ST 版本是服务器 WW3 编译的不同源项的地址，在第五步确认 Slurm 参数的时候会自动把这个地址写入
+
+```sh
+#wavewatch3--ST2
+export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
+```
+
+![](public/resource/README-media/截屏2026-06-28%2020.51.34.png)
+
+
+
+
+
+
+
+### 5.7 Step6  — 上传与运行
+
+
+
 
 嵌套算例下载结果时，一般只关心最细层 levelN/ 里的 ww3.*.nc。
 
@@ -1251,7 +1476,7 @@ python3 run.py local-run local_test
 
 
 
-### 5.8 ntfy 通知（可选）
+### 5.8 ntfy 通知
 
 作业在服务器上跑得久时，可在登录节点轮询 Slurm，任务结束往手机推 ntfy 通知。
 
