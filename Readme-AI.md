@@ -927,7 +927,6 @@ WW3 官方在 ww3_grid.nml 注释里的思路是：波浪在网格上传播时�
 
 $$
 T_{\mathrm{cfl}} = \frac{\Delta x}{C_g} = \frac{\Delta x \cdot f_1 \cdot 4\pi}{g}
-
 $$
 
 WW3Tool 在此基础上取整数秒，并级联得到：
