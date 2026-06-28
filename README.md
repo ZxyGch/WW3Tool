@@ -25,11 +25,11 @@ The program automatically fixes forcing-field issues (latitude ordering, time fi
 - JIGSAW triangular unstructured grid generation
 - SMCGTools SMC grid generation
 
-3. Regional runs, 2D spectral point runs, and trajectory runs
+3. Regional runs, 2D spectral point runs, and track runs
 
 4. Slurm script configuration (SSH settings, Slurm cores, nodes, CPU)
 
-5. Automatic configuration of ww3_grid.nml, ww3_prnc.nml, ww3_shel.nml, ww3_ounf.nml, ww3_multi.nml, and related files, including grid file settings, compute precision, output precision, time range, 2D spectral point runs, trajectory runs, spectral partition output, and forcing field configuration
+5. Automatic configuration of ww3_grid.nml, ww3_prnc.nml, ww3_shel.nml, ww3_ounf.nml, ww3_multi.nml, and related files, including grid file settings, compute precision, output precision, time range, 2D spectral point runs, track runs, spectral partition output, and forcing field configuration
 
 6. Wave height plots, wave height videos, contour plots, 2D spectrum plots, JASON3 satellite track plots, 2D spectrum plots
 
@@ -374,13 +374,13 @@ The dashed outline shows the actual map range.
 
 ![](public/resource/README-media/2026-03-30%2016.07.37.png)
 
-These three modes have similar computational cost, but the outputs differ. 2D spectral point calculation and trajectory calculation look like only a few points are computed, but the whole map is still computed.
+These three modes have similar computational cost, but the outputs differ. 2D spectral point calculation and track calculation look like only a few points are computed, but the whole map is still computed.
 
 Regional mode is the standard ww3_ounf output.
 
 2D spectral point calculation adds ww3_ounp.
 
-Trajectory calculation uses ww3_trnc.
+Track calculation uses ww3_trnc.
 
 You can see their configuration differences in step 4.
 
@@ -423,7 +423,7 @@ You can plot 2D spectra:
 ![](workSpace/global/photo/spectrum/spectrum_3_time_20250104_120000.png)
 
 
-#### Trajectory calculation
+#### Track calculation
 
 ![](public/resource/README-media/2026-03-30%2016.08.38.png)
 
@@ -447,7 +447,7 @@ Finally, ww3_trnc outputs ww3.2025_trck.nc.
 
 We added wind, water level, and current as forcing fields. Ice can be added, but our grid region has no ice, so it is not shown here.
 
-We use trajectory calculation. This mode produces more configuration logs than regional mode, so below we explain the trajectory-calculation-specific configs.
+We use track calculation. This mode produces more configuration logs than regional mode, so below we explain the track-calculation-specific configs.
 
 
 ```log
@@ -462,7 +462,7 @@ We use trajectory calculation. This mode produces more configuration logs than r
 ✅ Copied and modified ww3_prnc_level.nml: FORCING%FIELD%WATER_LEVELS = T
 ✅ Modified ww3_shel.nml: Updated INPUT%FORCING%* settings
 ✅ Generated track_i.ww3 file
-✅ Modified ww3_shel.nml: Added DATE%TRACK (Trajectory Calculation)
+✅ Modified ww3_shel.nml: Added DATE%TRACK (Track Calculation)
 ✅ Modified ww3_trnc.nml: TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
 ```
 
@@ -620,7 +620,7 @@ We edit ww3_shel.nml:
 
 The dates are start/stop dates. The '1800' in DATE%FIELD and DATE%TRACK is the timestep.
 
-DATE%TRACK is added for trajectory calculation; it is absent by default.
+DATE%TRACK is added for track calculation; it is absent by default.
 
 ---
 
@@ -699,7 +699,7 @@ Based on selected forcing fields, we update ww3_shel.nml:
 
 ---
 
-Based on the trajectory list (or 2D spectral point list), we generate:
+Based on the track list (or 2D spectral point list), we generate:
 
 ```log
 ✅ Generated track_i.ww3 file
@@ -719,7 +719,7 @@ WAVEWATCH III TRACK LOCATIONS DATA
 ---
 
 ```log
-✅ Modified ww3_shel.nml: Added DATE%TRACK (Trajectory Calculation)
+✅ Modified ww3_shel.nml: Added DATE%TRACK (Track Calculation)
 ```
 
 We also add to ww3_shel.nml:
@@ -956,7 +956,7 @@ Open a working directory and it will auto-detect converted forcing files (by fil
 
 Auto-read grid range and resolution and fill step 2, detect coarse and fine folders and switch to nested mode.
 
-Auto-detect points.list to switch to point output mode; detect track_i.ww3 to switch to trajectory calculation and import the points list.
+Auto-detect points.list to switch to point output mode; detect track_i.ww3 to switch to track calculation and import the points list.
 
 Auto-read Slurm parameters from server.sh to fill step 4, auto-detect ww3_shel.nml precision, time range, spectral partition scheme.
 
