@@ -973,6 +973,16 @@ WW3Tool 在此基础上取整数秒，并级联得到：
 
 #### 5.5.2 把网格写进 ww3_grid.nml
 
+Step 2 生成的是 WW3Tool 自己的网格产物，Step 4 才把它们翻译成 WW3 能读的 `ww3_grid.nml`。不同网格类型写法不一样：
+
+| 网格类型 | Step 2 主要产物 | Step 4 写入方式 |
+| --- | --- | --- |
+| 结构化矩形网格 | `grid.meta`、`grid.bot`、`grid.obst` | 写 `GRID%TYPE='RECT'`、`RECT%NX/NY/SX/SY/X0/Y0`，并指向水深和障碍物文件 |
+| 非结构化三角网格 | `grid.ww3` | 写 `GRID%TYPE='UNST'` 和 `UNST%FILENAME='grid.ww3'`，同时关闭矩形网格相关块 |
+| SMC 网格 | `grid_cell.dat`、`grid_*side.dat`、`grid_bundy.dat` 等 | 保留 SMC 所需的矩形包络参数，并写入 `SMC%...%FILENAME` 与 `NBISMC/LvSMC` |
+
+因此，矩形网格主要是“把范围、分辨率、水深文件写进去”；非结构网格主要是“告诉 WW3 直接读 `grid.ww3`”；SMC 网格则是“写入包络矩形 + SMC cell/side/boundary 文件”。这三类都由第四步自动完成，不建议手改生成后的 `ww3_grid.nml`。
+
 ```log
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml
 ```
