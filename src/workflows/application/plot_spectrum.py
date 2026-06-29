@@ -61,6 +61,9 @@ def run_spectrum(
     mode: str = "all",
     station_index: int = 0,
     spec_file: Optional[str] = None,
+    time_step_hours: Optional[float] = None,
+    energy_threshold: Optional[float] = None,
+    plot_mode: Optional[str] = None,
 ) -> SpectrumResult:
     """从 WW3 谱输出 NetCDF 生成二维方向谱图。
 
@@ -84,32 +87,47 @@ def run_spectrum(
     logger = CoreLogger(callback=log)
     result_folder = _resolve_result_folder(config)
     cfg = config.plot.spectrum
+    resolved_time_step_hours = time_step_hours if time_step_hours is not None else cfg.time_step_hours
+    resolved_energy_threshold = energy_threshold if energy_threshold is not None else cfg.energy_threshold
+    resolved_plot_mode = plot_mode if plot_mode is not None else cfg.plot_mode
+    resolved_plot_mode = str(resolved_plot_mode or "actual").strip().lower()
+    if resolved_plot_mode not in {"normalized", "actual"}:
+        resolved_plot_mode = "normalized" if "normal" in resolved_plot_mode or "归一" in resolved_plot_mode else "actual"
+    logger.log(
+        tr("plotting_spectrum_mode_log", "二维谱绘制方式：{mode}").format(
+            mode=(
+                tr("plotting_mode_normalized", "最大值归一化")
+                if resolved_plot_mode == "normalized"
+                else tr("plotting_mode_actual", "实际值")
+            )
+        )
+    )
 
     folder_str = str(result_folder)
 
     if mode == "first":
         worker = _generate_first_spectrum_worker
         worker_kwargs = {
-            "energy_threshold": cfg.energy_threshold,
+            "energy_threshold": resolved_energy_threshold,
             "spec_file": spec_file,
-            "plot_mode": cfg.plot_mode,
+            "plot_mode": resolved_plot_mode,
         }
     elif mode == "selected":
         worker = _generate_selected_spectrum_worker
         worker_kwargs = {
-            "energy_threshold": cfg.energy_threshold,
+            "energy_threshold": resolved_energy_threshold,
             "spec_file": spec_file,
-            "time_step_hours": cfg.time_step_hours,
+            "time_step_hours": resolved_time_step_hours,
             "station_index": station_index,
-            "plot_mode": cfg.plot_mode,
+            "plot_mode": resolved_plot_mode,
         }
     else:
         worker = _generate_all_spectrum_worker
         worker_kwargs = {
-            "energy_threshold": cfg.energy_threshold,
+            "energy_threshold": resolved_energy_threshold,
             "spec_file": spec_file,
-            "time_step_hours": cfg.time_step_hours,
-            "plot_mode": cfg.plot_mode,
+            "time_step_hours": resolved_time_step_hours,
+            "plot_mode": resolved_plot_mode,
         }
 
     worker_result = run_plot_worker(

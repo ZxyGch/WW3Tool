@@ -915,6 +915,18 @@ class PlotInterface(QWidget):
         row = self._spectrum_table.currentRow()
         return row - 1 if row >= 1 else 0
 
+    def _spectrum_plot_mode(self) -> str:
+        data = self._spectrum_mode.currentData()
+        text = self._spectrum_mode.currentText().strip()
+        mode = str(data or text).strip().lower()
+        if mode in {"normalized", "max normalized", "maximum normalized"}:
+            return "normalized"
+        if mode in {"actual", "actual value"}:
+            return "actual"
+        if text == tr("plotting_mode_normalized", "最大值归一化") or text == tr("plotting_plot_mode_normalized", "最大值归一化"):
+            return "normalized"
+        return "actual"
+
     def spectrum_params(self) -> dict:
         # [EN] Return 2-D spectrum plotting parameters from the visible card.
         """返回二维谱绘图参数。"""
@@ -930,13 +942,10 @@ class PlotInterface(QWidget):
             time_step = 24.0
         if time_step <= 0:
             time_step = 24.0
-        plot_mode = self._spectrum_mode.currentData()
-        if plot_mode is None:
-            plot_mode = self._spectrum_mode.currentText()
         return {
             "time_step_hours": time_step,
             "energy_threshold": energy_threshold,
-            "plot_mode": str(plot_mode),
+            "plot_mode": self._spectrum_plot_mode(),
             "spectrum_file": self._spectrum_file.text().strip(),
         }
 

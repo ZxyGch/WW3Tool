@@ -687,6 +687,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
                 return X, Y, E_interp
 
+            logged_wavespectra = False
+
             # 绘制单个二维谱图（辅助函数，归一化模式使用 wavespectra 框架）
             def plot_single_spectrum(X, Y, E_interp, threshold, lon_val, lat_val, time_str, output_file, plot_mode="最大值归一化", E_original=None, freq_orig=None, dir_orig=None):
                 """绘制单个二维谱图
@@ -703,6 +705,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     freq_orig: 原始频率数组，用于归一化模式
                     dir_orig: 原始方向数组，用于归一化模式
                 """
+                nonlocal logged_wavespectra
                 # 检查是否为归一化模式（支持中英文翻译）
                 normalized_text_zh = tr("plotting_plot_mode_normalized", "最大值归一化")
                 normalized_text_en = "Max Normalized"  # 英文翻译
@@ -720,6 +723,9 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     and dir_orig is not None
                 ):
                     # 使用 wavespectra 框架绘制归一化图（参考 plot_directional_spectrum.py）
+                    if not logged_wavespectra:
+                        log("✅ 使用 wavespectra 绘制最大值归一化二维谱")
+                        logged_wavespectra = True
                     import xarray as xr
 
                     # 创建 xarray DataArray（wavespectra 需要）
@@ -1391,9 +1397,12 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
                 return cbar_ticks
 
+            logged_wavespectra = False
+
             # 绘制单个二维谱图（辅助函数）
             def plot_single_spectrum(X, Y, E_interp, threshold, lon_val, lat_val, time_str, output_file, plot_mode="最大值归一化", E_original=None, freq_orig=None, dir_orig=None):
                 """绘制单个二维谱图（归一化模式使用 wavespectra 框架）"""
+                nonlocal logged_wavespectra
                 # 复用 _generate_all_spectrum_worker 中的相同实现
                 # 这里直接调用相同的逻辑，避免代码重复
                 # 检查是否为归一化模式（支持中英文翻译）
@@ -1413,6 +1422,9 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     and dir_orig is not None
                 ):
                     # 使用 wavespectra 框架绘制归一化图（参考 plot_directional_spectrum.py）
+                    if not logged_wavespectra:
+                        log("✅ 使用 wavespectra 绘制最大值归一化二维谱")
+                        logged_wavespectra = True
                     import xarray as xr
 
                     # 创建 xarray DataArray（wavespectra 需要）

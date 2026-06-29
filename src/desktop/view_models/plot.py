@@ -123,6 +123,9 @@ class PlotViewModel:
         mode: str = "all",
         station_index: int = 0,
         spec_file: Optional[str] = None,
+        time_step_hours: Optional[float] = None,
+        energy_threshold: Optional[float] = None,
+        plot_mode: Optional[str] = None,
     ):
         from workflows.application.plot_spectrum import run_spectrum
 
@@ -132,6 +135,9 @@ class PlotViewModel:
             mode=mode,
             station_index=station_index,
             spec_file=spec_file or None,
+            time_step_hours=time_step_hours,
+            energy_threshold=energy_threshold,
+            plot_mode=plot_mode,
         )
 
     def match_jason3(self, config: PipelineConfig, *, data_folder: str = ""):

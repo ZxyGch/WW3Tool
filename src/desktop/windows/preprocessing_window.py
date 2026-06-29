@@ -2313,6 +2313,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 c,
                 mode="all",
                 spec_file=params["spectrum_file"],
+                time_step_hours=params["time_step_hours"],
+                energy_threshold=params["energy_threshold"],
+                plot_mode=params["plot_mode"],
             )
         )
 
@@ -2325,6 +2328,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 mode="selected",
                 station_index=station,
                 spec_file=params["spectrum_file"],
+                time_step_hours=params["time_step_hours"],
+                energy_threshold=params["energy_threshold"],
+                plot_mode=params["plot_mode"],
             )
         )
 
