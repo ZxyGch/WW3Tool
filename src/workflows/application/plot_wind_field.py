@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..domain.config_models import PipelineConfig
-from ..infrastructure.plot.photo_output import SUBDIR_WIND_FIELD, collect_photo_files, photo_subdir
+from ..infrastructure.plot.photo_output import SUBDIR_WIND_FIELD, collect_photo_files
 from ..support.logging import CoreLogger, LogCallback
 from ..support.process_worker import run_plot_worker
 from ..support.translations import tr
@@ -174,11 +174,6 @@ def run_wind_field(
                "⚠️ 未生成风场图，检查数据是否为空")
         )
 
-    logger.log(
-        tr("plotting_wind_field_generated_to",
-           "✅ 风场图已生成至：{path}")
-        .format(path=photo_subdir(out_dir, SUBDIR_WIND_FIELD))
-    )
     return WindFieldResult(
         output_folder=out_dir,
         image_files=images if images else (worker_result if isinstance(worker_result, list) else []),
