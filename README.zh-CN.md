@@ -15,6 +15,9 @@ WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理
 
 WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshgen 的代码），支持 Windows / Linux / macOS，UI 支持中英文双语。
 
+我是上海海洋大学的一名海洋科学研究生，由于我本科不是海洋科学，对 WAVEWATCH III 了解并不多，因此如果你对 WW3Tool 有什么建议，请联系我： atomgoto@gmail.com 
+
+另外如果 WW3Tool 对你有帮助，请给我一颗 🌟 ！ 🥳 
 
 
 ## 2. 快速开始

@@ -15,6 +15,10 @@ WW3Tool is a **preprocessing and run-assist toolkit** built around **WAVEWATCH I
 
 WW3Tool is written entirely in Python (non-Python code comes from the meshgen grid generator). It supports Windows / Linux / macOS with a bilingual Chinese/English UI.
 
+I am a graduate student in Marine Science at Shanghai Ocean University. Since my undergraduate background is not in Marine Science, my knowledge of WAVEWATCH III is somewhat limited; therefore, if you have any suggestions for WW3Tool, please contact me at atomgoto@gmail.com.
+
+Also, if you find WW3Tool helpful, please give it a 🌟! 🥳
+
 
 
 ## 2. Quick Start
