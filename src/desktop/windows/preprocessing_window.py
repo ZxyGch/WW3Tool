@@ -1202,6 +1202,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 ),
             },
             ww3_grid_overrides=self._ww3_panel.ww3_grid_overrides(),
+            plot_overrides=self._plot_overrides(),
             slurm_overrides=(
                 self._server_connect_panel.slurm_overrides()
                 if hasattr(self, "_server_connect_panel")
@@ -1216,6 +1217,18 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             if remote_dir:
                 return {"remote_dir": remote_dir}
         return {}
+
+    def _plot_overrides(self) -> dict:
+        if not hasattr(self, "_plot_interface"):
+            return {}
+        spectrum_params = self._plot_interface.spectrum_params()
+        return {
+            "spectrum": {
+                "time_step_hours": spectrum_params["time_step_hours"],
+                "energy_threshold": spectrum_params["energy_threshold"],
+                "plot_mode": spectrum_params["plot_mode"],
+            }
+        }
 
     def _persist_server_remote_dir(self) -> bool:
         params_path = self._current_workdir_params_path(create=True)
@@ -2230,6 +2243,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # [EN] Display results in window's right-side image drawer, without changing main splitter width.
         """在窗口右侧图片抽屉展示结果，不改变主 splitter 宽度。"""
         self.show_image_gallery(title, images)
+        self.titleBar.raise_()
 
     def _hide_grid_images(self) -> None:
         self.hide_image_gallery()
@@ -2293,11 +2307,26 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
 
     def _plot_spectrum_all(self) -> None:
-        self._run_plot(lambda c: self._plot_vm.spectrum(c, mode="all"))
+        params = self._plot_interface.spectrum_params()
+        self._run_plot(
+            lambda c: self._plot_vm.spectrum(
+                c,
+                mode="all",
+                spec_file=params["spectrum_file"],
+            )
+        )
 
     def _plot_spectrum_selected(self) -> None:
         station = self._plot_interface.spectrum_station()
-        self._run_plot(lambda c: self._plot_vm.spectrum(c, mode="selected", station_index=station))
+        params = self._plot_interface.spectrum_params()
+        self._run_plot(
+            lambda c: self._plot_vm.spectrum(
+                c,
+                mode="selected",
+                station_index=station,
+                spec_file=params["spectrum_file"],
+            )
+        )
 
     def _plot_jason3(self) -> None:
         jason_folder = self._plot_interface.jason3_folder() or None

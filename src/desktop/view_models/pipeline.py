@@ -344,6 +344,7 @@ class PipelineViewModel:
         calc_track_points: list[dict] | None = None,
         ww3_overrides: dict | None = None,
         ww3_grid_overrides: dict | None = None,
+        plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
         validation_stage: str = "full",
@@ -366,6 +367,7 @@ class PipelineViewModel:
             calc_track_points=calc_track_points,
             ww3_overrides=ww3_overrides,
             ww3_grid_overrides=ww3_grid_overrides,
+            plot_overrides=plot_overrides,
             slurm_overrides=slurm_overrides,
             server_overrides=server_overrides,
         )
@@ -551,6 +553,7 @@ class PipelineViewModel:
         calc_track_points: list[dict] | None = None,
         ww3_overrides: dict | None = None,
         ww3_grid_overrides: dict | None = None,
+        plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
     ) -> dict:
@@ -613,6 +616,14 @@ class PipelineViewModel:
             # [EN] Step 4 visible spectrum/timestep groups override ww3_grid (after config.json overrides -> form takes priority).
             # 第四步可见的频谱/时间步分组覆盖 ww3_grid（在 config.json 覆盖之后 → 表单优先）。
             raw["ww3_grid"] = {**_as_dict(raw.get("ww3_grid")), **ww3_grid_overrides}
+        if plot_overrides:
+            plot_raw = {**_as_dict(raw.get("plot"))}
+            for section, values in plot_overrides.items():
+                if isinstance(values, dict):
+                    plot_raw[section] = {**_as_dict(plot_raw.get(section)), **values}
+                else:
+                    plot_raw[section] = values
+            raw["plot"] = plot_raw
         if slurm_overrides:
             from workflows.application.configuration import normalize_slurm_section
 

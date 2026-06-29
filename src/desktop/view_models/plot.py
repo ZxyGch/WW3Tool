@@ -116,10 +116,23 @@ class PlotViewModel:
             density_step=density_step,
         )
 
-    def spectrum(self, config: PipelineConfig, *, mode: str = "all", station_index: int = 0):
+    def spectrum(
+        self,
+        config: PipelineConfig,
+        *,
+        mode: str = "all",
+        station_index: int = 0,
+        spec_file: Optional[str] = None,
+    ):
         from workflows.application.plot_spectrum import run_spectrum
 
-        return run_spectrum(config, log=self._log, mode=mode, station_index=station_index)
+        return run_spectrum(
+            config,
+            log=self._log,
+            mode=mode,
+            station_index=station_index,
+            spec_file=spec_file or None,
+        )
 
     def match_jason3(self, config: PipelineConfig, *, data_folder: str = ""):
         from workflows.application.match_jason3 import run_match_jason3

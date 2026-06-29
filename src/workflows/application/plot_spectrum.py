@@ -92,6 +92,7 @@ def run_spectrum(
         worker_kwargs = {
             "energy_threshold": cfg.energy_threshold,
             "spec_file": spec_file,
+            "plot_mode": cfg.plot_mode,
         }
     elif mode == "selected":
         worker = _generate_selected_spectrum_worker

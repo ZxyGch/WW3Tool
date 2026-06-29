@@ -24,6 +24,8 @@ try:
 except ImportError:
     HAS_WAVESPECTRA = False
 
+USE_WAVESPECTRA_NORMALIZED_PLOT = False
+
 from .workers_utils import _pick_station_lon_lat, _decode_station_names
 
 
@@ -74,7 +76,38 @@ def _direction_label_position(angle_deg, radius):
     return radius * np.cos(theta_rad), radius * np.sin(theta_rad)
 
 
-def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None):
+def _is_normalized_plot_mode(plot_mode):
+    mode = str(plot_mode or "").strip()
+    mode_lower = mode.lower()
+    return (
+        mode == "最大值归一化"
+        or mode == tr("plotting_plot_mode_normalized", "最大值归一化")
+        or mode_lower in {"normalized", "max normalized", "maximum normalized"}
+    )
+
+
+def _prepare_spectrum_plot_values(E_interp, threshold, plot_mode):
+    """Return data, threshold and colorbar label for actual/normalized spectrum plots."""
+    data = np.array(E_interp, dtype=float, copy=True)
+    try:
+        threshold_value = float(threshold if threshold is not None else 0.0)
+    except (TypeError, ValueError):
+        threshold_value = 0.0
+    threshold_value = max(0.0, threshold_value)
+
+    if not _is_normalized_plot_mode(plot_mode):
+        return data, threshold_value, "Energy Density (m²/Hz/deg)"
+
+    finite = data[np.isfinite(data)]
+    max_value = float(np.nanmax(finite)) if finite.size else 0.0
+    if max_value > 0:
+        data = data / max_value
+    else:
+        data = np.nan_to_num(data, nan=0.0)
+    return data, min(threshold_value, 1.0), "Normalized Energy Density"
+
+
+def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, plot_mode="最大值归一化"):
     """在子进程中生成第一张二维方向谱图（快速预览，参考 plot_matlab.py 逻辑）。"""
     try:
         def log(msg):
@@ -161,12 +194,14 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             fig = plt.figure(figsize=(8, 7.5), facecolor='white')
             ax = fig.add_axes([0.08, 0.08, 0.68, 0.84])
 
-            # 计算数据范围
-            data_min = np.nanmin(E_interp)
-            data_max = np.nanmax(E_interp)
-
-            # 使用传入的阈值：能量密度低于阈值的显示为白色
-            threshold = float(energy_threshold)
+            # 计算数据范围；归一化模式下阈值表示最大能量的比例
+            E_plot, threshold, cbar_label = _prepare_spectrum_plot_values(
+                E_interp,
+                energy_threshold,
+                plot_mode,
+            )
+            data_min = np.nanmin(E_plot)
+            data_max = np.nanmax(E_plot)
 
             # 生成刻度值的函数
             def generate_ticks(min_val, max_val):
@@ -253,7 +288,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
 
             try:
                 # 使用 extend='min' 让低于阈值区域显示为白色
-                pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap,
+                pcm = ax.contourf(X, Y, E_plot.T, levels=levels, cmap=cmap,
                                 vmin=vmin_actual, vmax=vmax_actual, extend='min')
             except ValueError as e:
                 # 捕获 minvalue must be less than or equal to maxvalue 错误
@@ -263,7 +298,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
                     threshold = 0.0
                     vmin_actual = 0.0
                     vmax_actual = max(data_max, 1e-10)  # 确保最大值大于0
-                    pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap,
+                    pcm = ax.contourf(X, Y, E_plot.T, levels=levels, cmap=cmap,
                                     vmin=vmin_actual, vmax=vmax_actual, extend='min')
                 else:
                     raise
@@ -290,7 +325,7 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
             sm.set_array([])
             cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
             cb.set_ticklabels(tick_labels)
-            cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
+            cb.set_label(cbar_label, fontsize=9)
             cb.ax.tick_params(labelsize=9)
 
             # 标题
@@ -676,7 +711,14 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                                 plot_mode == normalized_text_en or
                                 plot_mode == "normalized")
 
-                if is_normalized and HAS_WAVESPECTRA and E_original is not None and freq_orig is not None and dir_orig is not None:
+                if (
+                    is_normalized
+                    and USE_WAVESPECTRA_NORMALIZED_PLOT
+                    and HAS_WAVESPECTRA
+                    and E_original is not None
+                    and freq_orig is not None
+                    and dir_orig is not None
+                ):
                     # 使用 wavespectra 框架绘制归一化图（参考 plot_directional_spectrum.py）
                     import xarray as xr
 
@@ -787,17 +829,16 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     plt.close(fig)
 
                 else:
-                    # 实际值模式，使用手动绘制方法（原有逻辑）
-                    # 计算原始数据范围（归一化前）
-                    original_data_min = np.nanmin(E_interp)
-                    original_data_max = np.nanmax(E_interp)
-
-                    # 实际值模式
-                    data_min = original_data_min
-                    data_max = original_data_max
+                    # 手动绘制方法；归一化模式直接对插值后的二维谱除以最大值。
+                    E_plot, adjusted_threshold, cbar_label = _prepare_spectrum_plot_values(
+                        E_interp,
+                        threshold,
+                        plot_mode,
+                    )
+                    data_min = np.nanmin(E_plot)
+                    data_max = np.nanmax(E_plot)
 
                     # 检查阈值：若整体低于阈值则显示完整图
-                    adjusted_threshold = float(threshold)
                     show_full = data_max <= adjusted_threshold
                     if show_full:
                         vmin_actual = data_min
@@ -821,7 +862,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     cmap.set_under('white')
 
                     try:
-                        pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap,
+                        pcm = ax.contourf(X, Y, E_plot.T, levels=levels, cmap=cmap,
                                         vmin=vmin_actual, vmax=vmax_actual, extend=extend_mode)
                     except ValueError as e:
                         error_msg = str(e).lower()
@@ -829,7 +870,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                             adjusted_threshold = 0.0
                             vmin_actual = 0.0
                             vmax_actual = max(data_max, 1e-10)
-                            pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap,
+                            pcm = ax.contourf(X, Y, E_plot.T, levels=levels, cmap=cmap,
                                             vmin=vmin_actual, vmax=vmax_actual, extend=extend_mode)
                         else:
                             raise
@@ -854,7 +895,7 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     sm.set_array([])
                     cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
                     cb.set_ticklabels(tick_labels)
-                    cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
+                    cb.set_label(cbar_label, fontsize=9)
                     cb.ax.tick_params(labelsize=9)
 
                     # 标题
@@ -1355,7 +1396,14 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                                 plot_mode == normalized_text_en or
                                 plot_mode == "normalized")
 
-                if is_normalized and HAS_WAVESPECTRA and E_original is not None and freq_orig is not None and dir_orig is not None:
+                if (
+                    is_normalized
+                    and USE_WAVESPECTRA_NORMALIZED_PLOT
+                    and HAS_WAVESPECTRA
+                    and E_original is not None
+                    and freq_orig is not None
+                    and dir_orig is not None
+                ):
                     # 使用 wavespectra 框架绘制归一化图（参考 plot_directional_spectrum.py）
                     import xarray as xr
 
@@ -1463,14 +1511,15 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     plt.close(fig)
 
                 else:
-                    # 实际值模式，使用手动绘制方法（原有逻辑）
-                    original_data_min = np.nanmin(E_interp)
-                    original_data_max = np.nanmax(E_interp)
+                    # 手动绘制方法；归一化模式直接对插值后的二维谱除以最大值。
+                    E_plot, adjusted_threshold, cbar_label = _prepare_spectrum_plot_values(
+                        E_interp,
+                        threshold,
+                        plot_mode,
+                    )
+                    data_min = np.nanmin(E_plot)
+                    data_max = np.nanmax(E_plot)
 
-                    data_min = original_data_min
-                    data_max = original_data_max
-
-                    adjusted_threshold = float(threshold)
                     show_full = data_max <= adjusted_threshold
                     if show_full:
                         vmin_actual = data_min
@@ -1492,7 +1541,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     cmap.set_under('white')
 
                     try:
-                        pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap,
+                        pcm = ax.contourf(X, Y, E_plot.T, levels=levels, cmap=cmap,
                                         vmin=vmin_actual, vmax=vmax_actual, extend='min')
                     except ValueError as e:
                         error_msg = str(e).lower()
@@ -1500,7 +1549,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                             adjusted_threshold = 0.0
                             vmin_actual = 0.0
                             vmax_actual = max(data_max, 1e-10)
-                            pcm = ax.contourf(X, Y, E_interp.T, levels=levels, cmap=cmap,
+                            pcm = ax.contourf(X, Y, E_plot.T, levels=levels, cmap=cmap,
                                             vmin=vmin_actual, vmax=vmax_actual, extend='min')
                         else:
                             raise
@@ -1524,7 +1573,7 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     sm.set_array([])
                     cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.1, ticks=cbar_ticks)
                     cb.set_ticklabels(tick_labels)
-                    cb.set_label('Energy Density (m²/Hz/deg)', fontsize=9)
+                    cb.set_label(cbar_label, fontsize=9)
                     cb.ax.tick_params(labelsize=9)
 
                     title_str = f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}'

@@ -716,8 +716,9 @@ class PlotInterface(QWidget):
         grid.addWidget(QLabel(tr("plotting_timestep_hours_label", "时间步长 (小时):")), 1, 0)
         grid.addWidget(self._spectrum_timestep, 1, 1)
         self._spectrum_mode = ComboBox()
-        self._spectrum_mode.addItems([tr("plotting_mode_normalized", "最大值归一化"), tr("plotting_mode_actual", "实际值")])
-        self._spectrum_mode.setCurrentText(tr("plotting_mode_actual", "实际值"))
+        self._spectrum_mode.addItem(tr("plotting_mode_normalized", "最大值归一化"), "normalized")
+        self._spectrum_mode.addItem(tr("plotting_mode_actual", "实际值"), "actual")
+        self._spectrum_mode.setCurrentIndex(1)
         self._spectrum_mode.setStyleSheet(styles.combo_style())
         left_align_combo_text(self._spectrum_mode)
         self._spectrum_mode.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -913,6 +914,31 @@ class PlotInterface(QWidget):
     def spectrum_station(self) -> int:
         row = self._spectrum_table.currentRow()
         return row - 1 if row >= 1 else 0
+
+    def spectrum_params(self) -> dict:
+        # [EN] Return 2-D spectrum plotting parameters from the visible card.
+        """返回二维谱绘图参数。"""
+        try:
+            energy_threshold = float(self._energy_edit.text().strip() or "0.01")
+        except ValueError:
+            energy_threshold = 0.01
+        if energy_threshold < 0:
+            energy_threshold = 0.01
+        try:
+            time_step = float(self._spectrum_timestep.text().strip() or "24")
+        except ValueError:
+            time_step = 24.0
+        if time_step <= 0:
+            time_step = 24.0
+        plot_mode = self._spectrum_mode.currentData()
+        if plot_mode is None:
+            plot_mode = self._spectrum_mode.currentText()
+        return {
+            "time_step_hours": time_step,
+            "energy_threshold": energy_threshold,
+            "plot_mode": str(plot_mode),
+            "spectrum_file": self._spectrum_file.text().strip(),
+        }
 
     def jason3_lon_lat(self) -> list[float] | None:
         return self._collect_lon_lat(self._jason3_fields)
