@@ -1388,11 +1388,31 @@ server:
 
 ![](public/resource/README-media/截屏2026-06-28%2021.03.35.png)
 
-GUI 连接服务器后会自动轮询任务列表和空闲资源，背后用的是 Slurm 自带指令：
+GUI 连接服务器后会自动轮询任务列表和空闲资源，背后用的是 Slurm 自带指令。
 
-任务列表使用 `squeue -o '%i %P %j %T %M %D %C %R' -h`，显示作业 ID、分区、任务名、状态、运行时间、节点数、核心数和原因/节点。CLI 中对应 `python3 run.py queue-status`。
+任务列表显示作业 ID、分区、任务名、状态、运行时间、节点数、核心数和原因/节点。GUI 使用的服务器指令是：
 
-空闲资源列表使用 `sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'`，按节点读取状态、CPU 分配情况、分区和内存，再解析出空闲节点、空闲核心和可用分区。CLI 中对应 `python3 run.py slurm-idle <workdir>`。
+```sh
+squeue -o '%i %P %j %T %M %D %C %R' -h
+```
+
+对应 CLI：
+
+```sh
+python3 run.py queue-status
+```
+
+空闲资源列表按节点读取状态、CPU 分配情况、分区和内存，再解析出空闲节点、空闲核心和可用分区。GUI 使用的服务器指令是：
+
+```sh
+sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'
+```
+
+对应 CLI：
+
+```sh
+python3 run.py slurm-idle <workdir>
+```
 
 注意：`queue-status` 的 CLI 输出使用 `squeue -l`，适合快速看完整队列文本；主页任务列表为了做成卡片，会使用更固定的 `squeue -o ...` 格式。
 
