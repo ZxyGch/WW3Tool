@@ -1555,6 +1555,30 @@ python3 run.py run-workflow local_test
 python3 run.py local-run local_test
 ```
 
+这些指令的作用如下：
+
+`run-workflow` 是本地预处理总入口，会按当前 `params.yml` 执行强迫场、网格、计算模式和 WW3 namelist 准备流程。它不会上传服务器，也不会提交 Slurm。
+
+`confirm-slurm` 会把 `params.yml` 里的 Slurm 参数、节点数、核心数、内存和服务器 ST 版本写入工作目录的 `server.sh`。只修改服务器资源或 ST 版本时，通常只需要重新执行这一条。
+
+`upload --confirm` 会把本地工作目录上传到服务器的 `remote_dir`。如果 `remote_dir` 为空，程序会用 `server.default_remote_dir + 本地工作目录名` 自动拼出远程目录。`--confirm` 是强制确认参数，用来避免误上传。
+
+`submit` 会在远程工作目录中执行 `server.sh`，默认提交 Slurm 作业。它不会重新生成 namelist，也不会重新上传文件；因此提交前要先完成 Step1～Step5，并确认服务器上的工作目录已经是最新版本。
+
+`check-status` 会检查远程工作目录中的 `success` / `fail` 标记，判断 `server.sh` 是否完整跑完。它不是实时队列状态；如果没有发现标记，可能是作业还在 Slurm 队列中、正在运行，或者脚本还没启动。
+
+`queue-status` 会直接查看 Slurm 队列，适合确认作业是否还在排队或运行。
+
+`download-log` 会下载远程 `run.log`、`success`、`fail` 等运行诊断文件。排错时通常先执行它，再根据日志决定是否重新上传、重新提交或修改参数。
+
+`download-results` 会从远程下载 `ww3*.nc` 结果文件。普通网格从远程工作目录根目录下载；嵌套网格会自动检测 `params.yml` 的 `grid.grid_type: nested`，并下载最细层 `levelN/` 里的结果。
+
+`cancel-job <job_id>` 会按 Slurm JobID 取消作业，对应服务器上的 `scancel <job_id>`。JobID 可以从任务列表、`queue-status` 或 `squeue` 输出里看到。
+
+`clear-remote --confirm` 会清空远程工作目录中的文件，属于危险操作，通常只在远程目录混乱、需要重新上传完整工作目录时使用。
+
+`local-run` 不连接服务器，而是在本机工作目录执行 `local.sh`，适合小网格调试、检查 namelist 和 WW3 可执行路径是否正确。
+
 状态判断：
 
 | 标记 / 现象 | 含义 |
