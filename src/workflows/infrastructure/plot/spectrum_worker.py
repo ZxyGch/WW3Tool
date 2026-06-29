@@ -330,7 +330,8 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
 
             # 标题
             lon_val, lat_val = _pick_station_lon_lat(lon, lat, istation, nStation)
-            title_str = f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_dt[itime].strftime("%Y-%m-%d %H:%M:%S")}'
+            mode_title = "Max Normalized" if _is_normalized_plot_mode(plot_mode) else "Actual Value"
+            title_str = f'{mode_title} | Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_dt[itime].strftime("%Y-%m-%d %H:%M:%S")}'
             ax.set_title(title_str, fontsize=10, pad=10)
 
             # 极坐标方向标注
@@ -787,8 +788,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     label_texts = [f'{int(angle)}°' for angle in angles_deg]
                     ax.set_thetagrids(angles_deg, labels=label_texts)
 
-                    # 设置标题，显示站点信息
-                    ax.set_title(f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}',
+                    # 设置标题，显示站点信息与绘制模式
+                    ax.set_title(f'Max Normalized | Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}',
                                 fontsize=10, pad=20)
 
                     # 修改颜色条刻度（wavespectra 自动归一化，刻度值应该是归一化的）
@@ -913,7 +914,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     cb.ax.tick_params(labelsize=9)
 
                     # 标题
-                    title_str = f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}'
+                    mode_title = "Max Normalized" if is_normalized else "Actual Value"
+                    title_str = f'{mode_title} | Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}'
                     ax.set_title(title_str, fontsize=10, pad=10)
 
                     # 极坐标方向标注
@@ -1483,8 +1485,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     label_texts = [f'{int(angle)}°' for angle in angles_deg]
                     ax.set_thetagrids(angles_deg, labels=label_texts)
 
-                    # 设置标题，显示站点信息
-                    ax.set_title(f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}',
+                    # 设置标题，显示站点信息与绘制模式
+                    ax.set_title(f'Max Normalized | Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}',
                                 fontsize=10, pad=20)
 
                     # 修改颜色条刻度（wavespectra 自动归一化，刻度值应该是归一化的）
@@ -1604,7 +1606,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     cb.set_label(cbar_label, fontsize=9)
                     cb.ax.tick_params(labelsize=9)
 
-                    title_str = f'Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}'
+                    mode_title = "Max Normalized" if is_normalized else "Actual Value"
+                    title_str = f'{mode_title} | Lon: {lon_val:.2f}°, Lat: {lat_val:.2f}°            {time_str}'
                     ax.set_title(title_str, fontsize=10, pad=10)
 
                     dirs = np.arange(0, 360, 30)

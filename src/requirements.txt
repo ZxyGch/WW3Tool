@@ -5,6 +5,7 @@ matplotlib
 cartopy
 Pillow
 scipy
+wavespectra
 scikit-image
 opencv-python
 paramiko
