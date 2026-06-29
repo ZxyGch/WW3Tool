@@ -239,7 +239,6 @@ slurm:
     7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
     7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
     7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
-  cpu: CPU6240R
 # ────────────────────────────────────────────────────────────────────
 # Local WW3 run settings (Step 5 local execution panel).
 #   local_st – local WW3 binaries: use + name: path (multi-scheme only).
@@ -362,7 +361,7 @@ desktop:
   theme: AUTO
   run_mode: both
   recent_workdirs:
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_21-10-11
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_21-06-09
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_18-55-53
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-29_16-57-02
+  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2021/ARR_20210223T0200_0038
+  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2006/ARR_20060711T2000_0103
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

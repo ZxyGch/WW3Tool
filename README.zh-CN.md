@@ -1,166 +1,279 @@
-# WW3Tool
+# WW3Tool  文档
 
-English version: [README](README.md)
+## 1. 项目定位
 
-## 基本介绍
+![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
 
-![](public/resource/README-media/2026-03-29%2012.28.47.png)
+WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理与运行辅助工具**。它不替代 WW3 本身的可执行程序（ww3_grid、ww3_prnc、ww3_shel 等），而是负责：
 
-Youtube: [https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D](https://m.youtube.com/watch?v=PHXLP1FrZmw&pp=ygUHd3czdG9vbA%3D%3D)
+- 强迫场文件的校验、修复与合并（纬度排序、变量重命名、时间轴修复）
+- 网格生成（结构化矩形网格（支持任意层数的 Two-Way Nesting ） / 三角形非结构化网格 / SMC 网格三种类型）
+- 自动配置 WW3 所需的全套 namelist 文件，支持 v6.07.1 和 v7.14 （ww3_grid.nml、ww3_prnc.nml、ww3_shel.nml、ww3_ounf.nml、ww3_multi.nml 等）
+- 针对不同配置的运行脚本，正确的执行 ww3_grid、ww3_prnc、ww3_shel 等等
+- 通过 SSH 将工作目录上传到 HPC 服务器、配置 Slurm 参数，提交 Slurm 作业、监控任务状态、下载结果
+- 后处理绘图（波高填色图、方向谱、Jason-3 卫星验证、NDBC 浮标匹配等）
 
-使用 WW3Tool 可以完成基本的 WAVEWATCH III 流程化运行，包括以下功能：
-
-1. 支持多种强迫场：
-
-- 风场 (ERA5，CFSR，CCMP)
-- 流场 (Copernicus)
-- 水位场(Copernicus)
-- 海冰场(Copernicus)
-
-程序包含对强迫场的变量的自动修复功能 （纬度排序、时间修复、变量修复）
-
-2. 支持三种类型的网格: 结构化矩形网格、三角形非结构化网格、SMC 网格
-
-- gridgen 结构化矩形网格生成，对于结构化矩形网格支持最多两层的嵌套网格模式。
-- JIGSAW 三角形非结构化网格生成
-- SMCGTools 的 SMC 网格生成
-
-3. 支持区域计算、二维谱点计算、轨迹计算
-
-4. 支持 Slurm 脚本配置（ssh 配置、slurm 核数、节点数、CPU）
-
-5. 自动配置 ww3_grid.nml，ww3_prnc.nml ，ww3_shel.nml，ww3_ounf.nml，ww3_multi.nml 等文件，配置包括：网格文件配置、计算精度、输出精度、时间范围、二维谱点计算、轨迹计算、谱分区输出、强迫场配置。
-
-6. 波高图、波高视频、等高线图、二维谱图、JASON3 卫星轨迹图、二维谱图
-
-WW3Tool 可以运行在 Win/Linux/Mac，几乎完全由 Python 组成（保留 gridgen 原始 Matlab 代码），软件支持中英文切换，交互式终端可通过 --lang en_US 切换到英文，默认为中文。
-
-实际运行的 WAVEWATCH III 模型需要自行在安装本地或服务器上，本软件暂时无法提供安装程序，请查看教程：[https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL](https://github.com/ZxyGch/WAVEWATCH-III-INSTALL-TUTORIAL)
-
----
-
-我本科不是海洋科学的，现在是研究生一年级，目前掌握的 WAVEWATCH III 用法只有这些，如果你有更多的想法，请联系我 [atomgoto@gmail.com](mailto:atomgoto@gmail.com) 或在 issue 中提出意见
-
-如果你觉得这个工具不错，请给我一颗 ⭐️ 🥳
+WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshgen 的代码），支持 Windows / Linux / macOS，UI 支持中英文双语。
 
 
 
-## 快速开始
+## 2. 快速开始
 
-run.py 是整个软件的唯一入口，通过它提供三种调用方式：
+run.py 是唯一入口，通过命令行参数区分三种模式：
 
 ```sh
-python3 run.py                 # 1. 图形界面 (默认)
-python3 run.py shell           # 2. 交互式终端
-python3 run.py run-workflow params.yml  # 3. 无界面 CLI (一次性子命令)
+python3 run.py                    # GUI（图形界面）
+python3 run.py shell              # 交互式终端（REPL，可反复执行各步骤）
+python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
 ```
 
-如果还有什么安装失败或缺失的包，请手动安装。
+三种模式共享同一套业务逻辑（src/workflows/application/），差别仅在交互层。
 
 
+### 2.1 GUI
 
-### 1. 图形界面
+![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
 
-![](public/resource/README-media/2026-03-29%2012.28.47.png)
-```sh
+```bash
 python3 run.py
 ```
 
-不带任何参数即启动图形界面，是最常用的方式。
+这是我们最常用的模式
 
 
 
-### 2. 交互式命令行
-
-![](public/resource/README-media/截屏2026-06-13%2016.30.04.png)
-如果更习惯终端操作，可以用 run.py shell 进入交互式 REPL 环境，加载配置后反复执行各步骤：
+### 2.2 交互式终端
 
 ```sh
-python3 run.py shell
-python3 run.py shell /path/to/workdir/params.yml
-python3 run.py shell --lang en_US
+python3 run.py shell              # 交互式终端
 ```
 
-注意：你最好已经理解了图形化界面的操作流程再使用这个 shell 模式。
+![](public/resource/README-media/截屏2026-06-18%2011.07.11.png)
 
-记住要先创建工作目录并修改工作目录的 params.yml，根目录的 params.yml 只是作为模版存在的，用于存储一些通用的数据。
+这个模式更适合远程在服务器使用
+
+
+### 2.3 无界面 CLI
 
 ```sh
-python3 run.py workdir my_case    # 从模板创建并加载工作目录
-# 或在 shell 内：workdir my_case
+python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
 ```
 
-### 3. 无界面 CLI 
+CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agent 调用，命令包括：
 
-每个步骤都可作为一次性子命令直接调用，读取工作目录的 params.yml 后执行并退出：
+| 类别   | 子命令                                                             | 说明                   |
+| ---- | --------------------------------------------------------------- | -------------------- |
+| 配置管理 | workdir <path>                                                | 创建或加载工作目录            |
+|      | validate [workdir]                                            | 校验 params.yml        |
+|      | config [workdir]                                              | 打印配置摘要               |
+|      | print-params [workdir]                                        | 输出 params.yml 原文     |
+| 预处理  | prepare-forcing [workdir]                                     | 准备强迫场（Step 1）        |
+|      | merge-forcing <in1.nc> [...] -o <out.nc>                      | 独立工具：校验并合并强迫场 NetCDF |
+|      | generate-grid [workdir]                                       | 生成网格（Step 2）         |
+|      | recommend-grid [workdir] [--coarse\|--fine]                   | 按区域范围推荐网格间距          |
+|      | recommend-cfl [workdir] [--mode safe\|fast\|faster] [--factor X] | 按 CFL 公式推荐时间步长       |
+|      | prepare-ww3 [workdir]                                         | 仅生成 WW3 namelist     |
+|      | run-workflow [workdir]                                        | 完整预处理流程              |
+|      | local-run [workdir]                                           | 执行 local.sh          |
+| 远程运维 | connect-test [workdir]                                        | 测试 SSH 连接            |
+|      | ssh [workdir]                                                 | 打开交互式 SSH 终端         |
+|      | slurm-idle [workdir]                                          | 查看 Slurm 空闲分区      |
+|      | confirm-slurm [workdir]                                       | 写 server.sh          |
+|      | upload [workdir] --confirm                                    | 上传工作目录到远程            |
+|      | submit [workdir]                                              | 提交 server.sh         |
+|      | check-status [workdir]                                        | 检查远程任务状态             |
+|      | queue-status [workdir]                                        | 查看 SLURM 队列          |
+|      | download-results [workdir]                                    | 下载远程结果；嵌套网格自动下载最细层 |
+|      | download-log [workdir]                                        | 下载远程日志               |
+|      | clear-remote [workdir] --confirm                              | 清空远程目录               |
+|      | cancel-job [workdir] <job_id>                                 | 取消 SLURM 任务          |
+|      | ntfy-watch [workdir]                                          | 注入常驻 ntfy 监听         |
+|      | ntfy-watch-job [workdir] <job_id>                             | 为指定任务注入一次性 ntfy 监听   |
+| 后处理  | plot-wave-maps [workdir] [--contour]                          | 波高填色图                |
+|      | plot-spectrum [workdir] [--mode ...] [--station N]            | 方向谱图                 |
+|      | plot-jason3 / plot-jason3-swh / download-jason3 [workdir] | Jason-3 相关           |
+|      | plot-ndbc [workdir]                                           | NDBC 浮标匹配            |
+|      | download-ndbc [workdir]                                       | 下载 NDBC 浮标观测数据       |
+| 辅助   | print-example                                                 | 输出示例 params.yml      |
 
-```sh
-python3 run.py workdir my_case              # 创建或加载工作目录
-python3 run.py validate my_case             # 校验配置
-python3 run.py prepare-forcing my_case      # 准备强迫场
-python3 run.py generate-grid my_case        # 生成网格
-python3 run.py run-workflow my_case         # 完整预处理
-python3 run.py plot-wave-maps my_case       # 绘图
-```
-
-这种"一条命令一个步骤、无需人工交互"的形式特别适合脚本自动化与 AI（如 Claude Code 等）调用：AI 可以直接发起这些命令、读取标准输出与退出码来判断每一步是否成功，无需操作图形界面。
-
-完整子命令列表见 python3 run.py --help。
-
-
-
-
-
-
-
-## 环境配置
-
-本软件支持 Python ≥ 3.8，经测试可在以下系统环境下正常运行：
-
-- Windows 11
-- Ubuntu 24
-- macOS 15
-
-本软件不要求在本地安装 WAVEWATCH III，本地运行仅作为可选方案，仅需确保服务器端已正确部署以下环境：
-
-- WAVEWATCH III
-- Slurm 作业调度系统
-
-
-## 整体架构
-
-> 提示：你完全可以不了解下文中的目录、配置与流程细节，只简单地使用图形界面（python3 run.py）逐步操作即可；
-GUI 与 Shell / CLI 共用同一套能力，不会缺少任何功能。
-
-WW3Tool 是围绕 WAVEWATCH III 的预处理与运行辅助工具：负责强迫场整理、网格生成、namelist / 脚本生成、（可选）本地或远程提交运行，以及结果绘图与检验。不包含 WW3 数值模式本身，也不替代你在本机或服务器上安装好的 ww3_grid、ww3_prnc、ww3_shel 等可执行程序。
-
-从使用角度看，软件由三层组成：
-
-| 层次   | 作用                             | 主要载体                     |
-| ---- | ------------------------------ | ------------------------ |
-| 入口   | 统一启动、依赖检查、语言切换                 | 仓库根目录 run.py           |
-| 配置   | 描述一次算例的全部参数                    | 工作目录内 params.yml       |
-| 算例数据 | 存放本次运行产生的网格、强迫场、namelist、日志与结果 | 工作目录（默认在 workSpace/ 下） |
+注意：几乎所有的 CLI 指令都是必须指定工作目录的，没有工作目录是不允许执行的。
 
 
 
-### 入口方式
 
-三种方式共用同一套业务逻辑，差别只在交互形式：
+
+## 3. 工作目录
+
+> 工作目录是什么？
+>
+> 想象一个场景：我们现在想要对 110E ~ 130E，10N~30N 的区域进行海浪模拟，先使用 gridgen 生成了网格文件，然后下载了 2025 年 1 月 3 号到   2025 年 1 月 5 号的 ERA5 再分析风场数据做强迫场，配置了相关的 WW3 NML 文件，这一大堆文件都需要一个存放的位置：工作目录。
+
+一个普通单层算例常见结构如下：
 
 ```text
-python3 run.py              → 图形界面（默认）
-python3 run.py shell        → 交互式终端（可反复执行各步骤）
-python3 run.py <子命令> …   → 无界面 CLI（适合脚本与自动化）
+work_dir_name/
+├── params.yml                         # 该算例的唯一权威配置；GUI 表单恢复以它为准
+├── run.log                            # local.sh / server.sh 追加写入的运行日志
+├── local.sh                           # 本地运行脚本，由 public/scripts/local.sh 复制并按算例修正
+├── server.sh                          # 服务器 Slurm 运行脚本，由 public/scripts/server.sh 复制并按算例修正
+├── success / fail                     # 空标记文件，表示最近一次运行成功或失败
+│
+├── wind.nc                            # 标准化后的风场强迫，通常来自 Step 1
+├── current.nc                         # 标准化后的流场强迫，可选
+├── level.nc                           # 标准化后的水位强迫，可选
+├── ice.nc                             # 标准化后的海冰强迫，可选
+│
+├── grid.bot                           # 水深网格，Step 2 生成或导入
+├── grid.obst                          # 阻塞网格，结构化网格常见
+├── grid.meta                          # WW3Tool 记录的网格元信息
+├── mod_def.ww3                        # ww3_grid 生成的 WW3 网格定义文件
+│
+├── ww3_grid.nml                       # 网格与谱参数 namelist
+├── ww3_prnc.nml                       # 强迫场预处理 namelist
+├── ww3_shel.nml                       # 主计算 namelist
+├── ww3_ounf.nml                       # 场输出 namelist
+├── ww3_ounp.nml                       # 点位谱输出 namelist
+├── ww3_trnc.nml                       # 轨迹输出 namelist，如启用航迹
+├── namelists.nml                      # 部分 WW3 版本使用的合并 namelist
+│
+├── points.list                        # 定点谱输出点位，由 params.yml 的 calc.points 生成
+├── track_i.ww3                        # 航迹输入文件，由 params.yml 的 calc.track_points 生成
+│
+├── wind.ww3 / current.ww3 / level.ww3 # ww3_prnc 产生的 WW3 二进制强迫文件
+├── out_grd.ww3                        # ww3_shel 产生的场输出中间文件
+├── out_pnt.ww3                        # ww3_shel 产生的点位谱中间文件
+├── track_o.ww3                        # ww3_shel 产生的航迹输出中间文件
+├── restart*.ww3                       # 重启动文件，如启用 restart
+│
+├── ww3.YYYY.nc                        # 场输出 NetCDF，通常由 ww3_ounf 产生
+├── ww3.YYYY_spec.nc                   # 点位谱 NetCDF，通常由 ww3_ounp 产生
+├── ww3.YYYY_trck.nc                   # 航迹 NetCDF，通常由 ww3_trnc 产生
+└── photo/                             # GUI 或后处理保存的图片目录，如有
 ```
 
-根目录的 params.yml 仅为模板；实际运行前须用 workdir 创建或加载独立工作目录，再编辑该目录下的 params.yml。
+嵌套网格算例会在根目录保留总控文件，并为每一层生成独立目录：
+
+```text
+work_dir_name/
+├── params.yml
+├── ww3_multi.nml                      # 多网格耦合主控 namelist
+├── local.sh / server.sh / run.log
+├── wind.nc / current.nc / level.nc    # 根目录保留标准化强迫场源文件
+├── level0/
+│   ├── grid.bot / grid.obst / grid.meta
+│   ├── ww3_grid.nml / ww3_prnc.nml / ww3_shel.nml / ww3_ounf.nml
+│   ├── mod_def.ww3
+│   ├── out_grd.ww3 / out_pnt.ww3
+│   └── ww3.YYYY.nc / ww3.YYYY_spec.nc
+├── level1/
+│   └── ...
+└── levelN/
+    └── ...
+```
 
 
 
-### 一次处理流程
 
-从准备到出图，典型链路如下（本地运行与服务器运行可二选一或组合使用）：
+
+
+## 4. 配置系统：params.yml
+
+params.yml 是描述一次计算任务的全部参数。
+
+比如我现在想要对 110E ~ 130E，10N~30N 的区域进行海浪模拟，使用 2025 年 1 月 3 号到   2025 年 1 月 5 号的 ERA5 再分析风场数据做强迫场，这次模拟就可以认为是一个计算任务，常用的 WW3 NML 配置参数都会在 params.yml 中设置。
+
+ww3_grid.nml 常用的数值积分参数
+
+```swift
+&SPECTRUM_NML
+	SPECTRUM%XFR   = 1.1
+	SPECTRUM%FREQ1 = 0.04118
+	SPECTRUM%NK    = 32
+	SPECTRUM%NTH   = 24
+/
+
+&TIMESTEPS_NML
+	TIMESTEPS%DTMAX = 900
+	TIMESTEPS%DTXY = 320
+	TIMESTEPS%DTKTH = 300
+	TIMESTEPS%DTMIN = 15
+/
+```
+
+在 params.yml 描述为
+
+```swift
+ww3_grid:
+	SPECTRUM%XFR: 1.1
+	SPECTRUM%FREQ1: 0.04118
+	SPECTRUM%NK: 32
+	SPECTRUM%NTH: 24
+	TIMESTEPS%DTMAX: 900
+	TIMESTEPS%DTXY: 320
+	TIMESTEPS%DTKTH: 300
+	TIMESTEPS%DTMIN: 15
+```
+
+根目录的 params.yml (即 WW3Tool/params.yml) 只是模板，用于提供默认参数；实际的运行时候，我们会创建独立的工作目录，再编辑该目录下的 params.yml。
+
+工作目录中的 params.yml 描述了一次计算任务的全部参数。
+
+GUI 模式下，你填写的表单，程序会先在内存中保存参数，然后把根 params.yml 复制覆盖当前工作目录 yml 然后覆盖相应的参数，这么做是为了始终保持工作目录的 params.yml 和根 params.yml  的结构一致。
+
+每次打开工作目录，GUI 程序会自动读取 params.yml ，恢复表单，让你能方便的知道当前工作目录的配置。
+
+而在 Shell 和 CLI 模式下，你需要手动修改工作目录的 params.yml ，然后使用 Shell 和 CLI  的指令执行。
+
+
+
+### 校验 params.yml
+
+每次执行指令都会自动校验一遍 params.yml ，检查是否存在格式问题。
+
+在 Shell 和 CLI 模式下，有一个专门的指令用于校验 params.yml 。
+
+```sh
+python run.py validate [work_dir_name]
+```
+
+
+### 路径验证
+
+执行每个步骤的功能的时候，例如
+
+```swift
+python3 run.py prepare-forcing [work_dir_name]
+```
+
+都会自动校验带有路径的参数有效性，比如
+
+```swift
+paths:
+	matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
+	jason_path: /Users/zxy/ocean/Paper/WW3Tool/jason3
+	ndbc_path: null
+	jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
+```
+
+如果发现某个参数为空或者路径不存在，那么会自动填写为 WW3Tool/ndbc ，WW3Tool/jason 等等类似的，在程序内部都有相关的规定默认的路径是什么。
+
+
+
+
+## 5. 内部实现逻辑
+
+一次完整流程的典型链路：
+
+```
+→ [创建或加载工作目录]  自动复制根 params.yml 到工作目录
+→ [Step 1 强迫场准备] 校验、修复、复制/移动强迫场数据到工作目录
+→ [Step 2 网格生成] 调用 meshgen 生成网格文件
+→ [Step 3 计算模式] 选择 区域计算 / 二维谱点计算 / 轨迹计算
+→ [Step 4 WW3 配置] 配置 nml 文件参数
+→ [Step 5 连接服务器] SSH 连接、配置 Slurm 参数、选择服务器 WW3 版本
+→ [Step 6 上传与运行] 上传工作目录、提交到 Slurm 作业系统
+→ [Step 7 最终] WW3 模式输出结果 (ww3.*.nc 等)
+```
 
 ```mermaid
 flowchart LR
@@ -168,7 +281,7 @@ flowchart LR
   B --> C[Step 2 网格生成]
   C --> D[Step 3 计算模式
   区域 / 谱点 / 航迹]
-  D --> E[Step 4 WW3 配置 
+  D --> E[Step 4 WW3 配置
   namelist / 脚本]
   E --> F{运行方式}
   F -->|本地| G[local.sh]
@@ -179,79 +292,211 @@ flowchart LR
   波高图 / 谱图 / 检验等]
 ```
 
-各步骤与 params.yml 中的段落对应关系：
+各步骤的 CLI 指令示例不单独集中罗列，统一放在每节的 `yml 对应参数` 或 `params.yml 参数` 小节里，方便一边看参数一边执行对应命令。
 
-- forcing — 风 / 流 / 水位 / 海冰源文件路径与处理方式  
-- grid — 网格类型、范围、分辨率及 meshgen 相关参数  
-- calc — 区域、谱点或轨迹计算模式
-- ww3 / ww3_grid — 时间范围、输出精度、谱离散与时间步等  
-- slurm / server — SSH 与远程作业（仅服务器模式）  
-- plot — 出图与卫星 / 浮标检验开关  
+我会在接下来的章节中，详细的和你说明每一步具体在做什么，让你放心的使用这个软件
 
-### 仓库顶层组成
 
-与「跑通一次算例」直接相关的目录如下：
 
-```text
-WW3Tool/
-├── run.py              # 唯一程序入口
-├── params.yml          # 算例参数模板（勿直接用于运行）
-├── public/             # 全局资源：多语言、默认配置、示例强迫场、WW3 脚本模板
-├── meshgen/            # 网格生成器（结构化 / 非结构化 / SMC）及 reference_data
-├── workSpace/          # 默认工作目录根；每个子文件夹即一个算例
-└── src/                # 程序实现（图形界面、流水线、网格与 namelist 适配等）
+### 5.1 创建工作目录
+
+![](public/resource/README-media/截屏2026-06-18%2013.02.46.png)
+
+创建工作目录时，程序会自动执行以下操作：
+
+1. 在 WW3Tool/workSpace/ 下创建新文件夹，默认名称为当前时间戳（如 2026-06-17_19-37-01）
+
+2. 将根目录 params.yml 原样复制到工作目录
+
+3. 对工作目录 params.yml 执行：替换工作目录路径、清空强迫场文件路径、清空日期范围和 remote_dir ，这是防止每次自动恢复主页表单值的时候错误使用了根  params.yml  的值
+
+4. 读取 params.yml 填充 UI 的默认值。
+
+
+
+#### yml 对应参数
+
+```swift
+workdir:
+	path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
+	default_workspace: /Volumes/Zxy's Disk/WW3Tool_workSpace/
 ```
 
-实际上 GUI 模式和 Shell 模式其实都是调用的 src/workflows。
+path 是工作目录的路径
+
+default_workspace 是新建工作目录默认的存放路径
+
+```sh
+python run.py workdir [work_dir_name]
+```
+
+这条指令中 work_dir_name 可以是一个绝对路径，也可以是一个名字，如果对应的目录不存在则会自动创建一个工作目录，自动复制根目录的 params.yml 到新工作目录，并替换工作目录的  params.yml 的 workdir.path 为工作目录路径。
+
+
+
+#### 根目录校验
+
+为了防止忘记创建工作目录就直接使用 Shell 或 CLI 指令，我加了一个校验当前目录是否是 WW3Tool 根目录，这样就不会误用根目录 params.yml 或忘记创建工作目录.
+
+在 CLI 模式中，尝试不指定工作目录：
+
+```bash
+python3 run.py prepare-forcing
+
+---------------------------------------------------------------
+
+Using project virtual environment: /Users/zxy/ocean/Paper/WW3Tool/.venv
+Dependency check passed.
+Parameter error: Cannot use the repository root params.yml directly (it is a template file).
+Please create or load a working directory first:
+  python3 run.py workdir my_workdir
+```
+
+在 shll 模式下不使用 workdir 指令，你是无法进行任何操作的。
+
+```sh
+ww3>  config
+⚠ No configuration loaded. Use 'workdir <path>' first.
+ww3> queue-status
+⚠ No configuration loaded. Use 'workdir <path>' first.
+```
+
+
+
+### 5.2 Step 1 — 强迫场准备
+
+第一步负责把外部 NetCDF 强迫场导入工作目录，并统一成 WW3Tool 后续步骤能够直接识别的标准文件。支持四类场：风场、流场、水位场、海冰场。
+
+![](public/resource/README-media/截屏2026-06-28%2010.50.13.png)
+
+
+#### GUI 操作逻辑
+
+主页 Step 1 当前是“先选择、再确认导入”：
+
+1. 点击风场、流场、水位场、海冰场按钮选择 NetCDF 文件。
+
+2. 选择某个文件后，右侧日志会立即显示该文件信息，包括变量、时间范围、经纬度范围等；这一步只读取信息，不会复制、剪切或裁剪文件。
+
+![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
+
+
+3. 选择一个或多个强迫场后，程序会读取这些文件的公共时间范围和公共空间范围，并填入 Step 1 的时间、纬度、经度输入框。打开已有工作目录时，也会扫描 `wind.nc`、`current.nc`、`level.nc`、`ice.nc` 等标准文件并尽量填充公共范围。
+4. 如果要按范围裁剪，先编辑时间、纬度、经度范围，然后点击“确认裁剪并导入”。时间格式为 `YYYYMMDD`，空间范围为经纬度数值。
+5. 如果不裁剪，点击“直接导入，不进行裁剪”。此时会完整复制或剪切原文件到工作目录，再做标准化。
+
+导入模式：
+
+- `复制`：保留原始文件，把处理后的文件写入工作目录。
+- `剪切`：导入完成后移走或删除原始文件。裁剪导入时，源文件不会被原样移动到工作目录，而是先生成裁剪后的工作目录文件；成功后再删除源文件。
+
+几个辅助按钮的含义：
+
+- `读取公共范围`：重新读取已选择强迫场的公共时间、纬度、经度范围，并覆盖 Step 1 范围输入框。
+- `查看地图`：显示最多四个强迫场的空间范围，用于检查风、流、水位、海冰覆盖区是否一致。
+- `查看所有场文件信息`：把当前已选择的所有强迫场文件信息一次性写入日志。
+- 每个强迫场选择按钮右侧的 `×`：清除当前选择；如果指向的是工作目录中已转换的标准强迫场文件，会提示是否删除该文件，并同步清除引用它的场。
+
+
+#### params.yml 参数
+
+Step 1 相关配置位于 `forcing` 段：
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
+```
+
+```yaml
+forcing:
+  wind: null
+  current: null
+  level: null
+  ice: null
+  process_mode: copy        # copy 或 move
+  crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]，为空表示不裁剪
+  crop_bbox: []             # [west, east, south, north]，为空表示不裁剪
+  auto_associate: true      # 一个文件含多个场时，是否自动关联到多个槽位
+```
+
+设置页面里的“强迫场配置”提供默认导入方式和自动关联开关。主页打开工作目录时会读取这些默认值；实际导入时仍以主页当前选择和按钮操作为准。
+
+
+#### 判断强迫场类型
+
+程序检测 NetCDF 内部变量名来判断强迫场类型：
+
+- **风场**：存在 u10/v10、wndewd/wndnwd、uwnd/vwnd 任一对（大小写均匹配）
+- **流场**：存在 uo/vo
+- **水位场**：存在 zos
+- **冰场**：存在 siconc
+
+
+#### 强迫场标准化处理
+
+```swift
+🔄 Rewriting time metadata to WW3-readable char attributes (units + calendar)
+
+✅ Forcing field normalized and saved to: /User/WW3Tool/workSpace/2026-06-29_16-57-02/wind.nc
+```
+
+确认导入后，程序会对目标文件执行标准化：
+
+1. 自动识别各类命名变体，例如 `wndewd/wndnwd`、`uwnd/vwnd` 转为风场标准变量，`uo/vo`、`zos`、`siconc` 转为对应强迫场变量。
+2. 坐标变量统一命名为 `longitude`、`latitude`、`time`，同时同步维度名和引用这些维度的变量。
+3. 输出文件按场类型命名。单场通常为 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`；一个文件包含多种场且开启自动关联时，可能输出 `current_level.nc`、`wind_current_level_ice.nc` 等组合文件。
+4. 纬度从大到小时会自动翻转为从小到大，避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`。
+5. 标准化后的文件供 Step 4 自动生成 `ww3_prnc.nml` 使用，因此后续不需要再根据原始变量名手动改 namelist。
+
+
+#### 多场文件自动关联
+
+如果一个 NetCDF 文件同时包含多种强迫场，例如流场和水位场在同一个文件里，且 `forcing.auto_associate: true`，程序会检测文件中所有存在的场类型，并把同一个标准化后的文件路径关联到多个 GUI 槽位。
+
+例如：
+
+- 文件同时含 `uo/vo` 和 `zos`，导入后可保存为 `current_level.nc`，GUI 的流场和水位场都指向这个文件。
+- 文件同时含风、流、水位、海冰，导入后可保存为 `wind_current_level_ice.nc`，四个槽位都指向同一个文件。
+
+如果关闭自动关联，用户在哪个槽位选择文件，就只按该槽位导入。
+
+#### 工作目录扫描
+
+打开工作目录时，会自动检测是否存在已经标准化处理过的强迫场文件，并在 GUI 中回填对应按钮。扫描主要依据标准文件名和组合文件名，例如 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`、`current_level.nc`、`wind_current_level_ice.nc`。
+
+扫描只负责恢复 Step 1 的强迫场选择显示；真正导入仍然需要用户点击“确认裁剪并导入”或“直接导入，不进行裁剪”。
 
 
 
 
-## 功能实现细节
-
-
-### 创建工作目录
-
-![](public/resource/README-media/2026-03-29%2012.46.28.png)
-
-程序启动时选择或创建工作目录，这一步是强制的，不允许跳过。
-
-我们默认的新工作目名称是当前时间，下面会最多显示 3 个最近的工作目录。
-
-工作目录本质上没有什么特殊的，只是一个文件夹而已，用于存放我们在运行中产生的各种文件，例如网格文件，风场文件，WAVEWATCH III 配置文件。
-
-工作目录的默认路径是 WW3Tool/workSpace，在设置页面可以更改默认的工作目录
 
 
 
-### 选择强迫场文件
+### 5.3 Step 2 — 网格生成
 
-风场可以使用来自 [ERA5](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download) ， [CFSR](http://tds.hycom.org/thredds/catalog/datasets/force/ncep_cfsv2/netcdf/catalog.html) ，[CCMP](https://data.remss.com/ccmp/v03.1/) 的数据
+![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
 
-其他强迫场我暂时只尝试了 Copernicus 的流场、水位场、海冰场
+Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责“把经纬度范围、水深、海岸线、网格类型变成 WW3 可读取的网格输入”，不运行 `ww3_grid`；真正把网格编译成 `mod_def.ww3` 是 Step 4 / 运行脚本中的 `ww3_grid` 完成的。
 
-![](public/resource/README-media/2026-03-29%2012.47.52.png)
+关于底层网格生成器 `WW3Tool/meshgen`，详细说明见 `meshgen/README.md`。这里只写 GUI / CLI 使用时最常改、最容易误解的部分。
 
-我已经在 WW3Tool/public/forcing 预先准备好了几个强迫场文件，你可以直接选择使用（当然，这只是为了测试）。
+#### GUI 操作逻辑
 
-由于 WAVEWATCH 要求纬度必须从小到大，而 ERA5 的风场数据纬度默认是从大到小，因此，我在这里加上了隐含的转换逻辑，会判断是否纬度是从小到大的，如果不是则会自动转换。
-
-![](public/resource/README-media/2026-03-29%2012.48.29.png)
-
-并且对于 CFSR 的风场会自动修复变量名称符合 WW3 的要求
-
-另外 Copernicus 强迫场的时间标签也会在这个过程中自动修复。
-
-强迫场文件会被自动复制（如果你想剪切，在设置页面可以更改）到当前工作目录，并改名为 wind.nc，current.nc，level.nc，ice.nc ，右侧的日志会同时输出强迫场文件的信息。
-
-通常，我们只使用风场作为强迫场即可，并且软件不允许只使用其他强迫场而不包含风场。
-
-如果一个文件内包含多种强迫场，那么会自动填充相应的按钮，并且这个文件在工作目录会命名为类似 current_level.nc ，表明其中包含的强迫场
+主页 Step 2 的推荐操作顺序：
 
 
+![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
 
 
-### 生成网格文件
+1. 选择网格类型：普通网格 / 嵌套网格，以及矩形网格 / SMC 网格 / 非结构网格。
+2. 填写主网格范围。界面统一显示为 `纬度`、`经度` 两行，每行两个输入框；对应 yml 中的 `grid.lat: [south, north]` 和 `grid.lon: [west, east]`。
+3. 矩形网格需要填写 `DX/DY`；SMC 和非结构网格会隐藏 `DX/DY`，改用各自的参数卡片。
+4. 点击“推荐网格间距”可按当前范围和网格类型写入一组保守起步参数。
+5. 点击“查看地图”可预览当前网格范围。嵌套网格会显示各层矩形范围，便于检查细层是否完全落在粗层内部。
+6. 点击“生成网格”后，程序调用 `meshgen` 生成对应文件，并写入工作目录。
+
+如果生成网格前缺少水深数据、海岸线数据 `reference_data`，GUI 会提示下载。生成结果会按参数 hash 缓存在 `meshgen/cache/`，同一组参数重复生成时会优先复用缓存。
 
 #### reference_data
 
@@ -259,840 +504,1266 @@ reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它�
 
 如果 WW3Tool/meshgen/reference_data 没有找到这些数据文件，那么在第二步生成网格时会弹出一个下载窗口
 
-![](public/resource/README-media/2026-03-29%2012.52.20.png)
+![](public/resource/README-media/截屏2026-06-29%2017.01.09.png)
 
-点击下载按钮：程序会从自动从 [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) 下载（大约 6.5GB）。
-
-![](public/resource/README-media/2026-03-29%2013.04.16.png)
-
-若 GitHub下载过慢或失败，可从 [OneDrive](https://tiangongeducn-my.sharepoint.com/:u:/r/personal/1911650207_tiangong_edu_cn/Documents/reference_data.zip?csf=1&web=1&e=SXDbA9) 或[百度网盘](https://pan.baidu.com/s/1SxQEfiaomdi3CXFOXC6DMw?pwd=cb48) 手动下载，解压到 WW3Tool/meshgen/reference_data
+点击下载按钮：程序会从自动从 [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) 下载（大约 6.5GB）不需要你手动执行。
 
 
 
 
+#### 网格类型
+
+| 类型     | 适合场景                        | 主要产物                                                   |
+| ------ | --------------------------- | ------------------------------------------------------ |
+| 矩形网格   | 区域规则、调试、批量事件模拟；目前最稳妥        | `grid.bot`、`grid.obst`、`grid.mask_nobound`、`grid.meta` |
+| 矩形嵌套   | 外圈粗、内圈细；关注局部海域又需要远场传播       | `level0/` 至 `levelN/` 各自一套网格文件                         |
+| SMC 网格 | 全球或大区域多分辨率格点，需配套 SMC 版本 WW3 | `grid_cell.dat`、`grid_subtr.dat` 等                     |
+| 非结构网格  | 复杂岸线、局部高分辨率三角网格             | `grid.ww3`、`unstructured_grid.json`                    |
 
 
+#### 精度调整
 
+最简单的增大精度方法不是扩大经纬度范围，而是减小控制网格尺度的参数。网格变细后，格点数、计算量和输出文件都会明显增加；每次调整后建议重新执行 `recommend-cfl` 或在 Step 4 重新自动推荐时间步。
+
+| 网格 | 建议优先调整的参数 | 最简单的增大精度方法 | 注意 |
+| --- | --- | --- | --- |
+| 矩形网格 | `structured.nested.levels[0].dx`、`dy`；GUI 中的 `DX/DY` | 把 `dx/dy` 同比例减小，例如 `0.05 → 0.025` | 经纬两个方向都减半时，水平格点数约变为 4 倍；`DTXY` 通常也要变小 |
+| 矩形嵌套 | 最细层 `levels[-1].dx/dy`、最细层 `lon/lat`；必要时增加一层 | 保持外层不变，只把最细层 `dx/dy` 减小，或新增一个更小范围的细层 | 细层必须完全落在上一层内部；谱点要落在最细层内 |
+| SMC 网格 | `smc.n_levels`、`smc.dshalw`、`smc.depmin`、`smc.msea` | 增大 `n_levels`，让浅水和近岸区域允许更细单元 | 需要 SMC 版本 WW3；加密范围受水深阈值影响，不能只看 `n_levels` |
+| 非结构网格 | `unstructured.hmin`、`hshr`、`hmax`、`nwav`、`dhdx`、`edge_segments` | 先减小 `hmin/hshr`，让近岸和目标区域更细 | `hmin` 是最小尺度，过小会让三角形数量和生成时间快速增加 |
+
+常用经验：
+
+1. 矩形网格最直接：改小 `DX/DY`。
+2. 嵌套网格最省算力：只加密最内层，不动外层。
+3. SMC 网格优先调 `n_levels` 和浅水阈值。
+4. 非结构网格优先调 `hmin/hshr`，其次再调 `hmax/nwav/dhdx`。
+5. `coastline_precision` 主要影响海岸线细节，不等价于整体网格分辨率。
+
+
+#### 网格 yml 参数
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py generate-grid  [work_dir_name]                 # 生成网格
+python3 run.py recommend-grid [work_dir_name] --coarse        # 使用推荐网格间距
+```
+
+```yaml
+# ────────────────────────────────────────────────────────────────────
+# 网格生成配置（矩形 / SMC / 非结构）。
+#   mesh_type – 网格拓扑：'structured' | 'smc' | 'unstructured'。
+#   grid_type – 'normal' 表示单层网格；'nested' 表示嵌套网格（仅矩形网格）。
+#   gridgen_version – 网格生成后端：'Python' 或 'MATLAB'。
+#   reference_data_path – 水深 / 海岸线数据目录；
+#                         null 表示按项目默认路径自动查找。
+#   lon       – 主网格经度范围 [west, east]，单位：度。
+#   lat       – 主网格纬度范围 [south, north]，单位：度。
+#   structured.nested.levels – grid_type=nested 时的嵌套层级，从粗到细。
+# ────────────────────────────────────────────────────────────────────
+grid:
+  mesh_type: structured
+  grid_type: normal
+  gridgen_version: Python
+  reference_data_path: /Users/zxy/ocean/Paper/WW3Tool/meshgen/reference_data
+  lon:
+  - 110.0
+  - 130.0
+  lat:
+  - 10.0
+  - 30.0
+```
+
+关键字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `grid.mesh_type` | 网格拓扑：`structured`、`smc`、`unstructured` |
+| `grid.grid_type` | 仅矩形网格使用：`normal` 单层，`nested` 嵌套 |
+| `grid.lon` | 主网格经度范围 `[west, east]` |
+| `grid.lat` | 主网格纬度范围 `[south, north]` |
+| `grid.reference_data_path` | 水深/海岸线数据目录；为空时按项目默认路径自动查找 |
+| `grid.structured.nested.levels` | 嵌套网格各层，从粗到细；`level0` 是最外层，`levelN` 是最细层 |
 
 #### 结构化矩形网格
 
-##### 单网格
-
-![](public/resource/README-media/2026-03-29%2013.28.40.png)
-
-点击生成网格，会调用 meshgen/structured_generator/pygridgen 生成网格文件到工作目录.
-
-DX/DY 越小，精度越高，因为 DX/DY 是网格之间的间距
-
-最后在工作目录下，会多出四个文件 grid.bot 、grid.obst、grid.meta、grid.mask_nobound
-
-1. **grid.bot**
-   - 格式：ASCII 文本文件
-   - 内容：网格水深数据 (来)
-   - 单位：来 (实际值 = 文件值 / 1000)
-   - 尺寸：Ny × Nx
-
-2. **grid.mask_nobound**
-   - 格式：ASCII 文本文件
-   - 内容：陆海掩膜
-   - 值：0 = 陆地，1 = 海洋
-   - 尺寸：Ny × Nx
-
-3. **grid.obst**
-   - 格式：ASCII 文本文件
-   - 内容：x 和 y 方向的障碍物值
-   - 单位：0-1 之间的比例 (实际值 = 文件值 / 100)
-   - 尺寸：Ny × Nx (x 方向)，Ny × Nx (y 方向)
-
-4. **grid.meta**(实际上是 ww3_grid. nml，用于同步一些配置)
-   - 格式：ASCII 文本文件
-   - 内容：供 WAVEWATCH III ww3_grid 使用的网格描述
-   - 包含：网格尺寸、分辨率、范围等信息
-
-   生成的网格会自动缓存到 WW3Tool/meshgen/cache
+由 pygridgen / gridgen 在规则经纬度上生成矩形格点。`grid_type: normal` 时只生成一层，产物直接落在工作目录根；`grid_type: nested` 时按层生成多套网格，见下文。
 
 
-   
 
 ##### 嵌套网格
 
-![](public/resource/README-media/2026-03-29%2013.49.42.png)
+![](public/resource/README-media/截屏2026-06-28%2012.46.43.png)
+![](public/resource/README-media/截屏2026-06-28%2012.53.13.png)
 
-嵌套网格我们使用的是 Two-way nesting
+嵌套用于「外圈粗、内圈细」的多分辨率模拟：外层覆盖大尺度背景，内层在感兴趣区域加密。WW3Tool 采用 WW3 的 ww3_multi 路线，一次积分驱动多层网格（见 §5.5.7、嵌套网格设计与问题分析.md）。
 
-我们在设置页面的规定了一个：嵌套网格收缩系数，我们默认设置为 1.1 倍
+配置要点：
 
-当我们点击设置外网格我们会自动根据内网格的范围向外扩张，相当于内网格的 1.1 倍
+| 项 | 说明 |
+|----|------|
+| grid.grid_type | 设为 nested 启用嵌套；normal 为单层 |
+| grid.structured.nested.levels | 从粗到细的有序列表，levels[0] 为最粗层 level0，levels[-1] 为最细层 levelN；支持 2～99 层 |
+| 每层字段 | dx、dy（度）、lon、lat（该层矩形范围） |
+| nested_contraction_coefficient | GUI「套娃」辅助：按系数向中心收缩上一层的范围、并减半 dx/dy，自动填下一层；也可在 yml 里逐层手写 |
+| 校验 | 细层 dx/dy 须小于粗层；第 k 层地理范围须完全落在第 k−1 层之内 |
 
-同理，点击设置内网格，会自动根据外网格的范围向内收缩 1.1 倍
+生成与目录约定：
 
-嵌套模式下生成网格会生成执行两次，一次生成外网格，一次生成内网格。
+- generate-grid 对每一层独立调用 gridgen，输出到 level0/、level1/、…、levelN/。
 
-我们在嵌套网格模式下生成的网格，会在当前工作目录创建两个文件夹：coarse 和 fine，其中 coarse 存放外网格，fine 存放内网格。
+![](public/resource/README-media/截屏2026-06-28%2014.03.55.png)
 
-当工作目录存在 coarse 和 fine 文件夹时，打开该目录会自动切换到嵌套网格模式，这对后续的很多操作都会产生影响，因此我们规定当本地已经存在 coarse 和 fine 文件夹或者已经存在其他网格文件，禁止切换网格类型。
+- 各层各有 grid.bot、grid.obst、grid.meta 等；强迫场 NetCDF 仍放在工作目录根，各层 prnc 用 ../wind.nc 引用。
 
+- 根目录一份 ww3_multi.nml；谱点模式时 points.list 也在根目录，谱点须落在最细层网格内。
+
+嵌套算例仍处演进中；若 run.log 出现 OUTPUT POINT OUT OF GRID、NBI=0 AND RANK > 1 等，请对照 嵌套网格设计与问题分析.md 检查层间范围、点位与 ww3_multi.nml 配置。
+
+
+
+##### yml 参数
+
+单层（grid_type: normal）时 levels 只保留一项即可；嵌套时至少两项。
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py workdir nested_demo
+# params.yml:
+#   grid.grid_type: nested
+#   grid.structured.nested.levels: [ level0 粗, level1 细 ]
+python3 run.py generate-grid nested_demo
+python3 run.py recommend-cfl nested_demo    # 按 level0 格距估算一组时间步写 params（逐层以 Step 4 为准）
+python3 run.py prepare-ww3 nested_demo
+python3 run.py local-run nested_demo
+```
+
+```yml
+# 矩形网格参数：
+#   bathymetry       – 水深数据集名称（见 presets.structured_bathymetry）。
+#   coastline_precision – GSHHG 海岸线精度（full/high/inter/low/coarse）。
+#   min_dist         – 相邻网格点的最小距离过滤阈值，单位：km。
+#   cut_off          – 陆海掩膜截断阈值；0 表示保留所有海点。
+#   lim_bathy        – 基于水深的格点保留阈值，表示单元内湿点比例。
+#   lim_val          – 格点分类的掩膜阈值，范围 0–1。
+#   split_lim        – 分裂单元阈值；0 表示禁用。
+#   lake_tol         – 保留湖泊的最小面积（以格点数计）；更小湖泊会被填充。
+#   nested.levels    – 嵌套层级，从粗到细；level0 = levels[0]，最细层 = levels[-1]。
+#   nested.nested_contraction_coefficient – GUI 自动套娃时的层间范围收缩系数（≥ 1）。
+structured:
+  nested:
+    nested_contraction_coefficient: 1.3
+    levels:
+    - dx: 0.05
+      dy: 0.05
+      lon:
+      - 100.0
+      - 130.0
+      lat:
+      - 10.0
+      - 30.0
+    - dx: 0.025
+      dy: 0.025
+      lon:
+      - 103.4615
+      - 126.5385
+      lat:
+      - 12.3077
+      - 27.6923
+    - dx: 0.0125
+      dy: 0.0125
+      lon:
+      - 106.1242
+      - 123.8758
+      lat:
+      - 14.0828
+      - 25.9172
+  bathymetry: GEBCO
+  coastline_precision: full
+  min_dist: 20
+  cut_off: 0
+  lim_bathy: 0.4
+  lim_val: 0.5
+  split_lim: 0
+  lake_tol: 50
+```
+
+
+
+##### 网格可视化
+
+![](public/resource/README-media/grid_bathymetry.png)
+
+![](public/resource/README-media/grid_obstruction_x.png)
+
+![](public/resource/README-media/grid_obstruction_y.png)
+
+![](public/resource/README-media/grid_structure.png)
+
+
+
+##### 网格文件
+
+单层时，结构化矩形网格由 gridgen 在工作目录根生成 `grid.obst`、`grid.bot`、`grid.mask_nobound`、`grid.meta`。嵌套时每一层 `levelK/` 下各有同样一套文件。
+
+| 文件 | 说明 |
+| --- | --- |
+| `grid.bot` | 水深网格，ASCII 文本，尺寸通常为 `Ny × Nx`；后续写入 `ww3_grid.nml` 的 bottom 输入 |
+| `grid.mask_nobound` | 陆海掩膜，`0 = 陆地`，`1 = 海洋` |
+| `grid.obst` | x/y 方向阻塞率，供 WW3 obstruction 输入使用 |
+| `grid.meta` | WW3Tool 记录的网格元信息，包含范围、分辨率、格点数等；Step 4 会据此同步 namelist |
+
+
+
+#### 三角形非结构化网格
+
+基于 JIGSAW / NOAA `unst_msh_gen` 生成三角网格，支持深水尺度、近岸尺度、浅水波长加密、水深梯度等参数。非结构网格不使用 `DX/DY`，核心控制量是 `hmax/hmin/hshr`。
+
+
+
+##### yml 参数
+
+```yaml
+# 非结构（三角形）网格间距参数：
+# hmax – 深水区最大单元间距，单位：km。
+# hmin – 全域允许的最小单元间距，单位：km。
+# hshr – 近岸目标间距，单位：km。
+# nwav – 每个单元解析的波长数量。
+# dhdx – 随水深梯度变化的网格间距变化率。
+# deep_ocean_threshold_m – 深水阈值，水深大于该值时使用 hmax，单位：m。
+# margin_deg – 区域边界外扩缓冲，单位：度。
+# edge_segments – 海岸线边界分段数量。
+# options.data – 可选的掩膜 / 排除区域文件。
+# options.command_line_args – 额外传给 JIGSAW 的 CLI 参数。
+# options.regional – 区域投影中心（stereo_lon / stereo_lat）。
+
+unstructured:
+	hmax: 100
+	hmin: 2
+	hshr: 20
+	nwav: 400
+	dhdx: 0.05
+	deep_ocean_threshold_m: 4000
+	margin_deg: 1
+	edge_segments: 64
+	options:
+	data:
+	mask_file: ''
+	command_line_args:
+	black_sea: 3
+	regional:
+	stereo_lon: 120.0
+	stereo_lat: 20.0
+```
+
+
+##### 网格文件
+
+| 文件 | 说明 |
+| --- | --- |
+| `grid.ww3` | 非结构网格主文件，供 WW3 非结构网格流程使用 |
+| `unstructured_grid.json` | 本次生成时解析后的配置，便于复现和缓存定位 |
+
+非结构网格缓存位于 `meshgen/cache/unst/<hash>/`。如果命中缓存，会直接把 `grid.ww3` 复制到工作目录。
+
+
+
+##### 网格可视化
+
+![](public/resource/README-media/grid_unst_bathymetry.png)
+
+![](public/resource/README-media/grid_unst_structure.png)
 
 
 
 #### SMC 网格
 
-
-#### 非结构化三角形网格
-
+基于 SMCGTools 生成。SMC 网格需要使用支持 SMC 的 WW3 可执行文件和对应 namelist 模板；如果只是普通区域模拟，不建议默认选择 SMC。
 
 
+##### yml 参数
 
-#### 网格缓存
-
-为了避免无意义的计算，每次生成的网格我们都会在 WW3Tool/meshgen/cache 中缓存。
-
-根据网格的生成参数生成 key，作为文件夹的名称，这样每次生成网格的时候会先遍历缓存，如果已经存在缓存了，则直接使用缓存的网格文件。
-
-每个缓存文件夹下，还有 params.json 可以查看
-
-```json
-{
-  "cache_key": "c161115dfd8bde7b30fd01826a3c292ada7835df377a81b9ee59f73acc28328b",
-  "source_dir": "/Users/zxy/ocean/WW3Tool/workSpace/2026-01-11_23-18-38",
-  "parameters": {
-    "dx": 0.05,
-    "dy": 0.05,
-    "lon_range": [
-      110.0,
-      130.0
-    ],
-    "lat_range": [
-      10.0,
-      30.0
-    ],
-    "ref_dir": "/Users/zxy/ocean/WW3Tool/meshgen/reference_data",
-    "bathymetry": "GEBCO",
-    "coastline_precision": "full"
-  }
-}
+```yml
+# SMC（Spherical Multi-Cell）网格参数：
+#   bathymetry       – 水深数据集名称（见 presets.smc_bathymetry）。
+#   bathy_convention – 水深数据约定：'elevation' 表示向上为正，'depth' 表示向下为正。
+#   n_levels         – 单元尺度加密层数。
+#   wlevel           – 水位参考索引。
+#   depmin           – 最小水深阈值，浅于该值的单元会被剔除，单位：m。
+#   dshalw           – 浅水额外加密的水深阈值，单位：m。
+#   generate_boundary_cells – 是否生成开边界虚拟单元。
+#   msea             – 海峡中保留的最小单元数。
+#   options.input    – 底层输入预处理参数（自动翻转、容差等）。
+#   options.grid     – 网格身份与投影参数（全球、北极、原点等）。
+#   options.output   – 输出文件命名与格式化参数。
+smc:
+  bathymetry: ETOPO2
+  bathy_convention: elevation
+  n_levels: 2
+  wlevel: 0
+  depmin: 0
+  dshalw: -150
+  generate_boundary_cells: true
+  msea: 1
+  options:
+    input:
+      auto_flip_lat: true
+      auto_flip_lon: true
+      coord_spacing_rtol: 0.001
+      coord_spacing_atol: 1.0e-08
+      nan_fill_value: 1000.0
+    grid:
+      name: grid
+      global: false
+      arctic: false
+      glb_arc_lat: 84.4
+      origin:
+        lon0: 0.0
+        lat0: -90.0
+    output:
+      file_prefix: ''
 ```
 
 
+##### 网格可视化
 
+![](public/resource/README-media/grid_smc_bathymetry.png)
 
-#### 查看地图
+![](public/resource/README-media/grid_smc_structure.png)
 
-注意虚线内的范围才是真正的地图范围
-![](public/resource/README-media/2026-03-29%2016.59.47.png)
 
 
 
-### 选择计算模式
 
-![](public/resource/README-media/2026-03-29%2014.32.55.png)
+### 5.4 Step 3 — 计算模式
 
-其实这三种计算模式计算量上是一样的，但是最终输出的结果有些不同，看似二维谱点计算模式和轨迹计算似乎是只计算几个点，但是计算的实际是整个地图范围。
+计算模式决定 WW3 算一整片海域、只算若干固定点位，还是沿一条移动轨迹算。在 params.yml 的 calc.mode 里设置，GUI 上第三步选择；没有单独的 CLI 子命令，会在 prepare-ww3 或 run-workflow 时自动读取。
 
-普通的区域计算模式就是基础的 ww3_ounf 输出
+![](public/resource/README-media/截屏2026-06-28%2013.03.46.png)
 
-二维谱点计算模式就是加了个 ww3_ounp
+![](public/resource/README-media/截屏2026-06-28%2014.09.11.png)
 
-轨迹计算就是 ww3_trnc
 
-在第四步的配置参数可以看出他们的配置区别
+| 模式      | `calc.mode`      | 适合场景               | 工作目录文件        | 最终常见产物                   |
+| ------- | ---------------- | ------------------ | ------------- | ------------------------ |
+| 区域尺度计算  | `region`         | 要输出整片网格的波高、周期、方向等场 | 无额外列表文件       | `ww3.YYYY.nc` 等场输出       |
+| 二维谱点计算 | `spectral_point` | 验证点的二维谱            | `points.list` | `ww3.YYYY_spec.nc` 等谱点输出 |
+| 轨迹计算    | `track`          | 沿船舶、浮标、台风路径等移动轨迹取值 | `track_i.ww3` | `ww3.YYYY_trck.nc` 等航迹输出 |
 
+如果你不了解，用区域尺度计算就行了，这是最常用的。
 
 
-#### 区域计算模式
+#### params.yml 参数
 
-普通的计算模式
+Step 3 相关配置位于 `calc` 段。GUI 第三步修改模式、点位或航迹点后，会写回工作目录的 `params.yml`；第四步 `prepare-ww3` 会读取这里的设置，生成 `points.list` 或 `track_i.ww3`。
 
-
-
-#### 二维谱点计算模式
-
-![](public/resource/README-media/2026-03-29%2014.55.42.png)
-
-我们可以点击从地图上选点，会打开一个窗口
-
-我们在地图上点击选点，注意蓝色虚线方框内的是网格文件的范围，我们只能在这里面选点，选好后我们点击完成按钮。
-
-![](public/resource/README-media/2026-03-29%2014.56.14.png)
-
-随后，在第四步的确认参数时会在工作目录生成一个 points.list 文件
-
-```swift
-117 18 '0'
-126 21 '1'
-127 20 '2'
-115 15 '3'
-128 14 '4'
-126 18 '5'
-```
-
-points.list 的三列分别是：经度、纬度、点名称，当某个工作目录存在 points.list 文件时，打开该工作目录计算模式会自动切换到：二维谱点计算，并自动导入 points.list 的点
-
-最后我们经过 WW3 的运算后可以得到 ww3.2025_spec.nc 在绘图界面
-
-![](public/resource/README-media/2026-03-29%2015.49.57.png)
-
-我们可以画出二维谱图
-
-![](workSpace/global/photo/spectrum/spectrum_3_time_20250104_120000.png)
-
-
-#### 轨迹计算
-
-![](public/resource/README-media/2026-03-29%2015.52.47.png)
-
-和二维谱点计算模式很像，但是新增了一列时间，在第四步确认参数的时候会生成一个文件：track_i.ww3，格式如下
-
-```
-WAVEWATCH III TRACK LOCATIONS DATA 
-20250103 000000   113.121   19.314    0
-20250104 000000   126.442   21.132    1
-20250105 000000   126.365   16.356    2
-```
-
-最后我们会使用 ww3_trnc 输出一个 ww3.2025_trck.nc
-
-
-
-
-
-### 配置运行参数
-
-
-![](public/resource/README-media/2026-03-29%2016.37.17.png)
-
-![](public/resource/README-media/2026-03-29%2016.14.29.png)
-我们添加了风场、水位场、流场作为强迫场，冰场可以添加，但是我们生成的网格区域没有冰，因此在这里不做展示。
-
-我们使用的是轨迹计算，这个模式会比普通的区域计算模式多一些配置日志，顺便把轨迹计算的特有的配置讲解一下。
-
-
-```log
-✅ 已复制 10 个 public/ww3 文件到当前工作目录
-✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
-✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
-✅ 已更新 server.sh：-J=202501, -p=CPU6240R, -n=48, -N=1, MPI_NPROCS=48, CASENAME=202501, ST=ST2
-✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
-✅ 已更新 ww3_shel.nml：DOMAIN%START=20250103, DOMAIN%STOP=20250105, DATE%FIELD%STRIDE=1800s
-✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
-✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
-✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
-✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
-✅ 已生成 track_i.ww3 文件
-✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（轨迹计算）
-✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
-```
-
-
-
-#### 普通网格
-
-首先，我们会把 WW3Tool/public/ww3 目录下的所有文件复制到当前工作目录
-
-```
-✅ 已复制 10 个 public/ww3 文件到当前工作目录
-```
-
-其中包含 
-
-![](public/resource/README-media/2026-03-29%2016.18.02.png)
-
----
-
-接下来
-
-```log
-✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
-```
-
-我们会把 grid.meta 的
-
-```
-&GRID_NML
-  GRID%TYPE            =  'RECT'
-  GRID%COORD           =  'SPHE'
-  GRID%CLOS            =  'NONE'
-/
-
-
-&RECT_NML
-  RECT%NX              =  201
-  RECT%NY              =  201
-  RECT%SX              =   0.100000000000
-  RECT%SY              =   0.100000000000
-  RECT%X0              =  110.0000
-  RECT%Y0              =   10.0000
-/
-
-&DEPTH_NML
-  DEPTH%SF             = 0.001
-  DEPTH%FILENAME       = 'grid.bot'
-/
-
-&OBST_NML
-  OBST%SF              = 0.010
-  OBST%FILENAME        = 'grid.obst'
-/
-```
-
-同步到 ww3_grid.nml 相同的位置
-
-
----
-
-然后修改谱分区输出方案
-
-```swift
-✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
-```
-
-ww3_shel.nml 的 TYPE%FIELD%LIST
-
-```swift
-&OUTPUT_TYPE_NML
-  TYPE%FIELD%LIST       = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
-/
-```
-
-ww3_ounf.nml 的 FIELD%LIST
-
-```swift
-&FIELD_NML
-  FIELD%TIMESTART        =  '20250103 000000'
-  FIELD%TIMESTRIDE       =  '3600'
-  FIELD%LIST             =  'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
-  FIELD%PARTITION        =  '0 1'
-  FIELD%TYPE             =  4
-/
-```
-
-谱分区的输出方案在设置页面可以配置 
-
-![](public/resource/README-media/2026-03-29%2016.26.34.png)
-
-
----
-
-再然后，我们修改 server.sh 文件
-
-```log
-✅ 已更新 server.sh：-J=202501, -p=CPU6240R, -n=48, -N=1, MPI_NPROCS=48, CASENAME=202501, ST=ST2
-```
+对应 params.yml 与 CLI：
 
 ```sh
-#SBATCH -J 202501
-#SBATCH -p CPU6240R
-#SBATCH -n 48
-#SBATCH -N 1
-#SBATCH --time=2880:00:00
+# Step 3 没有单独 CLI 子命令；改好 calc 段后执行第四步
+python3 run.py prepare-ww3 [work_dir_name]
 
-#wavewatch3--ST2
-export PATH=/public/home//software/wavewatch3/model/exe/exe:$PATH
-
-MPI_NPROCS=48
-
-CASENAME=202501
+# 或在完整预处理时自动读取 calc 段
+python3 run.py run-workflow [work_dir_name]
 ```
 
----
+```yaml
+calc:
+  mode: spectral_point     # region | spectral_point | track
+  points:
+  - lon: 114.225
+    lat: 15.4798
+    name: '0'
+  - lon: 115.519
+    lat: 20.6623
+    name: '1'
+  track_points: []
+```
+
+使用注意：
+
+1. `region` 模式不需要填写 `points` 或 `track_points`。
+2. `spectral_point` 模式至少需要一个点；第四步会据此生成 `points.list`。
+3. `track` 模式需要航迹点；第四步会据此生成 `track_i.ww3`。
+
+
+
+
+
+### 5.5 Step 4 — WW3 配置
+
+> 第四步在做什么？
+>
+> 前三步已经把风场、网格、计算模式准备好了。第四步根据工作目录里的 params.yml，把 WW3 需要的一整套 namelist 配好。
+>
+原则很简单：只在模板文件里改和本次算例有关的字段，其余保持 public/nml/ 模板原样，方便你对照官方示例排错。
+
+![](public/resource/README-media/截屏2026-06-28%2016.34.00.png)
+
+
+
+#### 5.5.3 按 CFL 推荐时间步
 
 ```log
-✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
+📐 CFL-based timesteps: DXY≈5230 m, Tcfl≈252 s → DTXY=226, DTMAX=678, DTKTH=339, DTMIN=15
 ```
 
-然后修改 ww3_ounf.nml，找到下面
+第四步的「自动配置时间步」会按 CFL 稳定性给出数值积分时间步长的建议，点击确认参数后会写进 ww3_grid.nml。
 
 ```swift
-&FIELD_NML
-  FIELD%TIMESTART        =  '20250103 000000'
-  FIELD%TIMESTRIDE       =  '3600'
-  FIELD%LIST             =  'HS LM T02 T0M1 T01 FP DIR SPR DP PHS PTP PLP PDIR PSPR PWS TWS PNR'
-  FIELD%PARTITION        =  '0 1'
-  FIELD%TYPE             =  4
-/
+✅ Spectral parameters and time steps have been written to ww3_grid.nml:
+  SPECTRUM%XFR    = 1.1
+  SPECTRUM%FREQ1  = 0.0375
+  SPECTRUM%NK     = 35
+  SPECTRUM%NTH    = 36
+
+  TIMESTEPS%DTMAX = 678
+  TIMESTEPS%DTXY  = 226
+  TIMESTEPS%DTKTH = 339
+  TIMESTEPS%DTMIN = 15
 ```
 
-FIELD%TIMESTART 为起始时间，FIELD%TIMESTRIDE 是输出精度
-
----
-
-```log
-✅ 已更新 ww3_shel.nml：DATE%FIELD%START=20250103, DATE%FIELD%STRIDE=1800s, DATE%FIELD%STOP=20250105
-```
-
-我们修改 ww3_shel.nml
-
-```swift
-&DOMAIN_NML
-  DOMAIN%START           =  '20250103 000000'
-  DOMAIN%STOP            =  '20250105 235959'
-/
-
-&OUTPUT_DATE_NML
-  DATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
-  DATE%TRACK          = '20250103 000000' '1800' '20250105 000000'
-  DATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
-/
-```
-
-其中日期即为起始日期，另外 DATE%FIELD 和 DATE%TRACK 中间的 '1800' 是计算时间步长
-
-其中 DATE%TRACK 是轨迹计算会单独添加的一条，默认是没有的。
-
----
-
-```log
-✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
-✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
-✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
-```
-
-然后我们修改 ww3_prnc.nml 的时间范围，这是为了在之后的 ww3_prnc 限制时间范围
+自动配置时间步对应的 CLI 指令：
 
 ```sh
-&FORCING_NML
-  FORCING%TIMESTART            = '19000101 000000'  
-  FORCING%TIMESTOP             = '29001231 000000'  
-  FORCING%FIELD%WINDS          = T
-  FORCING%FIELD%CURRENTS       = F
-  FORCING%FIELD%WATER_LEVELS   = F
-  FORCING%FIELD%ICE_CONC       = F
-  FORCING%FIELD%ICE_PARAM1     = F
-  FORCING%GRID%LATLON          = T
-/
-```
-
-然后我们根据选择的强迫场生成 ww3_prnc_current.nml ww3_prnc_level.nml，对于冰场，冰场的浓度和厚度会分成两个 ww3_prnc_ice.nml 和 ww3_prnc_ice1.nml
-
-我们会根据强迫场修改强迫场的开关，每个 ww3_prnc.nml 文件的强迫场开关 FORCING%FIELD% 只能打开一个（设为 T），但是在后续处理的时候我们会把每个  ww3_prnc_.nml 重命名为 ww3_prnc.nml ，因为 ww3_prnc 只能固定读取  ww3_prnc.nml
-
-我们还修改了强迫场的文件名和强迫场变量
-
-```
-&FILE_NML
-  FILE%FILENAME      = 'wind.nc'
-  FILE%LONGITUDE     = 'longitude'
-  FILE%LATITUDE      = 'latitude'
-  FILE%VAR(1)        = 'u10'
-  FILE%VAR(2)        = 'v10'
-/
-
-&FILE_NML
-  FILE%FILENAME      = 'current_level.nc'
-  FILE%LONGITUDE     = 'longitude'
-  FILE%LATITUDE      = 'latitude'
-  FILE%VAR(1)        = 'uo'
-  FILE%VAR(2)        = 'vo'
-/
-
-&FILE_NML
-  FILE%FILENAME      = 'current_level.nc'
-  FILE%LONGITUDE     = 'longitude'
-  FILE%LATITUDE      = 'latitude'
-  FILE%VAR(1)        = 'zos'
-/
+# 写入 params.yml 的 ww3_grid.parameters.TIMESTEPS%*
+python3 run.py recommend-cfl new                         # 默认 safe，CFL 系数 0.9
+python3 run.py recommend-cfl new --mode fast             # 更激进，CFL 系数 1.05
+python3 run.py recommend-cfl new --mode faster           # 最激进内置档，CFL 系数 1.15
+python3 run.py recommend-cfl new --factor 1.2            # 手动指定 CFL 系数，自动上限 1.25
+python3 run.py prepare-ww3 new
 ```
 
 
----
+
+##### CFL 推荐步长的计算方式
+
+WW3 官方在 ww3_grid.nml 注释里的思路是：波浪在网格上传播时，一个时间步内波群走过的距离不能超过一个网格间距。记：
+
+- $\Delta x$：网格最小间距（米）。结构化/SMC 由 dx、dy 和纬度换算；非结构用 hmin（km）直接当最细尺度。
+- $f_1$：谱最低频率 SPECTRUM%FREQ1（Hz）。
+- 深水近似下，最低频波的群速度 $C_g \approx g / (4\pi f_1)$（$g=9.8\,\mathrm{m/s^2}$）。
+
+则 CFL 时间尺度：
+
+
+$$
+T_{\mathrm{cfl}} = \frac{\Delta x}{C_g} = \frac{\Delta x \cdot f_1 \cdot 4\pi}{g}
+$$
+
+WW3Tool 在此基础上取整数秒，并级联得到：
+
+| 模式 | CFL 系数 | 说明 |
+|------|----------|------|
+| safe | 0.90 | 默认保守设置 |
+| fast | 1.05 | 更激进，减少步数，适合已有经验的复跑 |
+| faster | 1.15 | 最激进内置档，需关注稳定性 |
+| --factor X | 自定义，最高 1.25 | 直接指定 CFL 乘子 |
+
+| 参数 | 含义 | 推荐关系 |
+|------|------|----------|
+| DTXY | 空间传播时间步 | $\approx \mathrm{CFL 系数} \times T_{\mathrm{cfl}}$ |
+| DTMAX | 积分主时间步上限 | $\approx 3 \times \mathrm{DTXY}$ |
+| DTKTH | 谱源汇时间步 | 无强流时 $\approx \mathrm{DTMAX}/2$；有强流时更细 |
+| DTMIN | 最小时间步 | 默认 15 s，一般不动 |
+
+简单理解：
+
+- `DTXY` 控制波在空间网格上的传播步长，是 CFL 稳定性最直接相关的参数；网格越细，它通常越小。
+- `DTMAX` 是 WW3 主积分允许使用的最大时间步，通常随 `DTXY` 成比例放大。
+- `DTKTH` 控制谱空间方向/波数相关过程的更新时间步；有强流、强折射或复杂地形时应更保守。
+- `DTMIN` 是自适应源项积分的最小步长下限，一般不作为提高精度的首要调节项。
+
+嵌套网格时每一层 dx/dy 不同，会逐层重算 CFL：细网格间距小 → DTXY 更小 → 同样模拟时长内步数更多，计算更重。这和 ww3_multi.nml 里进程分配有关（见 5.5.7）。
+
+若网格很粗或 FREQ1 很小，算出的步长会偏大；若仍不稳定，应减小 dx/dy 或略减小推荐系数，而不是盲目加大 DTMAX。
+
+
+
+
+#### 5.5.1 复制模板与写运行脚本
 
 ```log
-✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
+✅ Copied server.sh, local.sh to the current work directory
+✅ Copied 8 NML template files to current work directory
 ```
 
-根据我们使用的强迫场，修改 ww3_shel.nml
+- 从 public/6.07_nml/ 或 public/7.14_nml/（根据你的 NML Version 选择）复制 ww3_grid.nml、ww3_prnc.nml、ww3_shel.nml、ww3_ounf.nml 等到工作目录。
 
-```
-&INPUT_NML
-  INPUT%FORCING%WINDS         = 'T'
-  INPUT%FORCING%WATER_LEVELS  = 'T'
-  INPUT%FORCING%CURRENTS      = 'T'
-  INPUT%FORCING%ICE_CONC      = 'F'
-  INPUT%FORCING%ICE_PARAM1    = 'F'
-/
-```
+- 从 public/scripts/ 复制  local.sh 和 server.sh。两个脚本的计算流程相同；差别见 §5.5.8。
+
+他们决定了 WW3 的程序（例如 ww3_grid、ww3_shel）执行流程， local.sh 是在本地运行的脚本， server.sh 是在 Slurm 运行的脚本。
 
 
+#### 5.5.2 把网格写进 ww3_grid.nml
 
-
----
-
-根据当前的轨迹计算的点列表或者二维谱点计算的点列表我们生成
+Step 2 生成的网格文件需要 Step 4  配置 `ww3_grid.nml` 的网格相关的参数才能让 WW3 能正确读取。不同网格类型写法不一样：
 
 ```log
-✅ 已生成 track_i.ww3 文件
+✅ Successfully synced grid.meta parameters to ww3_grid.nml:
+  GRID%TYPE  = 'RECT'
+  GRID%COORD = 'SPHE'
+  GRID%CLOS  = 'NONE'
+
+  RECT%NX    = 401
+  RECT%NY    = 401
+  RECT%SX    = 0.050000000000
+  RECT%SY    = 0.050000000000
+  RECT%X0    = 110.0000
+  RECT%Y0    = 10.0000
+  DEPTH%SF   = 0.001000
+  OBST%SF    = 0.010000
 ```
-
-track_i.ww3 的格式
-
-```
-WAVEWATCH III TRACK LOCATIONS DATA 
-20250103 000000   113.1   19.3    0
-20250104 000000   126.4   21.1    1
-20250105 000000   126.4   16.4    2
-```
-
-
-
----
 
 ```log
-✅ 已修改 ww3_shel.nml：添加 DATE%TRACK（轨迹计算）
-```
+✅ Unstructured mesh: updated ww3_grid.nml and namelists.nml (&RECT_NML, &DEPTH_NML, &MASK_NML, &OBST_NML blocks commented with !):
+  GRID%TYPE     = 'UNST'
+  UNST%FILENAME = 'grid.ww3'
 
-我们还会在 ww3_shel.nml 添加
-
+  FLAGTR        = 0
 ```
-&OUTPUT_DATE_NML
-   DATE%FIELD          = '20250103 000000' '1800' '20250105 235959'
-   DATE%TRACK          = '20250103 000000' '1800' '20250103 000000'
-   DATE%RESTART        = '20250103 000000' '86400' '20250105 235959'
-/
-```
-
----
 
 ```log
-✅ 已修改 ww3_trnc.nml：TRACK%TIMESTART = '20250103 000000', TRACK%TIMESTRIDE = '3600'
+✅ SMC mesh: updated ww3_grid.nml (template &DEPTH_NML, &MASK_NML, &OBST_NML commented with !; appended &DEPTH_NML DEPTH%SF):
+  GRID%TYPE          = 'RECT'
+
+  RECT%NX            = 570
+  RECT%NY            = 598
+  RECT%SX            = 0.033332824707
+  RECT%SY            = 0.033332824707
+  RECT%X0            = 109.9983
+  RECT%Y0            = 9.9985
+  RECT%SF            = 1.00
+  RECT%SF0           = 1.00
+  SMC%MCELS%FILENAME = 'grid_cell.dat'
+  SMC%ISIDE%FILENAME = 'grid_iside.dat'
+  SMC%JSIDE%FILENAME = 'grid_jside.dat'
+  SMC%SUBTR%FILENAME = 'grid_subtr.dat'
+  SMC%BUNDY%FILENAME = 'grid_bundy.dat'
+  DEPTH%SF           = -1.0
+✅ Updated namelists.nml:
+  NBISMC = 341 (grid_bundy.dat)
+  LvSMC  = 2
 ```
 
-修改 ww3_trnc.nml 
+矩形网格主要是“把范围、分辨率、水深文件写进去”；非结构网格主要是“告诉 WW3 直接读 `grid.ww3`”；SMC 网格则是“写入包络矩形 + SMC cell/side/boundary 文件”。这三类都由第四步自动完成。
 
-```
-&TRACK_NML
-  TRACK%TIMESTART        =  '20250103 000000'
-  TRACK%TIMESTRIDE       =  '3600'
-  TRACK%TIMESPLIT        =  8
-/
-```
 
----
+
+
+#### 5.5.4 时间与输出步长
 
 ```log
-✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
+✅ Updated ww3_ounp.nml:
+  POINT%TIMESTART  = '20250103 000000'
+  POINT%TIMESTRIDE = '3600'
+  POINT%TIMESPLIT  = 0
+✅ Updated ww3_ounf.nml:
+  FIELD%TIMESTART  = '20250103 000000'
+  FIELD%TIMESTRIDE = '3600'
+  FIELD%TIMESPLIT  = 0
+✅ Updated ww3_shel.nml:
+  DOMAIN%START            = '20250103 000000'
+  DOMAIN%STOP             = '20250105 235959'
+  OUTPUT%FIELD%TIMESTART  = '20250103 000000'
+  OUTPUT%FIELD%TIMESTRIDE = '3600'
+  DATE%FIELD              = '20250103 000000' '3600' '20250105 235959'
+  DATE%RESTART%START      = '20250103 000000'
+  DATE%RESTART%STOP       = '20250105 235959'
+
+  TYPE%POINT%FILE         = 'points.list'
+  DATE%POINT              = '20250103 000000' '3600' '20250105 235959'
+  DATE%BOUNDARY           = '20250103 000000' '86400' '20250105 235959'
+✅ Modified ww3_prnc.nml:
+  FORCING%TIMESTART = '20250103 000000'
+  FORCING%TIMESTOP  = '20250105 235959'
 ```
 
-二维谱点计算模式的时候我们还会修改 namelists.nml
+对应的 yml 参数：
+
+```yaml
+ww3:
+  start_date: "20250103"
+  end_date: "20250105"
+  output_step: "3600"   # 输出间隔，秒
+```
+
+这些时间字段不是重复配置，而是分别给 WW3 的不同程序使用：
+
+| 写入位置                                          | 作用                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `ww3_shel.nml` 的 `DOMAIN%START/STOP`          | 控制主模式积分从什么时候开始、什么时候结束，是整个模拟的总时间窗                                 |
+| `ww3_shel.nml` 的 `DATE%FIELD`                 | 控制场输出在主积分过程中什么时候写出、按多长间隔写出，步长越小，`out_grd.ww3` 和后续 `ww3.*.nc` 越大。 |
+| `ww3_ounf.nml` 的 `FIELD%TIMESTART/TIMESTRIDE` | 控制 `ww3_ounf` 从中间文件导出 NetCDF 场结果的起始时间和输出间隔                       |
+| `ww3_ounp.nml` 的 `POINT%TIMESTART/TIMESTRIDE` | 二维谱点计算时，控制谱点 NetCDF 的导出起始时间和输出间隔                                 |
+| `ww3_prnc.nml` 的 `FORCING%TIMESTART/TIMESTOP` | 控制强迫场预处理读取哪一段时间，通常应覆盖主积分时间窗                                      |
+
+
+
+#### 5.5.5 谱分区输出方案
+
+![](public/resource/README-media/截屏2026-06-28%2019.03.05.png)
+
+在设置页可以配置谱分区输出方案，你可以在这里新增、修改、删除方案。
+
+```log
+✅ Modified spectral partition output scheme in ww3_shel and ww3_ounf:
+  TYPE%FIELD%LIST = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
+  FIELD%LIST      = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
+```
+
+第四步谱分区输出方案写入 ww3_shel.nml 和 ww3_ounf.nml 。嵌套时还会同步到 ww3_multi.nml 的 ALLTYPE%FIELD%LIST。
+
+对应的 yml 参数：
 
 ```swift
-&OUTS E3D = 0 /
+ww3:
+  output_scheme:
+    use: with_spectrum
+    standard: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS
+    with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
 ```
 
 
 
-#### 嵌套网格
+#### 5.5.6 强迫场开关与多套 prnc
 
+![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
 
+当第一步导入了多个强迫场，那么在第四步会显示可选的强迫场多选，其中风场是必选的，其他强迫场可以选择是否使用。
 
-![](public/resource/README-media/2026-03-29%2017.02.34.png)
-![](public/resource/README-media/2026-03-29%2017.03.44.png)
-
-我们首先生成了嵌套网格，在工作目录创建了 coarse 和 fine 目录，然后选择了二维谱计算模式。
-
+在确认参数时，会根据强迫场生成不同的 ww3_prnc.nml
 
 ```log
-======================================================================
-🔄 【工作目录】开始处理公共文件...
-✅ 已复制 server.sh, ww3_multi.nml, local.sh 到当前工作目录
-✅ 已更新 server.sh：-J=202501, -p=CPU6240R, -n=48, -N=1, MPI_NPROCS=48, CASENAME=202501, ST=ST2
-✅ 已更新 ww3_multi.nml：起始=20250103, 结束=20250105, 计算精度=1800s，强迫场=风场、流场、水位场、海冰场、海冰厚度，计算资源：coarse=0.60, fine=0.40，ALLTYPE%POINT%FILE = './fine/points.list'，ALLDATE%POINT = '20250103 000000' '1800' '20250105 235959'，ALLTYPE%FIELD%LIST = 'WND HS T02 FP DIR PHS PTP PDIR PWS TWS PNR' (谱分区输出)
-
-======================================================================
-🔄 【外网格】开始处理外网格...
-✅ 已复制 9 个 public/ww3 文件到当前工作目录
-✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
-✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
-✅ 已更新 ww3_shel.nml（二维谱点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
-✅ 已修改 ww3_prnc.nml：FORCING%FIELD%WINDS = T, FILE%FILENAME = '../wind.nc'
-✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
-✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
-✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
-✅ 已复制并修改 ww3_prnc_ice.nml：FORCING%FIELD%ICE_CONC = T
-✅ 已复制并修改 ww3_prnc_ice1.nml：FORCING%FIELD%ICE_PARAM1 = T
-✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
-✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
-✅ 已创建 points.list 文件，包含 4 个点位
-✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（二维谱点计算模式）
-
-======================================================================
-🔄 【内网格】开始处理内网格...
-✅ 已复制 9 个 public/ww3 文件到当前工作目录
-✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案
-✅ 已成功同步 grid.meta 参数到 ww3_grid.nml
-✅ 已更新 ww3_ounf.nml：FIELD%TIMESTART=20250103，FIELD%TIMESTRIDE=3600秒
-✅ 已更新 ww3_shel.nml（二维谱点计算模式）：起始=20250103, 结束=20250105, 计算步长=1800s，添加 TYPE%POINT%FILE = 'points.list'，添加 DATE%POINT 和 DATE%BOUNDARY
-✅ 已修改 ww3_prnc.nml：FORCING%FIELD%WINDS = T, FILE%FILENAME = '../wind.nc'
-✅ 已修改 ww3_prnc.nml：FORCING%TIMESTART = '20250103 000000', FORCING%TIMESTOP = '20250105 235959'
-✅ 已复制并修改 ww3_prnc_current.nml：FORCING%FIELD%CURRENTS = T
-✅ 已复制并修改 ww3_prnc_level.nml：FORCING%FIELD%WATER_LEVELS = T
-✅ 已复制并修改 ww3_prnc_ice.nml：FORCING%FIELD%ICE_CONC = T
-✅ 已复制并修改 ww3_prnc_ice1.nml：FORCING%FIELD%ICE_PARAM1 = T
-✅ 已修改 ww3_shel.nml：更新 INPUT%FORCING%* 设置
-✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
-✅ 已创建 points.list 文件，包含 4 个点位
-✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（二维谱点计算模式）
+✅ Copied and modified ww3_prnc_current.nml:
+  FORCING%FIELD%CURRENTS = T
+  FILE%FILENAME          = 'current_level.nc'
+  FILE%VAR(1)            = 'uo'
+  FILE%VAR(2)            = 'vo'
+✅ Copied and modified ww3_prnc_level.nml:
+  FORCING%FIELD%WATER_LEVELS = T
+  FILE%FILENAME              = 'current_level.nc'
+  FILE%VAR(1)                = 'zos'
 ```
 
-我们第四步确认参数，观察 Log 输出
+默认的  ww3_prnc.nml 是处理风场的，由于 ww3_prnc 一次只能处理一个 nml ，因此我们复制了风场的   ww3_prnc.nml ，然后修改其中的变量，最终在 ww3_prnc 运行的时候我们还会更改 nml 的名字以满足 ww3_prnc  的要求，这会在 local.sh 或者 server.sh 中自动完成。
 
-```log
-✅ 已复制 server.sh, ww3_multi.nml, local.sh 到当前工作目录
-```
 
-我们首先把 WW3Tool/public/ww3 目录的 server.sh, local. sh, ww3_multi.nml 复制到了工作目录。
 
-我们引入了 ww3_multi.nml 修改了起始时间，计算精度，强迫场，这其实和 ww3_shel.nml 类似
+#### 5.5.7 嵌套网格
 
-```sh
+![](public/resource/README-media/截屏2026-06-28%2019.21.54.png)
+
+
+如果当前是嵌套网格，那么 WW3Tool  会在工作目录根下放 ww3_multi.nml 和 points.list（谱点模式）；各层 level0/、level1/… 各有自己的 ww3_grid.nml、mod_def 等。
+
+![](public/resource/README-media/截屏2026-06-28%2022.40.04.png)
+
+
+##### ww3_multi.nml
+
+```nml
 &INPUT_GRID_NML
   INPUT(1)%NAME                  = 'wind'
   INPUT(1)%FORCING%WINDS         = T
-  
+
   INPUT(2)%NAME                  = 'current'
   INPUT(2)%FORCING%CURRENTS      = T
-  
+
   INPUT(3)%NAME                  = 'level'
   INPUT(3)%FORCING%WATER_LEVELS  = T
-  
+
   INPUT(4)%NAME                  = 'ice'
-  INPUT(4)%FORCING%ICE_CONC      = T
+  INPUT(4)%FORCING%ICE_CONC      = F
 
   INPUT(5)%NAME                  = 'ice1'
-  INPUT(5)%FORCING%ICE_PARAM1    = T
+  INPUT(5)%FORCING%ICE_PARAM1    = F
 /
 
 &MODEL_GRID_NML
 
-  MODEL(1)%NAME                  = 'coarse'
+  MODEL(1)%NAME                  = 'level0'
   MODEL(1)%FORCING%WINDS         = 'native'
   MODEL(1)%FORCING%CURRENTS      = 'native'
   MODEL(1)%FORCING%WATER_LEVELS  = 'native'
-  MODEL(1)%FORCING%ICE_CONC      = 'native'
-  MODEL(1)%FORCING%ICE_PARAM1    = 'native'
-  MODEL(1)%RESOURCE              = 1 1 0.00 0.35 F
+  MODEL(1)%FORCING%ICE_CONC      = 'no'
+  MODEL(1)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(1)%RESOURCE              = 1 1 0.00 0.08 F
 
-  MODEL(2)%NAME                  = 'fine'
+  MODEL(2)%NAME                  = 'level1'
   MODEL(2)%FORCING%WINDS         = 'native'
   MODEL(2)%FORCING%CURRENTS      = 'native'
   MODEL(2)%FORCING%WATER_LEVELS  = 'native'
-  MODEL(2)%FORCING%ICE_CONC      = 'native'
-  MODEL(2)%FORCING%ICE_PARAM1    = 'native'
-  MODEL(2)%RESOURCE              = 2 1 0.35 1.00 F
+  MODEL(2)%FORCING%ICE_CONC      = 'no'
+  MODEL(2)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(2)%RESOURCE              = 2 1 0.08 0.24 F
+
+  MODEL(3)%NAME                  = 'level2'
+  MODEL(3)%FORCING%WINDS         = 'native'
+  MODEL(3)%FORCING%CURRENTS      = 'native'
+  MODEL(3)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(3)%FORCING%ICE_CONC      = 'no'
+  MODEL(3)%FORCING%ICE_PARAM1    = 'no'
+  MODEL(3)%RESOURCE              = 3 1 0.24 1.00 F
 /
 ```
 
-其中
+`ww3_multi.nml` 把各嵌套层串成一次 `mpirun ww3_multi` 积分。`MODEL_GRID_NML` 里每个 `MODEL(i)%NAME` 对应一层目录（如 `level2`），并经由 `MODEL(i)%RESOURCE` 声明该层在嵌套与 MPI 并行中的角色。
 
-INPUT (I)%FORCING%ICE_CONC = 冰浓度
-INPUT (I)%FORCING%ICE_PARAM1 = 冰厚度
+`MODEL(i)%RESOURCE` 写成一行五个字段，等价于 ：
 
-关于海冰强迫场目前程序还有很多没有完善的问题。
+| 字段           | 含义                                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| `RANK_ID`    | **嵌套层级序号**：`level0`（最粗）= 1，向细层递增。。                                                                       |
+| `GROUP_ID`   | MPI 进程组号；WW3Tool 默认各层均为 `1`（同一通信域内跑 multi-grid）。                                                         |
+| `COMM_FRAC`  | **进程份额区间** `[下界, 上界]`，取值 0–1，各层区间首尾相接且覆盖全体 MPI 进程。例如总进程 48、`0.24 1.00` 表示最细层约占用 24%–100% 的进程（约 37–48 个）。 |
+| `BOUND_FLAG` | 是否输出该层供细层嵌套用的边界文件 `nest.<NAME>`；WW3Tool 默认 `F`。                                                          |
 
-注意 MODEL (2)%FORCING%WINDS = 'native' 其中的 native 表示开启，no 表示关闭
-
-MODEL (1)%RESOURCE 和 MODEL (2)%RESOURCE 表示分配的计算资源比例
-
-至于其他的 Log ，很容易理解，我们只是按照普通网格的方式处理了内外网格
-
-值得注意的是，我们修改了 ww3_prnc.nml：FILE%FILENAME = '../wind.nc' ，这是为了避免强迫场文件占用两倍的空间，所以指向了共同的引用。
+WW3Tool 在 Step 4 会按各层 `ww3_grid.nml` 中的格点数（`RECT%NX × NY`）和传播步 `TIMESTEPS%DTXY` 估算相对计算量 `点数 / DTXY`，再自动写入 `COMM_FRAC`。
 
 
 
 
-#### 二维谱点计算模式
+##### 同强迫场
+
+强迫场文件放在根目录，各层 ww3_prnc.nml 用 ../wind.nc 引用。
 
 ```log
-✅ 已修改 namelists.nml：将 E3D 从 0 改为 1
-✅ 已创建 points.list 文件，包含 4 个点位
-✅ 已修改 ww3_ounp.nml：POINT%TIMESTART = '20250103 000000'，POINT%TIMESTRIDE = '3600'（二维谱点计算模式）
-```
+✅ Modified ww3_prnc.nml:
+  FORCING%FIELD%WINDS = T
+  FILE%FILENAME       = '../wind.nc'
+  FILE%VAR(1)         = 'u10'
+  FILE%VAR(2)         = 'v10'
 
-上一节的日志中，这三个日志是关于二维谱点计算模式的日志，这些日志都很好理解
+✅ Copied and modified ww3_prnc_current.nml:
+  FORCING%FIELD%CURRENTS = T
+  FILE%FILENAME          = '../current_level.nc'
+  FILE%VAR(1)            = 'uo'
+  FILE%VAR(2)            = 'vo'
 
-对于 E3D 从 0 改为 1，如果谱分区输出方案包含 EF，那么也会执行
-
-
-
-
-### 本地运行
-
-![](public/resource/README-media/2026-03-30%2014.06.33.png)
-
-本地运行实际执行的是 local.sh
-
-如果选择本地执行，确保你已经在本地配置好了 WAVEWATCH III，选择 bin 目录，其中应该包含下面这些程序
-
-```
-gx_outf    ww3_bound  ww3_grid   ww3_ounf   ww3_outp   ww3_shel   
-
-ww3_trck   gx_outp    ww3_gint   ww3_gspl   ww3_ounp   ww3_prep   
-
-ww3_strt   ww3_trnc   ww3_bounc  ww3_grib   ww3_multi  ww3_outf   
-
-ww3_prnc   ww3_systrk ww3_uprstr
+✅ Copied and modified ww3_prnc_level.nml:
+  FORCING%FIELD%WATER_LEVELS = T
+  FILE%FILENAME              = '../current_level.nc'
+  FILE%VAR(1)                = 'zos'
 ```
 
 
 
+##### 二维谱点计算
 
-### 连接服务器
-
-![](public/resource/README-media/2026-03-29%2023.47.34.png)
-
-首先，你需要配置 ssh 账号和密码，在设置页面我们找到服务器配置这个选项
-
-注意默认服务器路径，这是你的服务器存放工作目录的路径
-
-点击连接服务器，连接成功后会先显示一个 CPU 占用排行，这个列表每秒钟刷新一次
-
-如果在第六步提交计算任务到 Slurm ，还会显示任务队列
-
-![](public/resource/README-media/2026-03-30%2016.39.48.png)
-
-
-
-### 服务器操作
-
-查看任务队列就是在服务器执行了 squeue -l
-
-![](public/resource/README-media/2026-03-30%2016.40.35.png)
-
-上传工作目录到服务器，就是把当前工作目录上传到服务器工作目录，这在设置页面有配置
-
-![](public/resource/README-media/2026-03-30%2016.41.08.png)
-
-提交计算任务就是在服务器执行 server.sh 脚本。所有 WW3 执行日志始终写入 run.log；运行成功后在工作目录创建一个空标记文件 success，失败则创建空标记文件 fail（run.log 不改名）。判断是否完成：看 success 或 fail 标记是否存在，两者都没有则仍在运行，run.log 为实时日志
-
-因此检查是否已完成可以检测是否存在 success 或 fail 标记，两者都没有说明服务器还在执行（run.log 为实时日志）。
-
-清空文件夹就是清空当前服务器工作目录文件夹
-
-下载结果到本地会自动下载所有 ww3.nc 文件，如果是嵌套网格模式，只会下载 fine 内的结果文件。
-
-下载 log 就是下载 run.log 及 success/fail 标记
-
-
-
-
-### 自动操作
-
-打开一个工作目录，会自动检测是否已经存在转换了的强迫场文件(根据文件名 wind.nc, level.nc,current.nc)，自动填充到强迫场按钮
-
-自动读取网格文件的范围和精度，填充第二步，检测是否包含 coarse 和 fine 文件夹，自动切换到嵌套网格模式
-
-自动检测 points.list 切换到点输出模式，检测到 track_i.ww3 切换到轨迹计算，并且自动导入文件中的点列表。
-
-自动读取 server.sh 的 slurm 参数填充第四步，自动检测 ww3_shel.nml 的计算精度，时间范围，谱分区方案。
-
-
-
-### 设置页面
-
-设置页面的绝大部分设置都是自动保存的，除了谱分区输出方案
-
-#### 运行方式
-
-运行方式，这个其实只是控制主页的某些元素是否显示罢了，没有什么实际的影响
-
-例如选择本地运行的时候，不会显示 Slurm 参数
-
-#### 强迫场选择
-
-强迫场选择的自动关联就是打开一个文件如果包含多个强迫场，那么可以自动填充其他按钮
-
-文件处理方式就是对原本的强迫场文件的处理方式：复制或剪切。
-
-有些强迫场文件非常大，如果采用复制的方式那么占用的电脑空间显然成倍增加。
-
-
-
-#### JASON 数据路径
-
-JASON 数据路径就是绘图的时候用的，比如你想看模拟的结果和 JASON 3 卫星的观测的波高对比。
-
-![](public/resource/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
-
-
-#### WW3 配置
-
-WW3 配置就是主页第四步的默认值，确认参数按钮。
-
-文件分割就是 ww3_ounf.nml, ww3_ounp.nml, ww3_trnc.nml 的 TIMESPLIT，比如你计算的时间范围是 3 个月，那么你选择月分割或年分割比较合适，如果你选择日分割，则会每天一个文件。
-
-![](public/resource/README-media/2026-03-30%2016.42.49.png)
-
-频谱参数配置、数值积分时间步长、近岸配置都是 ww3_grid.nml 的配置，在这里修改会同时修改 WW3Tool 和当前工作目录的 ww3_grid.nml （如果存在）
-
-```swift
-&SPECTRUM_NML
-  SPECTRUM%XFR       =  1.1
-  SPECTRUM%FREQ1     =  0.04118
-  SPECTRUM%NK        =  32
-  SPECTRUM%NTH       =  24
+```
+&DOMAIN_NML
+  DOMAIN%NRINP  = 0
+  DOMAIN%NRGRD  = 3
+  DOMAIN%UNIPTS = F
+  DOMAIN%FLGHG1 = T
+  DOMAIN%FLGHG2 = T
+  DOMAIN%START  = '20250103 000000'
+  DOMAIN%STOP   = '20250105 235959'
 /
 
-&TIMESTEPS_NML
-  TIMESTEPS%DTMAX        =  900
-  TIMESTEPS%DTXY         =  320
-  TIMESTEPS%DTKTH        =  300
-  TIMESTEPS%DTMIN        =  15
+&OUTPUT_TYPE_NML
+  ALLTYPE%FIELD%LIST     = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
+  ALLTYPE%POINT%FILE     = 'points.list'
+  ALLTYPE%POINT%NAME     = 'level2'
 /
 ```
 
-谱分区输出是 ww3_shel.nml、 ww3_ounf.nml、ww3_ounp.nml 的配置
+WW3Tool 采用 `DOMAIN%UNIPTS = F`（不合并各层谱点 raw）。
+
+`points.list` 只在工作目录根目录生成一份，谱点坐标须落在最细层 `levelN` 网格内。`ww3_multi` 积分后，有效谱点 raw 为根目录的 `out_pnt.<最细层 MODEL%NAME>`（三层嵌套例：`out_pnt.level2`）；
+
+`local.sh` / `server.sh` 会将其移入 `levelN/out_pnt.ww3`，再于最细层目录执行 `ww3_ounp` 导出 NetCDF。粗层不单独维护谱点列表，也不使用 `UNIPTS = T` 的统一点输出路径。
+
+
+
+##### 各层自动 CFL 时间步
+
+嵌套各层的 `dx` / `dy` 不同（`level0` 最粗、`levelN` 最细），**传播时间步不能共用一套**：CFL 要求 `DTXY ∝ Δx`，若细层仍用粗层的 `DTXY`，细网格会数值不稳定。
+
+Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处理时，会在写入该层 `ww3_grid.nml` 的谱参数与 `grid.meta` 同步之后，**自动**调用 CFL 重算（`TIMESTEPS%DTXY`、`DTMAX`、`DTKTH`、`DTMIN`），写回**该层目录**下的 `ww3_grid.nml`
+
+```log
+✅ Recomputed CFL timesteps: DTXY=189, DTMAX=567, DTKTH=284 (bathy Cg=24.9m/s)
+```
 
 
 
 
-#### CPU 配置
+#### 5.5.8 local.sh 与 server.sh 在算什么
 
-在服务器端输入指令
+`local.sh` 和 `server.sh` 本身不做数值计算，它们是 WW3 运行流程的编排脚本：进入工作目录，按顺序调用 WW3 官方可执行程序，把所有输出追加到 `run.log`，任一步失败就停止并生成 `fail` 标记，全部完成后生成 `success` 标记。
+
+本机运行走 `local.sh`：
 
 ```sh
-sinfo
+python3 run.py local-run new
 ```
 
-可以查看服务器的 CPU (如果你已经服务配置了 slurm)
+服务器运行走 `server.sh`：先上传工作目录，再在服务器端提交脚本。
 
-然后打开软件的设置页面，找到 Slurm 参数一栏，点击 CPU 管理，改成你的服务器的 CPU
+```sh
+python3 run.py upload --confirm new
+python3 run.py submit new
+python3 run.py check-status new
+python3 run.py download-log new
+```
 
-![](public/resource/README-media/2026-03-30%2016.42.16.png)
+这些脚本真正调用的是下面这些 WW3 程序。
+
+`ww3_grid` 读取 `ww3_grid.nml` 和网格输入文件，把水深、障碍物、谱空间、时间步等网格定义编译成 `mod_def.ww3`。后续所有 WW3 程序都依赖 `mod_def.ww3`，所以它是计算前必须先跑的第一步。
+
+`ww3_prnc` 读取 `ww3_prnc.nml` 和 NetCDF 强迫场，把风、流、水位、海冰等强迫插值或转换成 WW3 内部二进制文件，例如 `wind.ww3`、`current.ww3`、`level.ww3`、`ice.ww3`。WW3 的 `ww3_prnc` 一次只读取一个 namelist，所以有多种强迫场时，脚本会依次切换 `ww3_prnc.nml`，按 wind、current、level、ice 的顺序逐个运行。
+
+`ww3_strt` 生成初始谱场，通常得到 `restart.ww3`。冷启动时它相当于给模型准备一个初始海浪状态；后续如果支持热启动，也会围绕 restart 文件继续扩展。
+
+`ww3_shel` 是普通单网格的主积分程序。它读取 `mod_def.ww3`、强迫文件和 `ww3_shel.nml`，从 `ww3.start_date` 积分到 `ww3.end_date`，生成 WW3 的中间输出文件，例如 `out_grd.ww3`、`out_pnt.ww3`、`track_o.ww3`。脚本会优先用 `mpirun -n MPI_NPROCS ww3_shel` 并行运行；如果 MPI 方式失败，会再尝试直接运行一次 `ww3_shel`。
+
+`ww3_multi` 是嵌套网格的主积分程序。嵌套模式下不再用 `ww3_shel` 做主积分，而是由 `ww3_multi.nml` 管理 `level0` 到 `levelN` 的多层网格耦合，一次积分输出各层结果。WW3Tool 后续只把最细层 `levelN` 的结果移回对应目录并导出 NetCDF。
+
+`ww3_ounf` 负责场输出导出。它读取 `out_grd.ww3` 和 `ww3_ounf.nml`，生成 `ww3.YYYY.nc` 这类 NetCDF 场结果。也就是说，`ww3_shel` / `ww3_multi` 负责“算”，`ww3_ounf` 负责“把场结果导出来”。
+
+`ww3_ounp` 负责点位二维谱输出导出。只有存在 `points.list` 时才会运行，它读取 `out_pnt.ww3` 和 `ww3_ounp.nml`，生成 `ww3.YYYY_spec.nc` 等谱点结果。
+
+`ww3_trnc` 负责轨迹输出导出。只有存在 `track_i.ww3` 时才会运行，它把主积分产生的 `track_o.ww3` 转成轨迹结果文件。
+
+普通网格的执行流程是：
+
+```text
+ww3_grid
+→ ww3_prnc（wind/current/level/ice 逐个处理）
+→ ww3_strt
+→ mpirun ww3_shel（失败时尝试直接 ww3_shel）
+→ ww3_ounp（仅二维谱点计算）
+→ ww3_trnc（仅轨迹计算）
+→ ww3_ounf
+→ success / fail
+```
+
+嵌套网格的执行流程是：
+
+```text
+对每个 level*：
+  ww3_grid
+  → ww3_prnc（wind/current/level/ice 逐个处理）
+  → ww3_strt
+
+汇总各层文件到工作目录根：
+  mod_def.level0、wind.level0、restart.level0 ...
+
+mpirun ww3_multi
+→ 把 out_grd.levelN / out_pnt.levelN / track_o.levelN 移回最细层 levelN/
+→ 在 levelN/ 运行 ww3_ounp（仅二维谱点计算）
+→ 在 levelN/ 运行 ww3_trnc（仅轨迹计算）
+→ 在 levelN/ 运行 ww3_ounf
+→ success / fail
+```
+
+`local.sh` 和 `server.sh` 的计算流程基本相同，差别在运行环境。`local.sh` 在本机直接执行，`MPI_NPROCS` 默认取本机逻辑 CPU 数，也可以用环境变量 `WW3_MPI_NPROCS` 覆盖；`server.sh` 会先通过 `sbatch` 提交到 Slurm，再按 `#SBATCH -n`、`#SBATCH -N`、`#SBATCH --mem` 和 `MPI_NPROCS` 使用服务器资源。
+
+另一个关键差别是 WW3 可执行文件路径。`local.sh` 使用本机环境里的 `ww3_grid`、`ww3_shel` 等命令；`server.sh` 会根据 Step5 选择的服务器 ST 版本写入 `export PATH=...:$PATH`，从而决定使用服务器上哪一套 WW3 编译版本。
+
+看 `run.log` 时，可以按 `Running ww3_grid`、`Running ww3_prnc`、`Running mpirun ww3_shel`、`Running mpirun ww3_multi`、`Running ww3_ounf` 这些分隔线定位当前失败发生在哪一步。
 
 
-#### 服务器连接
+### 5.6 Step5 —  Slurm 配置
 
-![](public/resource/README-media/2026-03-29%2023.47.34.png)
+#### 服务器配置
 
-你需要填写 SSH 账号，以及默认的登录路径，在这个路径，每次的工作目录都会上传到这里。
+你需要先配置服务器的连接方式才能连接服务器， WW3Tool 提供了三种 SSH 方式。
+
+![](public/resource/README-media/截屏2026-06-28%2020.48.27.png)
+
+其中服务器路径是用于默认存储上传的工作目录位置。
+
+三种 SSH 模式的区别：
+
+SSH 配置名称模式使用 `server.ssh_config_host`，适合本机已经在 `~/.ssh/config` 配好 Host 别名的情况，也是推荐方式。程序连接时直接使用这个 Host 别名，`host/user/password/key_file` 可以为空。
+
+```yaml
+server:
+  ssh_config_host: SHOU
+  host: null
+  port: 22
+  user: null
+  password: null
+  key_file: null
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
+
+密码登录模式使用 `server.host`、`server.port`、`server.user`、`server.password`，适合临时服务器或没有私钥时使用。它配置最直观，但密码不适合长期写在配置文件里。
+
+```yaml
+server:
+  ssh_config_host: ''
+  host: <server-host>
+  port: 22
+  user: <server-user>
+  password: <server-password>
+  key_file: null
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
+
+![](public/resource/README-media/截屏2026-06-29%2010.24.45.png)
+
+
+私钥文件登录模式使用 `server.host`、`server.port`、`server.user`、`server.key_file`，适合固定服务器和自动化运行。`key_file` 指向本机 SSH 私钥路径；如果同时有 `password`，连接逻辑会优先尝试可用私钥。
+
+```yaml
+server:
+  ssh_config_host: ''
+  host: <server-host>
+  port: 22
+  user: <server-user>
+  password: null
+  key_file: /Users/<name>/.ssh/id_rsa
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
+
+![](public/resource/README-media/截屏2026-06-29%2010.25.12.png)
+
+优先级上，只要填写了 `server.ssh_config_host`，连接时会先解析 `~/.ssh/config`，再补充 `params.yml` 中显式填写的密码或私钥字段。
+
+
+
+
+#### 任务列表与空闲资源列表
+
+这些列表的作用不用多说，当然是为了更好的利用计算资源了。
+
+![](public/resource/README-media/截屏2026-06-28%2021.03.35.png)
+
+GUI 连接服务器后会自动轮询任务列表和空闲资源，背后用的是 Slurm 自带指令。
+
+任务列表显示作业 ID、分区、任务名、状态、运行时间、节点数、核心数和原因/节点。GUI 使用的服务器指令是：
+
+```sh
+squeue -o '%i %P %j %T %M %D %C %R' -h
+```
+
+对应 CLI：
+
+```sh
+python3 run.py queue-status
+```
+
+空闲资源列表按节点读取状态、CPU 分配情况、分区和内存，再解析出空闲节点、空闲核心和可用分区。GUI 使用的服务器指令是：
+
+```sh
+sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'
+```
+
+对应 CLI：
+
+```sh
+python3 run.py slurm-idle <workdir>
+```
+
+注意：`queue-status` 的 CLI 输出使用 `squeue -l`，适合快速看完整队列文本；主页任务列表为了做成卡片，会使用更固定的 `squeue -o ...` 格式。
+
+
+
+#### Slurm 配置
+
+下面关于 Slurm 的配置只是提供一个默认值，在主页第五步连接服务器后可以自行修改。
+
+![](public/resource/README-media/截屏2026-06-28%2020.48.51.png)
+
+```log
+✅ Updated server.sh:
+  #SBATCH -J    = 2026-06-28_21-10-11
+  #SBATCH -p    = CPU6240R
+  #SBATCH -n    = 48
+  #SBATCH -N    = 1
+  #SBATCH --mem = 360G
+  MPI_NPROCS    = 48
+  ST            = ST2
+  export PATH   = /public/home/weiyl001/software/wavewatch3/model/exe
+```
+
+在第五步我们有自动解析服务器分区的功能，设置页面的服务器分区只是提供一个兜底的默认值，只有在无法正确解析服务器分区列表的情况下，才会使用。
+
+如果解析的服务器分区列表包含这个默认值，那么会默认使用该分区。
+
+
+
+#### CLI 总例子
+
+Step5 只负责连接服务器、查看资源、确认 Slurm 参数并刷新 `server.sh`，不负责上传和提交。上传与提交放在 Step6。
+
+对应 params.yml 与 CLI：
+
+```yaml
+server:
+  # 优先使用 ~/.ssh/config 里的 Host 别名；使用它时 host/user/password/key_file 可以为空
+  ssh_config_host: SHOU
+  host: null
+  port: 22
+  user: null
+  password: null
+  key_file: null
+
+  # 上传时使用的远程工作根目录；remote_dir 通常由程序按工作目录名自动生成
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+
+slurm:
+  # job_name 为空时默认使用工作目录名
+  job_name: null
+  partition: CPU6240R
+  nodes: 1
+  cores: 48
+  mem: 190G
+
+  # server_st.use 是当前选中的服务器 WW3 版本
+  server_st:
+    use: ST2
+    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
+```
+
+```sh
+# 1. 测试 SSH 是否能连通
+python3 run.py connect-test hpc_case
+
+# 2. 查看服务器空闲分区和核心
+python3 run.py slurm-idle hpc_case
+
+# 3. 写入/刷新 server.sh 顶部的 #SBATCH、MPI_NPROCS 和 ST 路径
+python3 run.py confirm-slurm hpc_case
+
+# 4. 可选：查看当前用户队列
+python3 run.py queue-status
+```
+
+如果只是改 `slurm.partition`、`slurm.cpu`、`slurm.nodes`、`slurm.cores`、`slurm.mem` 或 `slurm.server_st.use`，不需要重新执行 Step1～Step4，直接重新运行 `confirm-slurm` 即可。
 
 
 
 #### ST 版本管理
 
-![](public/resource/README-media/2026-03-30%2016.42.31.png)
+ST 版本是服务器 WW3 编译的不同源项的地址，在第五步确认 Slurm 参数的时候会自动把这个地址写入 server.sh
 
-实际上，这个就是你编译的不同版本的 WAVEWATCH，你只需填写它们的路径即可
+```sh
+#wavewatch3--ST2
+export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
+```
+
+![](public/resource/README-media/截屏2026-06-28%2020.51.34.png)
+
+对应的 params.yml 参数
+
+```yaml
+slurm:
+  server_st:
+    use: ST2
+    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
+    ST6: /public/home/weiyl001/software2/ww6/model/exe
+    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
+    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
+    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
+    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
+```
+
+
+#### ntfy 通知
 
 
 
-### 绘图界面
+作业在服务器上跑得久时，可在登录节点轮询 Slurm，任务结束往手机推 ntfy 通知。
 
-#### 风场绘图
 
-![](public/resource/README-media/54c004948927395c7eb51ecc337f6752a7bc31c2.png)
 
-#### 二维谱绘图
+对应 params.yml 与 CLI：
 
-![](public/resource/README-media/bf6f51063f2c2ac60f608bd42d7ff85e21bd0f7b.png)
+```sh
+python3 run.py ntfy-watch work_dir_name
+python3 run.py ntfy-watch-job work_dir_name 12345
+
+# 提交作业后挂一次性监听（12345 换成 squeue 里的 JobID）
+python3 run.py submit hpc_case
+python3 run.py ntfy-watch-job hpc_case 12345
+```
+
+
+
+
+### 5.7 Step6  — 上传与运行
+
+![](public/resource/README-media/截屏2026-06-29%2011.15.31.png)
+
+这些 GUI 按钮的功能如下：
+
+`服务器路径` 输入框用于指定远程工作目录，也就是上传、提交、下载都要操作的服务器目录。如果留空，程序通常会根据 `server.default_remote_dir` 和本地工作目录名自动拼接。
+
+`查看文件列表` 会列出当前服务器路径下的文件，用来确认工作目录是否已经上传、结果文件和日志是否存在。
+
+`清空文件夹` 会删除远程工作目录里的文件和子目录，但保留目录本身。这是危险操作，通常只在远程目录混乱、需要重新上传完整工作目录时使用。
+
+`上传工作目录文件夹到服务器` 会把当前本地工作目录完整上传到服务器路径，包括强迫场文件、namelist、脚本和辅助文件。正式提交前通常使用这个按钮。
+
+`上传非强迫场文件到服务器` 只上传脚本、namelist、配置和其他非强迫场文件，适合已经上传过大型强迫场、这次只改了参数或脚本的情况，可以避免重复传大文件。
+
+`提交计算任务` 会在服务器工作目录执行 `server.sh`，通常会提交 Slurm 作业。它不会重新生成 namelist，也不会自动重新上传文件；因此提交前要先完成前面步骤，并确认服务器目录里的文件是最新的。
+
+`查看任务队列` 会查询 Slurm 队列，显示当前作业是否在排队、运行或失败。主页连接服务器后也会自动刷新任务列表，这个按钮用于手动刷新。
+
+`检查是否已完成` 会检查远程工作目录里的 `success` / `fail` 标记，判断 `server.sh` 是否完整跑完。它不是实时队列状态；如果没有标记，可能是作业还在排队、正在运行，或者脚本尚未启动。
+
+`下载结果文件到本地` 会下载远程的 `ww3*.nc` 结果。普通网格从远程工作目录根目录下载；嵌套网格会自动下载最细层 `levelN/` 里的结果。
+
+`下载 log 文件` 会下载远程 `run.log`  诊断文件。排错时通常先下载日志，再决定是否修改参数、重新上传或重新提交。
+
+`执行` 会把输入框里的命令发送到远程服务器执行，适合临时查看目录、手动运行 `squeue`、`tail run.log` 等操作。这个按钮权限很大，输入命令前要确认当前服务器路径和命令内容。
+
+
+
+#### 推荐执行顺序 
+
+对应的 CLI 指令
+
+```sh
+python3 run.py upload --confirm work_dir_name   # 上传整个工作目录
+python3 run.py submit work_dir_name             # 在服务器提交 server.sh
+python3 run.py check-status work_dir_name       # 看 success / fail 标记
+python3 run.py download-results work_dir_name   # 拉回结果；嵌套网格自动拉最细层 levelN
+python3 run.py download-log work_dir_name       # 拉回 run.log
+python3 run.py cancel-job work_dir_name 12345   # 取消作业
+python3 run.py clear-remote --confirm work_dir_name
+python3 run.py local-run work_dir_name          # 本机跑 local.sh
+```
+
+
+
+#### 服务器工作目录
+
+```yaml
+server:
+  ssh_config_host: ''
+  host: <server-host>
+  port: 22
+  user: <server-user>
+  password: null
+  key_file: /Users/<name>/.ssh/id_rsa
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
+
+default_remote_dir 是提供一个服务器默认存放工作目录的地址，如果你不指定 remote_dir ，那么程序会自动拼接 default_remote_dir 和工作目录名为 remote_dir。
+
+如果你填写了 remote_dir ，那么会使用你指定的地址。
+
+
+
+
+
+
+
+
+### 5.9 后处理绘图
+
+![](public/resource/README-media/截屏2026-06-29%2015.31.50.png)
+
+
+
+Step 7 用工作目录里已有的 `ww3*.nc`、`ww3*_spec.nc`、`points.list`、风场文件和外部观测数据做可视化与验证，不参与 WW3 积分本身。也就是说，后处理绘图只读已有结果，不会重新计算波浪场；如果结果文件缺失，先回到下载结果或运行日志排查。
+
+
+#### 各绘图的目的
+
+`波高图` 用于查看 WW3 场输出的空间分布，重点看显著波高、传播范围、近岸衰减和高值中心位置。它适合回答“这一时刻哪里浪最大、涌浪是否已经到达目标海域、结果场有没有明显异常”。
+
+`等高线图` 用于把波高梯度和空间结构看得更清楚。相比填色图，它更适合检查锋面式梯度、岛屿/陆架附近的快速变化，以及不同时间片之间高值区边界的移动。
+
+`风涌浪图` 用于把波浪场与风场方向放在同一张图上判断关系。它主要帮助区分本地风浪和远场涌浪：如果波浪传播方向与局地风向不一致，通常说明涌浪成分更明显；如果两者高度一致，则要警惕本地风强迫主导。
+
+`波高视频` 用于连续查看一次事件从生成、传播到衰减的时间演变。它比单张图更适合判断到达时间、传播路径是否连续、边界处是否有突变，以及模型结果是否存在不自然的跳变。
+
+`风场图` 用于单独检查输入风场或事件期风向。当前箭头统一大小和长度，只表达方向，不表达风速大小；它适合判断远场天气系统的旋转结构、风向带和强迫方向是否与波浪传播解释一致。
+
+`二维谱图` 用于查看点位输出的方向-频率能量分布。它比普通波高图更适合判断“某个站点在某一时刻的能量来自哪个方向、哪个频段”，也可以用最大值归一化模式比较不同站点或不同时刻的谱形，而不是只比较绝对能量大小。
+
+`显示在地图上` 用于查看二维谱点位的空间位置，避免选错站点或把谱点解释到错误海域。做多点谱输出时，建议先看地图，再生成选中站点的谱图。
+
+`Jason-3 卫星观测图` 用于查看卫星轨道上的实测 SWH 分布，先确认卫星过境时间和空间范围是否覆盖算例事件。它是拟合前的观测侧检查。
+
+`Jason-3 拟合图` 用于把 WW3 场输出插值到 Jason-3 轨道附近，与卫星高度计 SWH 对比。它主要检验模型在开放海域或轨道覆盖区域的波高量级、相位和空间变化是否可信。
+
+`NDBC 浮标站点图` 用于查看可用浮标位置，判断浮标是否靠近模拟区域、事件路径或目标海域。它帮助决定是否值得下载某些浮标数据做验证。
+
+`NDBC 拟合图` 用于把 WW3 输出与浮标时间序列对比。它更适合检验固定点的到达时间、峰值偏差、持续时间和衰减过程；如果关注近岸站点，NDBC 往往比卫星轨道更直观。
+
+
+
+#### CLI 指令
+
+常用输入与产物：
+
+| 功能 | 需要的输入 | 输出内容 |
+| --- | --- | --- |
+| `plot-wave-maps` | `ww3.YYYY.nc` | 波高 / 方向等空间图 |
+| `plot-spectrum` | `ww3.YYYY_spec.nc` 和 `points.list` | 点位方向谱或频谱图 |
+| `plot-jason3` / `plot-jason3-swh` | WW3 场输出 + Jason-3 轨道数据 | 卫星过境对比图 |
+| `plot-ndbc` | WW3 输出 + NDBC 观测数据 | 浮标对比图 |
+
+绘图不会重新运行 WW3；如果结果文件缺失，先回到下载结果或运行日志排查。
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py plot-wave-maps work_dir_name
+python3 run.py plot-wave-maps work_dir_name --contour
+python3 run.py plot-spectrum work_dir_name
+python3 run.py plot-spectrum work_dir_name --station 0
+python3 run.py plot-jason3 work_dir_name
+python3 run.py plot-jason3-swh work_dir_name
+python3 run.py download-jason3 work_dir_name
+python3 run.py plot-ndbc work_dir_name
+python3 run.py download-ndbc work_dir_name
+```
+
+算例跑完后：
+
+```sh
+python3 run.py download-results new
+python3 run.py plot-wave-maps new
+python3 run.py plot-spectrum new --mode polar
+```
+
+
+#### 风场图
+
+![](public/resource/README-media/wind_20210223_000000.png)
+
+
+
+#### 二维谱图
+
+![](public/resource/README-media/spectrum_P0500_time_20210224_120000.png)
+
+![](public/resource/README-media/spectrum_P0500_time_20210223_000000.png)
+
+
+
 
 #### 波高图
 
 ![](public/resource/README-media/3021c4434de128e783c2b06f6ba4c1fe876cf416.png)
 ![](public/resource/README-media/bde9091a001999fdacde4c1f804fc5c025a9995f.png)
+
+
 #### 风涌浪图
 
 ![](public/resource/README-media/30f4c0333842e78da6437616709d0c884177e7b5.png)
 ![](public/resource/README-media/1968aff8588d84dab9e4750a8e97be006177d709.png)
+
+
 
 #### 卫星拟合图
 
@@ -1100,7 +1771,44 @@ sinfo
 
 
 
-## 文件获取
+## 7. 项目结构
+
+```
+WW3Tool/
+├── run.py                  # 唯一入口：依赖检查 → 语言切换 → 分发到 GUI / Shell / CLI
+├── params.yml              # 算例参数模板（勿直接运行；用 workdir 创建副本后编辑）
+├── public/                 # 全局资源
+│   ├── languages/          #   zh_CN.json / en_US.json 翻译文件
+│   ├── 7.14_nml/           #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
+│   ├── 6.07_nml/           #   WW3 namelist 模板（ww3_shel.nml, ww3_prnc.nml 等）
+│   ├── scripts/            #   远程脚本（ww3_ntfy_watch.sh 等）
+│   └── forcing/            #   示例强迫场文件（测试用）
+├── meshgen/                # 网格生成器
+│   ├── structured_generator/  # 结构化矩形网格（含 pygridgen）
+│   ├── unst_generator/        # JIGSAW 非结构化网格
+│   ├── smc_generator/         # SMC 网格
+│   ├── reference_data/        # 水深/海岸线数据（GEBCO, ETOPO 等，约 6.5GB）
+│   └── cache/                 # 网格缓存（按参数 hash 索引）
+├── workSpace/              # 默认工作目录根；每个子文件夹是一个独立算例
+└── src/
+    ├── desktop/            # PyQt6 图形界面层
+    │   ├── windows/        #   主窗口（preprocessing_window.py）、设置窗口
+    │   ├── steps/          #   各步骤面板（ww3_panel, server_connect_panel 等）
+    │   ├── view_models/    #   视图模型（remote.py, pipeline.py 等）
+    │   └── components/     #   可复用 UI 组件
+    └── workflows/          # 核心业务逻辑（DDD 风格分层）
+        ├── interfaces/     #   入口适配器：command_line.py, interactive_cli.py, workdir_setup.py
+        ├── application/    #   用例层：configuration.py, preprocessing_workflow.py, remote_ops.py, slurm_ops.py, forcing_merge.py 等
+        ├── domain/         #   领域模型：config_models.py, forcing_fields.py, grid_spacing_recommendation.py 等
+        ├── infrastructure/ #   基础设施：adapters/, forcing/, remote/, plot/, ww3/ 等
+        └── support/        #   工具类：日志、异常等
+```
+
+GUI 模式和 Shell 模式最终都调用 src/workflows/application/ 中的用例函数。
+
+
+
+## 8.数据获取
 
 ### 下载风场文件
 
