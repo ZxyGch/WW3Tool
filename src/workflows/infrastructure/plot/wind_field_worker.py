@@ -353,13 +353,34 @@ def _make_wind_field_worker(
 
             flag = normalize_wind_flag_type(flag_type)
             if flag == WIND_FLAG_ARROW:
+                u_sparse = u[::q_step, ::q_step]
+                v_sparse = v[::q_step, ::q_step]
+                speed_sparse = np.sqrt(u_sparse ** 2 + v_sparse ** 2)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    u_dir = np.divide(
+                        u_sparse,
+                        speed_sparse,
+                        out=np.full_like(u_sparse, np.nan, dtype=float),
+                        where=speed_sparse > 0,
+                    )
+                    v_dir = np.divide(
+                        v_sparse,
+                        speed_sparse,
+                        out=np.full_like(v_sparse, np.nan, dtype=float),
+                        where=speed_sparse > 0,
+                    )
                 ax.quiver(
                     lon2d[::q_step, ::q_step],
                     lat2d[::q_step, ::q_step],
-                    u[::q_step, ::q_step],
-                    v[::q_step, ::q_step],
+                    u_dir,
+                    v_dir,
                     color="black",
-                    scale=400,
+                    scale=35,
+                    scale_units="width",
+                    width=0.0022,
+                    headwidth=3.5,
+                    headlength=4.5,
+                    headaxislength=4.0,
                     transform=ccrs.PlateCarree(),
                 )
             elif flag == WIND_FLAG_BARB:
