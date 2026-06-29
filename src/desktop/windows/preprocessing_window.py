@@ -2251,7 +2251,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     # [EN] ── Plotting (scientific post-processing)─────────────────────────────────────────────────────
     # ── 绘图（科研后处理）─────────────────────────────────────────────────────
 
-    def _run_plot(self, runner_fn) -> None:
+    def _run_plot(self, runner_fn, source_button: PrimaryPushButton | None = None) -> None:
         # [EN] Build plot stage config and execute a plotting use case in the background.
         """构建 plot 阶段配置并在后台执行一个绘图用例。"""
         params_path = self._persist_current_form_to_workdir_params(validation_stage="grid")
@@ -2264,10 +2264,22 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         if self._busy:
             return
+        if source_button is not None:
+            source_button.setEnabled(False)
         self._set_busy(True)
-        self._runner.run(lambda: runner_fn(config), self._on_plot_done)
+        try:
+            self._runner.run(
+                lambda: runner_fn(config),
+                lambda result, button=source_button: self._on_plot_done(result, source_button=button),
+            )
+        except Exception:
+            if source_button is not None:
+                source_button.setEnabled(True)
+            raise
 
-    def _on_plot_done(self, result: object) -> None:
+    def _on_plot_done(self, result: object, source_button: PrimaryPushButton | None = None) -> None:
+        if source_button is not None:
+            source_button.setEnabled(True)
         self._set_busy(False)
         if result is None:
             return
@@ -2286,27 +2298,29 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         else:
             self._append_log(tr("plotting_done_no_images", "绘图完成，但未找到图片。"))
 
-    def _plot_wave_maps(self) -> None:
+    def _plot_wave_maps(self, source_button: PrimaryPushButton | None = None) -> None:
         params = self._plot_interface.wave_maps_params()
         self._run_plot(
             lambda c: self._plot_vm.wave_maps(
                 c,
                 time_step_hours=params["time_step_hours"],
                 wave_file=params["wave_file"],
-            )
+            ),
+            source_button,
         )
 
-    def _plot_contour(self) -> None:
+    def _plot_contour(self, source_button: PrimaryPushButton | None = None) -> None:
         params = self._plot_interface.wave_maps_params()
         self._run_plot(
             lambda c: self._plot_vm.contour_maps(
                 c,
                 time_step_hours=params["time_step_hours"],
                 wave_file=params["wave_file"],
-            )
+            ),
+            source_button,
         )
 
-    def _plot_spectrum_all(self) -> None:
+    def _plot_spectrum_all(self, source_button: PrimaryPushButton | None = None) -> None:
         params = self._plot_interface.spectrum_params()
         self._run_plot(
             lambda c: self._plot_vm.spectrum(
@@ -2316,10 +2330,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 time_step_hours=params["time_step_hours"],
                 energy_threshold=params["energy_threshold"],
                 plot_mode=params["plot_mode"],
-            )
+            ),
+            source_button,
         )
 
-    def _plot_spectrum_selected(self) -> None:
+    def _plot_spectrum_selected(self, source_button: PrimaryPushButton | None = None) -> None:
         station = self._plot_interface.spectrum_station()
         params = self._plot_interface.spectrum_params()
         self._run_plot(
@@ -2331,22 +2346,26 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 time_step_hours=params["time_step_hours"],
                 energy_threshold=params["energy_threshold"],
                 plot_mode=params["plot_mode"],
-            )
+            ),
+            source_button,
         )
 
-    def _plot_jason3(self) -> None:
+    def _plot_jason3(self, source_button: PrimaryPushButton | None = None) -> None:
         jason_folder = self._plot_interface.jason3_folder() or None
-        self._run_plot(lambda c: self._plot_vm.match_jason3(c, data_folder=jason_folder or ""))
+        self._run_plot(lambda c: self._plot_vm.match_jason3(c, data_folder=jason_folder or ""), source_button)
 
     def _plot_download_ndbc(self) -> None:
         lon_lat = self._plot_interface.ndbc_lon_lat()
         time_range = self._plot_interface.ndbc_time_range()
         self._run_plot(lambda c: self._plot_vm.download_ndbc(c, lon_lat=lon_lat, time_range=time_range))
 
-    def _plot_match_ndbc(self) -> None:
+    def _plot_match_ndbc(self, source_button: PrimaryPushButton | None = None) -> None:
         lon_lat = self._plot_interface.ndbc_lon_lat()
         time_range = self._plot_interface.ndbc_time_range()
-        self._run_plot(lambda c: self._plot_vm.match_ndbc(c, lon_lat=lon_lat, time_range=time_range))
+        self._run_plot(
+            lambda c: self._plot_vm.match_ndbc(c, lon_lat=lon_lat, time_range=time_range),
+            source_button,
+        )
 
     def _plot_view_photo_subdir(self, subdir: str) -> None:
         # [EN] View results under workdir ``photo/<subdir>`` (videos opened with system player).
@@ -2406,7 +2425,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         local_folder = self._plot_interface.jason3_folder() or None
         self._run_plot(lambda c: self._plot_vm.download_jason3(c, time_range=time_range, local_folder=local_folder))
 
-    def _plot_jason3_swh(self) -> None:
+    def _plot_jason3_swh(self, source_button: PrimaryPushButton | None = None) -> None:
         lon_lat = self._plot_interface.jason3_lon_lat()
         time_range = self._plot_interface.jason3_time_range()
         if not lon_lat:
@@ -2422,7 +2441,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 lon_lat=lon_lat,
                 time_range=time_range,
                 data_folder=jason_folder or "",
-            )
+            ),
+            source_button,
         )
 
     def _plot_ndbc_station_map(self) -> None:
@@ -2538,27 +2558,29 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         self.titleBar.raise_()
 
-    def _plot_wind_swell(self) -> None:
+    def _plot_wind_swell(self, source_button: PrimaryPushButton | None = None) -> None:
         params = self._plot_interface.wave_maps_params()
         self._run_plot(
             lambda c: self._plot_vm.wind_swell_maps(
                 c,
                 time_step_hours=params["time_step_hours"],
                 wave_file=params["wave_file"],
-            )
+            ),
+            source_button,
         )
 
-    def _plot_wave_video(self) -> None:
+    def _plot_wave_video(self, source_button: PrimaryPushButton | None = None) -> None:
         params = self._plot_interface.wave_maps_params()
         self._run_plot(
             lambda c: self._plot_vm.wave_video(
                 c,
                 time_step_hours=params["time_step_hours"],
                 wave_file=params["wave_file"],
-            )
+            ),
+            source_button,
         )
 
-    def _plot_wind_field(self) -> None:
+    def _plot_wind_field(self, source_button: PrimaryPushButton | None = None) -> None:
         params = self._plot_interface.wind_field_params()
         self._run_plot(
             lambda c: self._plot_vm.wind_field(
@@ -2567,7 +2589,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 time_step_hours=params["time_step_hours"],
                 flag_type=params["flag_type"],
                 density_step=params["density_step"],
-            )
+            ),
+            source_button,
         )
 
     # [EN] ── Local run ──────────────────────────────────────────────────────────────

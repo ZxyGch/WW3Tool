@@ -151,17 +151,24 @@ class PlotInterface(QWidget):
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return button
 
+    def _generate_button(self, text: str, handler: Callable[[PrimaryPushButton], None]) -> PrimaryPushButton:
+        button = PrimaryPushButton(text)
+        button.setStyleSheet(styles.button_style())
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button.clicked.connect(lambda _checked=False, btn=button: handler(btn))
+        return button
+
     def _gen_view_row(
         self,
         generate_label: str,
-        generate_cb: Callable[[], None],
+        generate_cb: Callable[[PrimaryPushButton], None],
         view_subdir: str,
     ) -> QHBoxLayout:
         # [EN] Generate / View button row, width ratio 3:1.
         """生成 / 查看按钮行，宽度比例 3:1。"""
         row = QHBoxLayout()
         row.setSpacing(8)
-        row.addWidget(self._button(generate_label, generate_cb), 3)
+        row.addWidget(self._generate_button(generate_label, generate_cb), 3)
         row.addWidget(
             self._button(
                 tr("plotting_view_short", "查看"),
@@ -175,7 +182,7 @@ class PlotInterface(QWidget):
         self,
         layout: QVBoxLayout,
         generate_label: str,
-        generate_cb: Callable[[], None],
+        generate_cb: Callable[[PrimaryPushButton], None],
         view_subdir: str,
     ) -> None:
         layout.addLayout(self._gen_view_row(generate_label, generate_cb, view_subdir))
@@ -183,8 +190,8 @@ class PlotInterface(QWidget):
     def _add_gen_view_pair(
         self,
         layout: QVBoxLayout,
-        row_a: tuple[str, Callable[[], None], str],
-        row_b: tuple[str, Callable[[], None], str],
+        row_a: tuple[str, Callable[[PrimaryPushButton], None], str],
+        row_b: tuple[str, Callable[[PrimaryPushButton], None], str],
     ) -> None:
         # [EN] Two generate/view button rows sharing column width, ensuring "View" columns align vertically.
         """两行生成/查看按钮共用列宽，保证「查看」列垂直对齐。"""
@@ -192,7 +199,7 @@ class PlotInterface(QWidget):
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
         for row_idx, (label, generate_cb, view_subdir) in enumerate((row_a, row_b)):
-            grid.addWidget(self._button(label, generate_cb), row_idx, 0)
+            grid.addWidget(self._generate_button(label, generate_cb), row_idx, 0)
             grid.addWidget(
                 self._button(
                     tr("plotting_view_short", "查看"),
