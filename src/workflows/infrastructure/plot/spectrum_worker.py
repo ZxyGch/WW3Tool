@@ -25,6 +25,8 @@ except ImportError:
     HAS_WAVESPECTRA = False
 
 USE_WAVESPECTRA_NORMALIZED_PLOT = True
+NORMALIZED_SPECTRUM_LEVEL_COUNT = 80
+NORMALIZED_SPECTRUM_MIN_LEVEL = 1.0e-3
 
 from .workers_utils import _pick_station_lon_lat, _decode_station_names
 
@@ -105,6 +107,10 @@ def _prepare_spectrum_plot_values(E_interp, threshold, plot_mode):
     else:
         data = np.nan_to_num(data, nan=0.0)
     return data, min(threshold_value, 1.0), "Normalized Energy Density"
+
+
+def _normalized_spectrum_levels():
+    return np.geomspace(NORMALIZED_SPECTRUM_MIN_LEVEL, 1.0, NORMALIZED_SPECTRUM_LEVEL_COUNT)
 
 
 def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, plot_mode="最大值归一化"):
@@ -773,6 +779,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     pobj = spec_array.plot(
                         figsize=(10, 10),
                         cmap=cmap,
+                        levels=_normalized_spectrum_levels(),
+                        efth_min=NORMALIZED_SPECTRUM_MIN_LEVEL,
                         rmax=rmax if rmax <= 3 else 3,
                         radii_ticks=radii_ticks if len(radii_ticks) > 0 else None
                     )
@@ -1470,6 +1478,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     pobj = spec_array.plot(
                         figsize=(10, 10),
                         cmap=cmap,
+                        levels=_normalized_spectrum_levels(),
+                        efth_min=NORMALIZED_SPECTRUM_MIN_LEVEL,
                         rmax=rmax if rmax <= 3 else 3,
                         radii_ticks=radii_ticks if len(radii_ticks) > 0 else None
                     )
