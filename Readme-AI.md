@@ -1337,9 +1337,45 @@ local.sh 与 server.sh 的差别：
 
 SSH 配置名称模式使用 `server.ssh_config_host`，适合本机已经在 `~/.ssh/config` 配好 Host 别名的情况，也是推荐方式。程序连接时直接使用这个 Host 别名，`host/user/password/key_file` 可以为空。
 
+```yaml
+server:
+  ssh_config_host: SHOU
+  host: null
+  port: 22
+  user: null
+  password: null
+  key_file: null
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
+
 密码登录模式使用 `server.host`、`server.port`、`server.user`、`server.password`，适合临时服务器或没有私钥时使用。它配置最直观，但密码不适合长期写在配置文件里。
 
+```yaml
+server:
+  ssh_config_host: ''
+  host: <server-host>
+  port: 22
+  user: <server-user>
+  password: <server-password>
+  key_file: null
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
+
 私钥文件登录模式使用 `server.host`、`server.port`、`server.user`、`server.key_file`，适合固定服务器和自动化运行。`key_file` 指向本机 SSH 私钥路径；如果同时有 `password`，连接逻辑会优先尝试可用私钥。
+
+```yaml
+server:
+  ssh_config_host: ''
+  host: <server-host>
+  port: 22
+  user: <server-user>
+  password: null
+  key_file: /Users/<name>/.ssh/id_rsa
+  default_remote_dir: /public/home/weiyl001/workSpace/
+  remote_dir: ''
+```
 
 优先级上，只要填写了 `server.ssh_config_host`，连接时会先解析 `~/.ssh/config`，再补充 `params.yml` 中显式填写的密码或私钥字段。
 
