@@ -1335,11 +1335,11 @@ local.sh 与 server.sh 的差别：
 
 三种 SSH 模式的区别：
 
-| 模式 | params.yml 字段 | 适合场景 | 说明 |
-| --- | --- | --- | --- |
-| SSH 配置名称 | `server.ssh_config_host` | 本机已经在 `~/.ssh/config` 配好 Host 别名 | 推荐模式。程序连接时直接使用这个 Host 别名，`host/user/password/key_file` 可以为空。 |
-| 密码登录 | `server.host`、`server.port`、`server.user`、`server.password` | 临时服务器或没有私钥时 | 配置最直观，但密码不适合长期写在配置文件里。 |
-| 私钥文件登录 | `server.host`、`server.port`、`server.user`、`server.key_file` | 固定服务器、自动化运行 | `key_file` 指向本机 SSH 私钥路径；如果同时有 `password`，连接逻辑会优先尝试可用私钥。 |
+SSH 配置名称模式使用 `server.ssh_config_host`，适合本机已经在 `~/.ssh/config` 配好 Host 别名的情况，也是推荐方式。程序连接时直接使用这个 Host 别名，`host/user/password/key_file` 可以为空。
+
+密码登录模式使用 `server.host`、`server.port`、`server.user`、`server.password`，适合临时服务器或没有私钥时使用。它配置最直观，但密码不适合长期写在配置文件里。
+
+私钥文件登录模式使用 `server.host`、`server.port`、`server.user`、`server.key_file`，适合固定服务器和自动化运行。`key_file` 指向本机 SSH 私钥路径；如果同时有 `password`，连接逻辑会优先尝试可用私钥。
 
 优先级上，只要填写了 `server.ssh_config_host`，连接时会先解析 `~/.ssh/config`，再补充 `params.yml` 中显式填写的密码或私钥字段。
 
@@ -1354,10 +1354,9 @@ local.sh 与 server.sh 的差别：
 
 GUI 连接服务器后会自动轮询任务列表和空闲资源，背后用的是 Slurm 自带指令：
 
-| 界面列表 | GUI 背后的服务器指令 | 对应 CLI | 作用 |
-| --- | --- | --- | --- |
-| 任务列表 | `squeue -o '%i %P %j %T %M %D %C %R' -h` | `python3 run.py queue-status` | 显示作业 ID、分区、任务名、状态、运行时间、节点数、核心数和原因/节点。 |
-| 空闲资源列表 | `sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'` | `python3 run.py slurm-idle <workdir>` | 按节点读取状态、CPU 分配情况、分区和内存，解析出空闲节点、空闲核心和可用分区。 |
+任务列表使用 `squeue -o '%i %P %j %T %M %D %C %R' -h`，显示作业 ID、分区、任务名、状态、运行时间、节点数、核心数和原因/节点。CLI 中对应 `python3 run.py queue-status`。
+
+空闲资源列表使用 `sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'`，按节点读取状态、CPU 分配情况、分区和内存，再解析出空闲节点、空闲核心和可用分区。CLI 中对应 `python3 run.py slurm-idle <workdir>`。
 
 注意：`queue-status` 的 CLI 输出使用 `squeue -l`，适合快速看完整队列文本；主页任务列表为了做成卡片，会使用更固定的 `squeue -o ...` 格式。
 
