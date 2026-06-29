@@ -1108,6 +1108,8 @@ def run_queue_status(
 def _parse_sacct_cpu_data(out: str) -> list:
     """解析 sacct -a -s RUNNING 输出，按用户聚合 CPU / 节点 / 最长运行时间。
 
+    节点数为该用户所有作业占用物理节点的**去重**计数（同一节点上多个作业只算 1）。
+
     Returns:
         ``[[user, cpus, nodes, elapsed], ...]`` 按 CPU 数降序。
     """
@@ -1134,18 +1136,15 @@ def _parse_sacct_cpu_data(out: str) -> list:
             cpus = int(cpus_str)
         except ValueError:
             continue
-        # [EN] Count nodes from compressed notation (e.g. node[1-4] → 4)
-        # 从压缩记号计算节点数
-        node_count = _count_nodes(nodelist)
         if user not in user_data:
             user_data[user] = {
                 "cpus": 0,
-                "nodes": 0,
+                "node_names": set(),
                 "elapsed": elapsed,
                 "elapsed_sec": _elapsed_to_seconds(elapsed),
             }
         user_data[user]["cpus"] += cpus
-        user_data[user]["nodes"] += node_count
+        user_data[user]["node_names"].update(_expand_nodelist(nodelist))
         sec = _elapsed_to_seconds(elapsed)
         if sec > user_data[user]["elapsed_sec"]:
             user_data[user]["elapsed"] = elapsed
@@ -1154,36 +1153,47 @@ def _parse_sacct_cpu_data(out: str) -> list:
     for user, data in sorted(
         user_data.items(), key=lambda x: x[1]["cpus"], reverse=True
     ):
-        result.append([user, str(data["cpus"]), str(data["nodes"]), _normalize_elapsed(data["elapsed"])])
+        result.append([
+            user,
+            str(data["cpus"]),
+            str(len(data["node_names"])),
+            _normalize_elapsed(data["elapsed"]),
+        ])
     return result
+
+
+def _expand_nodelist(nodelist: str) -> set[str]:
+    """将 Slurm 压缩节点列表展开为物理节点名集合。如 ``node[1-3],node7`` → {node1, node2, node3, node7}。"""
+    if not nodelist or nodelist == "None":
+        return set()
+    names: set[str] = set()
+    parts = re.split(r",(?![^\[]*\])", nodelist)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        m = re.search(r"^(.+?)\[([^\]]+)\]$", part)
+        if m:
+            prefix = m.group(1)
+            for r in m.group(2).split(","):
+                r = r.strip()
+                if "-" in r:
+                    lo, hi = r.split("-", 1)
+                    try:
+                        for i in range(int(lo), int(hi) + 1):
+                            names.add(f"{prefix}{i}")
+                    except ValueError:
+                        names.add(f"{prefix}{r}")
+                else:
+                    names.add(f"{prefix}{r}")
+        else:
+            names.add(part)
+    return names
 
 
 def _count_nodes(nodelist: str) -> int:
     """从 Slurm 压缩节点列表计算节点数。如 ``node[1-4,7]`` → 5。"""
-    import re
-
-    if not nodelist or nodelist == "None":
-        return 0
-    total = 0
-    # [EN] Split by comma outside brackets
-    # 按括号外的逗号拆分
-    parts = re.split(r",(?![^\[]*\])", nodelist)
-    for part in parts:
-        m = re.search(r"\[([^\]]+)\]", part)
-        if m:
-            ranges = m.group(1).split(",")
-            for r in ranges:
-                if "-" in r:
-                    lo, hi = r.split("-", 1)
-                    try:
-                        total += int(hi) - int(lo) + 1
-                    except ValueError:
-                        total += 1
-                else:
-                    total += 1
-        else:
-            total += 1
-    return total
+    return len(_expand_nodelist(nodelist))
 
 
 def _elapsed_to_seconds(elapsed: str) -> int:
