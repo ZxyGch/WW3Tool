@@ -1275,15 +1275,15 @@ Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处
 
 #### 5.5.8 local.sh 与 server.sh 在算什么
 
-两个脚本都是按固定顺序调用 WW3 官方可执行文件；任一步失败就停止，并在工作目录留下空文件 fail（成功则 success）。运行日志全部追加写入 run.log。
+`local.sh` 和 `server.sh` 本身不做数值计算，它们是 WW3 运行流程的编排脚本：进入工作目录，按顺序调用 WW3 官方可执行程序，把所有输出追加到 `run.log`，任一步失败就停止并生成 `fail` 标记，全部完成后生成 `success` 标记。
 
-本机跑：
+本机运行走 `local.sh`：
 
 ```sh
 python3 run.py local-run new
 ```
 
-服务器跑（先上传、再提交）：
+服务器运行走 `server.sh`：先上传工作目录，再在服务器端提交脚本。
 
 ```sh
 python3 run.py upload --confirm new
@@ -1292,35 +1292,61 @@ python3 run.py check-status new
 python3 run.py download-log new
 ```
 
-公共前半段（无论是否是嵌套网格）：
+这些脚本真正调用的是下面这些 WW3 程序。
 
-1. ww3_grid — 读网格文件，生成 mod_def.ww3。
-2. ww3_prnc — 把 NetCDF 强迫场插值到波浪网格，得到 wind.ww3 等（多种强迫场则 wind → current → level → ice 依次跑）。
-3. ww3_strt — 初始场或冷启动。
+`ww3_grid` 读取 `ww3_grid.nml` 和网格输入文件，把水深、障碍物、谱空间、时间步等网格定义编译成 `mod_def.ww3`。后续所有 WW3 程序都依赖 `mod_def.ww3`，所以它是计算前必须先跑的第一步。
 
-普通网格：
+`ww3_prnc` 读取 `ww3_prnc.nml` 和 NetCDF 强迫场，把风、流、水位、海冰等强迫插值或转换成 WW3 内部二进制文件，例如 `wind.ww3`、`current.ww3`、`level.ww3`、`ice.ww3`。WW3 的 `ww3_prnc` 一次只读取一个 namelist，所以有多种强迫场时，脚本会依次切换 `ww3_prnc.nml`，按 wind、current、level、ice 的顺序逐个运行。
 
-4. mpirun ww3_shel（失败会尝试单进程 ww3_shel）— 主积分，生成 out_grd.ww3 等。
-5. 按 params.yml 的 calc.mode 决定后处理：spectral_point → 运行 ww3_ounp；track → 生成 track_i.ww3 并运行 ww3_trnc。
-6. ww3_ounf — 把 out_grd.ww3 转成 ww3.YYYY.nc。
+`ww3_strt` 生成初始谱场，通常得到 `restart.ww3`。冷启动时它相当于给模型准备一个初始海浪状态；后续如果支持热启动，也会围绕 restart 文件继续扩展。
 
-嵌套网格：
+`ww3_shel` 是普通单网格的主积分程序。它读取 `mod_def.ww3`、强迫文件和 `ww3_shel.nml`，从 `ww3.start_date` 积分到 `ww3.end_date`，生成 WW3 的中间输出文件，例如 `out_grd.ww3`、`out_pnt.ww3`、`track_o.ww3`。脚本会优先用 `mpirun -n MPI_NPROCS ww3_shel` 并行运行；如果 MPI 方式失败，会再尝试直接运行一次 `ww3_shel`。
 
-1. 对每个 level* 重复  ww3_grid + ww3_prnc + ww3_strt。
-2. 把各层 mod_def.ww3、wind.ww3 等搬到工作目录根，改名为 mod_def.level0、wind.level1… 供 ww3_multi 识别。
-3. mpirun ww3_multi — 多网格积分（替代单层 ww3_shel）。
-4. 把 out_grd.levelN、out_pnt.levelN 等移回最细层 levelN/，再跑 ww3_ounp / ww3_trnc / ww3_ounf。
+`ww3_multi` 是嵌套网格的主积分程序。嵌套模式下不再用 `ww3_shel` 做主积分，而是由 `ww3_multi.nml` 管理 `level0` 到 `levelN` 的多层网格耦合，一次积分输出各层结果。WW3Tool 后续只把最细层 `levelN` 的结果移回对应目录并导出 NetCDF。
 
-local.sh 与 server.sh 的差别：
+`ww3_ounf` 负责场输出导出。它读取 `out_grd.ww3` 和 `ww3_ounf.nml`，生成 `ww3.YYYY.nc` 这类 NetCDF 场结果。也就是说，`ww3_shel` / `ww3_multi` 负责“算”，`ww3_ounf` 负责“把场结果导出来”。
 
-|        | local.sh       | server.sh               |
-| ------ | -------------- | ----------------------- |
-| 触发     | 本地运行           | 提交任务                    |
-| 核数     | 本机逻辑 CPU 数     | `slurm.cores` / `#SBATCH -n` / `MPI_NPROCS` |
-| WW3 路径 | 本机 PATH 里的 WW3 | export PATH=… 指向服务器编译版本 |
+`ww3_ounp` 负责点位二维谱输出导出。只有存在 `points.list` 时才会运行，它读取 `out_pnt.ww3` 和 `ww3_ounp.nml`，生成 `ww3.YYYY_spec.nc` 等谱点结果。
 
-第四步改 nml，脚本按顺序调程序；run.log 里 Running ww3_grid、Running mpirun ww3_shel 等分隔线对应当前步骤。
+`ww3_trnc` 负责轨迹输出导出。只有存在 `track_i.ww3` 时才会运行，它把主积分产生的 `track_o.ww3` 转成轨迹结果文件。
 
+普通网格的执行流程是：
+
+```text
+ww3_grid
+→ ww3_prnc（wind/current/level/ice 逐个处理）
+→ ww3_strt
+→ mpirun ww3_shel（失败时尝试直接 ww3_shel）
+→ ww3_ounp（仅二维谱点计算）
+→ ww3_trnc（仅轨迹计算）
+→ ww3_ounf
+→ success / fail
+```
+
+嵌套网格的执行流程是：
+
+```text
+对每个 level*：
+  ww3_grid
+  → ww3_prnc（wind/current/level/ice 逐个处理）
+  → ww3_strt
+
+汇总各层文件到工作目录根：
+  mod_def.level0、wind.level0、restart.level0 ...
+
+mpirun ww3_multi
+→ 把 out_grd.levelN / out_pnt.levelN / track_o.levelN 移回最细层 levelN/
+→ 在 levelN/ 运行 ww3_ounp（仅二维谱点计算）
+→ 在 levelN/ 运行 ww3_trnc（仅轨迹计算）
+→ 在 levelN/ 运行 ww3_ounf
+→ success / fail
+```
+
+`local.sh` 和 `server.sh` 的计算流程基本相同，差别在运行环境。`local.sh` 在本机直接执行，`MPI_NPROCS` 默认取本机逻辑 CPU 数，也可以用环境变量 `WW3_MPI_NPROCS` 覆盖；`server.sh` 会先通过 `sbatch` 提交到 Slurm，再按 `#SBATCH -n`、`#SBATCH -N`、`#SBATCH --mem` 和 `MPI_NPROCS` 使用服务器资源。
+
+另一个关键差别是 WW3 可执行文件路径。`local.sh` 使用本机环境里的 `ww3_grid`、`ww3_shel` 等命令；`server.sh` 会根据 Step5 选择的服务器 ST 版本写入 `export PATH=...:$PATH`，从而决定使用服务器上哪一套 WW3 编译版本。
+
+看 `run.log` 时，可以按 `Running ww3_grid`、`Running ww3_prnc`、`Running mpirun ww3_shel`、`Running mpirun ww3_multi`、`Running ww3_ounf` 这些分隔线定位当前失败发生在哪一步。
 
 
 ### 5.6 Step5 —  Slurm 配置
