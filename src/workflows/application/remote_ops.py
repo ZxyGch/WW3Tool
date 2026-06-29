@@ -1406,7 +1406,8 @@ def run_download_results(
     Args:
         config: 流水线配置。
         log: 可选日志回调。
-        nested: 为 ``True`` 时从远程最细层 ``levelN/`` 子目录下载至本地对应目录。
+        nested: 为 ``True`` 时强制从远程最细层 ``levelN/`` 子目录下载至本地对应目录；
+            即使为 ``False``，也会在 ``grid.grid_type`` 为 ``nested`` 时自动启用。
 
     Returns:
         ``data`` 字段为已下载文件的本地路径列表。
@@ -1421,6 +1422,7 @@ def run_download_results(
 
         from workflows.infrastructure.ww3.nested_level_dirs import finest_nested_level_name
 
+        nested = nested or config.grid.grid_type == "nested"
         finest = finest_nested_level_name(local_dir) if nested else None
         if nested and not finest:
             msg = tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格")

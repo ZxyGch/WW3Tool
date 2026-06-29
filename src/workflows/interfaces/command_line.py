@@ -360,11 +360,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_dl = sub.add_parser("download-results", help=tr("cli_help_download_results", "[workdir] Download ww3*.nc output from remote server"))
     p_dl.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_dl.add_argument(
-        "--nested",
-        action="store_true",
-        help=tr("cli_help_nested_download", "Download from the remote levelN/ subdirectory (nested grid)"),
-    )
 
     p_log = sub.add_parser("download-log", help=tr("cli_help_download_log", "[workdir] Download run.log and success/fail markers from remote server"))
     p_log.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -643,7 +638,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "download-results":
             return _remote(lambda: __import__(
                 "workflows.application.remote_ops", fromlist=["run_download_results"]
-            ).run_download_results(config, log=print, nested=args.nested))
+            ).run_download_results(config, log=print))
 
         if args.command == "download-log":
             return _remote(lambda: __import__(

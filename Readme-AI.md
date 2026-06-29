@@ -83,7 +83,7 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 |      | submit [workdir]                                              | 提交 server.sh         |
 |      | check-status [workdir]                                        | 检查远程任务状态             |
 |      | queue-status [workdir]                                        | 查看 SLURM 队列          |
-|      | download-results [workdir] [--nested]                         | 下载远程结果               |
+|      | download-results [workdir]                                    | 下载远程结果；嵌套网格自动下载最细层 |
 |      | download-log [workdir]                                        | 下载远程日志               |
 |      | clear-remote [workdir] --confirm                              | 清空远程目录               |
 |      | cancel-job [workdir] <job_id>                                 | 取消 SLURM 任务          |
@@ -1535,8 +1535,7 @@ export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
 python3 run.py upload --confirm work_dir_name   # 上传整个工作目录
 python3 run.py submit work_dir_name             # 在服务器提交 server.sh
 python3 run.py check-status work_dir_name       # 看 success / fail 标记
-python3 run.py download-results work_dir_name   # 拉回结果
-python3 run.py download-results work_dir_name --nested   # 嵌套：只拉最细层
+python3 run.py download-results work_dir_name   # 拉回结果；嵌套网格自动拉最细层 levelN
 python3 run.py download-log work_dir_name       # 拉回 run.log
 python3 run.py cancel-job work_dir_name 12345   # 取消作业
 python3 run.py clear-remote --confirm work_dir_name

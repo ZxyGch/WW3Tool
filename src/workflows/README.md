@@ -179,7 +179,7 @@ CLI 通过 queue.SimpleQueue 同步桥接，Desktop 通过多进程 Queue 异步
 | submit [--script] | 在远程工作目录执行提交脚本 |
 | check-status | 检查 success / fail 标记状态 |
 | queue-status | 查看 SLURM 队列 |
-| download-results [--nested] | 下载远程 WW3 结果文件 |
+| download-results | 下载远程 WW3 结果文件；嵌套网格自动下载最细层 |
 | download-log | 下载 run.log 及 success/fail 标记 |
 | clear-remote --confirm | 清空远程工作目录 |
 | cancel-job | 取消 SLURM 任务 |

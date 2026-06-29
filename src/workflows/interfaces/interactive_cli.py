@@ -233,7 +233,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                 ("submit", tr("icli_help_submit", "在远程执行提交脚本")),
                 ("check-status", tr("icli_help_check_status", "检查远程任务状态")),
                 ("queue-status", tr("icli_help_queue_status", "查看 SLURM 队列")),
-                ("download-results [--nested]", tr("icli_help_download_results", "下载远程 WW3 结果")),
+                ("download-results", tr("icli_help_download_results", "下载远程 WW3 结果")),
                 ("download-log", tr("icli_help_download_log", "下载远程日志文件")),
                 ("clear-remote --confirm", tr("icli_help_clear_remote", "清空远程工作目录")),
                 ("cancel-job <job_id>", tr("icli_help_cancel_job", "取消 SLURM 任务")),
@@ -1384,17 +1384,16 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_download_results(self, arg: str) -> None:
-        """download-results [--nested]  — 下载远程 WW3 结果
+        """download-results  — 下载远程 WW3 结果
 
-        [EN] download-results [--nested]  — Download remote WW3 results
+        [EN] download-results  — Download remote WW3 results
         """
         if not self._require_config():
             return
-        nested = "--nested" in arg
         try:
             from ..application.remote_ops import run_download_results
             print(_info(tr("icli_start_download_results", "▶ 下载结果文件...")))
-            result = run_download_results(self._config, log=self._log_callback, nested=nested)
+            result = run_download_results(self._config, log=self._log_callback)
             if result.success:
                 print(_success(tr("icli_done_download_results", "✅ 下载完成")))
             else:
@@ -1580,7 +1579,7 @@ class InteractiveCLI(cmd.Cmd):
         return []
 
     def complete_download_results(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
-        return self._complete_options(text, ["--nested"])
+        return []
 
     def complete_clear_remote(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return self._complete_options(text, ["--confirm"])
