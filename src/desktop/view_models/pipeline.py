@@ -188,7 +188,6 @@ class PipelineViewModel:
 
             logger = CoreLogger(callback=self._handle_log)
             update_server_script(config, logger)
-            self._handle_log(tr("server_script_applied", "✅ server.sh 已应用 Slurm 配置"))
             self._set_state(
                 PipelineStepState(
                     is_running=False,
@@ -615,7 +614,11 @@ class PipelineViewModel:
             # 第四步可见的频谱/时间步分组覆盖 ww3_grid（在 config.json 覆盖之后 → 表单优先）。
             raw["ww3_grid"] = {**_as_dict(raw.get("ww3_grid")), **ww3_grid_overrides}
         if slurm_overrides:
-            raw["slurm"] = {**_as_dict(raw.get("slurm")), **slurm_overrides}
+            from workflows.application.configuration import normalize_slurm_section
+
+            raw["slurm"] = normalize_slurm_section(
+                {**_as_dict(raw.get("slurm")), **slurm_overrides}
+            )
         if server_overrides:
             raw["server"] = {**_as_dict(raw.get("server")), **server_overrides}
         return raw
@@ -739,6 +742,7 @@ _INT_PARAM_PATHS = {
     "ww3_grid.TIMESTEPS%DTMIN",
     "slurm.nodes",
     "slurm.cores",
+    "slurm.partition",
     "server.port",
     "plot.wave_maps.dpi",
 }

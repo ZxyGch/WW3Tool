@@ -114,10 +114,10 @@ class WW3StepPanel:
         grid.addWidget(self.st_label, 0, 0)
         grid.addWidget(self.st_combo, 0, 1)
         self.cpu_combo = ComboBox()
-        self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到 CPU 分区"))
+        self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到分区"))
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
-        self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
+        self.cpu_label = self._field_label(tr("step4_server_cpu", "分区："))
         grid.addWidget(self.cpu_label, 1, 0)
         grid.addWidget(self.cpu_combo, 1, 1)
         self._display_line(grid, 2, 0, tr("step4_total_cores", "总核数:"), "slurm_cores")
@@ -154,6 +154,7 @@ class WW3StepPanel:
         self._display_line(wave_grid, 3, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self.output_scheme_combo = ComboBox()
         self._output_scheme_fields_by_name: dict[str, list[str]] = {}
+        self._server_st_versions: dict[str, str] = {}
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
@@ -213,17 +214,22 @@ class WW3StepPanel:
             version = WW3_VERSION_VALUES[0]
         self.nml_version_combo.setCurrentText(version)
         self.nml_version_combo.blockSignals(False)
-        self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
+        self._server_st_versions = dict(config.slurm.server_st_versions)
+        self._replace_combo_items(
+            self.st_combo,
+            list(self._server_st_versions),
+            config.slurm.server_st or config.ww3.st,
+        )
         output_schemes = dict(config.presets.output_scheme)
-        if getattr(ww3, "output_fields", None):
-            output_schemes[str(ww3.output_scheme or "standard")] = list(ww3.output_fields)
+        if getattr(ww3, "output_fields", None) and ww3.output_scheme:
+            output_schemes[str(ww3.output_scheme)] = list(ww3.output_fields)
         self._output_scheme_fields_by_name = {
             str(name): [str(v).strip().upper() for v in values if str(v).strip()]
             for name, values in output_schemes.items()
         }
         self._replace_combo_items(self.output_scheme_combo, sorted(self._output_scheme_fields_by_name), ww3.output_scheme)
         self._set_file_split_combo(ww3.file_split)
-        self._replace_combo_items(self.cpu_combo, [config.slurm.cpu] if config.slurm.cpu else [], config.slurm.cpu or "")
+        self._replace_combo_items(self.cpu_combo, [config.slurm.partition] if config.slurm.partition else [], config.slurm.partition or "")
         params = config.ww3_grid.parameters
         for grid_key, edit in {**self._spectrum_fields, **self._timesteps_fields}.items():
             edit.setText(str(params.get(grid_key, "")))
@@ -331,26 +337,31 @@ class WW3StepPanel:
         return out
 
     def ww3_overrides(self) -> dict[str, object]:
+        from workflows.domain.output_scheme_yaml import serialize_ww3_output_scheme
+
         scheme_name = self.output_scheme_combo.currentText().strip()
         scheme_fields = self._output_scheme_fields_by_name.get(scheme_name, [])
         return {
             "start_date": self.fields["ww3_start"].text().strip(),
             "end_date": self.fields["ww3_end"].text().strip(),
             "output_step": self.fields["ww3_output"].text().strip(),
-            "output_scheme": {
-                "name": scheme_name,
-                "fields": " ".join(scheme_fields),
-            },
+            "output_scheme": serialize_ww3_output_scheme(
+                scheme_name,
+                {scheme_name: scheme_fields},
+            ),
             "file_split": current_file_split_from_combo(self.file_split_combo),
             "version": self.nml_version_combo.currentText().strip(),
         }
 
-    def slurm_overrides(self) -> dict[str, str]:
+    def slurm_overrides(self) -> dict[str, object]:
+        from workflows.domain.named_path_preset_yaml import serialize_named_path_preset_block
+
+        selected = self.st_combo.currentText().strip()
         return {
-            "cpu": self.cpu_combo.currentText().strip(),
+            "partition": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
-            "server_st": self.st_combo.currentText().strip(),
+            "server_st": serialize_named_path_preset_block(selected, self._server_st_versions),
         }
 
     def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:

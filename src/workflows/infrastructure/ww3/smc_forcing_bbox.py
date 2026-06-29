@@ -8,14 +8,11 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import netCDF4 as nc
 
-FORCING_IMPORT_META_NAME = "forcing_import_meta.json"
 DEFAULT_FORCING_SNAP_DEG = 0.25
 
 
@@ -105,38 +102,3 @@ def forcing_covers_rect(
         or wla > lat_s + eps
         or wlz < lat_n - eps
     )
-
-
-def load_forcing_import_meta(work_dir: str | Path) -> dict[str, Any]:
-    path = Path(work_dir).expanduser() / FORCING_IMPORT_META_NAME
-    if not path.is_file():
-        return {}
-    try:
-        with path.open(encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-
-def save_forcing_import_meta_entry(
-    work_dir: str | Path,
-    field_key: str,
-    *,
-    source: str,
-    target: str,
-    crop_bbox: list[float] | None,
-    crop_time_range: list[str] | None,
-) -> None:
-    """记录 Step 1 裁剪来源，供 SMC 网格生成后自动扩大裁剪范围。"""
-    path = Path(work_dir).expanduser() / FORCING_IMPORT_META_NAME
-    meta = load_forcing_import_meta(path.parent)
-    meta[field_key] = {
-        "source": str(Path(source).expanduser().resolve()),
-        "target": os.path.basename(target),
-        "crop_bbox": [float(x) for x in crop_bbox] if crop_bbox else [],
-        "crop_time_range": list(crop_time_range) if crop_time_range else [],
-    }
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        json.dump(meta, f, indent=2, ensure_ascii=False)
-        f.write("\n")

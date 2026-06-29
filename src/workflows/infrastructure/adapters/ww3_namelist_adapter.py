@@ -87,7 +87,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
         self.num_n_edit = _TextValue(config.slurm.cores)
         self.num_N_edit = _TextValue(config.slurm.nodes)
         self.job_name_var = config.slurm.job_name or config.workdir.path.name
-        self.cpu_var = config.slurm.cpu
+        self.partition_var = config.slurm.partition
         self.mem_var = config.slurm.mem or ""
         self.st_var = _resolve_st_name(config, app_config)
 
@@ -193,7 +193,7 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     # 项目参数来自 PipelineConfig 各段
     # [EN] Project parameters come from various sections of PipelineConfig
     merged["FILE_SPLIT"] = config.ww3.file_split
-    merged["DEFAULT_CPU"] = config.slurm.cpu
+    merged["DEFAULT_PARTITION"] = config.slurm.partition
     merged["NODE_NUM"] = config.slurm.nodes
     merged["KERNEL_NUM"] = config.slurm.cores
 
@@ -210,13 +210,13 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
             "DTMIN": parameters["TIMESTEPS%DTMIN"],
         }
     )
-    merged["ST_OPTIONS"] = list(config.presets.server_st)
+    merged["ST_OPTIONS"] = list(config.slurm.server_st_versions)
     merged["ST_VERSIONS"] = [
         {
             "name": name,
             "path": str(Path(executable_dir).parent),
         }
-        for name, executable_dir in config.presets.server_st.items()
+        for name, executable_dir in config.slurm.server_st_versions.items()
     ]
 
     # 谱分区输出方案：优先使用 ww3.output_scheme.fields，兼容旧 presets.output_scheme。
@@ -225,11 +225,9 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     schemes = copy.deepcopy(config.presets.output_scheme)
     # 追加当前项目方案作为 __params__，供下游 namelist 模板使用
     # [EN] Append the current project scheme as __params__ for use by downstream namelist templates
-    if config.ww3.output_fields:
-        schemes[str(config.ww3.output_scheme or "standard")] = list(config.ww3.output_fields)
+    if config.ww3.output_fields and config.ww3.output_scheme:
+        schemes[str(config.ww3.output_scheme)] = list(config.ww3.output_fields)
         schemes["__params__"] = list(config.ww3.output_fields)
-    elif config.ww3.output_scheme in config.presets.output_scheme:
-        schemes["__params__"] = list(config.presets.output_scheme[config.ww3.output_scheme])
     merged["OUTPUT_VARS_SCHEMES"] = schemes
     merged["WW3_VERSION"] = config.ww3.version
     return merged

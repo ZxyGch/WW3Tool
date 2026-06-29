@@ -91,8 +91,8 @@ OUTPUT_FIELD_OPTIONS = (
     "DTD", "FC", "CFX", "CFD", "CFK",
 )
 
-# 标准输出方案默认包含的场变量子集
-# [EN] Default field variable subset included in the standard output scheme
+# 常用涌浪谱分区输出字段子集（仅作参考，不在工具内建方案）
+# [EN] Common swell partition output field subset (reference only; no built-in schemes)
 DEFAULT_OUTPUT_FIELDS = (
     "HS",
     "DIR",
@@ -106,14 +106,6 @@ DEFAULT_OUTPUT_FIELDS = (
     "PNR",
     "TWS",
 )
-
-# 命名输出方案：键为方案名，值为场变量代码元组
-# [EN] Named output schemes: key is scheme name, value is a tuple of field variable codes
-DEFAULT_OUTPUT_SCHEME_PRESETS = {
-    "standard": DEFAULT_OUTPUT_FIELDS,
-    "with_spectrum": DEFAULT_OUTPUT_FIELDS + ("EF",),
-    "all_fields": OUTPUT_FIELD_OPTIONS,
-}
 
 # 源项（ST）物理包预设：值为可执行文件所在目录，目录名不限。
 # 不内置任何预设，用户通过 params.yml 或设置界面自行配置。

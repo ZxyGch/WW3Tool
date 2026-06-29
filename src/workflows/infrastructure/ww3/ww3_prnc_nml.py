@@ -294,7 +294,7 @@ class WW3PrncNML(NMLPrimitives):
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             field_name = "CURRENTS" if forcing_field_type == 'CURRENTS' else "WINDS"
             prnc_assignments: list[Assignment] = [
                 (f"FORCING%FIELD%{field_name}", "T"),
@@ -412,7 +412,7 @@ class WW3PrncNML(NMLPrimitives):
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             self.log(
                 prefix
                 + format_nml_log_message(
@@ -426,7 +426,7 @@ class WW3PrncNML(NMLPrimitives):
             )
 
         except Exception as e:
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             self.log(tr("ww3_prnc_times_modify_failed", "{prefix}❌ 修改 ww3_prnc.nml 时间范围失败：{error}").format(prefix=prefix, error=e))
 
     def _generate_forcing_field_prnc_files(self, target_dir=None, use_relative_path=False):
@@ -469,6 +469,8 @@ class WW3PrncNML(NMLPrimitives):
             }
         }
 
+        prefix = ""
+
         # 为每个选中的强迫场生成文件
         for field_key, config in forcing_field_configs.items():
             # 检查复选框是否选中
@@ -490,8 +492,6 @@ class WW3PrncNML(NMLPrimitives):
                 checkbox.setChecked(False)
                 continue
             if not os.path.exists(file_path):
-                grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                prefix = f"[{grid_label}] " if grid_label else ""
                 self.log(tr("forcing_field_not_found", "{prefix}⚠️ 未找到 {field} 强迫场文件，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
                 checkbox.setChecked(False)
                 continue
@@ -506,15 +506,11 @@ class WW3PrncNML(NMLPrimitives):
                 try:
                     common_path = os.path.commonpath([abs_file_path, abs_target_dir])
                     if common_path != abs_target_dir:
-                        grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                        prefix = f"[{grid_label}] " if grid_label else ""
                         self.log(tr("forcing_field_not_in_workdir", "{prefix}⚠️ {field} 强迫场文件不在当前工作目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
                         checkbox.setChecked(False)
                         continue
                 except ValueError:
                     # 路径不在同一驱动器上（Windows）或无法比较
-                    grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                    prefix = f"[{grid_label}] " if grid_label else ""
                     self.log(tr("forcing_field_not_in_workdir", "{prefix}⚠️ {field} 强迫场文件不在当前工作目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
                     checkbox.setChecked(False)
                     continue
@@ -525,15 +521,11 @@ class WW3PrncNML(NMLPrimitives):
                 try:
                     common_path = os.path.commonpath([abs_file_path, abs_parent_dir])
                     if common_path != abs_parent_dir:
-                        grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                        prefix = f"[{grid_label}] " if grid_label else ""
                         self.log(tr("forcing_field_not_in_parent", "{prefix}⚠️ {field} 强迫场文件不在父目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
                         checkbox.setChecked(False)
                         continue
                 except ValueError:
                     # 路径不在同一驱动器上（Windows）或无法比较
-                    grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                    prefix = f"[{grid_label}] " if grid_label else ""
                     self.log(tr("forcing_field_not_in_parent", "{prefix}⚠️ {field} 强迫场文件不在父目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
                     checkbox.setChecked(False)
                     continue
@@ -541,8 +533,6 @@ class WW3PrncNML(NMLPrimitives):
             # 从目标目录中已修改时间的 ww3_prnc.nml 复制
             source_nml_path = os.path.join(target_dir, "ww3_prnc.nml")
             if not os.path.exists(source_nml_path):
-                grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                prefix = f"[{grid_label}] " if grid_label else ""
                 self.log(tr("ww3_prnc_not_found_skip_generate", "{prefix}⚠️ 未找到 ww3_prnc.nml 文件，跳过生成 {file}").format(prefix=prefix, file=config['output_filename']))
                 continue
 
@@ -715,8 +705,6 @@ class WW3PrncNML(NMLPrimitives):
                     with open(output_path, "w", encoding="utf-8", newline="\n") as f:
                         f.writelines(new_lines)
 
-                    grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                    prefix = f"[{grid_label}] " if grid_label else ""
                     copied_assignments: list[Assignment] = [
                         (f"FORCING%FIELD%{field_name}", "T"),
                         ("FILE%FILENAME", f"'{filename}'"),
@@ -724,8 +712,7 @@ class WW3PrncNML(NMLPrimitives):
                     for index, var_name in enumerate(var_names, start=1):
                         copied_assignments.append((f"FILE%VAR({index})", f"'{var_name}'"))
                     self.log(
-                        prefix
-                        + format_nml_log_message(
+                        format_nml_log_message(
                             "file_copied_modified",
                             "✅ 已复制并修改 {file}：\n{details}",
                             copied_assignments,
@@ -762,12 +749,8 @@ class WW3PrncNML(NMLPrimitives):
                     try:
                         _write_prnc_file(task["output_filename"], task["field_name"], task["var_names"])
                     except Exception as e:
-                        grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                        prefix = f"[{grid_label}] " if grid_label else ""
                         self.log(tr("file_copy_modify_failed", "❌ 复制并修改 {file} 失败：{error}").format(file=task["output_filename"], error=e))
             except Exception as e:
-                grid_label = os.path.basename(target_dir) if target_dir != self.selected_folder else ""
-                prefix = f"[{grid_label}] " if grid_label else ""
                 self.log(tr("file_copy_modify_failed", "❌ 复制并修改 {file} 失败：{error}").format(file=config['output_filename'], error=e))
 
     def _get_forcing_field_variables(self, file_path, var_candidates):

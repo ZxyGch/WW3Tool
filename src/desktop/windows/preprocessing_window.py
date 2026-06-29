@@ -515,10 +515,16 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             selected = current if current in st_names else (default_st if default_st in st_names else (st_names[0] if st_names else ""))
             self._ww3_panel._replace_combo_items(self._ww3_panel.st_combo, st_names, selected)
 
+            from workflows.domain.output_scheme_yaml import visible_output_scheme_names
+
             schemes = config.get("OUTPUT_VARS_SCHEMES", {})
-            scheme_names = sorted(str(name) for name in schemes) if isinstance(schemes, dict) else []
+            scheme_names = visible_output_scheme_names(schemes) if isinstance(schemes, dict) else []
             current_scheme = self._ww3_panel.output_scheme_combo.currentText().strip()
-            selected_scheme = current_scheme if current_scheme in scheme_names else (scheme_names[0] if scheme_names else "")
+            selected_scheme = current_scheme if current_scheme in scheme_names else (
+                str(config.get("OUTPUT_SCHEME_NAME") or "")
+                if str(config.get("OUTPUT_SCHEME_NAME") or "") in scheme_names
+                else (scheme_names[0] if scheme_names else "")
+            )
             self._ww3_panel._replace_combo_items(self._ww3_panel.output_scheme_combo, scheme_names, selected_scheme)
 
         if hasattr(self, "_server_connect_panel"):

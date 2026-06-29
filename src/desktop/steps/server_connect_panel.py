@@ -168,9 +168,9 @@ class ServerConnectPanel:
         self._idle_table.setColumnCount(3)
         self._idle_table.setHorizontalHeaderLabels(
             [
-                tr("idle_col_cpu", "CPU"),
+                tr("idle_col_cpu", "分区"),
                 tr("idle_col_nodes", "节点数"),
-                tr("idle_col_cores", "核数"),
+                tr("idle_col_cores", "可用核数"),
             ]
         )
         self._idle_table.horizontalHeader().setVisible(False)
@@ -201,6 +201,7 @@ class ServerConnectPanel:
         slurm_grid.setColumnStretch(0, 0)
         slurm_grid.setColumnStretch(1, 1)
         self.st_combo = ComboBox()
+        self._server_st_versions: dict[str, str] = {}
         self.st_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.st_combo)
         self.st_label = self._field_label(tr("step4_st_version", "ST 版本："))
@@ -208,11 +209,11 @@ class ServerConnectPanel:
         slurm_grid.addWidget(self.st_combo, 0, 1)
         self._text_line(slurm_grid, 1, tr("step5_slurm_job_name", "作业名："), "slurm_job_name")
         self.cpu_combo = ComboBox()
-        self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到 CPU 分区"))
+        self.cpu_combo.setPlaceholderText(tr("cpu_no_partition", "未从服务器解析到分区"))
         self.cpu_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.cpu_combo)
         self.cpu_combo.currentTextChanged.connect(self._on_cpu_partition_changed)
-        self.cpu_label = self._field_label(tr("step4_server_cpu", "服务器 CPU："))
+        self.cpu_label = self._field_label(tr("step4_server_cpu", "分区："))
         slurm_grid.addWidget(self.cpu_label, 2, 0)
         slurm_grid.addWidget(self.cpu_combo, 2, 1)
         self._display_line(slurm_grid, 3, tr("step4_total_cores", "总核数:"), "slurm_cores")
@@ -293,7 +294,7 @@ class ServerConnectPanel:
         # 手动表头行（第 0 行）+ 数据行，与原有风格一致
         header_labels = [
             tr("cluster_col_user", "用户"),
-            tr("cluster_col_cpus", "CPU数"),
+            tr("cluster_col_cpus", "核数"),
             tr("cluster_col_nodes", "节点"),
             tr("cluster_col_elapsed", "时间"),
         ]
@@ -363,9 +364,9 @@ class ServerConnectPanel:
         self._idle_rows = valid
 
         header_labels = [
-            tr("idle_col_cpu", "CPU"),
+            tr("idle_col_cpu", "分区"),
             tr("idle_col_nodes", "节点数"),
-            tr("idle_col_cores", "核数"),
+            tr("idle_col_cores", "可用核数"),
         ]
         self._idle_table.setRowCount(len(valid) + 1)
         for col, text in enumerate(header_labels):
@@ -427,21 +428,29 @@ class ServerConnectPanel:
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
         self.fields["slurm_mem"].setText(str(config.slurm.mem or ""))
         self._slurm_mem_user_edited = False
-        self._replace_combo_items(self.st_combo, list(config.presets.server_st), config.slurm.server_st or config.ww3.st)
-        self._default_cpu = str(config.slurm.cpu or "").strip()
-        self._replace_combo_items(self.cpu_combo, [self._default_cpu] if self._default_cpu else [], self._default_cpu)
+        self._server_st_versions = dict(config.slurm.server_st_versions)
+        self._replace_combo_items(
+            self.st_combo,
+            list(self._server_st_versions),
+            config.slurm.server_st or config.ww3.st,
+        )
+        self._default_partition = str(config.slurm.partition or "").strip()
+        self._replace_combo_items(self.cpu_combo, [self._default_partition] if self._default_partition else [], self._default_partition)
 
     def ww3_overrides(self) -> dict[str, str]:
         return {}
 
-    def slurm_overrides(self) -> dict[str, str]:
+    def slurm_overrides(self) -> dict[str, object]:
+        from workflows.domain.named_path_preset_yaml import serialize_named_path_preset_block
+
+        selected = self.st_combo.currentText().strip()
         return {
             "job_name": self.fields["slurm_job_name"].text().strip(),
-            "cpu": self.cpu_combo.currentText().strip(),
+            "partition": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
             "mem": self.fields["slurm_mem"].text().strip(),
-            "server_st": self.st_combo.currentText().strip(),
+            "server_st": serialize_named_path_preset_block(selected, self._server_st_versions),
         }
 
     def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:
@@ -460,15 +469,15 @@ class ServerConnectPanel:
     def _replace_cpu_options_if_changed_impl(self, values: list[str]) -> None:
         server_values = [str(value).strip() for value in values if str(value).strip()]
         if not server_values:
-            # 服务器连不上或未解析到 CPU 分区：回退到默认 CPU
-            default_cpu = getattr(self, "_default_cpu", "")
-            target = [default_cpu] if default_cpu else []
+            # 服务器连不上或未解析到分区：回退到默认分区
+            default_partition = getattr(self, "_default_partition", "")
+            target = [default_partition] if default_partition else []
             current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
             if current != target:
                 self.cpu_combo.clear()
-                if default_cpu:
-                    self.cpu_combo.addItem(default_cpu)
-                    self.cpu_combo.setCurrentText(default_cpu)
+                if default_partition:
+                    self.cpu_combo.addItem(default_partition)
+                    self.cpu_combo.setCurrentText(default_partition)
             return
         deduped = list(dict.fromkeys(server_values))
         current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
@@ -477,10 +486,10 @@ class ServerConnectPanel:
         selected = self.cpu_combo.currentText().strip()
         self.cpu_combo.clear()
         self.cpu_combo.addItems(deduped)
-        # 解析到的 CPU 中若含默认 CPU 则优先选中默认 CPU；否则保留原选择，再否则取第一个
-        default_cpu = getattr(self, "_default_cpu", "")
-        if default_cpu and default_cpu in deduped:
-            self.cpu_combo.setCurrentText(default_cpu)
+        # 解析到的分区中若含默认分区则优先选中；否则保留原选择，再否则取第一个
+        default_partition = getattr(self, "_default_partition", "")
+        if default_partition and default_partition in deduped:
+            self.cpu_combo.setCurrentText(default_partition)
         elif selected in deduped:
             self.cpu_combo.setCurrentText(selected)
         else:
@@ -633,7 +642,7 @@ class ServerConnectPanel:
             (tr("queue_job_name", "作业名:"), task.get("name", "")),
             (tr("queue_status", "状态:"), task.get("state", "")),
             (tr("queue_runtime", "已运行:"), task.get("time", "")),
-            (tr("queue_cpu", "CPU:"), task.get("partition", "")),
+            (tr("queue_cpu", "分区:"), task.get("partition", "")),
             (tr("queue_node_num", "节点数:"), task.get("nodes", "")),
             (tr("queue_cpus", "核数:"), task.get("cpus", "")),
             (tr("queue_node_list", "节点列表:"), task.get("nodelist", "")),

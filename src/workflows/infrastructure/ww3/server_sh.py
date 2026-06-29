@@ -7,6 +7,7 @@ import shutil
 
 from ...support.translations import tr
 from ..runtime_config import PUBLIC_DIR, get_nml_template_dir, load_full_config
+from .nml_log_format import format_nml_log_message
 from .nml_primitives import NMLPrimitives
 
 
@@ -43,7 +44,7 @@ class ServerSh(NMLPrimitives):
 
         num_n = self.num_n_edit.text().strip()
         num_N = self.num_N_edit.text().strip()
-        cpu = self.cpu_var
+        partition = self.partition_var
         mem = str(getattr(self, "mem_var", "") or "").strip()
 
         # [EN] Get default template path for server.sh (prefer public/scripts/server.sh)
@@ -84,9 +85,9 @@ class ServerSh(NMLPrimitives):
             st_name = selected_st
             st_path = None
 
-            presets_st = getattr(getattr(self, '_loaded_config', None), 'presets', None)
-            if presets_st and hasattr(presets_st, 'server_st'):
-                st_path = presets_st.server_st.get(selected_st)
+            slurm_cfg = getattr(getattr(self, '_loaded_config', None), 'slurm', None)
+            if slurm_cfg and getattr(slurm_cfg, 'server_st_versions', None):
+                st_path = slurm_cfg.server_st_versions.get(selected_st)
 
             if not st_path:
                 # [EN] Fallback: read old format from config.json
@@ -124,15 +125,16 @@ class ServerSh(NMLPrimitives):
                 if line_stripped.startswith("#SBATCH -J"):
                     new_lines.append(f"#SBATCH -J {job_name}\n")
                 elif line_stripped.startswith("#SBATCH -p"):
-                    new_lines.append(f"#SBATCH -p {cpu}\n")
+                    new_lines.append(f"#SBATCH -p {partition}\n")
                 elif line_stripped.startswith("#SBATCH -n"):
                     new_lines.append(f"#SBATCH -n {num_n}\n")
                 elif line_stripped.startswith("#SBATCH -N"):
                     new_lines.append(f"#SBATCH -N {num_N}\n")
-                    if mem and not mem_found:
-                        new_lines.append(f"#SBATCH --mem={mem}\n")
-                        mem_found = True
                 elif line_stripped.startswith("#SBATCH --mem"):
+                    if mem_found:
+                        # 历史重复行：只保留第一处 --mem，其余丢弃
+                        i += 1
+                        continue
                     mem_found = True
                     if mem:
                         new_lines.append(f"#SBATCH --mem={mem}\n")
@@ -202,6 +204,14 @@ class ServerSh(NMLPrimitives):
                     new_lines.append(line)
                 i += 1
 
+            # 模板无 --mem 时，在 -N 后补一行
+            if mem and not mem_found:
+                for idx, out_line in enumerate(new_lines):
+                    if out_line.strip().startswith("#SBATCH -N"):
+                        new_lines.insert(idx + 1, f"#SBATCH --mem={mem}\n")
+                        mem_found = True
+                        break
+
             # [EN] Use binary mode when writing back to ensure \\n instead of \\r\\n
             # 写回文件时使用二进制模式，确保使用 \\n 而不是 \\r\\n
             with open(workdir_server_sh, 'wb') as f:
@@ -209,17 +219,21 @@ class ServerSh(NMLPrimitives):
                 content_bytes = content.encode('utf-8').replace(b'\r\n', b'\n').replace(b'\r', b'\n')
                 f.write(content_bytes)
 
-            log_msg = tr(
+            mem_display = mem or "-"
+            log_assignments = [
+                ("#SBATCH -J", job_name),
+                ("#SBATCH -p", partition),
+                ("#SBATCH -n", num_n),
+                ("#SBATCH -N", num_N),
+                ("#SBATCH --mem", mem_display),
+                ("MPI_NPROCS", num_n),
+                ("ST", st_name),
+                ("export PATH", st_path_line),
+            ]
+            log_msg = format_nml_log_message(
                 "step4_server_sh_updated",
-                "✅ 已更新 server.sh：-J={job}, -p={cpu}, -n={cores}, -N={nodes}, --mem={mem}, MPI_NPROCS={mpi_cores}, ST={st}",
-            ).format(
-                job=job_name,
-                cpu=cpu,
-                cores=num_n,
-                nodes=num_N,
-                mem=mem or "-",
-                mpi_cores=num_n,
-                st=st_name,
+                "✅ 已更新 server.sh：\n{details}",
+                log_assignments,
             )
 
             self.log(log_msg)
@@ -275,12 +289,10 @@ class ServerSh(NMLPrimitives):
 
             # [EN] Prefer reading ST version path from PipelineConfig / params.yml and dynamically build headers
             # 优先从 PipelineConfig / params.yml 读取 ST 版本路径和动态构建 headers
-            presets_st = getattr(getattr(self, '_loaded_config', None), 'presets', None)
-            if presets_st and hasattr(presets_st, 'server_st'):
-                base_dir = presets_st.server_st.get(selected)
-                # [EN] Dynamically generate comment headers from configured ST versions
-                # 从配置的 ST 版本动态生成 comment headers
-                for st_name in presets_st.server_st:
+            slurm_cfg = getattr(getattr(self, '_loaded_config', None), 'slurm', None)
+            if slurm_cfg and getattr(slurm_cfg, 'server_st_versions', None):
+                base_dir = slurm_cfg.server_st_versions.get(selected)
+                for st_name in slurm_cfg.server_st_versions:
                     headers[st_name] = f"#wavewatch3--{st_name}"
 
             if not base_dir:

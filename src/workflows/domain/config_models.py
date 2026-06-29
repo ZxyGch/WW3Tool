@@ -27,8 +27,6 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .parameter_catalog import (
     COASTLINE_PRECISION_OPTIONS,
-    DEFAULT_OUTPUT_SCHEME_PRESETS,
-    DEFAULT_ST_PRESETS,
     FILE_SPLIT_OPTIONS,
     SMC_BATHYMETRY_OPTIONS,
     STRUCTURED_BATHYMETRY_OPTIONS,
@@ -308,12 +306,7 @@ class ParameterPresets:
     overridden at runtime without modifying module-level constants.
     """
 
-    output_scheme: Dict[str, List[str]] = field(
-        default_factory=lambda: {
-            name: list(fields) for name, fields in DEFAULT_OUTPUT_SCHEME_PRESETS.items()
-        }
-    )
-    server_st: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_ST_PRESETS))
+    output_scheme: Dict[str, List[str]] = field(default_factory=dict)
     structured_bathymetry: List[str] = field(default_factory=lambda: list(STRUCTURED_BATHYMETRY_OPTIONS))
     smc_bathymetry: List[str] = field(default_factory=lambda: list(SMC_BATHYMETRY_OPTIONS))
     coastline_precision: List[str] = field(default_factory=lambda: list(COASTLINE_PRECISION_OPTIONS))
@@ -373,25 +366,64 @@ class SlurmConfig:
 
     关键字段：
     - ``job_name``：Slurm 作业名，写入 ``server.sh`` 的 ``#SBATCH -J``
-    - ``cpu`` / ``nodes`` / ``cores``：分区与并行规模
+    - ``partition`` / ``nodes`` / ``cores``：分区与并行规模
     - ``mem``：作业内存申请，写入 ``server.sh`` 的 ``#SBATCH --mem=``
-    - ``server_st``：服务器上选择的 ST 版本名称（对应 presets.server_st 的键）
+    - ``server_st``：当前启用的 ST 方案名（``slurm.server_st.use``）
+    - ``server_st_versions``：服务器 ST 方案名 → 可执行目录
 
     [EN] Remote SLURM job resources (corresponds to YAML ``slurm:`` section).
 
     Key fields:
     - ``job_name``: Slurm job name, written to ``#SBATCH -J`` in ``server.sh``
-    - ``cpu`` / ``nodes`` / ``cores``: partition and parallelism scale
+    - ``partition`` / ``nodes`` / ``cores``: partition and parallelism scale
     - ``mem``: job memory request, written to ``#SBATCH --mem=`` in ``server.sh``
-    - ``server_st``: selected ST version name (key from presets.server_st)
+    - ``server_st``: active ST scheme name (``slurm.server_st.use``)
+    - ``server_st_versions``: server ST scheme name → executable directory
     """
 
     job_name: Optional[str] = None
-    cpu: Optional[str] = None
+    partition: Optional[str] = None
     nodes: Optional[str] = None
     cores: Optional[str] = None
     mem: Optional[str] = None
     server_st: Optional[str] = None
+    server_st_versions: Dict[str, str] = field(default_factory=dict)
+    # 已废弃：仅兼容旧代码 ``SlurmConfig(cpu=...)`` / 旧实例 ``.cpu``；请使用 ``partition``。
+    cpu: Optional[str] = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.cpu and not self.partition:
+            object.__setattr__(self, "partition", self.cpu)
+        elif self.partition:
+            object.__setattr__(self, "cpu", self.partition)
+
+    def __getattr__(self, name: str):
+        if name == "partition":
+            try:
+                return object.__getattribute__(self, "cpu")
+            except AttributeError:
+                pass
+        if name == "cpu":
+            try:
+                return object.__getattribute__(self, "partition")
+            except AttributeError:
+                pass
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+
+@dataclass
+class LocalRunConfig:
+    """本地 WW3 运行配置（对应 YAML ``local_run:`` 段）。
+
+  关键字段：
+    - ``local_st``：当前启用的本地 ST 方案名（``local_run.local_st.use``）
+    - ``local_st_versions``：本地 ST 方案名 → 可执行目录
+
+    [EN] Local WW3 run settings (corresponds to YAML ``local_run:`` section).
+    """
+
+    local_st: Optional[str] = None
+    local_st_versions: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -567,6 +599,7 @@ class PipelineConfig:
     ww3: WW3Config = field(default_factory=WW3Config)
     ww3_grid: WW3GridSettings = field(default_factory=WW3GridSettings)
     slurm: SlurmConfig = field(default_factory=SlurmConfig)
+    local_run: LocalRunConfig = field(default_factory=LocalRunConfig)
     plot: PlotConfig = field(default_factory=PlotConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)

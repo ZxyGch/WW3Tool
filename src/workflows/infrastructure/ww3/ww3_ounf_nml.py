@@ -113,7 +113,7 @@ class WW3OunfNML(NMLPrimitives):
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             assignments: list[Assignment] = [
                 ("FIELD%TIMESTART", f"'{start_date} 000000'"),
                 ("FIELD%TIMESTRIDE", f"'{stride}'"),

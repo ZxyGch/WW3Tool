@@ -348,7 +348,7 @@ class ModifyWW3NML(
             wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
             self._transform_ww3_grid_nml_for_smcc(wgp)
             self._sync_smc_psmc_namelist_if_needed()
-            self._smc_ensure_forcing_covers_ww3_rect(self.selected_folder, grid_label="")
+            self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="")
         else:
             self._sync_grid_meta_to_grid_nml_in_dir(self.selected_folder)
             self._update_grid_closure_from_meta(self.selected_folder)
@@ -496,7 +496,6 @@ class ModifyWW3NML(
             self._modify_ww3_prnc_nml_for_nested(dir_path, grid_label="")
             self._modify_ww3_prnc_times_in_dir(dir_path, grid_label="")
             self._generate_forcing_field_prnc_files(dir_path, use_relative_path=True)
-            self._modify_ww3_shel_forcing_inputs_in_dir(dir_path, grid_label="")
             self._apply_spectral_params_to_dir(dir_path, self.shel_start_edit.text().strip(),
                                               self.shel_end_edit.text().strip(), output_stride)
             self._apply_config_parameters_to_grid_nml_in_dir(dir_path, level_idx=idx)
@@ -504,7 +503,7 @@ class ModifyWW3NML(
             self._apply_cfl_timesteps_to_grid_nml(dir_path)
 
         if self._is_step2_smc_mesh():
-            self._smc_ensure_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
+            self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
 
     def _apply_ww3_params_nested(self):
         """嵌套网格模式：对 level0…levelN 逐层应用 WW3 运行参数。
@@ -552,7 +551,8 @@ class ModifyWW3NML(
         [EN] Apply WW3 runtime parameters in the specified directory.
         """
         self._apply_ww3_ounf_to_dir(target_dir, output_precision, grid_label=grid_label)
-        self._modify_ww3_shel_times_to_dir(target_dir, output_precision, grid_label=grid_label)
+        if not self._is_nested_grid_mode():
+            self._modify_ww3_shel_times_to_dir(target_dir, output_precision, grid_label=grid_label)
 
     def _get_output_scheme_var_list(self):
         """获取当前选择的谱分区输出方案变量列表字符串
@@ -572,8 +572,8 @@ class ModifyWW3NML(
             loaded_cfg = getattr(self, '_loaded_config', None)
             if loaded_cfg is not None and hasattr(loaded_cfg, 'presets'):
                 schemes = dict(loaded_cfg.presets.output_scheme)
-                if getattr(loaded_cfg.ww3, "output_fields", None):
-                    current_name = str(loaded_cfg.ww3.output_scheme or "standard")
+                if getattr(loaded_cfg.ww3, "output_fields", None) and loaded_cfg.ww3.output_scheme:
+                    current_name = str(loaded_cfg.ww3.output_scheme)
                     schemes[current_name] = list(loaded_cfg.ww3.output_fields)
                     schemes["__params__"] = list(loaded_cfg.ww3.output_fields)
                 # __params__ 是合成键，实际对应 ww3.output_scheme 指定的预设

@@ -53,6 +53,7 @@ from ..domain.config_models import (
     GridConfig,
     GridRegion,
     Jason3Config,
+    LocalRunConfig,
     NDBCConfig,
     ParameterPresets,
     PathsConfig,
@@ -73,10 +74,13 @@ from ..domain.config_models import (
     WindFieldConfig,
     WorkdirConfig,
 )
+from ..domain.named_path_preset_yaml import (
+    parse_named_path_preset_block,
+    serialize_named_path_preset_block,
+)
+from ..domain.output_scheme_yaml import parse_ww3_output_scheme
 from ..domain.parameter_catalog import (
     COASTLINE_PRECISION_OPTIONS,
-    DEFAULT_OUTPUT_SCHEME_PRESETS,
-    DEFAULT_ST_PRESETS,
     FILE_SPLIT_LEGACY_ALIASES,
     FILE_SPLIT_OPTIONS,
     OUTPUT_FIELD_OPTIONS,
@@ -282,37 +286,20 @@ def _output_fields(value: Any, name: str) -> List[str]:
     return fields
 
 
-def _selected_output_scheme(value: Any, presets: ParameterPresets) -> tuple[str, List[str]]:
-    if value is None:
-        raise ConfigError("ww3.output_scheme 不能为空")
-    if isinstance(value, dict):
-        name = str(value.get("name") or "").strip()
-        fields = _output_fields(value.get("fields"), "ww3.output_scheme.fields")
-        if not name:
-            raise ConfigError("ww3.output_scheme.name 不能为空")
-        return name, fields
-    name = str(value).strip()
-    if not name:
-        raise ConfigError("ww3.output_scheme 不能为空")
-    if name in presets.output_scheme:
-        return name, list(presets.output_scheme[name])
-    if name in DEFAULT_OUTPUT_SCHEME_PRESETS:
-        return name, list(DEFAULT_OUTPUT_SCHEME_PRESETS[name])
-    raise ConfigError(
-        "ww3.output_scheme 使用字符串格式时，必须使用 presets.output_scheme 中定义的名称；"
-        "若要直接在 ww3 中定义内容，请使用 output_scheme.name / output_scheme.fields"
-    )
-
-
 def _selected_output_fields(raw: Dict[str, Any], presets: ParameterPresets) -> tuple[str, List[str]]:
-    scheme_name, fields = _selected_output_scheme(raw.get("output_scheme"), presets)
+    try:
+        scheme_name, fields, yaml_schemes = parse_ww3_output_scheme(
+            raw.get("output_scheme"),
+        )
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    for name, scheme_fields in yaml_schemes.items():
+        presets.output_scheme[name] = list(scheme_fields)
     explicit = raw.get("output_fields")
     if explicit is not None:
         fields = _output_fields(explicit, "ww3.output_fields")
     if not fields:
-        raise ConfigError(
-            "ww3.output_scheme.fields 不能为空"
-        )
+        raise ConfigError("ww3.output_scheme 当前方案字段不能为空")
     return scheme_name, fields
 
 
@@ -324,18 +311,78 @@ def _st(value: Any) -> Optional[str]:
     return st if st else None
 
 
-def _server_st_presets(value: Any) -> Dict[str, str]:
+def _server_st_block(value: Any, *, path: str) -> tuple[Dict[str, str], str]:
+    try:
+        active, schemes = parse_named_path_preset_block(value, path=path)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    return schemes, active
+
+
+def _slurm_partition(slurm_raw: Dict[str, Any]) -> str:
+    """读取 Slurm 分区名；``slurm.partition`` 优先，``slurm.cpu`` 仅向后兼容。"""
+    partition = slurm_raw.get("partition")
+    if partition is not None and str(partition).strip():
+        return str(partition).strip()
+    legacy = slurm_raw.get("cpu")
+    if legacy is not None and str(legacy).strip():
+        return str(legacy).strip()
+    return ""
+
+
+def normalize_slurm_section(slurm: Any) -> Dict[str, Any]:
+    """写回 YAML 前规范化 slurm 段：使用 partition，移除已废弃的 cpu。"""
+    if not isinstance(slurm, dict):
+        return {}
+    out = dict(slurm)
+    if not str(out.get("partition") or "").strip() and str(out.get("cpu") or "").strip():
+        out["partition"] = str(out.get("cpu") or "").strip()
+    out.pop("cpu", None)
+    return out
+
+
+def _slurm_config(slurm_raw: Dict[str, Any], ww3: WW3Config, *, workdir_name: str) -> SlurmConfig:
+    server_st_versions: Dict[str, str] = {}
+    server_st_active: Optional[str] = None
+    block = slurm_raw.get("server_st")
+    if block is not None:
+        if not isinstance(block, dict):
+            raise ConfigError("slurm.server_st 必须是 use + 方案名: 路径 的映射对象")
+        server_st_versions, server_st_active = _server_st_block(block, path="slurm.server_st")
+    if not server_st_active and ww3.st:
+        server_st_active = ww3.st
+    if not server_st_active:
+        raise ConfigError(
+            tr(
+                "cfg_server_st_required",
+                "slurm.server_st 不能为空，请在 slurm.server_st 中配置 use 与 ST 路径",
+            )
+        )
+    if server_st_versions and server_st_active not in server_st_versions:
+        raise ConfigError(
+            "slurm.server_st.use 必须在 slurm.server_st 映射中定义："
+            + "、".join(server_st_versions)
+        )
+    return SlurmConfig(
+        job_name=str(slurm_raw.get("job_name") or "").strip() or workdir_name,
+        partition=_slurm_partition(slurm_raw),
+        nodes=str(slurm_raw.get("nodes") or ""),
+        cores=str(slurm_raw.get("cores") or ""),
+        mem=str(slurm_raw.get("mem") or "").strip() or None,
+        server_st=server_st_active,
+        server_st_versions=server_st_versions,
+    )
+
+
+def _local_run_config(value: Any) -> LocalRunConfig:
     if value is None:
-        return dict(DEFAULT_ST_PRESETS)
-    raw = _as_dict(value, "presets.server_st")
-    result: Dict[str, str] = {}
-    for name, path in raw.items():
-        st_name = str(name).strip()
-        executable_dir = str(path).strip()
-        if not st_name or not executable_dir:
-            raise ConfigError("presets.server_st 的名称和路径均不能为空")
-        result[st_name] = executable_dir.rstrip("/")
-    return result
+        return LocalRunConfig()
+    local_run_raw = _as_dict(value, "local_run")
+    block = local_run_raw.get("local_st")
+    if block is None:
+        return LocalRunConfig()
+    versions, active = _server_st_block(block, path="local_run.local_st")
+    return LocalRunConfig(local_st=active, local_st_versions=versions)
 
 
 def _preset_values(
@@ -368,22 +415,16 @@ def _preset_values(
 
 def _parameter_presets(value: Any) -> ParameterPresets:
     raw = _as_dict(value, "presets")
-    output_scheme_raw = _as_dict(raw.get("output_scheme"), "presets.output_scheme")
-    if output_scheme_raw:
-        output_schemes = {}
-        for name, fields in output_scheme_raw.items():
-            preset_name = str(name).strip()
-            if not preset_name:
-                raise ConfigError("presets.output_scheme 的预设名称不能为空")
-            output_schemes[preset_name] = _output_fields(
-                fields,
-                f"presets.output_scheme.{preset_name}",
-            )
-    else:
-        output_schemes = {}
+    if raw.get("output_scheme") is not None:
+        raise ConfigError(
+            "presets.output_scheme 已废弃，请在 ww3.output_scheme 中以「方案名: 空格分隔字段」定义"
+        )
+    if raw.get("server_st") is not None:
+        raise ConfigError("presets.server_st 已迁移至 slurm.server_st")
+    if raw.get("local_st") is not None:
+        raise ConfigError("presets.local_st 已迁移至 local_run.local_st")
     return ParameterPresets(
-        output_scheme=output_schemes,
-        server_st=_server_st_presets(raw.get("server_st")),
+        output_scheme={},
         structured_bathymetry=_preset_values(
             raw.get("structured_bathymetry"),
             "presets.structured_bathymetry",
@@ -832,12 +873,12 @@ def parse_pipeline_config(
     )
     if structured.bathymetry not in presets.structured_bathymetry:
         raise ConfigError(
-            "grid.structured.bathymetry 必须使用 presets.structured_bathymetry 中的选项："
+            "grid.structured.bathymetry 可选值："
             + "、".join(presets.structured_bathymetry)
         )
     if structured.coastline_precision not in presets.coastline_precision:
         raise ConfigError(
-            "grid.structured.coastline_precision 必须使用 presets.coastline_precision 中的选项："
+            "grid.structured.coastline_precision 可选值："
             + "、".join(presets.coastline_precision)
         )
 
@@ -858,7 +899,7 @@ def parse_pipeline_config(
     )
     if smc.bathymetry not in presets.smc_bathymetry:
         raise ConfigError(
-            "grid.smc.bathymetry 必须使用 presets.smc_bathymetry 中的选项："
+            "grid.smc.bathymetry 可选值："
             + "、".join(presets.smc_bathymetry)
         )
     if smc.bathy_convention not in {"elevation", "depth"}:
@@ -937,7 +978,7 @@ def parse_pipeline_config(
     )
     if ww3.file_split not in presets.file_split:
         raise ConfigError(
-            "ww3.file_split 必须使用 presets.file_split 中的选项："
+            "ww3.file_split 可选值："
             + "、".join(presets.file_split)
         )
 
@@ -990,27 +1031,8 @@ def parse_pipeline_config(
     )
 
     slurm_raw = _as_dict(raw.get("slurm"), "slurm")
-    # [EN] server_st: prefer slurm.server_st, fall back to ww3.st for backward compat.
-    # 优先读 slurm.server_st，向后兼容 ww3.st
-    _slurm_server_st = str(slurm_raw.get("server_st") or "").strip() or None
-    if _slurm_server_st is None and ww3.st:
-        _slurm_server_st = ww3.st
-    if not _slurm_server_st:
-        raise ConfigError(
-            tr("cfg_server_st_required", "slurm.server_st（或 ww3.st）不能为空，请在 params.yml 中配置 ST 版本")
-        )
-    slurm = SlurmConfig(
-        job_name=str(slurm_raw.get("job_name") or "").strip() or workdir_path.name,
-        cpu=str(slurm_raw.get("cpu") or ""),
-        nodes=str(slurm_raw.get("nodes") or ""),
-        cores=str(slurm_raw.get("cores") or ""),
-        mem=str(slurm_raw.get("mem") or "").strip() or None,
-        server_st=_slurm_server_st,
-    )
-    if presets.server_st and slurm.server_st not in presets.server_st:
-        raise ConfigError(
-            "slurm.server_st 必须使用 presets.server_st 中定义的名称：" + "、".join(presets.server_st)
-        )
+    slurm = _slurm_config(slurm_raw, ww3, workdir_name=workdir_path.name)
+    local_run = _local_run_config(raw.get("local_run"))
 
     plot = _plot_config(raw.get("plot"), base_dir)
     server = _server_config(raw.get("server"), base_dir)
@@ -1027,6 +1049,7 @@ def parse_pipeline_config(
         ww3=ww3,
         ww3_grid=ww3_grid,
         slurm=slurm,
+        local_run=local_run,
         plot=plot,
         server=server,
         paths=paths,
@@ -1110,18 +1133,6 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
 # 完整 params.yml 示例模板：供 CLI ``--print-example`` 与文档引用。
 # 涵盖 presets、workdir、forcing、grid、calc、ww3、slurm、plot、server 各段。
 EXAMPLE_YAML = """# Headless preprocessing example
-presets:
-  # [EN] ST values are executable directories on the server; directory names are unrestricted
-  # [EN] Configure according to your actual server environment, example:
-  # ST 值是服务器上的可执行文件所在目录，目录名不限；ww3.st 从这些名称中选择一个
-  # 请根据实际服务器环境自行配置，示例：
-  #   ST4: /path/to/your/ww3/model/exe
-  server_st: {}
-  structured_bathymetry: [GEBCO, ETOP1, ETOP2]
-  smc_bathymetry: [ETOPO1, ETOPO2, GEBCO]
-  coastline_precision: [full, high, inter, low, coarse]
-  file_split: [single, hour, day, month, year]
-
 workdir:
   path: ./workdir/example
 
@@ -1222,9 +1233,9 @@ ww3:
   end_date: "20250103"
   output_step: "3600"
   file_split: year
+  # 方案名: 空格分隔字段；多方案时加 use: <方案名>
   output_scheme:
-    name: standard
-    fields: "HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS"
+    with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml
@@ -1245,15 +1256,21 @@ ww3_grid:
 slurm:
   job_name: null                 # [EN] Slurm job name (#SBATCH -J); null uses workdir name
                                   # Slurm 作业名（#SBATCH -J）；null 使用工作目录名
-  cpu: CPU6240R
+  partition: CPU6240R
   nodes: "1"
   cores: "48"
   mem: 190G                       # [EN] Job memory (#SBATCH --mem=); null keeps template default
                                   # 作业内存（#SBATCH --mem=）；null 保留模板默认值
-  server_st: ST2                  # [EN] Select one path name from presets.server_st
-                                  # 选择 presets.server_st 中的一个路径名称
+  server_st:
+    use: ST2
+    ST2: /path/to/your/ww3/model/exe
 
-# [EN] Post-processing plot configuration (used by CLI commands plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc)
+local_run:
+  local_st:
+    use: ST2
+    ST2: /path/to/your/local/ww3/bin
+
+# [EN] Post-processing plot configuration
 # 后处理绘图配置（CLI 命令 plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc 使用）
 plot:
   wave_maps:

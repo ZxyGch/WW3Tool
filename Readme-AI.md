@@ -1396,20 +1396,11 @@ slurm:
   cores: 48
   mem: 190G
 
-  # 兼容旧字段；当前分区主要看 partition
-  cpu: CPU6240R
-
   # server_st.use 是当前选中的服务器 WW3 版本
   server_st:
     use: ST2
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
     ST4: /public/home/weiyl001/software2/ww4/model/exe
-    ST6: /public/home/weiyl001/software2/ww6/model/exe
-    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
-    ST6B: /public/home/weiyl001/software2/ww6b/model/exe
-    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
-    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
-    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
 ```
 
 ```sh

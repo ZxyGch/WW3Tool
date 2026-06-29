@@ -15,7 +15,7 @@ class WW3MultiNML(NMLPrimitives):
     """Mixin: ww3_multi.nml operations for nested grid mode."""
 
     def _resolve_output_field_list_for_multi(self) -> str:
-        """从 params/GUI 当前谱分区方案解析变量列表（供 ww3_multi 与 ww3_shel 写入）。"""
+        """从 params/GUI 当前谱分区方案解析变量列表（写入 ww3_multi.nml）。"""
         var_list = self._get_output_scheme_var_list()
         if var_list:
             return var_list
@@ -182,11 +182,6 @@ class WW3MultiNML(NMLPrimitives):
             alltype_field_list_value = None
             if is_nested_grid:
                 alltype_field_list_value = self._resolve_output_field_list_for_multi()
-                if hasattr(self, "selected_folder") and self.selected_folder:
-                    self._write_type_field_list_to_shel(
-                        self.selected_folder,
-                        alltype_field_list_value,
-                    )
 
             # 检查是否为二维谱点计算模式
             is_spectral_point = self._is_spectral_point_mode()
@@ -240,7 +235,7 @@ class WW3MultiNML(NMLPrimitives):
                     # 处理 ALLTYPE%FIELD%LIST（嵌套网格：与 params 谱分区方案一致）
                     if re.search(r'ALLTYPE%FIELD%LIST', line, re.IGNORECASE):
                         if is_nested_grid and alltype_field_list_value:
-                            # 嵌套网格模式：设置为从 ww3_shel.nml 读取的值
+                            # 嵌套网格：谱分区方案直接写入 ww3_multi，各层不用 ww3_shel.nml
                             new_lines.append(f"  ALLTYPE%FIELD%LIST     = '{alltype_field_list_value}'\n")
                             modified_alltype_field_list = True
                         else:

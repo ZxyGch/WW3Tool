@@ -237,21 +237,6 @@ class ImportForcingFileUseCase:
                     field=field,
                     error=tr("log_copy_fix_failed", "❌ 复制或修复文件失败"),
                 )
-            if crop_bbox:
-                from ..ww3.smc_forcing_bbox import save_forcing_import_meta_entry
-
-                meta_keys = [
-                    k for k, ok in (detected_fields or {}).items() if ok
-                ] or [field.value]
-                for meta_key in meta_keys:
-                    save_forcing_import_meta_entry(
-                        selected_folder,
-                        meta_key,
-                        source=file_path,
-                        target=target_file,
-                        crop_bbox=list(crop_bbox),
-                        crop_time_range=list(crop_time_range) if crop_time_range else None,
-                    )
 
         actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path
         files_patch = Step1Files()

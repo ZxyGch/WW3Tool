@@ -71,9 +71,10 @@ class StepFourServiceMixin:
         # 如果不是二维谱点计算模式，跳过 ww3_ounp.nml
         if not is_spectral_mode:
             skip_files.append("ww3_ounp.nml")
-        # 嵌套网格模式下，local.sh 仅保留在工作目录，不复制到各 level* 子目录
+        # 嵌套网格：local.sh / ww3_shel.nml 仅用于普通单网格，不复制到各 level* 子目录
         if is_nested_grid:
             skip_files.append("local.sh")
+            skip_files.append("ww3_shel.nml")
 
         try:
             # 遍历 public 目录下的文件并复制
@@ -125,7 +126,7 @@ class StepFourServiceMixin:
                     self.log(tr("step4_dir_not_found", "⚠️ 未找到目录：{path}").format(path=scripts_dir))
 
             if copied > 0:
-                prefix = f"{grid_label} " if grid_label else ""
+                prefix = ""
                 # 嵌套网格模式下，特殊文件已在公共文件处理中复制，这里只显示其他文件
                 self.log(f"{prefix}{tr('step4_files_copied', '✅ 已复制 {count} 个 NML 模板文件到当前工作目录').format(count=copied)}")
             else:

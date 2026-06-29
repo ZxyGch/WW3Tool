@@ -1,59 +1,4 @@
 # ────────────────────────────────────────────────────────────────────
-# Preset definitions: reusable named lists that are referenced by name
-# in other sections. Avoids duplicating long lists across configs.
-#
-#   server_st           – server WW3 binary paths keyed by scheme name
-#                          (ST2 / ST4 / ST6 / ST6A / ST6B).
-#   local_st           – local WW3 binary paths keyed by scheme name
-#                          (used by local run panel).
-#   structured_bathymetry – bathymetry datasets available for structured grids
-#                          (GEBCO / ETOPO1 / ETOPO2).
-#   smc_bathymetry      – bathymetry datasets for SMC grids.
-#   coastline_precision – GSHHG coastline resolution levels
-#                          (full > high > inter > low > coarse).
-#   file_split          – output file splitting strategies
-#                          (single / hour / day / month / year).
-# ────────────────────────────────────────────────────────────────────
-presets:
-  server_st:
-    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
-    ST6: /public/home/weiyl001/software2/ww6/model/exe
-    ST4: /public/home/weiyl001/software2/ww4/model/exe
-    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
-    ST6B: /public/home/weiyl001/software2/ww6b/model/exe
-    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
-    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
-    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
-  local_st:
-    7.14 ST2 SMC: /Users/zxy/ocean/Paper/WW3/build/ST2/bin/
-    7.14 ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin/
-    6.07 ST2: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2/
-    6.07 ST4: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4/
-    6.07 ST6: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6/
-    6.07 ST2 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2_SMC/
-    6.07 ST4 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4_SMC/
-    6.07 ST6 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6_SMC/
-  structured_bathymetry:
-  - GEBCO
-  - ETOP1
-  - ETOP2
-  smc_bathymetry:
-  - ETOPO1
-  - ETOPO2
-  - GEBCO
-  coastline_precision:
-  - full
-  - high
-  - inter
-  - low
-  - coarse
-  file_split:
-  - single
-  - hour
-  - day
-  - month
-  - year
-# ────────────────────────────────────────────────────────────────────
 # Working directory: all intermediate files, WW3 namelists, forcing
 # inputs, model output and post-processing results are stored here.
 #   path – absolute or relative path to the work directory.
@@ -114,8 +59,8 @@ grid:
   - 10.0
   - 30.0
   # Structured grid options:
-  #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
-  #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).
+  #   bathymetry       – GEBCO | ETOP1 | ETOP2
+  #   coastline_precision – full | high | inter | low | coarse
   #   min_dist         – minimum distance filter between adjacent grid points (km).
   #   cut_off          – land-sea mask cut-off: 0 = keep all sea points.
   #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).
@@ -152,7 +97,7 @@ grid:
     split_lim: 0
     lake_tol: 50
   # SMC (Spherical Multi-Cell) grid options:
-  #   bathymetry       – dataset name (see presets.smc_bathymetry).
+  #   bathymetry       – ETOPO1 | ETOPO2 | GEBCO
   #   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).
   #   n_levels         – number of cell-size refinement levels.
   #   wlevel           – water-level reference index.
@@ -237,7 +182,7 @@ calc:
 #   start_date / end_date – simulation period (YYYYMMDD).
 #   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.
 #   file_split        – output file splitting: single | hour | day | month | year.
-#   output_scheme     – output scheme name and WW3 output field abbreviations.
+#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
@@ -247,8 +192,9 @@ ww3:
   output_step: 3600
   file_split: single
   output_scheme:
-    name: standard
-    fields: 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS'
+    use: with_spectrum
+    standard: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS
+    with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
 # Keys follow the Fortran namelist syntax with '%' as sub-key separator.
@@ -273,19 +219,42 @@ ww3_grid:
   TIMESTEPS%DTMIN: 15
 # ────────────────────────────────────────────────────────────────────
 # SLURM job-scheduler settings for HPC cluster submissions.
-#   job_name  – Slurm job name written to #SBATCH -J; null uses workdir name.
-#   cpu       – default CPU model identifier.
-#   nodes     – number of compute nodes to request.
-#   cores     – CPU cores per node.
-#   mem       – job memory request written to #SBATCH --mem=.
+#   job_name  – Slurm job name (#SBATCH -J); null uses workdir name.
+#   cpu / nodes / cores / mem – resource request.
+#   server_st – server WW3 binaries: use + name: path (multi-scheme only).
 # ────────────────────────────────────────────────────────────────────
 slurm:
   job_name: null
-  cpu: CPU6240R
+  partition: CPU6240R
   nodes: 1
   cores: 48
   mem: 190G
-  server_st: ST2
+  server_st:
+    use: ST2
+    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
+    ST6: /public/home/weiyl001/software2/ww6/model/exe
+    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
+    ST6B: /public/home/weiyl001/software2/ww6b/model/exe
+    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
+    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
+    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
+  cpu: CPU6240R
+# ────────────────────────────────────────────────────────────────────
+# Local WW3 run settings (Step 5 local execution panel).
+#   local_st – local WW3 binaries: use + name: path (multi-scheme only).
+# ────────────────────────────────────────────────────────────────────
+local_run:
+  local_st:
+    use: 7.14 ST2 SMC
+    7.14 ST2 SMC: /Users/zxy/ocean/Paper/WW3/build/ST2/bin
+    7.14 ST4: /Users/zxy/ocean/Paper/WW3/build/ST4/bin
+    6.07 ST2: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2
+    6.07 ST4: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4
+    6.07 ST6: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6
+    6.07 ST2 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST2_SMC
+    6.07 ST4 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4_SMC
+    6.07 ST6 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6_SMC
 # ────────────────────────────────────────────────────────────────────
 # Post-processing and validation plot settings.
 # Each sub-section is invoked individually via CLI commands:
@@ -393,7 +362,7 @@ desktop:
   theme: AUTO
   run_mode: both
   recent_workdirs:
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_13-08-42
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-27_21-25-51
-  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-25_13-04-29
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_21-10-11
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_21-06-09
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-28_18-55-53
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

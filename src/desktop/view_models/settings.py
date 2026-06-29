@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from workflows.domain.output_scheme_yaml import visible_output_schemes
 from workflows.infrastructure import runtime_config
 
 
@@ -41,7 +42,7 @@ class SettingsViewModel:
     def output_schemes(self) -> dict[str, list[str]]:
         config = runtime_config.load_full_config()
         schemes = config.get("OUTPUT_VARS_SCHEMES")
-        return dict(schemes) if isinstance(schemes, dict) else {}
+        return visible_output_schemes(schemes) if isinstance(schemes, dict) else {}
 
     def save_output_schemes(self, schemes: dict[str, list[str]]) -> bool:
         return self.save({"OUTPUT_VARS_SCHEMES": schemes})

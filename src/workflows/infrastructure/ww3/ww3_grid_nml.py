@@ -250,31 +250,6 @@ class WW3GridNML(NMLPrimitives):
         lat_n = lat_s + (int(wr["ny"]) - 1) * float(wr["sy"])
         return lon_w, lon_e, lat_s, lat_n
 
-    def _smc_ensure_forcing_covers_ww3_rect(self, work_dir: str, *, grid_label: str = "") -> None:
-        """SMC：检查风场是否覆盖 ww3_rect_geo；必要时从 Step 1 源文件自动重新裁剪。"""
-        if not self._is_step2_smc_mesh() or not work_dir:
-            return
-        params_path = os.path.join(work_dir, "params.yml")
-        if not os.path.isfile(params_path):
-            self._smc_warn_forcing_covers_ww3_rect(work_dir, grid_label=grid_label)
-            return
-        try:
-            from ...application.configuration import load_pipeline_config
-            from ...support.logging import CoreLogger
-            from .smc_forcing_alignment import ensure_smc_forcing_covers_ww3_rect
-
-            config = load_pipeline_config(params_path, validation_stage="full")
-            logger = CoreLogger(callback=self.log)
-            ensure_smc_forcing_covers_ww3_rect(config, logger, grid_label=grid_label)
-        except Exception as exc:
-            self.log(
-                tr(
-                    "step4_smc_forcing_align_failed",
-                    "⚠️ SMC 强迫场范围对齐失败：{err}",
-                ).format(err=exc)
-            )
-            self._smc_warn_forcing_covers_ww3_rect(work_dir, grid_label=grid_label)
-
     def _smc_warn_forcing_covers_ww3_rect(self, work_dir: str, *, grid_label: str = "") -> None:
         """SMC: ww3_prnc uses the full RECT; regional wind often only covers regional_bounds."""
         if not self._is_step2_smc_mesh() or not work_dir:
@@ -320,7 +295,7 @@ class WW3GridNML(NMLPrimitives):
         )
         if not outside:
             return
-        prefix = f"[{grid_label}] " if grid_label else ""
+        prefix = ""
         self.log(
             tr(
                 "step4_smc_forcing_narrower_than_rect",
@@ -995,7 +970,7 @@ class WW3GridNML(NMLPrimitives):
             with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             self.log(
                 prefix
                 + format_nml_log_message(
@@ -1006,7 +981,7 @@ class WW3GridNML(NMLPrimitives):
                 )
             )
         except Exception as e:
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             self.log(prefix + tr("step4_grid_meta_sync_failed", "⚠️ 同步 grid.meta 到 ww3_grid.nml 失败: {error}").format(error=e))
 
     def _update_grid_closure_from_meta(self, target_dir, grid_label=""):
@@ -1085,7 +1060,7 @@ class WW3GridNML(NMLPrimitives):
                 f.writelines(new_lines)
 
             if clos != "NONE":
-                prefix = f"[{grid_label}] " if grid_label else ""
+                prefix = ""
                 self.log(
                     prefix
                     + format_nml_log_message(
@@ -1096,5 +1071,5 @@ class WW3GridNML(NMLPrimitives):
                 )
 
         except Exception as e:
-            prefix = f"[{grid_label}] " if grid_label else ""
+            prefix = ""
             self.log(prefix + tr("step4_grid_clos_update_failed", "⚠️ 更新 ww3_grid.nml 的 GRID%CLOS 失败: {error}").format(error=e))

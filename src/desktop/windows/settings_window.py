@@ -62,7 +62,7 @@ from workflows.infrastructure.runtime_config import (
 from workflows.infrastructure.remote.ssh_config import list_ssh_config_hosts
 from workflows.support.translations import tr
 
-# 谱分区输出方案的候选变量（取自 params.yml all_fields 全集）。
+# 谱分区输出方案的候选变量（WW3 可选场变量全集，见 parameter_catalog.OUTPUT_FIELD_OPTIONS）。
 _OUTPUT_VAR_CODES = [
     "DPT", "CUR", "WND", "AST", "WLV", "ICE", "IBG", "D50", "IC1", "IC5",
     "HS", "LM", "T02", "T0M1", "T01", "FP", "DIR", "SPR", "DP", "HIG",
@@ -592,7 +592,7 @@ class SettingsInterface(QWidget):
         grid = self._card(tr("slurm_config", "Slurm 配置"))
         self._text(grid, 0, 0, tr("set_kernel_num", "核数："), "KERNEL_NUM")
         self._text(grid, 1, 0, tr("set_node_num", "节点数："), "NODE_NUM")
-        self._text(grid, 2, 0, tr("set_default_cpu", "CPU："), "DEFAULT_CPU")
+        self._text(grid, 2, 0, tr("set_default_cpu", "分区："), "DEFAULT_PARTITION")
         self._text(grid, 3, 0, tr("set_slurm_mem", "内存："), "SLURM_MEM")
 
     def _build_ww3_card(self) -> None:

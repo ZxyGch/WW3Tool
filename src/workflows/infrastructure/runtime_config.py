@@ -15,6 +15,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from workflows.support.translations import tr
+from workflows.domain.named_path_preset_yaml import (
+    parse_named_path_preset_block,
+    serialize_named_path_preset_block,
+)
+from workflows.domain.output_scheme_yaml import parse_ww3_output_scheme, serialize_ww3_output_scheme
 
 # ==================== 配置文件路径设置 ====================
 # 获取当前脚本所在目录的绝对路径
@@ -71,7 +76,7 @@ _SETTINGS_KEY_TO_YAML_PATH = {
     "DTMIN": "ww3_grid.TIMESTEPS%DTMIN",
     "KERNEL_NUM": "slurm.cores",
     "NODE_NUM": "slurm.nodes",
-    "DEFAULT_CPU": "slurm.cpu",
+    "DEFAULT_PARTITION": "slurm.partition",
     "SLURM_MEM": "slurm.mem",
     "SERVER_HOST": "server.host",
     "SERVER_PORT": "server.port",
@@ -708,20 +713,18 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
     # ── top-level sections ──────────────────────────────────────────────
     ("presets:",
      "# ────────────────────────────────────────────────────────────────────\n"
-     "# Preset definitions: reusable named lists that are referenced by name\n"
-     "# in other sections. Avoids duplicating long lists across configs.\n"
+     "# Preset definitions: reusable named maps referenced by other sections.\n"
      "#\n"
-     "#   server_st           – server WW3 binary paths keyed by scheme name\n"
-     "#                          (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
-     "#   local_st           – local WW3 binary paths keyed by scheme name\n"
-     "#                          (used by local run panel).\n"
-     "#   structured_bathymetry – bathymetry datasets available for structured grids\n"
-     "#                          (GEBCO / ETOPO1 / ETOPO2).\n"
-     "#   smc_bathymetry      – bathymetry datasets for SMC grids.\n"
-     "#   coastline_precision – GSHHG coastline resolution levels\n"
-     "#                          (full > high > inter > low > coarse).\n"
-     "#   file_split          – output file splitting strategies\n"
-     "#                          (single / hour / day / month / year).\n"
+     "#   server_st  – server WW3 binary paths: use + name: path (multi-scheme only)\n"
+     "#   local_st   – local WW3 binary paths: use + name: path (multi-scheme only)\n"
+     "#\n"
+     "# Built-in enumerations (parameter_catalog.py); set under grid.* / ww3.*:\n"
+     "#   grid.structured.bathymetry          – GEBCO | ETOP1 | ETOP2\n"
+     "#   grid.smc.bathymetry                 – ETOPO1 | ETOPO2 | GEBCO\n"
+     "#   grid.structured.coastline_precision – full | high | inter | low | coarse\n"
+     "#   ww3.file_split                      – single | hour | day | month | year\n"
+     "#   ww3.output_scheme                   – scheme name: space-separated fields\n"
+     "#                                    (see ww3: section; no built-in presets)\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("workdir:",
      "# ────────────────────────────────────────────────────────────────────\n"
@@ -765,8 +768,8 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# ────────────────────────────────────────────────────────────────────"),
     ("  structured:",
      "  # Structured grid options:\n"
-     "  #   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).\n"
-     "  #   coastline_precision – GSHHG coastline detail level (full/high/inter/low/coarse).\n"
+     "  #   bathymetry       – GEBCO | ETOP1 | ETOP2\n"
+     "  #   coastline_precision – full | high | inter | low | coarse\n"
      "  #   min_dist         – minimum distance filter between adjacent grid points (km).\n"
      "  #   cut_off          – land-sea mask cut-off: 0 = keep all sea points.\n"
      "  #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).\n"
@@ -776,7 +779,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "  #   nested.nested_contraction_coefficient – nested level boundary shrink ratio (≥ 1, GUI helper)."),
     ("  smc:",
      "  # SMC (Spherical Multi-Cell) grid options:\n"
-     "  #   bathymetry       – dataset name (see presets.smc_bathymetry).\n"
+     "  #   bathymetry       – ETOPO1 | ETOPO2 | GEBCO\n"
      "  #   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).\n"
      "  #   n_levels         – number of cell-size refinement levels.\n"
      "  #   wlevel           – water-level reference index.\n"
@@ -817,7 +820,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   start_date / end_date – simulation period (YYYYMMDD).\n"
      "#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.\n"
      "#   file_split        – output file splitting: single | hour | day | month | year.\n"
-     "#   output_scheme     – output scheme name and WW3 output field abbreviations.\n"
+     "#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("ww3_grid:",
@@ -837,11 +840,14 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
     ("slurm:",
      "# ────────────────────────────────────────────────────────────────────\n"
      "# SLURM job-scheduler settings for HPC cluster submissions.\n"
-     "#   job_name  – Slurm job name written to #SBATCH -J; null uses workdir name.\n"
-     "#   cpu       – default CPU model identifier.\n"
-     "#   nodes     – number of compute nodes to request.\n"
-     "#   cores     – CPU cores per node.\n"
-     "#   mem       – job memory request written to #SBATCH --mem=.\n"
+     "#   job_name  – Slurm job name (#SBATCH -J); null uses workdir name.\n"
+     "#   cpu / nodes / cores / mem – resource request.\n"
+     "#   server_st – server WW3 binaries: use + name: path (multi-scheme only).\n"
+     "# ────────────────────────────────────────────────────────────────────"),
+    ("local_run:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# Local WW3 run settings (Step 5 local execution panel).\n"
+     "#   local_st – local WW3 binaries: use + name: path (multi-scheme only).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("plot:",
      "# ────────────────────────────────────────────────────────────────────\n"
@@ -1207,38 +1213,51 @@ def load_full_config() -> dict:
         value = _get_nested(root, yaml_path)
         if value is not None:
             merged[flat_key] = value
+    partition_val = _get_nested(root, "slurm.partition")
+    if partition_val is None:
+        partition_val = _get_nested(root, "slurm.cpu")
+    if partition_val is not None:
+        merged["DEFAULT_PARTITION"] = partition_val
     # WW3_CONFIG_PATH 是派生路径（public/{version}_nml），不存 yml，仅只读展示/打开用
     merged["WW3_CONFIG_PATH"] = get_nml_template_dir(params_path=PARAMS_FILE)
-    # 输出方案：新格式来自 ww3.output_scheme.name/fields；旧格式兼容 presets.output_scheme。
+    # 输出方案：仅来自 ww3.output_scheme 映射（无内置方案）。
     ww3 = root.get("ww3") or {}
     ww3_scheme = ww3.get("output_scheme") if isinstance(ww3, dict) else None
-    output_schemes = {}
+    output_schemes: dict[str, list[str]] = {}
+    if ww3_scheme is not None:
+        try:
+            active, active_fields, yaml_schemes = parse_ww3_output_scheme(ww3_scheme)
+            output_schemes.update({name: list(fields) for name, fields in yaml_schemes.items()})
+            output_schemes["__params__"] = list(active_fields)
+            merged["OUTPUT_SCHEME_NAME"] = active
+        except ValueError:
+            pass
+    merged["OUTPUT_VARS_SCHEMES"] = output_schemes
     presets = root.get("presets") or {}
-    if isinstance(presets.get("output_scheme"), dict):
-        output_schemes.update(presets["output_scheme"])
-    if isinstance(ww3_scheme, dict):
-        scheme_name = str(ww3_scheme.get("name") or "").strip()
-        fields = _output_fields_from_value(ww3_scheme.get("fields"))
-        if scheme_name and fields:
-            output_schemes[scheme_name] = fields
-            output_schemes["__params__"] = fields
-            merged["OUTPUT_SCHEME_NAME"] = scheme_name
-    elif isinstance(ww3_scheme, str):
-        merged["OUTPUT_SCHEME_NAME"] = ww3_scheme.strip()
-
-    # presets 段：ST 版本等；输出方案仅作旧格式兼容
-    if output_schemes:
-        merged["OUTPUT_VARS_SCHEMES"] = output_schemes
-    if isinstance(presets.get("server_st"), dict):
-        st_dict = presets["server_st"]
-        merged["ST_VERSIONS"] = [{"name": k, "path": v} for k, v in st_dict.items()]
-        merged["ST_OPTIONS"] = list(st_dict.keys())
-        merged["DEFAULT_ST"] = list(st_dict.keys())[0] if st_dict else ""
-    if isinstance(presets.get("local_st"), dict):
-        lst_dict = presets["local_st"]
-        merged["LOCAL_ST_VERSIONS"] = [{"name": k, "path": v} for k, v in lst_dict.items()]
-        merged["LOCAL_ST_OPTIONS"] = list(lst_dict.keys())
-        merged["DEFAULT_LOCAL_ST"] = list(lst_dict.keys())[0] if lst_dict else ""
+    slurm = root.get("slurm") or {}
+    if isinstance(slurm.get("server_st"), dict):
+        try:
+            active, st_dict = parse_named_path_preset_block(
+                slurm["server_st"],
+                path="slurm.server_st",
+            )
+            merged["ST_VERSIONS"] = [{"name": k, "path": v} for k, v in st_dict.items()]
+            merged["ST_OPTIONS"] = list(st_dict.keys())
+            merged["DEFAULT_ST"] = active
+        except ValueError:
+            pass
+    local_run = root.get("local_run") or {}
+    if isinstance(local_run.get("local_st"), dict):
+        try:
+            active, lst_dict = parse_named_path_preset_block(
+                local_run["local_st"],
+                path="local_run.local_st",
+            )
+            merged["LOCAL_ST_VERSIONS"] = [{"name": k, "path": v} for k, v in lst_dict.items()]
+            merged["LOCAL_ST_OPTIONS"] = list(lst_dict.keys())
+            merged["DEFAULT_LOCAL_ST"] = active
+        except ValueError:
+            pass
     return merged
 
 
@@ -1263,39 +1282,64 @@ def save_full_config(config: dict) -> bool:
             elif flat_key in ("SERVER_KEY_FILE", "SERVER_PASSWORD", "SERVER_SSH_CONFIG_HOST"):
                 _set_nested(root, yaml_path, None)
                 written_paths.add(yaml_path)
-    # 输出方案设置页保存：写回 ww3.output_scheme，不再写 presets.output_scheme。
+    # 输出方案设置页保存：写回 ww3.output_scheme（方案名: 空格分隔字段），不再写 presets.output_scheme。
     if "OUTPUT_VARS_SCHEMES" in config:
         schemes = config["OUTPUT_VARS_SCHEMES"]
         if isinstance(schemes, dict) and schemes:
             current = str(config.get("OUTPUT_SCHEME_NAME") or "").strip()
-            if current not in schemes:
-                current = next((str(k) for k in schemes if str(k) != "__params__"), next(iter(schemes)))
-            fields = _output_fields_from_value(schemes.get(current))
-            if fields:
-                root.setdefault("ww3", {})["output_scheme"] = {
-                    "name": current,
-                    "fields": " ".join(fields),
-                }
+            clean_schemes = {
+                str(name): list(fields)
+                for name, fields in schemes.items()
+                if str(name) not in {"__params__"} and not str(name).startswith("__")
+            }
+            if current not in clean_schemes and clean_schemes:
+                current = next(iter(clean_schemes))
+            if current and clean_schemes:
+                root.setdefault("ww3", {})["output_scheme"] = serialize_ww3_output_scheme(
+                    current,
+                    clean_schemes,
+                )
         presets = root.get("presets")
         if isinstance(presets, dict):
             presets.pop("output_scheme", None)
     # presets 段
     if "ST_VERSIONS" in config:
         versions = config["ST_VERSIONS"]
-        if isinstance(versions, list):
-            st_dict = {}
-            for item in versions:
-                if isinstance(item, dict) and item.get("name"):
-                    st_dict[item["name"]] = item.get("path", "")
-            root.setdefault("presets", {})["server_st"] = st_dict
+        if isinstance(versions, list) and versions:
+            st_dict = {
+                str(item["name"]): str(item.get("path", ""))
+                for item in versions
+                if isinstance(item, dict) and item.get("name")
+            }
+            active = str(config.get("DEFAULT_ST") or "").strip()
+            if st_dict and active:
+                root.setdefault("slurm", {})["server_st"] = serialize_named_path_preset_block(
+                    active,
+                    st_dict,
+                )
     if "LOCAL_ST_VERSIONS" in config:
         versions = config["LOCAL_ST_VERSIONS"]
-        if isinstance(versions, list):
-            lst_dict = {}
-            for item in versions:
-                if isinstance(item, dict) and item.get("name"):
-                    lst_dict[item["name"]] = item.get("path", "")
-            root.setdefault("presets", {})["local_st"] = lst_dict
+        if isinstance(versions, list) and versions:
+            lst_dict = {
+                str(item["name"]): str(item.get("path", ""))
+                for item in versions
+                if isinstance(item, dict) and item.get("name")
+            }
+            active = str(config.get("DEFAULT_LOCAL_ST") or "").strip()
+            if lst_dict and active:
+                root.setdefault("local_run", {})["local_st"] = serialize_named_path_preset_block(
+                    active,
+                    lst_dict,
+                )
+    presets = root.get("presets")
+    if isinstance(presets, dict):
+        presets.pop("server_st", None)
+        presets.pop("local_st", None)
+    slurm = root.get("slurm")
+    if isinstance(slurm, dict):
+        from workflows.application.configuration import normalize_slurm_section
+
+        root["slurm"] = normalize_slurm_section(slurm)
     return _write_root_params(root)
 
 

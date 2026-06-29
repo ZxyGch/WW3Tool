@@ -18,7 +18,6 @@ import re
 from ...support.translations import tr
 from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
-from .ww3_shel_nml import format_spectral_point_shel_log_message
 
 
 class WW3OunpNML(NMLPrimitives):
@@ -91,47 +90,16 @@ class WW3OunpNML(NMLPrimitives):
         if not is_nested_grid:
             self._export_points_to_dir(target_dir, points_data)
 
-        # [EN] Modify ww3_shel.nml
-        # In nested grid mode, these modifications happen after _apply_ww3_params_to_dir
-        # In normal grid mode, these modifications happen before _modify_ww3_shel_times_to_dir
-        # So uniformly use silent=True for merged log output
-        # 修改 ww3_shel.nml
-        # 在嵌套网格模式下，这些修改会在 _apply_ww3_params_to_dir 之后进行
-        # 在普通网格模式下，这些修改会在 _modify_ww3_shel_times_to_dir 之前进行
-        # 所以统一使用 silent=True，让 _modify_ww3_shel_times_to_dir 或这里统一输出合并的日志
-
-        # [EN] Modify TYPE%POINT%FILE
-        # 修改 TYPE%POINT%FILE
-        modified_point_file = self._modify_ww3_shel_point_file_in_dir(target_dir, silent=True)
-
-        # [EN] Modify DATE%POINT and DATE%BOUNDARY
-        # 修改 DATE%POINT 和 DATE%BOUNDARY
-        modified_date_point = False
-        if start_date and end_date and output_precision:
-            if (start_date.isdigit() and len(start_date) == 8 and
-                end_date.isdigit() and len(end_date) == 8 and
-                output_precision.isdigit()):
-                modified_date_point = self._modify_ww3_shel_date_point_in_dir(target_dir, start_date, end_date, output_precision, silent=True)
-
-        # [EN] In nested grid mode, output merged log here (since _modify_ww3_shel_times_to_dir was already called before)
-        # 在嵌套网格模式下，这里输出合并的日志（因为 _modify_ww3_shel_times_to_dir 已经在之前调用了）
-        if is_nested_grid and (modified_point_file or modified_date_point):
-            # [EN] Get time info for log
-            # 获取时间信息用于日志
-            start_date_for_log = self.shel_start_edit.text().strip()
-            end_date_for_log = self.shel_end_edit.text().strip()
-            output_stride_for_log = output_precision if output_precision else self.output_precision_edit.text().strip()
-
-            if start_date_for_log and end_date_for_log and output_stride_for_log:
-                self.log(
-                    format_spectral_point_shel_log_message(
-                        start_date_for_log,
-                        end_date_for_log,
-                        output_stride_for_log,
-                        modified_point_file=modified_point_file,
-                        modified_date_point=modified_date_point,
+        # 嵌套网格谱点配置写入 ww3_multi.nml（根目录）与 ww3_ounp.nml，不修改各层 ww3_shel.nml
+        if not is_nested_grid:
+            self._modify_ww3_shel_point_file_in_dir(target_dir, silent=True)
+            if start_date and end_date and output_precision:
+                if (start_date.isdigit() and len(start_date) == 8 and
+                    end_date.isdigit() and len(end_date) == 8 and
+                    output_precision.isdigit()):
+                    self._modify_ww3_shel_date_point_in_dir(
+                        target_dir, start_date, end_date, output_precision, silent=True
                     )
-                )
 
         # [EN] Modify ww3_ounp.nml
         # 修改 ww3_ounp.nml

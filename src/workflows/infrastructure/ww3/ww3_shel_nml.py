@@ -23,10 +23,9 @@ def _ww3_shel_time_assignments(
     end_date: str,
     main_step: str,
     *,
-    modified_point_file: bool = False,
-    modified_date_point: bool = False,
+    include_spectral_point: bool = False,
 ) -> list[Assignment]:
-    """ww3_shel.nml 时间/输出相关实际写入项。"""
+    """ww3_shel.nml 时间/输出相关写入项（日志与文档用）。"""
     field_triple = f"'{start_date} 000000' '{main_step}' '{end_date} 235959'"
     assignments: list[Assignment] = [
         ("DOMAIN%START", f"'{start_date} 000000'"),
@@ -37,9 +36,8 @@ def _ww3_shel_time_assignments(
         ("DATE%RESTART%START", f"'{start_date} 000000'"),
         ("DATE%RESTART%STOP", f"'{end_date} 235959'"),
     ]
-    if modified_point_file:
+    if include_spectral_point:
         assignments.append(("TYPE%POINT%FILE", "'points.list'"))
-    if modified_date_point:
         assignments.extend(
             [
                 ("DATE%POINT", field_triple),
@@ -53,11 +51,11 @@ def format_spectral_point_shel_log_message(
     start_date: str,
     end_date: str,
     main_step: str,
-    *,
-    modified_point_file: bool = False,
-    modified_date_point: bool = False,
 ) -> str:
-    """生成谱点模式 ww3_shel.nml 更新日志（多行、等号对齐）。"""
+    """生成谱点模式 ww3_shel.nml 更新日志（多行、等号对齐）。
+
+    谱点相关项始终列出，不因 nml 中已存在而省略（避免二次确认参数时日志不完整）。
+    """
     return format_nml_log_message(
         "step4_ww3_shel_spectral_point_updated",
         "✅ 已更新 ww3_shel.nml：\n{details}",
@@ -65,8 +63,7 @@ def format_spectral_point_shel_log_message(
             start_date,
             end_date,
             main_step,
-            modified_point_file=modified_point_file,
-            modified_date_point=modified_date_point,
+            include_spectral_point=True,
         ),
         blank_before_prefixes=_SHEL_GROUP_PREFIXES,
     )
@@ -137,7 +134,7 @@ class WW3ShelNML(NMLPrimitives):
             return False
 
     def _apply_output_scheme_to_dir(self, target_dir):
-        """将谱分区输出方案写入指定目录的 ww3_shel.nml 和 ww3_ounf.nml"""
+        """将谱分区输出方案写入指定目录的 ww3_ounf.nml（嵌套时各层不用 ww3_shel.nml）。"""
         if not target_dir or not isinstance(target_dir, str):
             return False
 
@@ -145,7 +142,12 @@ class WW3ShelNML(NMLPrimitives):
         if not var_list_str:
             return False
 
-        modified_any = self._write_type_field_list_to_shel(target_dir, var_list_str)
+        is_nested = (
+            hasattr(self, "_is_nested_grid_mode") and self._is_nested_grid_mode()
+        )
+        modified_any = False
+        if not is_nested:
+            modified_any = self._write_type_field_list_to_shel(target_dir, var_list_str)
 
         # 更新 ww3_ounf.nml 的 FIELD%LIST
         ww3_ounf_path = os.path.join(target_dir, "ww3_ounf.nml")
@@ -174,14 +176,23 @@ class WW3ShelNML(NMLPrimitives):
             self._modify_namelists_e3d_in_dir(target_dir)
 
         if modified_any:
-            assignments: list[Assignment] = [
-                ("TYPE%FIELD%LIST", f"'{var_list_str}'"),
-                ("FIELD%LIST", f"'{var_list_str}'"),
-            ]
+            if is_nested:
+                assignments: list[Assignment] = [
+                    ("FIELD%LIST", f"'{var_list_str}'"),
+                ]
+                log_key = "output_scheme_applied_ounf"
+                log_tpl = "✅ 已修改 ww3_ounf 的谱分区输出方案：\n{details}"
+            else:
+                assignments = [
+                    ("TYPE%FIELD%LIST", f"'{var_list_str}'"),
+                    ("FIELD%LIST", f"'{var_list_str}'"),
+                ]
+                log_key = "output_scheme_applied"
+                log_tpl = "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案：\n{details}"
             self.log(
                 format_nml_log_message(
-                    "output_scheme_applied",
-                    "✅ 已修改 ww3_shel，ww3_ounf 的谱分区输出方案：\n{details}",
+                    log_key,
+                    log_tpl,
                     assignments,
                 )
             )
@@ -190,8 +201,11 @@ class WW3ShelNML(NMLPrimitives):
 
 
     def _modify_ww3_shel_times_to_dir(self, target_dir, output_stride, grid_label=""):
-        """在指定目录中修改 ww3_shel.nml"""
+        """在指定目录中修改 ww3_shel.nml（嵌套网格各层由 ww3_multi.nml 驱动，跳过）。"""
         if not target_dir or not isinstance(target_dir, str):
+            return
+
+        if hasattr(self, "_is_nested_grid_mode") and self._is_nested_grid_mode():
             return
 
         path = os.path.join(target_dir, "ww3_shel.nml")
@@ -302,21 +316,30 @@ class WW3ShelNML(NMLPrimitives):
                 point_count = self.spectral_points_table.rowCount()
                 has_points = point_count > 1  # 有数据点（除了表头）
 
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
+
+            is_nested_grid = (
+                self._is_nested_grid_mode()
+                if hasattr(self, "_is_nested_grid_mode")
+                else False
+            )
 
             if is_spectral_point and has_points:
-                # 二维谱点计算模式：合并所有修改的日志
-                modified_point_file = self._modify_ww3_shel_point_file_in_dir(target_dir, silent=True)
-                modified_date_point = self._modify_ww3_shel_date_point_in_dir(target_dir, start_date, end_date, main_step, silent=True)
-
-                log_msg = prefix + format_spectral_point_shel_log_message(
-                    start_date,
-                    end_date,
-                    main_step,
-                    modified_point_file=modified_point_file,
-                    modified_date_point=modified_date_point,
+                # 二维谱点：写入 nml；完整日志在普通网格此处输出，嵌套网格由 _apply_spectral_params_to_dir 统一输出
+                self._modify_ww3_shel_point_file_in_dir(target_dir, silent=True)
+                self._modify_ww3_shel_date_point_in_dir(
+                    target_dir, start_date, end_date, main_step, silent=True
                 )
-                self.log(log_msg)
+                if is_nested_grid:
+                    self.log(
+                        prefix
+                        + format_ww3_shel_time_log_message(start_date, end_date, main_step)
+                    )
+                else:
+                    self.log(
+                        prefix
+                        + format_spectral_point_shel_log_message(start_date, end_date, main_step)
+                    )
             else:
                 self.log(prefix + format_ww3_shel_time_log_message(start_date, end_date, main_step))
 
@@ -370,6 +393,13 @@ class WW3ShelNML(NMLPrimitives):
 
         if ww3_shel_path is None:
             ww3_shel_path = os.path.join(target_dir, "ww3_shel.nml")
+
+        if (
+            hasattr(self, "_is_nested_grid_mode")
+            and self._is_nested_grid_mode()
+            and os.path.basename(ww3_shel_path) == "ww3_shel.nml"
+        ):
+            return
 
         if not os.path.exists(ww3_shel_path):
             return
@@ -457,7 +487,7 @@ class WW3ShelNML(NMLPrimitives):
             with open(ww3_shel_path, "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(new_lines)
 
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             file_name = os.path.basename(ww3_shel_path)
             forcing_assignments: list[Assignment] = [
                 ("INPUT%FORCING%WINDS", f"'{'T' if has_wind else 'F'}'"),
@@ -477,7 +507,7 @@ class WW3ShelNML(NMLPrimitives):
             )
 
         except Exception as e:
-            prefix = f"{grid_label} " if grid_label else ""
+            prefix = ""
             file_name = os.path.basename(ww3_shel_path) if ww3_shel_path else "ww3_shel.nml"
             self.log(tr("file_forcing_modify_failed", "{prefix}❌ 修改 {file} 中的 INPUT%FORCING%* 失败：{error}").format(prefix=prefix, file=file_name, error=e))
 
@@ -499,19 +529,10 @@ class WW3ShelNML(NMLPrimitives):
         if point_count <= 1:  # 只有表头，没有数据点
             return
 
-        # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
+        if hasattr(self, "_is_nested_grid_mode") and self._is_nested_grid_mode():
+            return
 
-        if is_nested_grid:
-            from .nested_level_dirs import list_nested_level_paths
-
-            for level_dir in list_nested_level_paths(self.selected_folder):
-                self._modify_ww3_shel_point_file_in_dir(str(level_dir), silent=silent)
-        else:
-            # 普通网格模式：修改工作目录下的文件
-            self._modify_ww3_shel_point_file_in_dir(self.selected_folder, silent=silent)
+        self._modify_ww3_shel_point_file_in_dir(self.selected_folder, silent=silent)
 
     def _modify_ww3_shel_point_file_in_dir(self, target_dir, silent=False):
         """在指定目录下修改 ww3_shel.nml，在 TYPE%FIELD%LIST 下一行添加 TYPE%POINT%FILE
@@ -616,21 +637,12 @@ class WW3ShelNML(NMLPrimitives):
                 self.log(tr("output_precision_error_skip_point", "❌ 输出精度必须为数字（秒），跳过 DATE%POINT 和 DATE%BOUNDARY 修改"))
             return
 
-        # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
+        if hasattr(self, "_is_nested_grid_mode") and self._is_nested_grid_mode():
+            return
 
-        if is_nested_grid:
-            from .nested_level_dirs import list_nested_level_paths
-
-            for level_dir in list_nested_level_paths(self.selected_folder):
-                self._modify_ww3_shel_date_point_in_dir(
-                    str(level_dir), start_date, end_date, output_stride, silent=silent
-                )
-        else:
-            # 普通网格模式：修改工作目录下的文件
-            self._modify_ww3_shel_date_point_in_dir(self.selected_folder, start_date, end_date, output_stride, silent=silent)
+        self._modify_ww3_shel_date_point_in_dir(
+            self.selected_folder, start_date, end_date, output_stride, silent=silent
+        )
 
     def _modify_ww3_shel_date_point_in_dir(self, target_dir, start_date, end_date, output_stride, silent=False):
         """在指定目录下修改 ww3_shel.nml，在 DATE%FIELD 下一行添加 DATE%POINT 和 DATE%BOUNDARY
@@ -764,21 +776,10 @@ class WW3ShelNML(NMLPrimitives):
             self.log(tr("output_precision_error_skip_track", "❌ 输出精度必须为数字（秒），跳过 DATE%TRACK 修改"))
             return
 
-        # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
-        is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
+        if hasattr(self, "_is_nested_grid_mode") and self._is_nested_grid_mode():
+            return
 
-        if is_nested_grid:
-            from .nested_level_dirs import list_nested_level_paths
-
-            for level_dir in list_nested_level_paths(self.selected_folder):
-                self._modify_ww3_shel_date_track_in_dir(
-                    str(level_dir), start_datetime, output_stride, end_datetime
-                )
-        else:
-            # 普通网格模式：修改工作目录下的文件
-            self._modify_ww3_shel_date_track_in_dir(self.selected_folder, start_datetime, output_stride, end_datetime)
+        self._modify_ww3_shel_date_track_in_dir(self.selected_folder, start_datetime, output_stride, end_datetime)
 
     def _modify_ww3_shel_date_track_in_dir(self, target_dir, start_datetime, output_stride, end_datetime):
         """在指定目录下修改 ww3_shel.nml，在 &OUTPUT_DATE_NML 下添加 DATE%TRACK"""

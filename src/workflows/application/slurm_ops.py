@@ -7,7 +7,6 @@ from typing import Optional
 from ..domain.config_models import PipelineConfig
 from ..infrastructure.adapters.ww3_namelist_adapter import update_server_script
 from ..support.logging import CoreLogger, LogCallback
-from ..support.translations import tr
 from .remote_ops import RemoteResult, run_slurm_idle_resources
 
 
@@ -24,5 +23,4 @@ def run_confirm_slurm(
     """Apply Slurm settings from params.yml and regenerate ``server.sh``."""
     logger = CoreLogger(callback=log)
     update_server_script(config, logger)
-    logger.log(tr("server_script_applied", "✅ server.sh 已应用 Slurm 配置"))
     return 0
