@@ -24,7 +24,7 @@ try:
 except ImportError:
     HAS_WAVESPECTRA = False
 
-USE_WAVESPECTRA_NORMALIZED_PLOT = False
+USE_WAVESPECTRA_NORMALIZED_PLOT = True
 
 from .workers_utils import _pick_station_lon_lat, _decode_station_names
 
@@ -725,8 +725,16 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     # 创建 xarray DataArray（wavespectra 需要）
                     # E_original 应该是 (frequency, direction) 形状
                     # wavespectra 期望 (freq, dir) 坐标
+                    E_wavespectra = np.array(E_original, dtype=float, copy=True)
+                    finite = E_wavespectra[np.isfinite(E_wavespectra)]
+                    max_value = float(np.nanmax(finite)) if finite.size else 0.0
+                    if max_value > 0:
+                        E_wavespectra = E_wavespectra / max_value
+                    else:
+                        E_wavespectra = np.nan_to_num(E_wavespectra, nan=0.0)
+
                     efth_da = xr.DataArray(
-                        E_original,  # (freq, dir)
+                        E_wavespectra,  # (freq, dir), max-normalized before wavespectra plotting
                         dims=['freq', 'dir'],
                         coords={'freq': freq_orig, 'dir': dir_orig},
                         name='efth'
@@ -736,8 +744,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     spec_array = SpecArray(efth_da)
 
                     # 计算数据范围，用于生成颜色条刻度
-                    data_min = float(np.nanmin(E_original))
-                    data_max = float(np.nanmax(E_original))
+                    data_min = float(np.nanmin(E_wavespectra))
+                    data_max = float(np.nanmax(E_wavespectra))
 
                     # 使用函数计算归一化后的颜色条刻度值
                     cbar_ticks = calculate_cbar_ticks(data_min, data_max, generate_ticks)
@@ -1408,8 +1416,16 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     import xarray as xr
 
                     # 创建 xarray DataArray（wavespectra 需要）
+                    E_wavespectra = np.array(E_original, dtype=float, copy=True)
+                    finite = E_wavespectra[np.isfinite(E_wavespectra)]
+                    max_value = float(np.nanmax(finite)) if finite.size else 0.0
+                    if max_value > 0:
+                        E_wavespectra = E_wavespectra / max_value
+                    else:
+                        E_wavespectra = np.nan_to_num(E_wavespectra, nan=0.0)
+
                     efth_da = xr.DataArray(
-                        E_original,  # (freq, dir)
+                        E_wavespectra,  # (freq, dir), max-normalized before wavespectra plotting
                         dims=['freq', 'dir'],
                         coords={'freq': freq_orig, 'dir': dir_orig},
                         name='efth'
@@ -1419,8 +1435,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
                     spec_array = SpecArray(efth_da)
 
                     # 计算数据范围，用于生成颜色条刻度
-                    data_min = float(np.nanmin(E_original))
-                    data_max = float(np.nanmax(E_original))
+                    data_min = float(np.nanmin(E_wavespectra))
+                    data_max = float(np.nanmax(E_wavespectra))
 
                     # 使用函数计算归一化后的颜色条刻度值
                     cbar_ticks = calculate_cbar_ticks(data_min, data_max, generate_ticks)
