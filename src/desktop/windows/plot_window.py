@@ -163,7 +163,10 @@ class PlotInterface(QWidget):
         row.setSpacing(8)
         row.addWidget(self._button(generate_label, generate_cb), 3)
         row.addWidget(
-            self._button(tr("plotting_view_short", "查看"), lambda: self._view_photo_subdir(view_subdir)),
+            self._button(
+                tr("plotting_view_short", "查看"),
+                lambda _checked=False, subdir=view_subdir: self._view_photo_subdir(subdir),
+            ),
             1,
         )
         return row
@@ -193,7 +196,7 @@ class PlotInterface(QWidget):
             grid.addWidget(
                 self._button(
                     tr("plotting_view_short", "查看"),
-                    lambda subdir=view_subdir: self._view_photo_subdir(subdir),
+                    lambda _checked=False, subdir=view_subdir: self._view_photo_subdir(subdir),
                 ),
                 row_idx,
                 1,
