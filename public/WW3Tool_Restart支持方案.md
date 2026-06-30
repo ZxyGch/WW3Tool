@@ -91,11 +91,11 @@ restart:
   # cold：走 ww3_strt；restart：使用已有 restart.ww3，跳过 ww3_strt
   mode: cold
 
-  # 热启动输入。null = 使用 workdir 内已有 restart.ww3
+  # 手动热启动输入。pick_latest_checkpoint=false 时使用
   # 嵌套可为 map：{ level0: /path/to/restart.ww3, level1: ... }
   input_file: null
 
-  # restart 文件内时刻（热启动积分起点）。null = 自动检测或回退 ww3.start_date
+  # 手动热启动积分起点。pick_latest_checkpoint=true 时可为空，由最新 checkpoint 自动确定
   # 格式：YYYYMMDD 或 "YYYYMMDD HHMMSS"
   restart_time: null
 
@@ -116,7 +116,7 @@ restart:
 |------|--------|--------|
 | `ww3.start_date` | `DOMAIN%START` | 仅用于强迫/输出**下界**参考；**积分起点**用 `restart.restart_time` |
 | `ww3.end_date` | `DOMAIN%STOP` | `DOMAIN%STOP` |
-| `restart.restart_time` | 忽略 | **必须** ≤ `end_date`，且与 restart 文件内时间一致 |
+| `restart.restart_time` | 忽略 | `pick_latest_checkpoint=false` 时使用；`pick_latest_checkpoint=true` 时由最新 checkpoint 自动确定 |
 
 建议在 prepare 日志中**明确打印**：
 
@@ -200,7 +200,7 @@ workdir/
 
 1. 若 `input_file` 为字符串 → 单层：link/copy 到 `restart.ww3`。
 2. 若 `input_file` 为 dict / 列表（按 level 名）→ 各 `levelK/restart.ww3` + staging。
-3. `pick_latest_checkpoint: true` 时，在目标目录扫描 `restart*.ww3`，取最新修改时间且谱头合法的作为输入（首版可简化为「最大编号 N」）。
+3. `pick_latest_checkpoint: true` 时，在目标目录扫描 `restart*.ww3`，取最新修改时间且谱头合法的作为输入，并由该 checkpoint 自动确定热启动时刻（首版可简化为「最大编号 N + 可解析时间」）。
 
 ### 6.3 校验（prepare 阶段必做）
 
@@ -209,10 +209,11 @@ workdir/
 | `mod_def.ww3` 存在 | 报错：需先 `ww3_grid` |
 | restart 文件存在且非空 | 报错：指定 `input_file` 或先冷启动 |
 | 网格未变（对比 `grid.meta` / mod_def 哈希，可选） | 警告或拒绝热启动 |
-| `restart_time` 与文件内时间（若可解析） | 警告不一致 |
-| `restart_time` < `end_date` | 拒绝 |
+| 手动模式下 `restart_time` 与文件内时间（若可解析） | 警告不一致 |
+| 自动 checkpoint 模式无法确定 restart 时刻 | 报错：请关闭自动选择并手动填写 `restart_time` |
+| 热启动起点 >= `end_date` | 拒绝 |
 
-首版时间解析：优先让用户填 `restart_time`；可选后续读 `restart.ww3` 头（需调研 WW3 是否提供 CLI 或 Python 读头工具）。
+时间解析策略：`pick_latest_checkpoint=true` 时优先从最新 checkpoint 自动确定；若无法解析，再要求用户关闭自动选择并手动填写 `restart_time`。手动模式仍需校验 `restart_time` 与文件内时刻是否一致。
 
 ---
 
@@ -309,7 +310,7 @@ Step 4 增加启动方式下拉：
 
 - 单选：**冷启动** / **热启动**
 - 首版仅写入 `restart.mode`；冷启动保持现有流程。
-- 后续热启动执行逻辑接入后，再增加文件选择器（`restart.ww3`）与 `restart_time` 日期时间；restart 写出间隔与第四步已有的输出步长共用一个输入框。
+- 后续热启动执行逻辑接入后，`pick_latest_checkpoint=true` 时隐藏文件选择器与 `restart_time`；关闭自动选择后才显示并保存手动文件与时间。restart 写出间隔与第四步已有的输出步长共用一个输入框。
 - 嵌套热启动后续使用表格按 `level0`…`levelN` 指定各层 restart（可留空=用层目录内已有文件）。
 
 首页**暂不**放 restart；与 `WW3常用配置补充计划.md` §7 一致。

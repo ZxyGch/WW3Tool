@@ -827,8 +827,8 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# ────────────────────────────────────────────────────────────────────\n"
      "# WW3 restart / hot-start settings.\n"
      "#   mode       – cold runs ww3_strt; restart uses existing restart.ww3 and skips ww3_strt.\n"
-     "#   input_file – null uses restart.ww3 already in workdir; nested can use {level0: path, ...}.\n"
-     "#   restart_time – hot-start integration start time: YYYYMMDD or \"YYYYMMDD HHMMSS\".\n"
+     "#   input_file – used only when pick_latest_checkpoint=false; nested can use {level0: path, ...}.\n"
+     "#   restart_time – used only when pick_latest_checkpoint=false; YYYYMMDD or \"YYYYMMDD HHMMSS\".\n"
      "#   output_step – restart write interval, synchronized from ww3.output_step by GUI.\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("ww3_grid:",

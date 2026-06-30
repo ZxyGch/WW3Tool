@@ -82,6 +82,7 @@ class WW3StepPanel:
         self._restart_fields: dict[str, LineEdit] = {}
         self._restart_checkboxes: dict[str, CheckBox] = {}
         self._restart_hot_only: list[QWidget] = []
+        self._restart_manual_only: list[QWidget] = []
         self._restart_input_file_raw: object = None
         self._spectrum_hideables: list[QWidget] = []
         self._timesteps_hideables: list[QWidget] = []
@@ -330,7 +331,7 @@ class WW3StepPanel:
         grid.addWidget(edit, row, 1)
         self._restart_fields[key] = edit
         if key in {"input_file", "restart_time"}:
-            self._restart_hot_only.extend((label_widget, edit))
+            self._restart_manual_only.extend((label_widget, edit))
 
     def _restart_checkbox_line(self, grid: QGridLayout, row: int, label: str, key: str) -> None:
         label_widget = self._field_label(label)
@@ -345,6 +346,7 @@ class WW3StepPanel:
         self._restart_checkboxes[key] = check
         if key == "pick_latest_checkpoint":
             self._restart_hot_only.extend((label_widget, holder))
+            check.toggled.connect(lambda _checked: self._update_restart_enabled_state())
 
     def _restart_value_text(self, value: object) -> str:
         if value is None:
@@ -364,8 +366,11 @@ class WW3StepPanel:
 
     def _update_restart_enabled_state(self) -> None:
         hot_start = combo_selected_user_data(self.restart_mode_combo) == "restart"
+        manual_restart = hot_start and not self._restart_checkboxes["pick_latest_checkpoint"].isChecked()
         for widget in self._restart_hot_only:
             widget.setVisible(hot_start)
+        for widget in self._restart_manual_only:
+            widget.setVisible(manual_restart)
         if hasattr(self, "widget"):
             self.widget.updateGeometry()
 
@@ -444,16 +449,19 @@ class WW3StepPanel:
         }
 
     def restart_overrides(self) -> dict[str, object]:
+        mode = combo_selected_user_data(self.restart_mode_combo) or "cold"
+        pick_latest = self._restart_checkboxes["pick_latest_checkpoint"].isChecked()
+        manual_restart = mode == "restart" and not pick_latest
         input_file_text = self._restart_fields["input_file"].text().strip()
-        input_file: object = input_file_text or None
-        if input_file_text and input_file_text == self._restart_value_text(self._restart_input_file_raw):
+        input_file: object = input_file_text if manual_restart and input_file_text else None
+        if manual_restart and input_file_text and input_file_text == self._restart_value_text(self._restart_input_file_raw):
             input_file = self._restart_input_file_raw
         return {
-            "mode": combo_selected_user_data(self.restart_mode_combo) or "cold",
+            "mode": mode,
             "input_file": input_file,
-            "restart_time": self._restart_fields["restart_time"].text().strip() or None,
+            "restart_time": self._restart_fields["restart_time"].text().strip() if manual_restart else None,
             "output_step": self.fields["ww3_output"].text().strip(),
-            "pick_latest_checkpoint": self._restart_checkboxes["pick_latest_checkpoint"].isChecked(),
+            "pick_latest_checkpoint": pick_latest,
             "keep_latest_only": self._restart_checkboxes["keep_latest_only"].isChecked(),
         }
 
