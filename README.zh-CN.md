@@ -995,7 +995,7 @@ WW3Tool 在此基础上取整数秒，并级联得到：
 
 - 从 public/6.07_nml/ 或 public/7.14_nml/（根据你的 NML Version 选择）复制 ww3_grid.nml、ww3_prnc.nml、ww3_shel.nml、ww3_ounf.nml 等到工作目录。
 
-- 从 public/scripts/ 复制  local.sh 和 server.sh。两个脚本的计算流程相同；差别见 §5.5.9。
+- 从 public/scripts/ 复制  local.sh 和 server.sh。算例具体怎么一步步跑起来，见 §5.5.9。
 
 他们决定了 WW3 的程序（例如 ww3_grid、ww3_shel）执行流程， local.sh 是在本地运行的脚本， server.sh 是在 Slurm 运行的脚本。
 
@@ -1106,36 +1106,89 @@ ww3:
 
 #### 5.5.5 启动方式与热启动
 
-第四步可以选择 WW3 的启动方式。一般新算例使用冷启动；如果前一次计算已经产生了 `restart*.ww3`，并且希望从已有海浪状态继续积分，就使用热启动。
+第四步「时间设置」下方可以选择**冷启动**或**热启动**。新算例一律选冷启动；只有工作目录里已经有一次（或多次）算完留下的 `restart*.ww3`，才需要热启动。
 
-对应的 yml 参数：
+**冷启动**走完整流程：`ww3_strt` 生成初始海浪场 → `ww3_shel` 从你在第四步填的**起始日期**开始积分。
 
-```yaml
-ww3:
-  start_date: "20250103"
-  end_date: "20250105"
-  output_step: "3600"
-  restart:
-    mode: cold                  # cold 或 restart
-    pick_latest_checkpoint: true
-    restart_time: null
-    restart_file: null
+**热启动**跳过 `ww3_strt`，直接拿上一次算出的海浪状态接着往后积。适合任务拆段、服务器中断后续算、或先 spin-up 再正式模拟。
+
+##### 第四步界面上有什么
+
+| 界面项 | 冷启动 | 热启动 + 自动最新 | 热启动 + 手动 |
+| --- | --- | --- | --- |
+| 启动方式 | 冷启动 | 热启动 | 热启动 |
+| Restart 日期 | 灰掉 | 显示「自动最新」 | 填 `YYYYMMDD` 或 `YYYYMMDD HHMMSS` |
+| Restart 文件 | 灰掉 | 灰掉 | 可选填 `restart036.ww3` 等 |
+| 起始日期 | 可编辑 | **只读**（仍表示整段模拟的日历起点） | 只读 |
+| 结束日期 | 可编辑 | 可编辑 | 可编辑 |
+
+点「确认参数」后，工具会把你的选择写进工作目录的 `params.yml`，并按 §5.5.4 把**起始日期、结束日期、输出步长**同步进各 nml。其中 `ww3_shel.nml` 里：
+
+- `DOMAIN%START` / `DOMAIN%STOP`：整段模拟的起止（此时 `START` = 起始日期 00:00:00）
+- `DATE%FIELD` 等：场输出的起止与间隔（间隔 = 第四步的**输出步长**）
+- `DATE%RESTART`：冷启动时**每隔多久写一个 restart 文件**（起点 = 起始日期，步长 = 输出步长）
+
+强迫场时间（`ww3_prnc.nml` 的 `FORCING%TIMESTART/TIMESTOP`）同样按起始/结束日期写入，须覆盖你要积分的整段日历。
+
+
+
+##### 真正开算时发生什么（自动最新）
+
+本机点「本地运行」，或服务器上传后点「提交计算任务」，工作目录里的 `local.sh` / `server.sh` 会**最先**处理热启动，然后才跑 `ww3_grid`。对普通网格，顺序是：
+
+1. **找 checkpoint**  
+   先在工作目录找带时间戳的文件，如 `20250104.120000.restart.ww3`（v7.14 ）。  
+   若没有，再找编号最大的 `restart071.ww3` 这类文件（v6.07.1 ）。此时时刻不能从文件名读，工具会根据 `ww3_shel.nml` 里**第四步已写好**的 `DATE%RESTART` 日程反推，例如起点 `20250103 000000`、步长 `3600`、文件 `restart071.ww3` → 对应 `20250105 230000`。
+
+2. **复制为 `restart.ww3`**  
+   `ww3_shel` 只认这个名字的初始场文件。
+
+3. **改 `ww3_shel.nml` 的积分起点**  
+   把 `DOMAIN%START`、`DATE%FIELD` 等**输出相关**起始时刻改成上一步算出的 checkpoint 时刻。  
+   **`DATE%RESTART` 不改**——它仍描述「每隔多久写下一个 restart」，与冷启动时第四步设的一致。
+
+4. **跳过 `ww3_strt`，直接跑 `ww3_shel`**  
+   从 checkpoint 时刻积到 `DOMAIN%STOP`（结束日期 23:59:59）。
+
+`run.log` 里通常能看到：
+
+```log
+✅ Auto Latest restart: restart071.ww3 -> restart.ww3 (20250105 230000)
+⏭️ Restart mode: skip ww3_strt, start from 20250105 230000
 ```
 
-这些参数的作用：
+##### 手动指定 checkpoint（不用自动最新）
 
-- `ww3.restart.mode`：`cold` 表示冷启动，会按正常流程生成初始场；`restart` 表示热启动，会从已有 restart 文件继续计算。
-- `ww3.restart.pick_latest_checkpoint`：GUI 中显示为“自动最新”。为 `true` 时，程序优先使用工作目录里最新的 restart 检查点，不需要手填时间。
-- `ww3.restart.restart_time`：手动指定热启动时间，格式为 `YYYYMMDD` 或 `YYYYMMDD HHMMSS`。只有不使用“自动最新”时才需要填写。
-- `ww3.restart.restart_file`：手动指定 restart 文件名，例如 `restart036.ww3`。为空时按 restart 时间匹配。
-- `ww3.output_step`：同时作为结果输出步长和 restart 写出间隔；因此不再单独设置 restart 写出步长。
+关掉「自动最新」后，须填 **Restart 日期**；**Restart 文件**可选。
 
-简单理解：冷启动是“从一个新初始场开始算”，热启动是“接着已有 checkpoint 往后算”。热启动常用于长时间任务拆段、服务器任务中断后续算、或者先跑一段 spin-up 再进入正式模拟。
+工具按这个顺序找文件：
 
-热启动需要注意两点：
+1. 若填了 Restart 文件（如 `restart036.ww3`）→ 直接用；
+2. 否则按 Restart 日期找 `YYYYMMDD.HHMMSS.restart.ww3`；
+3. 再否则按 `DATE%RESTART` 日程反查 `restartNNN.ww3`（时刻须正好落在日程格点上）。
 
-1. restart 文件必须来自相同网格、相同谱参数和兼容的 WW3 版本，否则 WW3 本身可能无法读取。
-2. 热启动时实际积分起点由 restart 时间决定；第四步的时间范围仍然用于限定完整强迫场和输出时间窗。
+只填日期 `20250104` 会当作 `20250104 000000`。
+
+##### 工作目录里会出现哪些 restart 文件
+
+| 样子                                  | 怎么来的                              | 时刻怎么知道                          |
+| ----------------------------------- | --------------------------------- | ------------------------------- |
+| `restart001.ww3`、`restart002.ww3` … | 6.07 冷启动/积分时按 `DATE%RESTART` 间隔写出 | 用 `DATE%RESTART` 起点 + 编号 × 步长推算 |
+| `20250104.120000.restart.ww3`       | 7.14 开启 `DATE%RESTART2` 时写出       | 文件名里自带                          |
+
+**`restart.ww3`** 不是第四次写出物，而是**每次开算前**从某个 checkpoint 复制来的「本次要用的初始场」。冷启动时由 `ww3_strt` 生成；热启动时由运行脚本从 checkpoint 复制。
+
+若多次热启动后，较早的 `restartNNN.ww3` 可能被覆盖，编号与内嵌时刻会对不上，`ww3_shel` 会报 `CONFLICTING TIMES`。这时应改用手动指定 Restart 文件，或换用带时间戳的 checkpoint。
+
+##### 嵌套网格
+
+嵌套算例每层目录 `level0/`、`level1/` … 各自有 restart；热启动时各层须同一时刻。自动最新在嵌套模式下**只认带时间戳的 checkpoint**（如 `20250104.120000.restart.level2`），暂不支持用 `restartNNN.ww3` 反推。改的是根目录 `ww3_multi.nml` 里的积分起点，而不是各层 `ww3_shel.nml`。
+
+##### 使用注意
+
+- checkpoint 须与当前网格、谱参数、WW3 版本一致，否则读不进去。
+- 第四步的**起始日期**在热启动时仍表示「这一段模拟从日历哪天算起」、强迫场从哪天读；**真正从哪一刻接着积**由 checkpoint 决定，并在开算时写进 `DOMAIN%START`。
+
 
 
 
@@ -1329,80 +1382,99 @@ Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处
 
 
 
-#### 5.5.9 local.sh 与 server.sh 在算什么
+#### 5.5.9 local.sh 与 server.sh：算例是怎么跑起来的
 
-`local.sh` 和 `server.sh` 本身不做数值计算，它们是 WW3 运行流程的编排脚本：进入工作目录，按顺序调用 WW3 官方可执行程序，把所有输出追加到 `run.log`，任一步失败就停止并生成 `fail` 标记，全部完成后生成 `success` 标记。
+第四步点「确认参数」时，工具会把 `public/scripts/` 里的 `local.sh`、`server.sh` 复制到工作目录。它们不是 WW3 本身，而是**按固定顺序调用** `ww3_grid`、`ww3_prnc`、`ww3_shel` 等程序的壳脚本；所有屏幕输出追加进同目录的 `run.log`。某一步失败就停，并在目录里放一个空的 `fail` 文件；全部跑完则放 `success`。
 
-本机运行走 `local.sh`：
+本机调试走 `local.sh`（Step 6「本地运行」或 `python3 run.py local-run`）；上服务器走 `server.sh`（先上传，再 Step 6「提交计算任务」或 `python3 run.py submit`）。**两边调用的 WW3 步骤完全一样**，差别只是在哪里跑、用几核、PATH 指向哪套编译版本（见文末对比）。
 
-```sh
-python3 run.py local-run new
-```
+脚本启动时会读工作目录里的 `params.yml`：里面的**网格类型**决定走普通网格还是嵌套分支；**启动方式**（冷/热）决定要不要先处理 restart、要不要跑 `ww3_strt`。这些值都是第四步写进去的，脚本不会自己猜。
 
-服务器运行走 `server.sh`：先上传工作目录，再在服务器端提交脚本。
+##### 普通网格：从点运行到出 NetCDF
 
-```sh
-python3 run.py upload --confirm new
-python3 run.py submit new
-python3 run.py check-status new
-python3 run.py download-log new
-```
+下面是一条**冷启动**的完整链路。热启动只是在最前面多几步、并跳过 `ww3_strt`，其余相同。
 
-这些脚本真正调用的是下面这些 WW3 程序。
+**0. 热启动预处理（仅热启动）**  
+若第四步选了热启动，脚本在一切之前先：在工作目录找最新 checkpoint → 复制为 `restart.ww3` → 把 `ww3_shel.nml` 里积分/输出的起始时刻改成 checkpoint 时刻（详见 §5.5.5）。冷启动跳过此步。
 
-`ww3_grid` 读取 `ww3_grid.nml` 和网格输入文件，把水深、障碍物、谱空间、时间步等网格定义编译成 `mod_def.ww3`。后续所有 WW3 程序都依赖 `mod_def.ww3`，所以它是计算前必须先跑的第一步。
+**1. `ww3_grid`**  
+读 `ww3_grid.nml`（第四步根据 Step 2 网格写入）和 `grid.bot` 等，生成 `mod_def.ww3`。后面所有步骤都依赖它。
 
-`ww3_prnc` 读取 `ww3_prnc.nml` 和 NetCDF 强迫场，把风、流、水位、海冰等强迫插值或转换成 WW3 内部二进制文件，例如 `wind.ww3`、`current.ww3`、`level.ww3`、`ice.ww3`。WW3 的 `ww3_prnc` 一次只读取一个 namelist，所以有多种强迫场时，脚本会依次切换 `ww3_prnc.nml`，按 wind、current、level、ice 的顺序逐个运行。
+**2. `ww3_prnc`（可能有多次）**  
+读 `ww3_prnc.nml` 及第一步导入的 NetCDF 强迫场，生成 `wind.ww3` 等二进制强迫。WW3 一次只处理一种强迫，所以若第四步勾了流场、水位等，脚本会临时改名 nml，按 **风 → 流 → 水位 → 海冰** 顺序逐个跑（见 §5.5.7 日志）。
 
-`ww3_strt` 生成初始谱场，通常得到 `restart.ww3`。冷启动时它相当于给模型准备一个初始海浪状态；后续如果支持热启动，也会围绕 restart 文件继续扩展。
+**3. `ww3_strt`（仅冷启动）**  
+生成初始海浪谱，写出 `restart.ww3`。热启动时目录里已有上一步复制好的 `restart.ww3`，日志里会出现 `skip ww3_strt`。
 
-`ww3_shel` 是普通单网格的主积分程序。它读取 `mod_def.ww3`、强迫文件和 `ww3_shel.nml`，从 `ww3.start_date` 积分到 `ww3.end_date`，生成 WW3 的中间输出文件，例如 `out_grd.ww3`、`out_pnt.ww3`、`track_o.ww3`。脚本会优先用 `mpirun -n MPI_NPROCS ww3_shel` 并行运行；如果 MPI 方式失败，会再尝试直接运行一次 `ww3_shel`。
+**4. `ww3_shel`（主积分）**  
+读 `mod_def.ww3`、强迫文件、`restart.ww3`、`ww3_shel.nml`，从 `DOMAIN%START` 积到 `DOMAIN%STOP`，写出 `out_grd.ww3` 等中间结果；并按 `DATE%RESTART` 间隔继续写出 `restartNNN.ww3` 供下次热启动。  
+脚本优先 `mpirun` 并行；若本机 MPI 报错，会自动再试一次单进程 `ww3_shel`。
 
-`ww3_multi` 是嵌套网格的主积分程序。嵌套模式下不再用 `ww3_shel` 做主积分，而是由 `ww3_multi.nml` 管理 `level0` 到 `levelN` 的多层网格耦合，一次积分输出各层结果。WW3Tool 后续只把最细层 `levelN` 的结果移回对应目录并导出 NetCDF。
+**5. 导出（按需）**  
+- 有 `points.list`（二维谱点，第四步生成）→ `ww3_ounp` → `ww3.*_spec.nc`  
+- 有 `track_i.ww3`（轨迹模式）→ `ww3_trnc`  
+- 最后几乎总会跑 `ww3_ounf`，把 `out_grd.ww3` 转成 `ww3.YYYY.nc` 场结果  
 
-`ww3_ounf` 负责场输出导出。它读取 `out_grd.ww3` 和 `ww3_ounf.nml`，生成 `ww3.YYYY.nc` 这类 NetCDF 场结果。也就是说，`ww3_shel` / `ww3_multi` 负责“算”，`ww3_ounf` 负责“把场结果导出来”。
-
-`ww3_ounp` 负责点位二维谱输出导出。只有存在 `points.list` 时才会运行，它读取 `out_pnt.ww3` 和 `ww3_ounp.nml`，生成 `ww3.YYYY_spec.nc` 等谱点结果。
-
-`ww3_trnc` 负责轨迹输出导出。只有存在 `track_i.ww3` 时才会运行，它把主积分产生的 `track_o.ww3` 转成轨迹结果文件。
-
-普通网格的执行流程是：
+**6. `success`**  
+表示整条链路跑通。
 
 ```text
-ww3_grid
-→ ww3_prnc（wind/current/level/ice 逐个处理）
-→ ww3_strt
-→ mpirun ww3_shel（失败时尝试直接 ww3_shel）
-→ ww3_ounp（仅二维谱点计算）
-→ ww3_trnc（仅轨迹计算）
-→ ww3_ounf
-→ success / fail
+[热启动] 找 checkpoint → restart.ww3 → 改 ww3_shel.nml 起点
+    ↓
+ww3_grid → ww3_prnc（×N 种强迫）→ ww3_strt 或跳过
+    ↓
+mpirun ww3_shel
+    ↓
+ww3_ounp? → ww3_trnc? → ww3_ounf
+    ↓
+success
 ```
 
-嵌套网格的执行流程是：
+##### 嵌套网格：多一层目录结构
 
-```text
-对每个 level*：
-  ww3_grid
-  → ww3_prnc（wind/current/level/ice 逐个处理）
-  → ww3_strt
+嵌套算例没有单独的根目录 `ww3_shel`，而是：
 
-汇总各层文件到工作目录根：
-  mod_def.level0、wind.level0、restart.level0 ...
+1. 对 **每一层** `level0/`（最粗）… `levelN/`（最细）分别跑 `ww3_grid` → `ww3_prnc` → `ww3_strt`（热启动则各层跳过 strt）；  
+2. 把各层的 `mod_def.ww3`、`restart.ww3`、`wind.ww3` 等搬到根目录，改名为 `mod_def.level0`、`restart.level0` … 供 `ww3_multi` 使用；  
+3. 在根目录 `mpirun ww3_multi`（读第四步写好的 `ww3_multi.nml`）做一次多层耦合积分；  
+4. 把最细层 `levelN` 的 `out_grd.*`、`out_pnt.*` 移回该层目录，在那里跑 `ww3_ounp` / `ww3_trnc` / `ww3_ounf`。
 
-mpirun ww3_multi
-→ 把 out_grd.levelN / out_pnt.levelN / track_o.levelN 移回最细层 levelN/
-→ 在 levelN/ 运行 ww3_ounp（仅二维谱点计算）
-→ 在 levelN/ 运行 ww3_trnc（仅轨迹计算）
-→ 在 levelN/ 运行 ww3_ounf
-→ success / fail
+强迫场 NetCDF 放在根目录，各层 `ww3_prnc.nml` 用 `../wind.nc` 引用（§5.5.8）。
+
+##### local.sh 和 server.sh 有什么不同
+
+对你而言，**算哪几步是一样的**；不同在于「在哪儿、用谁的 CPU、日志打到哪里」：
+
+| | 本机 `local.sh` | 服务器 `server.sh` |
+| --- | --- | --- |
+| 怎么启动 | Step 6 本地运行 | 上传后 Step 6 提交；脚本若不在 Slurm 作业里会先 `sbatch` 自己 |
+| 用几核 | 默认本机全部逻辑核；终端可设 `WW3_MPI_NPROCS=8` | 与第五步「确认 Slurm 配置」写入的核数一致 |
+| WW3 程序从哪来 | 第四步选的**本机 ST**，走系统 PATH | 第五步把**服务器 ST** 路径写进脚本头部 `export PATH=...` |
+| 日志 | 终端可见，同时写入 `run.log` | 只写入服务器上的 `run.log`，需 `download-log` 拉回 |
+| 跑完怎么知道 | 看目录里 `success` / `fail` | 同上；`check-status` 查远程这两个文件 |
+
+**提交前 checklist：** 第四步已确认参数（namelist 和脚本是最新的）→ `upload --confirm` 同步到服务器 → 第五步已确认 Slurm（`server.sh` 头信息与队列匹配）→ 再 submit。`submit` **不会**重新生成 nml，也**不会**自动上传。
+
+##### 出错了怎么查
+
+打开工作目录的 `run.log`，搜 `Running` 分隔线，最后一条通常是失败步骤，例如 `Running ww3_prnc`、`Running mpirun ww3_shel`。
+
+热启动问题多在**最前面**：搜 `Auto Latest restart`、`Restart file`、`skip ww3_strt`。若 `ww3_shel` 报 `CONFLICTING TIMES`，说明复制的 `restart.ww3` 内嵌时刻与 `ww3_shel.nml` 的 `DOMAIN%START` 不一致，见 §5.5.5「手动指定 checkpoint」。
+
+本机快速试跑：
+
+```sh
+python3 run.py local-run <工作目录名>
 ```
 
-`local.sh` 和 `server.sh` 的计算流程基本相同，差别在运行环境。`local.sh` 在本机直接执行，`MPI_NPROCS` 默认取本机逻辑 CPU 数，也可以用环境变量 `WW3_MPI_NPROCS` 覆盖；`server.sh` 会先通过 `sbatch` 提交到 Slurm，再按 `#SBATCH -n`、`#SBATCH -N`、`#SBATCH --mem` 和 `MPI_NPROCS` 使用服务器资源。
+服务器标准流程：
 
-另一个关键差别是 WW3 可执行文件路径。`local.sh` 使用本机环境里的 `ww3_grid`、`ww3_shel` 等命令；`server.sh` 会根据 Step5 选择的服务器 ST 版本写入 `export PATH=...:$PATH`，从而决定使用服务器上哪一套 WW3 编译版本。
-
-看 `run.log` 时，可以按 `Running ww3_grid`、`Running ww3_prnc`、`Running mpirun ww3_shel`、`Running mpirun ww3_multi`、`Running ww3_ounf` 这些分隔线定位当前失败发生在哪一步。
+```sh
+python3 run.py upload --confirm <工作目录名>
+python3 run.py submit <工作目录名>
+python3 run.py check-status <工作目录名>
+python3 run.py download-log <工作目录名>
+```
 
 
 ### 5.6 Step5 —  Slurm 配置

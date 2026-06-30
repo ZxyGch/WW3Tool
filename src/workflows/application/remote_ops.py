@@ -332,6 +332,71 @@ def suggest_slurm_mem_for_partition(idle_rows: list[dict], partition: str = "") 
     return format_slurm_memory_mb(max(candidates))
 
 
+def _single_node_idle_cores(row: dict) -> int:
+    """从空闲资源行推断单节点可用核数。"""
+    try:
+        max_per = int(row.get("max_cores_per_node") or 0)
+        cores = int(row.get("cores") or row.get("idle_cores") or row.get("idle_cpus") or 0)
+        nodes = int(row.get("nodes") or row.get("idle_nodes") or 1)
+    except (TypeError, ValueError):
+        return 0
+    if max_per > 0:
+        return max_per
+    if nodes > 0 and cores > 0:
+        return max(1, cores // nodes)
+    return cores
+
+
+def _idle_rows_for_partition(idle_rows: list[dict], partition: str) -> list[dict]:
+    partition = str(partition or "").strip()
+    result: list[dict] = []
+    for row in idle_rows or []:
+        if not isinstance(row, dict):
+            continue
+        cpu = str(row.get("cpu") or row.get("partition") or "").strip()
+        if not cpu:
+            continue
+        if partition and cpu != partition:
+            continue
+        if _single_node_idle_cores(row) <= 0:
+            continue
+        result.append(row)
+    return result
+
+
+def suggest_slurm_config_for_partition(idle_rows: list[dict], partition: str = "") -> dict[str, object] | None:
+    """推荐单节点 Slurm 配置：1 节点、单节点最多可用核数、最大可用内存。
+
+    ``partition`` 为空时，在全部空闲资源中自动选取单节点可用核数最多的分区。
+    """
+    partition = str(partition or "").strip()
+    scoped = _idle_rows_for_partition(idle_rows, partition)
+    if not scoped and partition:
+        scoped = _idle_rows_for_partition(idle_rows, "")
+    if not scoped:
+        return None
+
+    def _mem_score(row: dict) -> int:
+        for key in ("free_mem_mb", "total_mem_mb"):
+            value = row.get(key)
+            if isinstance(value, int) and value > 0:
+                return value
+        return 0
+
+    best = max(scoped, key=lambda row: (_single_node_idle_cores(row), _mem_score(row)))
+    cpu = str(best.get("cpu") or best.get("partition") or "").strip()
+    cores = _single_node_idle_cores(best)
+    if not cpu or cores <= 0:
+        return None
+    mem = suggest_slurm_mem_for_partition(idle_rows, cpu) or ""
+    return {"partition": cpu, "nodes": 1, "cores": cores, "mem": mem}
+
+
+def suggest_slurm_config(idle_rows: list[dict]) -> dict[str, object] | None:
+    """从全部空闲资源自动选取最优分区并推荐单节点 Slurm 配置。"""
+    return suggest_slurm_config_for_partition(idle_rows, "")
+
+
 def _parse_sinfo_partition_memory(out: str) -> dict[str, int]:
     """解析 ``sinfo -o '%P|%m'``，得到各分区节点内存上限（MB）。"""
     result: dict[str, int] = {}

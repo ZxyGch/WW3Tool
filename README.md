@@ -582,7 +582,7 @@ pygridgen / gridgen on a regular lat-lon lattice. `normal`: one layer at work-di
 ![](public/resource/README-media/截屏2026-06-28%2012.46.43.png)
 ![](public/resource/README-media/截屏2026-06-28%2012.53.13.png)
 
-Nesting = coarse outer + fine inner for multi-resolution runs. WW3Tool uses WW3 `ww3_multi` (one integration drives all levels; see §5.5.7 and nested-grid design notes).
+Nesting = coarse outer + fine inner for multi-resolution runs. WW3Tool uses WW3 `ww3_multi` (one integration drives all levels; see §5.5.8 and nested-grid design notes).
 
 | Item | Description |
 |----|------|
@@ -893,7 +893,7 @@ WW3Tool rounds to integer seconds and cascades:
 | DTKTH | Source/sink spectral step | $\approx \mathrm{DTMAX}/2$ without strong currents |
 | DTMIN | Minimum step | Default 15 s |
 
-Nested grids: CFL recomputed **per level** (fine grids → smaller `DTXY` → more steps). Tied to `ww3_multi.nml` process allocation (§5.5.7).
+Nested grids: CFL recomputed **per level** (fine grids → smaller `DTXY` → more steps). Tied to `ww3_multi.nml` process allocation (§5.5.8).
 
 If the grid is very coarse or `FREQ1` very small, recommended steps may still be too large; reduce spacing or CFL factor rather than blindly increasing `DTMAX`.
 
@@ -908,7 +908,7 @@ If the grid is very coarse or `FREQ1` very small, recommended steps may still be
 ```
 
 - Copy namelists from `public/6.07_nml/` or `public/7.14_nml/` (per NML version).
-- Copy `local.sh` and `server.sh` from `public/scripts/`. Same WW3 program sequence; environment differs (§5.5.8).
+- Copy `local.sh` and `server.sh` from `public/scripts/`. How a case runs step by step: §5.5.9.
 
 
 #### 5.5.2 Write grid into ww3_grid.nml
@@ -966,7 +966,95 @@ ww3:
 
 
 
-#### 5.5.5 Spectral partition output scheme
+#### 5.5.5 Cold start and hot restart
+
+Under **Time settings** in Step 4 you choose **cold start** or **hot restart**. New cases always use cold start. Hot restart is only for when the work directory already has `restart*.ww3` from a previous run.
+
+**Cold start** runs the full chain: `ww3_strt` builds the initial wave field → `ww3_shel` integrates from the **start date** you enter in Step 4.
+
+**Hot restart** skips `ww3_strt` and continues from the saved wave state. Use it to split long runs, resume after a server interruption, or after a spin-up period.
+
+##### What Step 4 shows on screen
+
+| UI item | Cold start | Hot + Auto Latest | Hot + manual |
+| --- | --- | --- | --- |
+| Start mode | Cold | Hot restart | Hot restart |
+| Restart date | Disabled | Shows “Auto Latest” | `YYYYMMDD` or `YYYYMMDD HHMMSS` |
+| Restart file | Disabled | Disabled | Optional, e.g. `restart036.ww3` |
+| Start date | Editable | **Read-only** (still the calendar start of the full segment) | Read-only |
+| End date | Editable | Editable | Editable |
+
+When you click **Confirm parameters**, your choices are saved to `params.yml` in the work directory, and per §5.5.4 the **start date, end date, and output stride** are written into the namelists. In `ww3_shel.nml`:
+
+- `DOMAIN%START` / `DOMAIN%STOP`: full integration window (`START` = start date at 00:00:00 for now)
+- `DATE%FIELD` etc.: field output window and interval (interval = Step 4 **output stride**)
+- `DATE%RESTART`: how often to **write** restart files during a cold run (start = start date, stride = output stride)
+
+Forcing times in `ww3_prnc.nml` (`FORCING%TIMESTART/TIMESTOP`) use the same start/end dates and must cover the whole calendar span you want to integrate.
+
+With **Auto Latest**, Step 4 does **not** scan the work directory for the newest checkpoint or set `DOMAIN%START` to that moment. That happens when `local.sh` / `server.sh` actually run (below).
+
+##### What happens when you start the run (Auto Latest)
+
+When you click **Local run** on your machine, or **Submit** on the server after upload, `local.sh` / `server.sh` handle hot restart **first**, then `ww3_grid`. For a single grid:
+
+1. **Find a checkpoint**  
+   Prefer a timestamped file such as `20250104.120000.restart.ww3` (common on 7.14).  
+   If none, take the highest-numbered `restart071.ww3` (common on 6.07). The time is not in the filename; the tool infers it from `DATE%RESTART` in `ww3_shel.nml` (written in Step 4), e.g. start `20250103 000000`, stride `3600`, file `restart071.ww3` → `20250105 230000`.
+
+2. **Copy to `restart.ww3`**  
+   `ww3_shel` only reads this filename as the initial field.
+
+3. **Update integration start in `ww3_shel.nml`**  
+   Set `DOMAIN%START`, `DATE%FIELD`, and other **output-related** start times to the checkpoint time.  
+   **`DATE%RESTART` is unchanged** — it still defines how often the next restart files are written, as set in Step 4.
+
+4. **Skip `ww3_strt`, run `ww3_shel`**  
+   Integrate from the checkpoint time to `DOMAIN%STOP` (end date 23:59:59).
+
+Typical `run.log` lines:
+
+```log
+✅ Auto Latest restart: restart071.ww3 -> restart.ww3 (20250105 230000)
+⏭️ Restart mode: skip ww3_strt, start from 20250105 230000
+```
+
+##### Manual checkpoint (Auto Latest off)
+
+Turn off Auto Latest, then set **Restart date**; **Restart file** is optional.
+
+File lookup order:
+
+1. If Restart file is set (e.g. `restart036.ww3`) → use it;
+2. Else match `YYYYMMDD.HHMMSS.restart.ww3` to Restart date;
+3. Else map Restart date to `restartNNN.ww3` via `DATE%RESTART` (time must fall on the schedule grid).
+
+Date-only `20250104` is treated as `20250104 000000`.
+
+##### Restart files in the work directory
+
+| Pattern | Origin | How time is known |
+| --- | --- | --- |
+| `restart001.ww3`, `restart002.ww3`, … | Written during 6.07 cold/integration at `DATE%RESTART` intervals | `DATE%RESTART` start + index × stride |
+| `20250104.120000.restart.ww3` | Written when 7.14 uses `DATE%RESTART2` | In the filename |
+
+**`restart.ww3`** is not the fourth file in a series — it is copied from a checkpoint **before each run** as the initial field for that run. Cold start: created by `ww3_strt`. Hot restart: copied by the run script.
+
+After several hot restarts, older `restartNNN.ww3` files may be overwritten so index and embedded time no longer match; `ww3_shel` then reports `CONFLICTING TIMES`. Use a manual Restart file or a timestamped checkpoint.
+
+##### Nested grids
+
+Each `level0/`, `level1/`, … has its own restart; all levels must share the same time on hot restart. Auto Latest in nested mode **only accepts timestamped checkpoints** (e.g. `20250104.120000.restart.level2`), not numbered `restartNNN.ww3` inference. Integration start is updated in root `ww3_multi.nml`, not per-level `ww3_shel.nml`.
+
+##### Notes
+
+- Checkpoints must match grid, spectral settings, and WW3 version.
+- Step 4 **start date** on hot restart still means “which calendar day this segment belongs to” and which forcing to read; **the actual resume instant** comes from the checkpoint and is written to `DOMAIN%START` when the run starts.
+- Design details: `public/WW3Tool_Restart支持方案.md`.
+
+
+
+#### 5.5.6 Spectral partition output scheme
 
 ![](public/resource/README-media/截屏2026-06-28%2019.03.05.png)
 
@@ -990,7 +1078,7 @@ ww3:
 
 
 
-#### 5.5.6 Forcing switches and multiple prnc
+#### 5.5.7 Forcing switches and multiple prnc
 
 ![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
 
@@ -1005,7 +1093,7 @@ Default `ww3_prnc.nml` is for wind. `ww3_prnc` reads one namelist per run; `loca
 
 
 
-#### 5.5.7 Nested grids
+#### 5.5.8 Nested grids
 
 ![](public/resource/README-media/截屏2026-06-28%2019.21.54.png)
 
@@ -1090,63 +1178,99 @@ Each level gets its own `TIMESTEPS%DTXY`, `DTMAX`, etc. in that level’s `ww3_g
 
 
 
-#### 5.5.8 What local.sh and server.sh run
+#### 5.5.9 How local.sh and server.sh run your case
 
-These scripts **orchestrate** WW3 executables; they do not perform physics. They append to `run.log`, write `fail` on error, `success` when done.
+Step 4 **Confirm parameters** copies `local.sh` and `server.sh` from `public/scripts/` into the work directory. They are not WW3 itself — they **call** `ww3_grid`, `ww3_prnc`, `ww3_shel`, and the rest in a fixed order. All output is appended to `run.log` in that directory. Any step failure stops the run and creates an empty `fail` file; a full success creates `success`.
 
-Local:
+Use `local.sh` for local debugging (Step 6 **Local run** or `python3 run.py local-run`). Use `server.sh` on the cluster (upload first, then Step 6 **Submit** or `python3 run.py submit`). **The WW3 steps are identical**; only where they run, how many cores, and which compiled WW3 build is on `PATH` differ (table at the end).
 
-```sh
-python3 run.py local-run new
-```
+On start, each script reads `params.yml` in the work directory: **grid type** picks single-grid vs nested; **start mode** (cold/hot) decides whether to prepare restart and skip `ww3_strt`. Those values were written in Step 4 — the scripts do not guess.
 
-Remote:
+##### Single grid: from Run to NetCDF
 
-```sh
-python3 run.py upload --confirm new
-python3 run.py submit new
-python3 run.py check-status new
-python3 run.py download-log new
-```
+Below is a **cold start** pipeline. Hot restart adds a few steps at the top and skips `ww3_strt`; everything else is the same.
 
-Programs invoked:
+**0. Hot-restart prep (hot only)**  
+If Step 4 chose hot restart, before anything else the script: finds the latest checkpoint in the work directory → copies it to `restart.ww3` → updates integration/output start times in `ww3_shel.nml` (§5.5.5). Cold start skips this.
 
-- **`ww3_grid`**: compile `mod_def.ww3` from grid + namelist (always first).
-- **`ww3_prnc`**: NetCDF forcing → `wind.ww3`, etc.; one namelist per run, wind/current/level/ice in sequence.
-- **`ww3_strt`**: initial spectrum → `restart.ww3`.
-- **`ww3_shel`**: single-grid main integration → `out_grd.ww3`, `out_pnt.ww3`, …; `mpirun` with fallback to serial.
-- **`ww3_multi`**: nested main integration (replaces `ww3_shel`).
-- **`ww3_ounf`**: `out_grd.ww3` → `ww3.YYYY.nc`.
-- **`ww3_ounp`**: `out_pnt.ww3` → `ww3.YYYY_spec.nc` (if `points.list`).
-- **`ww3_trnc`**: track output (if `track_i.ww3`).
+**1. `ww3_grid`**  
+Reads `ww3_grid.nml` (from Step 2 grid in Step 4) and `grid.bot`, etc., and builds `mod_def.ww3`. Required for all later steps.
 
-Single-grid flow:
+**2. `ww3_prnc` (possibly several times)**  
+Reads `ww3_prnc.nml` and Step 1 NetCDF forcing, producing `wind.ww3` and similar binaries. WW3 handles one forcing type per invocation, so if Step 4 enabled current, level, ice, the script renames nml files and runs **wind → current → level → ice** in order (§5.5.7 log examples).
 
-```text
-ww3_grid
-→ ww3_prnc (wind/current/level/ice)
-→ ww3_strt
-→ mpirun ww3_shel (fallback: ww3_shel)
-→ ww3_ounp (spectral points)
-→ ww3_trnc (track)
-→ ww3_ounf
-→ success / fail
-```
+**3. `ww3_strt` (cold only)**  
+Builds the initial spectrum and writes `restart.ww3`. On hot restart, `restart.ww3` is already in place from step 0; the log shows `skip ww3_strt`.
 
-Nested flow:
+**4. `ww3_shel` (main integration)**  
+Reads `mod_def.ww3`, forcing files, `restart.ww3`, and `ww3_shel.nml`, integrates from `DOMAIN%START` to `DOMAIN%STOP`, writes `out_grd.ww3` and other intermediates, and continues writing `restartNNN.ww3` on the `DATE%RESTART` schedule for the next hot restart.  
+The script tries `mpirun` first; if MPI fails locally, it retries serial `ww3_shel` once.
+
+**5. Export (as needed)**  
+- `points.list` present (spectral points from Step 4) → `ww3_ounp` → `ww3.*_spec.nc`  
+- `track_i.ww3` present (track mode) → `ww3_trnc`  
+- Almost always: `ww3_ounf` converts `out_grd.ww3` to `ww3.YYYY.nc`  
+
+**6. `success`**  
+The full chain completed.
 
 ```text
-per level*: ww3_grid → ww3_prnc → ww3_strt
-aggregate mod_def.*, wind.*, restart.* to root
-mpirun ww3_multi
-→ move out_grd/out_pnt/track to finest levelN/
-→ ww3_ounp / ww3_trnc / ww3_ounf on levelN/
-→ success / fail
+[hot] find checkpoint → restart.ww3 → patch ww3_shel.nml start
+    ↓
+ww3_grid → ww3_prnc (×N forcings) → ww3_strt or skip
+    ↓
+mpirun ww3_shel
+    ↓
+ww3_ounp? → ww3_trnc? → ww3_ounf
+    ↓
+success
 ```
 
-`local.sh`: local CPUs, optional `WW3_MPI_NPROCS`. `server.sh`: Slurm `#SBATCH` + server `PATH` for chosen ST version.
+##### Nested grid: extra directory layout
 
-Use `run.log` markers: `Running ww3_grid`, `Running ww3_prnc`, `Running mpirun ww3_shel`, etc.
+Nested cases have no root-level `ww3_shel`. Instead:
+
+1. For **each** `level0/` (coarsest) … `levelN/` (finest): `ww3_grid` → `ww3_prnc` → `ww3_strt` (skipped on hot restart per level);  
+2. Move each level’s `mod_def.ww3`, `restart.ww3`, `wind.ww3`, … to the work root as `mod_def.level0`, `restart.level0`, … for `ww3_multi`;  
+3. `mpirun ww3_multi` at the root (reads `ww3_multi.nml` from Step 4);  
+4. Move finest `levelN` `out_grd.*` / `out_pnt.*` back into that level and run `ww3_ounp` / `ww3_trnc` / `ww3_ounf` there.
+
+Forcing NetCDF stays at the root; each level’s `ww3_prnc.nml` references `../wind.nc` (§5.5.8).
+
+##### How local.sh and server.sh differ
+
+**The WW3 steps are the same.** What changes is where they run and how you observe them:
+
+| | Local `local.sh` | Server `server.sh` |
+| --- | --- | --- |
+| How to start | Step 6 Local run | Upload, then Step 6 Submit; if not already in a Slurm job, the script `sbatch`s itself first |
+| Cores | Default: all local logical CPUs; override with `WW3_MPI_NPROCS=8` | Matches cores from Step 5 **Confirm Slurm** |
+| WW3 binaries | **Local ST** from Step 4 on system `PATH` | Step 5 writes **server ST** path in `export PATH=...` at the top of the script |
+| Log | Terminal + `run.log` | Server `run.log` only; use `download-log` |
+| Done? | `success` / `fail` in the work dir | Same; `check-status` checks remote markers |
+
+**Before submit:** Step 4 confirmed (fresh namelists and scripts) → `upload --confirm` → Step 5 Slurm confirmed (`server.sh` header matches the queue) → submit. **Submit does not** regenerate namelists or upload files.
+
+##### Troubleshooting
+
+Open `run.log` in the work directory and search for `Running` section headers; the last one is usually where it failed (`Running ww3_prnc`, `Running mpirun ww3_shel`, …).
+
+Hot-restart issues are usually **at the top**: search for `Auto Latest restart`, `Restart file`, `skip ww3_strt`. `CONFLICTING TIMES` from `ww3_shel` means `restart.ww3`’s embedded time does not match `DOMAIN%START` in `ww3_shel.nml` — see §5.5.5 manual checkpoint.
+
+Quick local test:
+
+```sh
+python3 run.py local-run <workdir>
+```
+
+Standard server flow:
+
+```sh
+python3 run.py upload --confirm <workdir>
+python3 run.py submit <workdir>
+python3 run.py check-status <workdir>
+python3 run.py download-log <workdir>
+```
 
 
 ### 5.6 Step 5 — Slurm Configuration

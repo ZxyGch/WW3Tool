@@ -32,7 +32,10 @@ from ..components.header_card import create_header_card
 from ..components.table_widget import EdgeAlignedTableWidget
 from ..components.validators import int_validator
 from workflows.domain.config_models import PipelineConfig
-from workflows.application.remote_ops import suggest_slurm_mem_for_partition
+from workflows.application.remote_ops import (
+    suggest_slurm_config,
+    suggest_slurm_mem_for_partition,
+)
 from workflows.support.translations import tr
 
 _TITLE_KEY = "step6_title"
@@ -67,9 +70,11 @@ class ServerConnectPanel:
         watch_job_ntfy: Callable[[], None],
         node_status: Callable[[], None],
         cancel: Callable[[], None],
+        log: Callable[[str], None] | None = None,
     ) -> None:
         self._input_style = input_style
         self._combo_style = combo_style
+        self._log = log or (lambda _message: None)
         self._slurm_mem_user_edited = False
         self._cpu_signature: tuple = ()
         self._idle_signature: tuple = ()
@@ -240,6 +245,11 @@ class ServerConnectPanel:
             confirm_slurm,
         )
         confirm_slurm_layout.addWidget(self.confirm_slurm_button)
+        self.recommend_slurm_button = create_button(
+            tr("step6_recommend_slurm_config", "推荐配置"),
+            self._apply_recommended_slurm_config,
+        )
+        confirm_slurm_layout.addWidget(self.recommend_slurm_button)
         self.inject_ntfy_button = create_button(
             tr("step6_inject_ntfy", "常驻 ntfy 监听"),
             inject_ntfy,
@@ -493,7 +503,46 @@ class ServerConnectPanel:
             "server_st": serialize_named_path_preset_block(selected, self._server_st_versions),
         }
 
-    def apply_slurm_resources(self, *, cpu: str, cores: int, nodes: int) -> None:
+    def _apply_recommended_slurm_config(self) -> None:
+        """从空闲资源自动选分区，并填入 1 节点 + 单节点最大可用核数 + 最大可用内存。"""
+        suggestion = suggest_slurm_config(self.idle_resources())
+        if not suggestion:
+            self._log(
+                tr(
+                    "step6_recommend_slurm_empty",
+                    "⚠️ 当前没有可用的空闲资源，请先连接服务器并等待空闲资源刷新",
+                )
+            )
+            return
+        self.apply_slurm_resources(
+            cpu=str(suggestion["partition"]),
+            cores=int(suggestion["cores"]),
+            nodes=int(suggestion["nodes"]),
+            mem=str(suggestion.get("mem") or ""),
+            clear_nodelist=True,
+        )
+        mem_text = str(suggestion.get("mem") or "").strip() or tr("step6_recommend_slurm_mem_unknown", "未获取")
+        self._log(
+            tr(
+                "step6_recommend_slurm_applied",
+                "✅ 已自动选取分区 {partition}：{nodes} 节点，{cores} 核，内存 {mem}",
+            ).format(
+                partition=suggestion["partition"],
+                nodes=suggestion["nodes"],
+                cores=suggestion["cores"],
+                mem=mem_text,
+            )
+        )
+
+    def apply_slurm_resources(
+        self,
+        *,
+        cpu: str,
+        cores: int,
+        nodes: int,
+        mem: str | None = None,
+        clear_nodelist: bool = False,
+    ) -> None:
         cpu = str(cpu).strip()
         if cpu:
             items = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
@@ -502,6 +551,11 @@ class ServerConnectPanel:
             self.cpu_combo.setCurrentText(cpu)
         self.fields["slurm_cores"].setText(str(max(1, int(cores))))
         self.fields["slurm_nodes"].setText(str(max(1, int(nodes))))
+        if mem is not None:
+            self.fields["slurm_mem"].setText(str(mem).strip())
+            self._slurm_mem_user_edited = False
+        if clear_nodelist:
+            self.fields["slurm_nodelist"].setText("")
 
     def replace_cpu_options_if_changed(self, values: list[str]) -> None:
         self._without_stealing_focus(self._replace_cpu_options_if_changed_impl, values)

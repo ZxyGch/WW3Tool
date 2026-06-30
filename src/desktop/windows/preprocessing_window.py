@@ -679,6 +679,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             watch_job_ntfy=self._server_watch_ntfy_job,
             node_status=self._server_node_status,
             cancel=self._server_cancel,
+            log=self._append_log,
         )
         self._st_combo = self._server_connect_panel.st_combo
         self._cpu_combo = self._server_connect_panel.cpu_combo
