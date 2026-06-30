@@ -344,6 +344,13 @@ def _slurm_nodelist(value: Any) -> Optional[str]:
     return " ".join(part for part in text.split() if part)
 
 
+def _slurm_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def normalize_slurm_section(slurm: Any) -> Dict[str, Any]:
     """写回 YAML 前规范化 slurm 段：使用 partition，移除已废弃的 cpu。"""
     if not isinstance(slurm, dict):
@@ -353,6 +360,8 @@ def normalize_slurm_section(slurm: Any) -> Dict[str, Any]:
         out["partition"] = str(out.get("cpu") or "").strip()
     if "nodelist" in out:
         out["nodelist"] = _slurm_nodelist(out.get("nodelist"))
+    if "time" in out:
+        out["time"] = _slurm_text(out.get("time"))
     out.pop("cpu", None)
     return out
 
@@ -386,6 +395,7 @@ def _slurm_config(slurm_raw: Dict[str, Any], ww3: WW3Config, *, workdir_name: st
         cores=str(slurm_raw.get("cores") or ""),
         mem=str(slurm_raw.get("mem") or "").strip() or None,
         nodelist=_slurm_nodelist(slurm_raw.get("nodelist")),
+        time=_slurm_text(slurm_raw.get("time")),
         server_st=server_st_active,
         server_st_versions=server_st_versions,
     )
@@ -1321,6 +1331,8 @@ slurm:
   cores: "48"
   nodelist: null                  # [EN] Optional node list (#SBATCH -w), separated by spaces
                                   # 可选指定节点（#SBATCH -w），多个节点用空格分开
+  time: null                      # [EN] Optional Slurm wall time (#SBATCH --time), e.g. 2-00:00:00
+                                  # 可选作业最长运行时间（#SBATCH --time），例如 2-00:00:00
   mem: 190G                       # [EN] Job memory (#SBATCH --mem=); null keeps template default
                                   # 作业内存（#SBATCH --mem=）；null 保留模板默认值
   server_st:

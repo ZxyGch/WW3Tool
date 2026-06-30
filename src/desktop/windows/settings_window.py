@@ -594,7 +594,8 @@ class SettingsInterface(QWidget):
         self._text(grid, 1, 0, tr("set_node_num", "节点数："), "NODE_NUM")
         self._text(grid, 2, 0, tr("set_default_cpu", "分区："), "DEFAULT_PARTITION")
         self._text(grid, 3, 0, tr("step4_slurm_nodelist", "指定节点："), "SLURM_NODELIST")
-        self._text(grid, 4, 0, tr("set_slurm_mem", "内存："), "SLURM_MEM")
+        self._text(grid, 4, 0, tr("step4_slurm_time", "最长运行时间："), "SLURM_TIME")
+        self._text(grid, 5, 0, tr("set_slurm_mem", "内存："), "SLURM_MEM")
 
     def _build_ww3_card(self) -> None:
         grid = self._card(tr("ww3_config_card", "WW3 配置"))

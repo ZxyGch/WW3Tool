@@ -52,6 +52,7 @@ class ServerSh(NMLPrimitives):
         partition = self.partition_var
         mem = str(getattr(self, "mem_var", "") or "").strip()
         nodelist = _slurm_nodelist_directive(str(getattr(self, "nodelist_var", "") or ""))
+        slurm_time = str(getattr(self, "time_var", "") or "").strip()
 
         # [EN] Get default template path for server.sh (prefer public/scripts/server.sh)
         # 获取 server.sh 的默认模板路径（优先使用 public/scripts/server.sh）
@@ -157,7 +158,7 @@ class ServerSh(NMLPrimitives):
                 # 检查是否找到 #SBATCH --time
                 elif line_stripped.startswith("#SBATCH --time"):
                     time_found = True
-                    new_lines.append(line)
+                    new_lines.append(f"#SBATCH --time={slurm_time}\n" if slurm_time else line)
                     # [EN] Skip subsequent blank lines and existing ST version paths
                     # 跳过后续的空行和已存在的 ST 版本路径
                     i += 1
@@ -233,6 +234,16 @@ class ServerSh(NMLPrimitives):
                         insert_at = idx + 1
                 if insert_at is not None:
                     new_lines.insert(insert_at, f"#SBATCH -w {nodelist}\n")
+            if slurm_time and not time_found:
+                insert_at = None
+                for idx, out_line in enumerate(new_lines):
+                    stripped = out_line.strip()
+                    if stripped.startswith("#SBATCH -w") or stripped.startswith("#SBATCH --mem"):
+                        insert_at = idx + 1
+                    elif insert_at is None and stripped.startswith("#SBATCH -N"):
+                        insert_at = idx + 1
+                if insert_at is not None:
+                    new_lines.insert(insert_at, f"#SBATCH --time={slurm_time}\n")
 
             # [EN] Use binary mode when writing back to ensure \\n instead of \\r\\n
             # 写回文件时使用二进制模式，确保使用 \\n 而不是 \\r\\n
@@ -249,6 +260,7 @@ class ServerSh(NMLPrimitives):
                 ("#SBATCH -N", num_N),
                 ("#SBATCH --mem", mem_display),
                 ("#SBATCH -w", nodelist or "-"),
+                ("#SBATCH --time", slurm_time or "-"),
                 ("MPI_NPROCS", num_n),
                 ("ST", st_name),
                 ("export PATH", st_path_line),
