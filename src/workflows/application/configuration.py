@@ -1045,8 +1045,8 @@ def parse_pipeline_config(
             else None
         ),
         output_step=restart_output_step,
-        pick_latest_checkpoint=bool(restart_raw.get("pick_latest_checkpoint", True)),
-        keep_latest_only=bool(restart_raw.get("keep_latest_only", False)),
+        pick_latest_checkpoint=_bool_value(restart_raw.get("pick_latest_checkpoint", True), "restart.pick_latest_checkpoint"),
+        keep_latest_only=_bool_value(restart_raw.get("keep_latest_only", False), "restart.keep_latest_only"),
     )
 
     slurm_raw = _as_dict(raw.get("slurm"), "slurm")
