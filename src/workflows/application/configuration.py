@@ -1035,7 +1035,7 @@ def parse_pipeline_config(
     restart_mode = str(restart_raw.get("mode") or "cold").strip().lower()
     if restart_mode not in {"cold", "restart"}:
         raise ConfigError("restart.mode 必须是 cold 或 restart")
-    restart_output_step = str(restart_raw.get("output_step", "86400")).strip()
+    restart_output_step = str(ww3.output_step or restart_raw.get("output_step") or "86400").strip()
     restart = RestartConfig(
         mode=restart_mode,
         input_file=restart_raw.get("input_file"),
@@ -1266,7 +1266,7 @@ restart:
   mode: cold
   input_file: null
   restart_time: null
-  output_step: "86400"
+  output_step: "3600"
   pick_latest_checkpoint: true
   keep_latest_only: false
 

@@ -367,7 +367,7 @@ class RestartConfig:
     mode: str = "cold"
     input_file: Any = None
     restart_time: Optional[str] = None
-    output_step: Optional[str] = "86400"
+    output_step: Optional[str] = "3600"
     pick_latest_checkpoint: bool = True
     keep_latest_only: bool = False
 

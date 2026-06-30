@@ -634,7 +634,6 @@
   "restart_mode_hot": "热启动",
   "step4_restart_input_file": "Restart 文件：",
   "step4_restart_time": "Restart 时间：",
-  "step4_restart_output_step": "Restart 写出间隔 (秒)：",
   "step4_restart_pick_latest": "自动选择最新 checkpoint：",
   "step4_restart_keep_latest": "仅保留最新 restart：",
   "step4_points_added": "✅ 已将 {count} 个点位添加到表格",

@@ -200,13 +200,13 @@ ww3:
 #   mode       – cold runs ww3_strt; restart uses existing restart.ww3 and skips ww3_strt.
 #   input_file – null uses restart.ww3 already in workdir; nested can use {level0: path, ...}.
 #   restart_time – hot-start integration start time: YYYYMMDD or "YYYYMMDD HHMMSS".
-#   output_step – restart write interval in seconds; 0 disables restart output.
+#   output_step – restart write interval, synchronized from ww3.output_step by GUI.
 # ────────────────────────────────────────────────────────────────────
 restart:
   mode: cold
   input_file: null
   restart_time: null
-  output_step: 86400
+  output_step: 3600
   pick_latest_checkpoint: true
   keep_latest_only: false
 # ────────────────────────────────────────────────────────────────────

@@ -54,7 +54,7 @@ WW3 手册（`manual/zh/run/design_zh.tex`）要点：
 
 - 各层 `levelK/restart.ww3` 或根目录 `restart.levelK`（`local.sh` staging 规则）。
 - `ww3_multi` 前需把各层 restart 汇总到根目录命名；**每层**有 restart 则跳过该层 `ww3_strt`。
-- `ALLDATE%RESTART%STRIDE` 与单层一致，由 `restart.output_step` 驱动。
+- `ALLDATE%RESTART%STRIDE` 与单层一致，由 `ww3.output_step` 同步驱动。
 
 ### 2.4 场景 D：跨工作目录复用 restart
 
@@ -99,9 +99,9 @@ restart:
   # 格式：YYYYMMDD 或 "YYYYMMDD HHMMSS"
   restart_time: null
 
-  # 写出 restart 的间隔（秒）→ DATE%RESTART%STRIDE / ALLDATE%RESTART%STRIDE
-  # 0 = 不写（与 WW3 约定一致）
-  output_step: 86400
+  # 写出 restart 的间隔（秒），GUI 中与 ww3.output_step 共用同一个输入框
+  # → DATE%RESTART%STRIDE / ALLDATE%RESTART%STRIDE
+  output_step: 3600
 
   # 热启动前：若存在 restart001.ww3 等，是否自动选最新并链接为 restart.ww3
   pick_latest_checkpoint: true
@@ -125,7 +125,7 @@ Restart 模式: restart
   输入: /path/to/restart.ww3
   积分起点 DOMAIN%START: 20250105 235959  (来自 restart_time)
   积分终点 DOMAIN%STOP:   20250110 235959
-  写出间隔 DATE%RESTART%STRIDE: 86400
+  写出间隔 DATE%RESTART%STRIDE: 3600
 ```
 
 避免用户混淆 `start_date` 与热启动起点。
@@ -140,8 +140,8 @@ Restart 模式: restart
 |--------|----------|------|
 | 热启动起点 | `DOMAIN%START` | `restart_time` |
 | `ww3.end_date` | `DOMAIN%STOP` | 不变 |
-| `restart.output_step` | `DATE%RESTART%STRIDE` | 替换当前「保留模板 STRIDE」行为 |
-| `restart.output_step` | `DATE%RESTART%START` | 热启动：= `restart_time`；冷启动：= `start_date` |
+| `restart.output_step`（由 `ww3.output_step` 同步） | `DATE%RESTART%STRIDE` | 替换当前「保留模板 STRIDE」行为 |
+| `ww3.start_date` / `restart.restart_time` | `DATE%RESTART%START` | 热启动：= `restart_time`；冷启动：= `start_date` |
 | `ww3.end_date` | `DATE%RESTART%STOP` | 不变 |
 | `ww3.start_date` / 热启动起点 | `DATE%FIELD`、`DATE%POINT` 等 | 场/点输出起始：冷启动用 `start_date`；热启动用 `restart_time`（或用户可选「从起点起全输出」高级项，首版与 FIELD 一致） |
 
@@ -155,7 +155,7 @@ Restart 模式: restart
 | params | namelist |
 |--------|----------|
 | 同上 | `DOMAIN%START` / `DOMAIN%STOP` |
-| `restart.output_step` | `ALLDATE%RESTART%STRIDE`、`ALLDATE%RESTART%START/STOP` |
+| `restart.output_step`（由 `ww3.output_step` 同步） | `ALLDATE%RESTART%STRIDE`、`ALLDATE%RESTART%START/STOP` |
 | 场输出 | `ALLDATE%FIELD` 起始时间对齐热启动起点 |
 
 各层 **不** 单独写 shel namelist；restart 文件按层放在 `levelK/restart.ww3`，prepare 后 staging 为 `restart.levelK`。
@@ -165,10 +165,10 @@ Restart 模式: restart
 `ww3_shel_nml.py` 更新 `DATE%RESTART%START/STOP` 但 **未写入 `DATE%RESTART%STRIDE`**，导致一直用模板 86400。实现时应：
 
 ```python
-DATE%RESTART%STRIDE = '{restart.output_step}'
+DATE%RESTART%STRIDE = '{ww3.output_step}'
 ```
 
-`output_step: 0` → `STRIDE = '0'`（关闭写出）。
+`ww3.output_step: 0` → `STRIDE = '0'`（关闭写出）。
 
 ---
 
@@ -309,7 +309,7 @@ Step 4 增加启动方式下拉：
 
 - 单选：**冷启动** / **热启动**
 - 首版仅写入 `restart.mode`；冷启动保持现有流程。
-- 后续热启动执行逻辑接入后，再增加文件选择器（`restart.ww3`）、`restart_time` 日期时间与 `output_step`。
+- 后续热启动执行逻辑接入后，再增加文件选择器（`restart.ww3`）与 `restart_time` 日期时间；restart 写出间隔与第四步已有的输出步长共用一个输入框。
 - 嵌套热启动后续使用表格按 `level0`…`levelN` 指定各层 restart（可留空=用层目录内已有文件）。
 
 首页**暂不**放 restart；与 `WW3常用配置补充计划.md` §7 一致。
@@ -360,10 +360,10 @@ Step 4 增加启动方式下拉：
 | ID | 描述 | 期望 |
 |----|------|------|
 | R1 | 默认 cold，无 `restart` 段 | 与当前行为 bit-for-bit 流程一致 |
-| R2 | cold + `output_step: 3600` | `DATE%RESTART%STRIDE=3600` |
+| R2 | cold + `ww3.output_step: 3600` | `DATE%RESTART%STRIDE=3600` |
 | R3 | restart + 工作目录内 `restart.ww3` | 跳过 strt，`DOMAIN%START=restart_time` |
 | R4 | restart + 外部 `input_file` | 文件出现在 workdir，`run.log` 记来源 |
-| R5 | restart + `output_step: 0` | 不写 restartN |
+| R5 | restart + `ww3.output_step: 0` | 不写 restartN |
 | R6 | nested restart 两层均有文件 | 两层跳过 strt，multi 成功 |
 | R7 | restart 但 mod_def 缺失 | prepare 失败，错误中文明确 |
 | R8 | `restart_time` > `end_date` | prepare 失败 |
@@ -395,6 +395,6 @@ Step 4 增加启动方式下拉：
 | 核心改动 | prepare 引入 restart；namelist 对齐时间与 STRIDE；运行跳过 `ww3_strt` |
 | 默认行为 | **不变**（`mode: cold`） |
 | 首版范围 | 单层 + 嵌套热启动/续跑；不做 uprstr、不做换网格插值 |
-| 关键配置 | `restart.mode`、`input_file`、`restart_time`、`output_step` |
+| 关键配置 | `restart.mode`、`input_file`、`restart_time`；restart 写出间隔由 `ww3.output_step` 同步 |
 
 建议实施顺序：**A → B → C → E → D**，先保证 CLI/脚本路径可用，再补 GUI。

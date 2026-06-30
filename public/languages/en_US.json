@@ -645,7 +645,6 @@
   "restart_mode_hot": "Hot Start",
   "step4_restart_input_file": "Restart File:",
   "step4_restart_time": "Restart Time:",
-  "step4_restart_output_step": "Restart Write Interval (s):",
   "step4_restart_pick_latest": "Auto-select Latest Checkpoint:",
   "step4_restart_keep_latest": "Keep Latest Restart Only:",
   "step4_points_added": "✅ {count} points added to table",

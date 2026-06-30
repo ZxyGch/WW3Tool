@@ -188,24 +188,23 @@ class WW3StepPanel:
         self._display_line(wave_grid, 4, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self._restart_line(wave_grid, 5, tr("step4_restart_input_file", "Restart 文件："), "input_file")
         self._restart_line(wave_grid, 6, tr("step4_restart_time", "Restart 时间："), "restart_time", datetime_yyyymmdd_hhmmss_validator())
-        self._restart_line(wave_grid, 7, tr("step4_restart_output_step", "Restart 写出间隔 (秒)："), "output_step", int_validator(0))
-        self._restart_checkbox_line(wave_grid, 8, tr("step4_restart_pick_latest", "自动选择最新 checkpoint："), "pick_latest_checkpoint")
-        self._restart_checkbox_line(wave_grid, 9, tr("step4_restart_keep_latest", "仅保留最新 restart："), "keep_latest_only")
+        self._restart_checkbox_line(wave_grid, 7, tr("step4_restart_pick_latest", "自动选择最新 checkpoint："), "pick_latest_checkpoint")
+        self._restart_checkbox_line(wave_grid, 8, tr("step4_restart_keep_latest", "仅保留最新 restart："), "keep_latest_only")
         self.output_scheme_combo = ComboBox()
         self._output_scheme_fields_by_name: dict[str, list[str]] = {}
         self._server_st_versions: dict[str, str] = {}
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
-        wave_grid.addWidget(self.output_scheme_label, 10, 0)
-        wave_grid.addWidget(self.output_scheme_combo, 10, 1)
+        wave_grid.addWidget(self.output_scheme_label, 9, 0)
+        wave_grid.addWidget(self.output_scheme_combo, 9, 1)
         self.file_split_combo = ComboBox()
         self.file_split_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.file_split_combo)
         add_labeled_combo_items(self.file_split_combo, file_split_combo_items())
         self.file_split_label = self._field_label(tr("file_split", "文件分割："))
-        wave_grid.addWidget(self.file_split_label, 11, 0)
-        wave_grid.addWidget(self.file_split_combo, 11, 1)
+        wave_grid.addWidget(self.file_split_label, 10, 0)
+        wave_grid.addWidget(self.file_split_combo, 10, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -359,7 +358,6 @@ class WW3StepPanel:
         self._restart_input_file_raw = restart.input_file
         self._restart_fields["input_file"].setText(self._restart_value_text(restart.input_file))
         self._restart_fields["restart_time"].setText(self._restart_value_text(restart.restart_time))
-        self._restart_fields["output_step"].setText(self._restart_value_text(restart.output_step))
         self._restart_checkboxes["pick_latest_checkpoint"].setChecked(bool(restart.pick_latest_checkpoint))
         self._restart_checkboxes["keep_latest_only"].setChecked(bool(restart.keep_latest_only))
         self._update_restart_enabled_state()
@@ -454,7 +452,7 @@ class WW3StepPanel:
             "mode": combo_selected_user_data(self.restart_mode_combo) or "cold",
             "input_file": input_file,
             "restart_time": self._restart_fields["restart_time"].text().strip() or None,
-            "output_step": self._restart_fields["output_step"].text().strip(),
+            "output_step": self.fields["ww3_output"].text().strip(),
             "pick_latest_checkpoint": self._restart_checkboxes["pick_latest_checkpoint"].isChecked(),
             "keep_latest_only": self._restart_checkboxes["keep_latest_only"].isChecked(),
         }
