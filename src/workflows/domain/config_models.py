@@ -362,7 +362,7 @@ class WW3GridSettings:
 
 @dataclass
 class RestartConfig:
-    """WW3 restart / hot-start settings (corresponds to YAML ``restart:`` section)."""
+    """WW3 restart / hot-start settings (corresponds to YAML ``ww3.restart:`` section)."""
 
     mode: str = "cold"
     input_file: Any = None

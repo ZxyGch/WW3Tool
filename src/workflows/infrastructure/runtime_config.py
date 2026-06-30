@@ -821,15 +821,8 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.\n"
      "#   file_split        – output file splitting: single | hour | day | month | year.\n"
      "#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.\n"
+     "#   restart           – restart / hot-start settings; restart.output_step follows output_step.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
-     "# ────────────────────────────────────────────────────────────────────"),
-    ("restart:",
-     "# ────────────────────────────────────────────────────────────────────\n"
-     "# WW3 restart / hot-start settings.\n"
-     "#   mode       – cold runs ww3_strt; restart uses existing restart.ww3 and skips ww3_strt.\n"
-     "#   input_file – used only when pick_latest_checkpoint=false; nested can use {level0: path, ...}.\n"
-     "#   restart_time – used only when pick_latest_checkpoint=false; YYYYMMDD or \"YYYYMMDD HHMMSS\".\n"
-     "#   output_step – restart write interval, synchronized from ww3.output_step by GUI.\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("ww3_grid:",
      "# ────────────────────────────────────────────────────────────────────\n"

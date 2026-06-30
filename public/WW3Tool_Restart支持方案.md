@@ -84,36 +84,41 @@ WW3 手册（`manual/zh/run/design_zh.tex`）要点：
 
 ## 4. 配置设计（`params.yml`）
 
-首版放在 **`params.yml` 的 `restart:` 段**，并在 GUI Step 4「WAVEWATCH 配置」中增加“启动方式”下拉选择；**默认值保持冷启动**，旧配置无需修改。
+首版放在 **`params.yml` 的 `ww3.restart:` 段**，并在 GUI Step 4「WAVEWATCH 配置」中增加“启动方式”下拉选择；**默认值保持冷启动**。加载器兼容旧的顶层 `restart:`，保存时统一迁移到 `ww3.restart:`。
 
 ```yaml
-restart:
-  # cold：走 ww3_strt；restart：使用已有 restart.ww3，跳过 ww3_strt
-  mode: cold
-
-  # 手动热启动输入。pick_latest_checkpoint=false 时使用
-  # 嵌套可为 map：{ level0: /path/to/restart.ww3, level1: ... }
-  input_file: null
-
-  # 手动热启动积分起点。pick_latest_checkpoint=true 时可为空，由最新 checkpoint 自动确定
-  # 格式：YYYYMMDD 或 "YYYYMMDD HHMMSS"
-  restart_time: null
-
-  # 写出 restart 的间隔（秒），GUI 中与 ww3.output_step 共用同一个输入框
-  # → DATE%RESTART%STRIDE / ALLDATE%RESTART%STRIDE
+ww3:
+  start_date: "20250101"
+  end_date: "20250103"
   output_step: 3600
 
-  # Auto Latest / 自动最新：若存在 restart001.ww3 等，自动选最新并链接为 restart.ww3
-  pick_latest_checkpoint: true
+  restart:
+    # cold：走 ww3_strt；restart：使用已有 restart.ww3，跳过 ww3_strt
+    mode: cold
+
+    # 手动热启动输入。pick_latest_checkpoint=false 时使用
+    # 嵌套可为 map：{ level0: /path/to/restart.ww3, level1: ... }
+    input_file: null
+
+    # 手动热启动积分起点。pick_latest_checkpoint=true 时可为空，由最新 checkpoint 自动确定
+    # 格式：YYYYMMDD 或 "YYYYMMDD HHMMSS"
+    restart_time: null
+
+    # 写出 restart 的间隔（秒），GUI 中与 ww3.output_step 共用同一个输入框
+    # → DATE%RESTART%STRIDE / ALLDATE%RESTART%STRIDE
+    output_step: 3600
+
+    # Auto Latest / 自动最新：若存在 restart001.ww3 等，自动选最新并链接为 restart.ww3
+    pick_latest_checkpoint: true
 ```
 
 ### 4.1 与 `ww3:` 段时间字段的关系
 
 | 字段 | 冷启动 | 热启动 |
 |------|--------|--------|
-| `ww3.start_date` | `DOMAIN%START` | 仅用于强迫/输出**下界**参考；**积分起点**用 `restart.restart_time` |
+| `ww3.start_date` | `DOMAIN%START` | 仅用于强迫/输出**下界**参考；**积分起点**用 `ww3.restart.restart_time` |
 | `ww3.end_date` | `DOMAIN%STOP` | `DOMAIN%STOP` |
-| `restart.restart_time` | 忽略 | `pick_latest_checkpoint=false` 时使用；`pick_latest_checkpoint=true` 时由最新 checkpoint 自动确定 |
+| `ww3.restart.restart_time` | 忽略 | `pick_latest_checkpoint=false` 时使用；`pick_latest_checkpoint=true` 时由最新 checkpoint 自动确定 |
 
 建议在 prepare 日志中**明确打印**：
 
@@ -137,8 +142,8 @@ Restart 模式: restart
 |--------|----------|------|
 | 热启动起点 | `DOMAIN%START` | `restart_time` |
 | `ww3.end_date` | `DOMAIN%STOP` | 不变 |
-| `restart.output_step`（由 `ww3.output_step` 同步） | `DATE%RESTART%STRIDE` | 替换当前「保留模板 STRIDE」行为 |
-| `ww3.start_date` / `restart.restart_time` | `DATE%RESTART%START` | 热启动：= `restart_time`；冷启动：= `start_date` |
+| `ww3.restart.output_step`（由 `ww3.output_step` 同步） | `DATE%RESTART%STRIDE` | 替换当前「保留模板 STRIDE」行为 |
+| `ww3.start_date` / `ww3.restart.restart_time` | `DATE%RESTART%START` | 热启动：= `restart_time`；冷启动：= `start_date` |
 | `ww3.end_date` | `DATE%RESTART%STOP` | 不变 |
 | `ww3.start_date` / 热启动起点 | `DATE%FIELD`、`DATE%POINT` 等 | 场/点输出起始：冷启动用 `start_date`；热启动用 `restart_time`（或用户可选「从起点起全输出」高级项，首版与 FIELD 一致） |
 
@@ -152,7 +157,7 @@ Restart 模式: restart
 | params | namelist |
 |--------|----------|
 | 同上 | `DOMAIN%START` / `DOMAIN%STOP` |
-| `restart.output_step`（由 `ww3.output_step` 同步） | `ALLDATE%RESTART%STRIDE`、`ALLDATE%RESTART%START/STOP` |
+| `ww3.restart.output_step`（由 `ww3.output_step` 同步） | `ALLDATE%RESTART%STRIDE`、`ALLDATE%RESTART%START/STOP` |
 | 场输出 | `ALLDATE%FIELD` 起始时间对齐热启动起点 |
 
 各层 **不** 单独写 shel namelist；restart 文件按层放在 `levelK/restart.ww3`，prepare 后 staging 为 `restart.levelK`。
@@ -280,7 +285,7 @@ def prepare_restart(
 ### 9.1 CLI（阶段 B 即可用）
 
 ```bash
-# params.yml 设 restart.mode=restart 后
+# params.yml 设 ww3.restart.mode=restart 后
 python3 run.py prepare-ww3 workdir_name
 python3 run.py local-run workdir_name
 ```
@@ -298,7 +303,7 @@ python3 run.py prepare-ww3 workdir --restart-mode restart \
 Step 4 增加启动方式下拉：
 
 - 单选：**冷启动** / **热启动**
-- 首版仅写入 `restart.mode`；冷启动保持现有流程。
+- 首版仅写入 `ww3.restart.mode`；冷启动保持现有流程。
 - 后续热启动执行逻辑接入后，`Auto Latest / 自动最新`（`pick_latest_checkpoint=true`）时隐藏文件选择器与 `restart_time`；关闭自动最新后才显示并保存手动文件与时间。restart 写出间隔与第四步已有的输出步长共用一个输入框。
 - 嵌套热启动后续使用表格按 `level0`…`levelN` 指定各层 restart（可留空=用层目录内已有文件）。
 
@@ -310,7 +315,7 @@ Step 4 增加启动方式下拉：
 
 ### 阶段 A：配置层（1–2 天）
 
-- [ ] `params.yml` 增加 `restart:` 默认值
+- [ ] `params.yml` 增加 `ww3.restart:` 默认值
 - [ ] `RestartConfig` + 解析；缺省 `mode: cold`
 - [ ] 单元测试：旧 yml 无 `restart` 段仍可加载
 
@@ -374,7 +379,7 @@ Step 4 增加启动方式下拉：
 
 - 本方案为 **`WW3常用配置补充计划.md` §3.1** 的详细设计稿。
 - 嵌套网格文件布局见 **`嵌套网格设计与问题分析.md`** 与 `README.zh-CN.md` §5.5.7。
-- 实现完成后在 `AGENTS.md` 增加一句：热启动通过 `params.yml` 的 `restart.mode` 配置，默认冷启动。
+- 实现完成后在 `AGENTS.md` 增加一句：热启动通过 `params.yml` 的 `ww3.restart.mode` 配置，默认冷启动。
 
 ---
 
@@ -385,6 +390,6 @@ Step 4 增加启动方式下拉：
 | 核心改动 | prepare 引入 restart；namelist 对齐时间与 STRIDE；运行跳过 `ww3_strt` |
 | 默认行为 | **不变**（`mode: cold`） |
 | 首版范围 | 单层 + 嵌套热启动/续跑；不做 uprstr、不做换网格插值 |
-| 关键配置 | `restart.mode`、`input_file`、`restart_time`；restart 写出间隔由 `ww3.output_step` 同步 |
+| 关键配置 | `ww3.restart.mode`、`input_file`、`restart_time`；restart 写出间隔由 `ww3.output_step` 同步 |
 
 建议实施顺序：**A → B → C → E → D**，先保证 CLI/脚本路径可用，再补 GUI。

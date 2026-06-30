@@ -42,7 +42,7 @@ from workflows.support.translations import tr
 
 
 def restart_mode_combo_items() -> list[tuple[str, str]]:
-    """``restart.mode`` 下拉项：展示文案 + 规范枚举值。"""
+    """``ww3.restart.mode`` 下拉项：展示文案 + 规范枚举值。"""
     return [
         (tr("restart_mode_cold", "冷启动"), "cold"),
         (tr("restart_mode_hot", "热启动"), "restart"),

@@ -1031,10 +1031,10 @@ def parse_pipeline_config(
         }
     )
 
-    restart_raw = _as_dict(raw.get("restart"), "restart")
+    restart_raw = _as_dict(ww3_raw.get("restart") or raw.get("restart"), "ww3.restart")
     restart_mode = str(restart_raw.get("mode") or "cold").strip().lower()
     if restart_mode not in {"cold", "restart"}:
-        raise ConfigError("restart.mode 必须是 cold 或 restart")
+        raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
     restart_output_step = str(ww3.output_step or restart_raw.get("output_step") or "86400").strip()
     restart = RestartConfig(
         mode=restart_mode,
@@ -1045,7 +1045,7 @@ def parse_pipeline_config(
             else None
         ),
         output_step=restart_output_step,
-        pick_latest_checkpoint=_bool_value(restart_raw.get("pick_latest_checkpoint", True), "restart.pick_latest_checkpoint"),
+        pick_latest_checkpoint=_bool_value(restart_raw.get("pick_latest_checkpoint", True), "ww3.restart.pick_latest_checkpoint"),
     )
 
     slurm_raw = _as_dict(raw.get("slurm"), "slurm")
@@ -1139,9 +1139,9 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
         if not str(value).isdigit():
             raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label=label))
     if config.restart.mode not in {"cold", "restart"}:
-        raise ConfigError("restart.mode 必须是 cold 或 restart")
+        raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
     if not str(config.restart.output_step or "").isdigit():
-        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="restart.output_step"))
+        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.restart.output_step"))
     if config.grid.grid_type == "nested":
         if config.grid.inner is None:
             raise ConfigError(tr("cfg_nested_inner_required", "nested 网格需要 grid.inner"))
@@ -1260,13 +1260,12 @@ ww3:
   # 方案名: 空格分隔字段；多方案时加 use: <方案名>
   output_scheme:
     with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
-
-restart:
-  mode: cold
-  input_file: null
-  restart_time: null
-  output_step: "3600"
-  pick_latest_checkpoint: true
+  restart:
+    mode: cold
+    input_file: null
+    restart_time: null
+    output_step: "3600"
+    pick_latest_checkpoint: true
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml
