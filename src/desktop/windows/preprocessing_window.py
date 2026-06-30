@@ -2735,8 +2735,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _start_server_polling(self) -> None:
-        # [EN] Start timer after successful connection, polling all three server lists every second.
-        """连接成功后启动定时器，每 1 秒拉取集群作业、空闲资源和任务队列。"""
+        # [EN] Start timer after successful connection, polling all three server lists periodically.
+        """连接成功后启动定时器，定期拉取集群作业、空闲资源和任务队列。"""
         self._stop_server_polling()
         self._server_polling_active = True
         self._server_poll_in_flight = False
@@ -2745,7 +2745,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._poll_server_status()
         self._server_poll_timer = QTimer(self)
         self._server_poll_timer.timeout.connect(self._poll_server_status)
-        self._server_poll_timer.start(1_000)
+        self._server_poll_timer.start(3_000)
 
     def _stop_server_polling(self) -> None:
         self._server_polling_active = False

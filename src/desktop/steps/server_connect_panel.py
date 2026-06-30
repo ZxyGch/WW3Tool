@@ -71,6 +71,12 @@ class ServerConnectPanel:
         self._input_style = input_style
         self._combo_style = combo_style
         self._slurm_mem_user_edited = False
+        self._cpu_signature: tuple = ()
+        self._idle_signature: tuple = ()
+        self._queue_signature: tuple = ()
+        self._queue_structure_signature: tuple = ()
+        self._queue_task_tables: list[EdgeAlignedTableWidget] = []
+        self._idle_rows: list[dict] = []
         self.fields: dict[str, LineEdit] = {}
         self.field_labels: dict[str, QLabel] = {}
 
@@ -284,52 +290,60 @@ class ServerConnectPanel:
             parts = [str(p) for p in row] if isinstance(row, (list, tuple)) else str(row).split()
             if len(parts) >= 4:
                 valid.append(parts[:4])
+        signature = tuple(tuple(parts) for parts in valid)
+        if signature == self._cpu_signature:
+            return
+        self._cpu_signature = signature
         if not valid:
             self._cpu_table.setRowCount(0)
             self._cpu_title.setVisible(False)
             self._cpu_table.setVisible(False)
             return
 
+        self._cpu_table.setUpdatesEnabled(False)
         # [EN] Manual header row (row 0) + data rows, matching original style
         # 手动表头行（第 0 行）+ 数据行，与原有风格一致
-        header_labels = [
-            tr("cluster_col_user", "用户"),
-            tr("cluster_col_cpus", "核数"),
-            tr("cluster_col_nodes", "节点"),
-            tr("cluster_col_elapsed", "时间"),
-        ]
-        self._cpu_table.setRowCount(len(valid) + 1)
-        for col, text in enumerate(header_labels):
-            item = QTableWidgetItem(text)
-            # [EN] User header left-aligned, others centered
-            # User 表头靠左，其余居中
-            if col == 0:
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                )
-            else:
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
-                )
-            self._cpu_table.setItem(0, col, item)
+        try:
+            header_labels = [
+                tr("cluster_col_user", "用户"),
+                tr("cluster_col_cpus", "核数"),
+                tr("cluster_col_nodes", "节点"),
+                tr("cluster_col_elapsed", "时间"),
+            ]
+            self._cpu_table.setRowCount(len(valid) + 1)
+            for col, text in enumerate(header_labels):
+                item = QTableWidgetItem(text)
+                # [EN] User header left-aligned, others centered
+                # User 表头靠左，其余居中
+                if col == 0:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                    )
+                else:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+                    )
+                self._cpu_table.setItem(0, col, item)
 
-        # [EN] Column alignment: User(left), CPUs(center), Nodes(center), Time(right)
-        # 列对齐：用户(左), CPU数(居中), 节点(居中), 时间(右)
-        aligns = [
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        ]
-        for i, parts in enumerate(valid, start=1):
-            for col, (text, align) in enumerate(zip(parts, aligns)):
-                item = QTableWidgetItem(str(text))
-                item.setTextAlignment(align)
-                self._cpu_table.setItem(i, col, item)
+            # [EN] Column alignment: User(left), CPUs(center), Nodes(center), Time(right)
+            # 列对齐：用户(左), CPU数(居中), 节点(居中), 时间(右)
+            aligns = [
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            ]
+            for i, parts in enumerate(valid, start=1):
+                for col, (text, align) in enumerate(zip(parts, aligns)):
+                    item = QTableWidgetItem(str(text))
+                    item.setTextAlignment(align)
+                    self._cpu_table.setItem(i, col, item)
 
-        self._cpu_table.expand_to_contents(minimum_height=60, extra_height=6)
-        self._cpu_table.resizeColumnToContents(3)
-        self._cpu_table.setColumnWidth(3, max(self._cpu_table.columnWidth(3), 112))
+            self._cpu_table.expand_to_contents(minimum_height=60, extra_height=6)
+            self._cpu_table.resizeColumnToContents(3)
+            self._cpu_table.setColumnWidth(3, max(self._cpu_table.columnWidth(3), 112))
+        finally:
+            self._cpu_table.setUpdatesEnabled(True)
         self._cpu_title.setVisible(True)
         self._cpu_table.setVisible(True)
 
@@ -361,37 +375,56 @@ class ServerConnectPanel:
                 }
             )
         valid.sort(key=lambda item: item["cores"], reverse=True)
+        signature = tuple(
+            (
+                row["cpu"],
+                row["nodes"],
+                row["cores"],
+                row["max_cores_per_node"],
+                row.get("free_mem_mb"),
+                row.get("total_mem_mb"),
+            )
+            for row in valid
+        )
+        if signature == self._idle_signature:
+            self._apply_suggested_slurm_mem()
+            return
+        self._idle_signature = signature
         self._idle_rows = valid
 
-        header_labels = [
-            tr("idle_col_cpu", "分区"),
-            tr("idle_col_nodes", "节点数"),
-            tr("idle_col_cores", "可用核数"),
-        ]
-        self._idle_table.setRowCount(len(valid) + 1)
-        for col, text in enumerate(header_labels):
-            item = QTableWidgetItem(text)
-            if col == 0:
-                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            elif col == 2:
-                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            else:
-                align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
-            item.setTextAlignment(align)
-            self._idle_table.setItem(0, col, item)
-
-        aligns = [
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        ]
-        for row_index, row in enumerate(valid, start=1):
-            values = [row["cpu"], row["nodes"], row["cores"]]
-            for col, (value, align) in enumerate(zip(values, aligns)):
-                item = QTableWidgetItem(str(value))
+        self._idle_table.setUpdatesEnabled(False)
+        try:
+            header_labels = [
+                tr("idle_col_cpu", "分区"),
+                tr("idle_col_nodes", "节点数"),
+                tr("idle_col_cores", "可用核数"),
+            ]
+            self._idle_table.setRowCount(len(valid) + 1)
+            for col, text in enumerate(header_labels):
+                item = QTableWidgetItem(text)
+                if col == 0:
+                    align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                elif col == 2:
+                    align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                else:
+                    align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
                 item.setTextAlignment(align)
-                self._idle_table.setItem(row_index, col, item)
-        self._idle_table.expand_to_contents(minimum_height=52, extra_height=6)
+                self._idle_table.setItem(0, col, item)
+
+            aligns = [
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            ]
+            for row_index, row in enumerate(valid, start=1):
+                values = [row["cpu"], row["nodes"], row["cores"]]
+                for col, (value, align) in enumerate(zip(values, aligns)):
+                    item = QTableWidgetItem(str(value))
+                    item.setTextAlignment(align)
+                    self._idle_table.setItem(row_index, col, item)
+            self._idle_table.expand_to_contents(minimum_height=52, extra_height=6)
+        finally:
+            self._idle_table.setUpdatesEnabled(True)
         self._apply_suggested_slurm_mem()
 
     def _on_cpu_partition_changed(self, _text: str) -> None:
@@ -500,6 +533,39 @@ class ServerConnectPanel:
         # [EN] Update task queue display. lines: squeue output lines.
         """更新任务队列显示。lines: squeue 输出行列表。"""
         tasks = self._parse_squeue_lines(lines)
+        signature = tuple(
+            (
+                task.get("jobid", ""),
+                task.get("partition", ""),
+                task.get("name", ""),
+                task.get("state", ""),
+                task.get("time", ""),
+                task.get("nodes", ""),
+                task.get("cpus", ""),
+                task.get("nodelist", ""),
+            )
+            for task in tasks
+        )
+        structure_signature = tuple(
+            (
+                task.get("jobid", ""),
+                task.get("partition", ""),
+                task.get("name", ""),
+                task.get("state", ""),
+                task.get("nodes", ""),
+                task.get("cpus", ""),
+                task.get("nodelist", ""),
+            )
+            for task in tasks
+        )
+        if signature == self._queue_signature:
+            return
+        if structure_signature == self._queue_structure_signature:
+            self._update_queue_card_values(tasks)
+            self._queue_signature = signature
+            return
+        self._queue_signature = signature
+        self._queue_structure_signature = structure_signature
         if not tasks:
             self._clear_queue_display()
             self._queue_title.setVisible(False)
@@ -510,10 +576,14 @@ class ServerConnectPanel:
         # [EN] squeue is a snapshot. Rebuild from the latest snapshot so cancel/add
         # races cannot leave stale cards or separators in the layout.
         # squeue 是快照。每次按最新快照重建，避免取消/新增交错时残留旧卡片或分隔线。
-        self._rebuild_queue_cards(tasks)
-        self._queue_title.setVisible(True)
-        self._queue_container.setVisible(True)
-        self._cancel_widget.setVisible(True)
+        self._queue_container.setUpdatesEnabled(False)
+        try:
+            self._rebuild_queue_cards(tasks)
+            self._queue_title.setVisible(True)
+            self._queue_container.setVisible(True)
+            self._cancel_widget.setVisible(True)
+        finally:
+            self._queue_container.setUpdatesEnabled(True)
 
     # [EN] ── Internal methods ──────────────────────────────────────────────────────────
     # ── 内部方法 ──────────────────────────────────────────────────────────
@@ -554,6 +624,11 @@ class ServerConnectPanel:
         self._confirm_slurm_widget.setVisible(False)
         self._idle_table.setRowCount(0)
         self._idle_rows = []
+        self._cpu_signature = ()
+        self._idle_signature = ()
+        self._queue_signature = ()
+        self._queue_structure_signature = ()
+        self._queue_task_tables = []
 
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -626,8 +701,10 @@ class ServerConnectPanel:
 
     def _rebuild_queue_cards(self, tasks: list[dict]) -> None:
         self._clear_queue_display()
+        self._queue_task_tables = []
         for idx, task in enumerate(tasks):
             card = self._create_task_card(task)
+            self._queue_task_tables.append(card)
             self._queue_layout.addWidget(card)
             if idx < len(tasks) - 1:
                 sep = QFrame()
@@ -677,6 +754,30 @@ class ServerConnectPanel:
         table.expand_to_contents(minimum_height=80, extra_height=10)
         return table
 
+    def _update_queue_card_values(self, tasks: list[dict]) -> None:
+        if len(tasks) != len(self._queue_task_tables):
+            self._rebuild_queue_cards(tasks)
+            return
+        for table, task in zip(self._queue_task_tables, tasks):
+            values = [
+                task.get("jobid", ""),
+                task.get("name", ""),
+                task.get("state", ""),
+                task.get("time", ""),
+                task.get("partition", ""),
+                task.get("nodes", ""),
+                task.get("cpus", ""),
+                task.get("nodelist", ""),
+            ]
+            table.setUpdatesEnabled(False)
+            try:
+                for row, value in enumerate(values):
+                    item = table.item(row, 1)
+                    if item is not None and item.text() != str(value):
+                        item.setText(str(value))
+            finally:
+                table.setUpdatesEnabled(True)
+
     @staticmethod
     def _without_stealing_focus(fn, *args, **kwargs) -> None:
         app = QApplication.instance()
@@ -699,3 +800,4 @@ class ServerConnectPanel:
                 if w:
                     w.setParent(None)
                     w.deleteLater()
+        self._queue_task_tables = []
