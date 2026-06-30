@@ -805,7 +805,7 @@
   "step5_terminate_local_group": "🛑 已向本地运行进程组发送终止信号（PGID {pgid}，含 bash / mpirun / ww3 等）",
   "step5_terminate_local_proc": "🛑 已向本地运行子进程发送终止信号（PID {pid}）",
   "step5_terminate_local_group_failed": "⚠️ 终止进程组失败：{error}，将尝试按进程名结束…",
-  "step6_title": "第五步：连接服务器",
+  "step6_title": "第五步：Slurm 配置",
   "step6_not_connected": "[未连接]",
   "step6_connected": "[已连接]",
   "step6_connect": "连接服务器",

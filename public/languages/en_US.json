@@ -816,7 +816,7 @@
   "step5_terminate_local_group": "🛑 Sent SIGTERM to local run process group (PGID {pgid}; bash / mpirun / ww3, etc.)",
   "step5_terminate_local_proc": "🛑 Sent termination signal to local run subprocess (PID {pid})",
   "step5_terminate_local_group_failed": "⚠️ Could not terminate process group: {error}. Falling back to name-based kill…",
-  "step6_title": "Step 5: Connect Server",
+  "step6_title": "Step 5: Slurm Configuration",
   "step6_not_connected": "[Not Connected]",
   "step6_connected": "[Connected]",
   "step6_connect": "Connect Server",
