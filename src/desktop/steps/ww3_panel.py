@@ -149,6 +149,7 @@ class WW3StepPanel:
         grid.addWidget(self.cpu_combo, 1, 1)
         self._display_line(grid, 2, 0, tr("step4_total_cores", "总核数:"), "slurm_cores")
         self._display_line(grid, 3, 0, tr("step4_node_num", "节点数:"), "slurm_nodes")
+        self._display_line(grid, 4, 0, tr("step4_slurm_nodelist", "指定节点："), "slurm_nodelist")
         self._slurm_hideables.extend(
             [
                 self.st_label,
@@ -159,6 +160,8 @@ class WW3StepPanel:
                 self.fields["slurm_cores"],
                 self.field_labels["slurm_nodes"],
                 self.fields["slurm_nodes"],
+                self.field_labels["slurm_nodelist"],
+                self.fields["slurm_nodelist"],
             ]
         )
         layout.addLayout(grid)
@@ -246,6 +249,7 @@ class WW3StepPanel:
         self.set_value("ww3_output", ww3.output_step)
         self.set_value("slurm_cores", config.slurm.cores)
         self.set_value("slurm_nodes", config.slurm.nodes)
+        self.set_value("slurm_nodelist", config.slurm.nodelist or "")
         self.nml_version_combo.blockSignals(True)
         version = (config.ww3.version or "6.07").strip()
         if version not in WW3_VERSION_VALUES:
@@ -470,6 +474,7 @@ class WW3StepPanel:
             "partition": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
+            "nodelist": self.fields["slurm_nodelist"].text().strip(),
             "server_st": serialize_named_path_preset_block(selected, self._server_st_versions),
         }
 

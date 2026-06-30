@@ -103,6 +103,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
         self.job_name_var = config.slurm.job_name or config.workdir.path.name
         self.partition_var = config.slurm.partition
         self.mem_var = config.slurm.mem or ""
+        self.nodelist_var = config.slurm.nodelist or ""
         self.st_var = _resolve_st_name(config, app_config)
 
         self.output_scheme_combo = _ComboValue(_resolve_output_scheme_name(config, app_config))
@@ -210,6 +211,7 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
     merged["DEFAULT_PARTITION"] = config.slurm.partition
     merged["NODE_NUM"] = config.slurm.nodes
     merged["KERNEL_NUM"] = config.slurm.cores
+    merged["SLURM_NODELIST"] = config.slurm.nodelist or ""
 
     parameters = config.ww3_grid.parameters
     merged.update(

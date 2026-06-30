@@ -224,7 +224,8 @@ class ServerConnectPanel:
         slurm_grid.addWidget(self.cpu_combo, 2, 1)
         self._display_line(slurm_grid, 3, tr("step4_total_cores", "总核数:"), "slurm_cores")
         self._display_line(slurm_grid, 4, tr("step4_node_num", "节点数:"), "slurm_nodes")
-        self._text_line(slurm_grid, 5, tr("step5_slurm_mem", "内存："), "slurm_mem")
+        self._text_line(slurm_grid, 5, tr("step4_slurm_nodelist", "指定节点："), "slurm_nodelist")
+        self._text_line(slurm_grid, 6, tr("step5_slurm_mem", "内存："), "slurm_mem")
         self.fields["slurm_mem"].textEdited.connect(self._on_slurm_mem_user_edited)
         layout.addWidget(self._slurm_form)
 
@@ -459,6 +460,7 @@ class ServerConnectPanel:
         self.fields["slurm_job_name"].setText(str(config.slurm.job_name or config.workdir.path.name))
         self.fields["slurm_cores"].setText(str(config.slurm.cores))
         self.fields["slurm_nodes"].setText(str(config.slurm.nodes))
+        self.fields["slurm_nodelist"].setText(str(config.slurm.nodelist or ""))
         self.fields["slurm_mem"].setText(str(config.slurm.mem or ""))
         self._slurm_mem_user_edited = False
         self._server_st_versions = dict(config.slurm.server_st_versions)
@@ -482,6 +484,7 @@ class ServerConnectPanel:
             "partition": self.cpu_combo.currentText().strip(),
             "cores": self.fields["slurm_cores"].text().strip(),
             "nodes": self.fields["slurm_nodes"].text().strip(),
+            "nodelist": self.fields["slurm_nodelist"].text().strip(),
             "mem": self.fields["slurm_mem"].text().strip(),
             "server_st": serialize_named_path_preset_block(selected, self._server_st_versions),
         }

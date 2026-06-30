@@ -332,6 +332,18 @@ def _slurm_partition(slurm_raw: Dict[str, Any]) -> str:
     return ""
 
 
+def _slurm_nodelist(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        items = [str(item).strip() for item in value if str(item).strip()]
+        return " ".join(items) or None
+    text = str(value).replace(",", " ").strip()
+    if not text:
+        return None
+    return " ".join(part for part in text.split() if part)
+
+
 def normalize_slurm_section(slurm: Any) -> Dict[str, Any]:
     """写回 YAML 前规范化 slurm 段：使用 partition，移除已废弃的 cpu。"""
     if not isinstance(slurm, dict):
@@ -339,6 +351,8 @@ def normalize_slurm_section(slurm: Any) -> Dict[str, Any]:
     out = dict(slurm)
     if not str(out.get("partition") or "").strip() and str(out.get("cpu") or "").strip():
         out["partition"] = str(out.get("cpu") or "").strip()
+    if "nodelist" in out:
+        out["nodelist"] = _slurm_nodelist(out.get("nodelist"))
     out.pop("cpu", None)
     return out
 
@@ -371,6 +385,7 @@ def _slurm_config(slurm_raw: Dict[str, Any], ww3: WW3Config, *, workdir_name: st
         nodes=str(slurm_raw.get("nodes") or ""),
         cores=str(slurm_raw.get("cores") or ""),
         mem=str(slurm_raw.get("mem") or "").strip() or None,
+        nodelist=_slurm_nodelist(slurm_raw.get("nodelist")),
         server_st=server_st_active,
         server_st_versions=server_st_versions,
     )
@@ -1304,6 +1319,8 @@ slurm:
   partition: CPU6240R
   nodes: "1"
   cores: "48"
+  nodelist: null                  # [EN] Optional node list (#SBATCH -w), separated by spaces
+                                  # 可选指定节点（#SBATCH -w），多个节点用空格分开
   mem: 190G                       # [EN] Job memory (#SBATCH --mem=); null keeps template default
                                   # 作业内存（#SBATCH --mem=）；null 保留模板默认值
   server_st:

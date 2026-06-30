@@ -369,6 +369,7 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
     print(_config_field(tr("icli_slurm_cpu", "分区：{}"), cfg.slurm.partition or not_cfg))
     print(_config_field(tr("icli_slurm_cores", "核数：{}"), cfg.slurm.cores))
     print(_config_field(tr("icli_slurm_nodes", "节点：{}"), cfg.slurm.nodes))
+    print(_config_field(tr("icli_slurm_nodelist", "指定节点：{}"), cfg.slurm.nodelist or not_cfg))
     print(_config_field(tr("icli_slurm_mem", "内存：{}"), cfg.slurm.mem or not_cfg))
 
     print(f"\n  {_section(tr('icli_config_server', '服务器'))}")

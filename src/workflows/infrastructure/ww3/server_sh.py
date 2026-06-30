@@ -16,6 +16,11 @@ def _st_executable_dir(path: str) -> str:
     return str(path or "").strip().rstrip("/\\")
 
 
+def _slurm_nodelist_directive(value: str) -> str:
+    nodes = [part.strip() for part in re.split(r"[\s,]+", str(value or "").strip()) if part.strip()]
+    return ",".join(nodes)
+
+
 class ServerSh(NMLPrimitives):
     """Mixin: server.sh and SLURM parameter operations."""
 
@@ -46,6 +51,7 @@ class ServerSh(NMLPrimitives):
         num_N = self.num_N_edit.text().strip()
         partition = self.partition_var
         mem = str(getattr(self, "mem_var", "") or "").strip()
+        nodelist = _slurm_nodelist_directive(str(getattr(self, "nodelist_var", "") or ""))
 
         # [EN] Get default template path for server.sh (prefer public/scripts/server.sh)
         # 获取 server.sh 的默认模板路径（优先使用 public/scripts/server.sh）
@@ -113,6 +119,7 @@ class ServerSh(NMLPrimitives):
             new_lines = []
             time_found = False
             mem_found = False
+            nodelist_found = False
             st_path_inserted = False
 
             i = 0
@@ -130,6 +137,12 @@ class ServerSh(NMLPrimitives):
                     new_lines.append(f"#SBATCH -n {num_n}\n")
                 elif line_stripped.startswith("#SBATCH -N"):
                     new_lines.append(f"#SBATCH -N {num_N}\n")
+                elif line_stripped.startswith("#SBATCH -w") or line_stripped.startswith("#SBATCH --nodelist"):
+                    nodelist_found = True
+                    if nodelist:
+                        new_lines.append(f"#SBATCH -w {nodelist}\n")
+                    i += 1
+                    continue
                 elif line_stripped.startswith("#SBATCH --mem"):
                     if mem_found:
                         # 历史重复行：只保留第一处 --mem，其余丢弃
@@ -211,6 +224,15 @@ class ServerSh(NMLPrimitives):
                         new_lines.insert(idx + 1, f"#SBATCH --mem={mem}\n")
                         mem_found = True
                         break
+            if nodelist and not nodelist_found:
+                insert_at = None
+                for idx, out_line in enumerate(new_lines):
+                    if out_line.strip().startswith("#SBATCH --mem"):
+                        insert_at = idx + 1
+                    elif insert_at is None and out_line.strip().startswith("#SBATCH -N"):
+                        insert_at = idx + 1
+                if insert_at is not None:
+                    new_lines.insert(insert_at, f"#SBATCH -w {nodelist}\n")
 
             # [EN] Use binary mode when writing back to ensure \\n instead of \\r\\n
             # 写回文件时使用二进制模式，确保使用 \\n 而不是 \\r\\n
@@ -226,6 +248,7 @@ class ServerSh(NMLPrimitives):
                 ("#SBATCH -n", num_n),
                 ("#SBATCH -N", num_N),
                 ("#SBATCH --mem", mem_display),
+                ("#SBATCH -w", nodelist or "-"),
                 ("MPI_NPROCS", num_n),
                 ("ST", st_name),
                 ("export PATH", st_path_line),

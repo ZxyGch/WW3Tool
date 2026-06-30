@@ -378,6 +378,7 @@ class SlurmConfig:
     关键字段：
     - ``job_name``：Slurm 作业名，写入 ``server.sh`` 的 ``#SBATCH -J``
     - ``partition`` / ``nodes`` / ``cores``：分区与并行规模
+    - ``nodelist``：可选指定节点列表，写入 ``server.sh`` 的 ``#SBATCH -w``
     - ``mem``：作业内存申请，写入 ``server.sh`` 的 ``#SBATCH --mem=``
     - ``server_st``：当前启用的 ST 方案名（``slurm.server_st.use``）
     - ``server_st_versions``：服务器 ST 方案名 → 可执行目录
@@ -387,6 +388,7 @@ class SlurmConfig:
     Key fields:
     - ``job_name``: Slurm job name, written to ``#SBATCH -J`` in ``server.sh``
     - ``partition`` / ``nodes`` / ``cores``: partition and parallelism scale
+    - ``nodelist``: optional requested node list, written to ``#SBATCH -w`` in ``server.sh``
     - ``mem``: job memory request, written to ``#SBATCH --mem=`` in ``server.sh``
     - ``server_st``: active ST scheme name (``slurm.server_st.use``)
     - ``server_st_versions``: server ST scheme name → executable directory
@@ -397,6 +399,7 @@ class SlurmConfig:
     nodes: Optional[str] = None
     cores: Optional[str] = None
     mem: Optional[str] = None
+    nodelist: Optional[str] = None
     server_st: Optional[str] = None
     server_st_versions: Dict[str, str] = field(default_factory=dict)
     # 已废弃：仅兼容旧代码 ``SlurmConfig(cpu=...)`` / 旧实例 ``.cpu``；请使用 ``partition``。
