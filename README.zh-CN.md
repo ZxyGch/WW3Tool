@@ -600,7 +600,7 @@ grid:
 ![](public/resource/README-media/截屏2026-06-28%2012.46.43.png)
 ![](public/resource/README-media/截屏2026-06-28%2012.53.13.png)
 
-嵌套用于「外圈粗、内圈细」的多分辨率模拟：外层覆盖大尺度背景，内层在感兴趣区域加密。WW3Tool 采用 WW3 的 ww3_multi 路线，一次积分驱动多层网格（见 §5.5.7、嵌套网格设计与问题分析.md）。
+嵌套用于「外圈粗、内圈细」的多分辨率模拟：外层覆盖大尺度背景，内层在感兴趣区域加密。WW3Tool 采用 WW3 的 ww3_multi 路线，一次积分驱动多层网格（见 §5.5.8、嵌套网格设计与问题分析.md）。
 
 配置要点：
 
@@ -995,7 +995,7 @@ WW3Tool 在此基础上取整数秒，并级联得到：
 
 - 从 public/6.07_nml/ 或 public/7.14_nml/（根据你的 NML Version 选择）复制 ww3_grid.nml、ww3_prnc.nml、ww3_shel.nml、ww3_ounf.nml 等到工作目录。
 
-- 从 public/scripts/ 复制  local.sh 和 server.sh。两个脚本的计算流程相同；差别见 §5.5.8。
+- 从 public/scripts/ 复制  local.sh 和 server.sh。两个脚本的计算流程相同；差别见 §5.5.9。
 
 他们决定了 WW3 的程序（例如 ww3_grid、ww3_shel）执行流程， local.sh 是在本地运行的脚本， server.sh 是在 Slurm 运行的脚本。
 
@@ -1104,8 +1104,42 @@ ww3:
 | `ww3_prnc.nml` 的 `FORCING%TIMESTART/TIMESTOP` | 控制强迫场预处理读取哪一段时间，通常应覆盖主积分时间窗                                      |
 
 
+#### 5.5.5 启动方式与热启动
 
-#### 5.5.5 谱分区输出方案
+第四步可以选择 WW3 的启动方式。一般新算例使用冷启动；如果前一次计算已经产生了 `restart*.ww3`，并且希望从已有海浪状态继续积分，就使用热启动。
+
+对应的 yml 参数：
+
+```yaml
+ww3:
+  start_date: "20250103"
+  end_date: "20250105"
+  output_step: "3600"
+  restart:
+    mode: cold                  # cold 或 restart
+    pick_latest_checkpoint: true
+    restart_time: null
+    restart_file: null
+```
+
+这些参数的作用：
+
+- `ww3.restart.mode`：`cold` 表示冷启动，会按正常流程生成初始场；`restart` 表示热启动，会从已有 restart 文件继续计算。
+- `ww3.restart.pick_latest_checkpoint`：GUI 中显示为“自动最新”。为 `true` 时，程序优先使用工作目录里最新的 restart 检查点，不需要手填时间。
+- `ww3.restart.restart_time`：手动指定热启动时间，格式为 `YYYYMMDD` 或 `YYYYMMDD HHMMSS`。只有不使用“自动最新”时才需要填写。
+- `ww3.restart.restart_file`：手动指定 restart 文件名，例如 `restart036.ww3`。为空时按 restart 时间匹配。
+- `ww3.output_step`：同时作为结果输出步长和 restart 写出间隔；因此不再单独设置 restart 写出步长。
+
+简单理解：冷启动是“从一个新初始场开始算”，热启动是“接着已有 checkpoint 往后算”。热启动常用于长时间任务拆段、服务器任务中断后续算、或者先跑一段 spin-up 再进入正式模拟。
+
+热启动需要注意两点：
+
+1. restart 文件必须来自相同网格、相同谱参数和兼容的 WW3 版本，否则 WW3 本身可能无法读取。
+2. 热启动时实际积分起点由 restart 时间决定；第四步的时间范围仍然用于限定完整强迫场和输出时间窗。
+
+
+
+#### 5.5.6 谱分区输出方案
 
 ![](public/resource/README-media/截屏2026-06-28%2019.03.05.png)
 
@@ -1131,7 +1165,7 @@ ww3:
 
 
 
-#### 5.5.6 强迫场开关与多套 prnc
+#### 5.5.7 强迫场开关与多套 prnc
 
 ![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
 
@@ -1155,7 +1189,7 @@ ww3:
 
 
 
-#### 5.5.7 嵌套网格
+#### 5.5.8 嵌套网格
 
 ![](public/resource/README-media/截屏2026-06-28%2019.21.54.png)
 
@@ -1295,7 +1329,7 @@ Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处
 
 
 
-#### 5.5.8 local.sh 与 server.sh 在算什么
+#### 5.5.9 local.sh 与 server.sh 在算什么
 
 `local.sh` 和 `server.sh` 本身不做数值计算，它们是 WW3 运行流程的编排脚本：进入工作目录，按顺序调用 WW3 官方可执行程序，把所有输出追加到 `run.log`，任一步失败就停止并生成 `fail` 标记，全部完成后生成 `success` 标记。
 
@@ -1484,6 +1518,8 @@ python3 run.py slurm-idle <workdir>
   #SBATCH -n    = 48
   #SBATCH -N    = 1
   #SBATCH --mem = 360G
+  #SBATCH -w    = -
+  #SBATCH --time = -
   MPI_NPROCS    = 48
   ST            = ST2
   export PATH   = /public/home/weiyl001/software/wavewatch3/model/exe
@@ -1492,6 +1528,19 @@ python3 run.py slurm-idle <workdir>
 在第五步我们有自动解析服务器分区的功能，设置页面的服务器分区只是提供一个兜底的默认值，只有在无法正确解析服务器分区列表的情况下，才会使用。
 
 如果解析的服务器分区列表包含这个默认值，那么会默认使用该分区。
+
+第五步的 Slurm 参数会写回工作目录的 `params.yml`，点击“确认 Slurm 配置”或执行 `confirm-slurm` 后，会刷新 `server.sh` 顶部的 `#SBATCH` 行和 `MPI_NPROCS`：
+
+- `slurm.job_name`：作业名，写入 `#SBATCH -J`。为空时使用工作目录名。
+- `slurm.partition`：分区，写入 `#SBATCH -p`。GUI 连接服务器后会从 `sinfo` 解析分区列表。
+- `slurm.nodes`：节点数，写入 `#SBATCH -N`。
+- `slurm.cores`：总核心数，写入 `#SBATCH -n` 和脚本内 `MPI_NPROCS`。
+- `slurm.nodelist`：指定节点，非必填；多个节点用空格填写，例如 `node01 node02`，写入 `#SBATCH -w node01,node02`。为空时不限制节点。
+- `slurm.time`：最长运行时间，非必填；写入 `#SBATCH --time`，可用 Slurm 原生格式，例如 `2-00:00:00` 或 `48:00:00`。为空时保留模板脚本中的默认值。
+- `slurm.mem`：内存，非必填；写入 `#SBATCH --mem=`。GUI 会根据空闲资源给出建议值，也可以手动清空或修改。
+- `slurm.server_st.use`：服务器 WW3 版本，写入 `export PATH=...:$PATH`，决定服务器运行时使用哪一套 WW3 可执行程序。
+
+这里的 `nodes` 和 `cores` 需要互相匹配。例如申请 `nodes: 2`、`cores: 96` 通常表示 2 个节点合计 96 核；如果还指定 `nodelist: node01 node02`，那么 Slurm 会尽量把任务投到这两个节点上。是否一定能分配成功取决于服务器当前空闲资源和分区策略。
 
 
 
@@ -1521,6 +1570,8 @@ slurm:
   partition: CPU6240R
   nodes: 1
   cores: 48
+  nodelist: null        # 非必填；多个节点用空格分开，如 "node01 node02"
+  time: null            # 非必填；如 "2-00:00:00" 或 "48:00:00"
   mem: 190G
 
   # server_st.use 是当前选中的服务器 WW3 版本
@@ -1544,7 +1595,7 @@ python3 run.py confirm-slurm hpc_case
 python3 run.py queue-status
 ```
 
-如果只是改 `slurm.partition`、`slurm.cpu`、`slurm.nodes`、`slurm.cores`、`slurm.mem` 或 `slurm.server_st.use`，不需要重新执行 Step1～Step4，直接重新运行 `confirm-slurm` 即可。
+如果只是改 `slurm.partition`、`slurm.nodes`、`slurm.cores`、`slurm.nodelist`、`slurm.time`、`slurm.mem` 或 `slurm.server_st.use`，不需要重新执行 Step1～Step4，直接重新运行 `confirm-slurm` 即可。
 
 
 
