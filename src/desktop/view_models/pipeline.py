@@ -343,6 +343,7 @@ class PipelineViewModel:
         calc_points: list[dict] | None = None,
         calc_track_points: list[dict] | None = None,
         ww3_overrides: dict | None = None,
+        restart_overrides: dict | None = None,
         ww3_grid_overrides: dict | None = None,
         plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
@@ -612,6 +613,8 @@ class PipelineViewModel:
             raw["calc"] = calc_raw
         if ww3_overrides:
             raw["ww3"] = {**_as_dict(raw.get("ww3")), **ww3_overrides}
+        if restart_overrides:
+            raw["restart"] = {**_as_dict(raw.get("restart")), **restart_overrides}
         if ww3_grid_overrides:
             # [EN] Step 4 visible spectrum/timestep groups override ww3_grid (after config.json overrides -> form takes priority).
             # 第四步可见的频谱/时间步分组覆盖 ww3_grid（在 config.json 覆盖之后 → 表单优先）。

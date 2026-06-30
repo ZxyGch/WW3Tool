@@ -60,6 +60,7 @@ from ..domain.config_models import (
     PipelineConfig,
     PlotConfig,
     PointConfig,
+    RestartConfig,
     SMCGridSettings,
     ServerConfig,
     SlurmConfig,
@@ -1030,6 +1031,24 @@ def parse_pipeline_config(
         }
     )
 
+    restart_raw = _as_dict(raw.get("restart"), "restart")
+    restart_mode = str(restart_raw.get("mode") or "cold").strip().lower()
+    if restart_mode not in {"cold", "restart"}:
+        raise ConfigError("restart.mode 必须是 cold 或 restart")
+    restart_output_step = str(restart_raw.get("output_step", "86400")).strip()
+    restart = RestartConfig(
+        mode=restart_mode,
+        input_file=restart_raw.get("input_file"),
+        restart_time=(
+            str(restart_raw.get("restart_time")).strip()
+            if restart_raw.get("restart_time") is not None
+            else None
+        ),
+        output_step=restart_output_step,
+        pick_latest_checkpoint=bool(restart_raw.get("pick_latest_checkpoint", True)),
+        keep_latest_only=bool(restart_raw.get("keep_latest_only", False)),
+    )
+
     slurm_raw = _as_dict(raw.get("slurm"), "slurm")
     slurm = _slurm_config(slurm_raw, ww3, workdir_name=workdir_path.name)
     local_run = _local_run_config(raw.get("local_run"))
@@ -1048,6 +1067,7 @@ def parse_pipeline_config(
         calc=calc,
         ww3=ww3,
         ww3_grid=ww3_grid,
+        restart=restart,
         slurm=slurm,
         local_run=local_run,
         plot=plot,
@@ -1119,6 +1139,10 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
     for label, value in (("ww3.output_step", config.ww3.output_step),):
         if not str(value).isdigit():
             raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label=label))
+    if config.restart.mode not in {"cold", "restart"}:
+        raise ConfigError("restart.mode 必须是 cold 或 restart")
+    if not str(config.restart.output_step or "").isdigit():
+        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="restart.output_step"))
     if config.grid.grid_type == "nested":
         if config.grid.inner is None:
             raise ConfigError(tr("cfg_nested_inner_required", "nested 网格需要 grid.inner"))
@@ -1229,6 +1253,7 @@ calc:
   # mode: track 时示例：track_points: [{datetime: "20250101 000000", lon: 120.0, lat: 20.0, name: T1}]
 
 ww3:
+  version: "7.14"
   start_date: "20250101"
   end_date: "20250103"
   output_step: "3600"
@@ -1236,6 +1261,14 @@ ww3:
   # 方案名: 空格分隔字段；多方案时加 use: <方案名>
   output_scheme:
     with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
+
+restart:
+  mode: cold
+  input_file: null
+  restart_time: null
+  output_step: "86400"
+  pick_latest_checkpoint: true
+  keep_latest_only: false
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml

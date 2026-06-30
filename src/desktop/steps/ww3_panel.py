@@ -25,6 +25,7 @@ _TIMESTEP_SPECS = [
 
 from ..components.combo_box import (
     add_labeled_combo_items,
+    combo_selected_user_data,
     current_file_split_from_combo,
     file_split_combo_items,
     left_align_combo_text,
@@ -37,6 +38,26 @@ from ..components.validators import date_yyyymmdd_validator, int_validator
 from workflows.domain.config_models import PipelineConfig
 from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES
 from workflows.support.translations import tr
+
+
+def restart_mode_combo_items() -> list[tuple[str, str]]:
+    """``restart.mode`` 下拉项：展示文案 + 规范枚举值。"""
+    return [
+        (tr("restart_mode_cold", "冷启动"), "cold"),
+        (tr("restart_mode_hot", "热启动"), "restart"),
+    ]
+
+
+def select_restart_mode_combo(combo: ComboBox, value: object) -> None:
+    selected = str(value or "cold").strip().lower()
+    if selected not in {"cold", "restart"}:
+        selected = "cold"
+    for index in range(combo.count()):
+        if str(combo.itemData(index) or "").strip().lower() == selected:
+            combo.setCurrentIndex(index)
+            return
+    if combo.count():
+        combo.setCurrentIndex(0)
 
 
 class WW3StepPanel:
@@ -149,24 +170,31 @@ class WW3StepPanel:
         self.nml_version_label = self._field_label(tr("step4_nml_template_version", "NML 模板版本："))
         wave_grid.addWidget(self.nml_version_label, 0, 0)
         wave_grid.addWidget(self.nml_version_combo, 0, 1)
-        self._display_line(wave_grid, 1, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
-        self._display_line(wave_grid, 2, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
-        self._display_line(wave_grid, 3, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
+        self.restart_mode_combo = ComboBox()
+        self.restart_mode_combo.setStyleSheet(combo_style())
+        left_align_combo_text(self.restart_mode_combo)
+        add_labeled_combo_items(self.restart_mode_combo, restart_mode_combo_items())
+        self.restart_mode_label = self._field_label(tr("step4_restart_mode", "启动方式："))
+        wave_grid.addWidget(self.restart_mode_label, 1, 0)
+        wave_grid.addWidget(self.restart_mode_combo, 1, 1)
+        self._display_line(wave_grid, 2, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
+        self._display_line(wave_grid, 3, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
+        self._display_line(wave_grid, 4, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self.output_scheme_combo = ComboBox()
         self._output_scheme_fields_by_name: dict[str, list[str]] = {}
         self._server_st_versions: dict[str, str] = {}
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
-        wave_grid.addWidget(self.output_scheme_label, 4, 0)
-        wave_grid.addWidget(self.output_scheme_combo, 4, 1)
+        wave_grid.addWidget(self.output_scheme_label, 5, 0)
+        wave_grid.addWidget(self.output_scheme_combo, 5, 1)
         self.file_split_combo = ComboBox()
         self.file_split_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.file_split_combo)
         add_labeled_combo_items(self.file_split_combo, file_split_combo_items())
         self.file_split_label = self._field_label(tr("file_split", "文件分割："))
-        wave_grid.addWidget(self.file_split_label, 5, 0)
-        wave_grid.addWidget(self.file_split_combo, 5, 1)
+        wave_grid.addWidget(self.file_split_label, 6, 0)
+        wave_grid.addWidget(self.file_split_combo, 6, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -214,6 +242,7 @@ class WW3StepPanel:
             version = WW3_VERSION_VALUES[0]
         self.nml_version_combo.setCurrentText(version)
         self.nml_version_combo.blockSignals(False)
+        select_restart_mode_combo(self.restart_mode_combo, config.restart.mode)
         self._server_st_versions = dict(config.slurm.server_st_versions)
         self._replace_combo_items(
             self.st_combo,
@@ -351,6 +380,11 @@ class WW3StepPanel:
             ),
             "file_split": current_file_split_from_combo(self.file_split_combo),
             "version": self.nml_version_combo.currentText().strip(),
+        }
+
+    def restart_overrides(self) -> dict[str, object]:
+        return {
+            "mode": combo_selected_user_data(self.restart_mode_combo) or "cold",
         }
 
     def slurm_overrides(self) -> dict[str, object]:

@@ -196,6 +196,20 @@ ww3:
     standard: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS
     with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
 # ────────────────────────────────────────────────────────────────────
+# WW3 restart / hot-start settings.
+#   mode       – cold runs ww3_strt; restart uses existing restart.ww3 and skips ww3_strt.
+#   input_file – null uses restart.ww3 already in workdir; nested can use {level0: path, ...}.
+#   restart_time – hot-start integration start time: YYYYMMDD or "YYYYMMDD HHMMSS".
+#   output_step – restart write interval in seconds; 0 disables restart output.
+# ────────────────────────────────────────────────────────────────────
+restart:
+  mode: cold
+  input_file: null
+  restart_time: null
+  output_step: 86400
+  pick_latest_checkpoint: true
+  keep_latest_only: false
+# ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
 # Keys follow the Fortran namelist syntax with '%' as sub-key separator.
 #

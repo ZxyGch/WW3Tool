@@ -823,6 +823,14 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "# ────────────────────────────────────────────────────────────────────"),
+    ("restart:",
+     "# ────────────────────────────────────────────────────────────────────\n"
+     "# WW3 restart / hot-start settings.\n"
+     "#   mode       – cold runs ww3_strt; restart uses existing restart.ww3 and skips ww3_strt.\n"
+     "#   input_file – null uses restart.ww3 already in workdir; nested can use {level0: path, ...}.\n"
+     "#   restart_time – hot-start integration start time: YYYYMMDD or \"YYYYMMDD HHMMSS\".\n"
+     "#   output_step – restart write interval in seconds; 0 disables restart output.\n"
+     "# ────────────────────────────────────────────────────────────────────"),
     ("ww3_grid:",
      "# ────────────────────────────────────────────────────────────────────\n"
      "# WW3 grid namelist overrides (written into ww3_grid.nml at runtime).\n"

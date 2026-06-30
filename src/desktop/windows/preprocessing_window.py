@@ -1201,6 +1201,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                     else {}
                 ),
             },
+            restart_overrides=self._ww3_panel.restart_overrides(),
             ww3_grid_overrides=self._ww3_panel.ww3_grid_overrides(),
             plot_overrides=self._plot_overrides(),
             slurm_overrides=(

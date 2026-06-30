@@ -361,6 +361,18 @@ class WW3GridSettings:
 
 
 @dataclass
+class RestartConfig:
+    """WW3 restart / hot-start settings (corresponds to YAML ``restart:`` section)."""
+
+    mode: str = "cold"
+    input_file: Any = None
+    restart_time: Optional[str] = None
+    output_step: Optional[str] = "86400"
+    pick_latest_checkpoint: bool = True
+    keep_latest_only: bool = False
+
+
+@dataclass
 class SlurmConfig:
     """远程 SLURM 作业资源（对应 YAML ``slurm:`` 段）。
 
@@ -598,6 +610,7 @@ class PipelineConfig:
     calc: CalcConfig = field(default_factory=CalcConfig)
     ww3: WW3Config = field(default_factory=WW3Config)
     ww3_grid: WW3GridSettings = field(default_factory=WW3GridSettings)
+    restart: RestartConfig = field(default_factory=RestartConfig)
     slurm: SlurmConfig = field(default_factory=SlurmConfig)
     local_run: LocalRunConfig = field(default_factory=LocalRunConfig)
     plot: PlotConfig = field(default_factory=PlotConfig)
