@@ -227,6 +227,7 @@ class ServerConnectPanel:
         self._text_line(slurm_grid, 5, tr("step4_slurm_nodelist", "指定节点："), "slurm_nodelist")
         self._text_line(slurm_grid, 6, tr("step4_slurm_time", "最长运行时间："), "slurm_time")
         self._text_line(slurm_grid, 7, tr("step5_slurm_mem", "内存："), "slurm_mem")
+        self._mark_optional_slurm_fields("slurm_nodelist", "slurm_time", "slurm_mem")
         self.fields["slurm_mem"].textEdited.connect(self._on_slurm_mem_user_edited)
         layout.addWidget(self._slurm_form)
 
@@ -666,6 +667,17 @@ class ServerConnectPanel:
         grid.addWidget(field, row, 1)
         self.fields[key] = field
         self.field_labels[key] = field_label
+
+    def _mark_optional_slurm_fields(self, *keys: str) -> None:
+        hint = tr("slurm_optional_placeholder", "非必填")
+        for key in keys:
+            field = self.fields.get(key)
+            label = self.field_labels.get(key)
+            if field is not None:
+                field.setPlaceholderText(hint)
+                field.setToolTip(hint)
+            if label is not None:
+                label.setToolTip(hint)
 
     @staticmethod
     def _replace_combo_items(combo: ComboBox, values: list[str], selected: str) -> None:

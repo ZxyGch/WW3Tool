@@ -333,6 +333,14 @@ class SettingsInterface(QWidget):
         grid.addWidget(edit, row, col + 1, 1, self._control_span(col))
         (self._fields if store is None else store)[key] = edit
 
+    def _mark_optional_fields(self, *keys: str) -> None:
+        hint = tr("slurm_optional_placeholder", "非必填")
+        for key in keys:
+            field = self._fields.get(key)
+            if field is not None:
+                field.setPlaceholderText(hint)
+                field.setToolTip(hint)
+
     def _combo(self, grid: QGridLayout, row: int, col: int, label: str, key: str, options: list[str | tuple[str, str]]) -> None:
         combo = ComboBox()
         for option in options:
@@ -596,6 +604,7 @@ class SettingsInterface(QWidget):
         self._text(grid, 3, 0, tr("step4_slurm_nodelist", "指定节点："), "SLURM_NODELIST")
         self._text(grid, 4, 0, tr("step4_slurm_time", "最长运行时间："), "SLURM_TIME")
         self._text(grid, 5, 0, tr("set_slurm_mem", "内存："), "SLURM_MEM")
+        self._mark_optional_fields("SLURM_NODELIST", "SLURM_TIME", "SLURM_MEM")
 
     def _build_ww3_card(self) -> None:
         grid = self._card(tr("ww3_config_card", "WW3 配置"))

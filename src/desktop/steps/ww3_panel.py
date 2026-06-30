@@ -151,6 +151,7 @@ class WW3StepPanel:
         self._display_line(grid, 3, 0, tr("step4_node_num", "节点数:"), "slurm_nodes")
         self._display_line(grid, 4, 0, tr("step4_slurm_nodelist", "指定节点："), "slurm_nodelist")
         self._display_line(grid, 5, 0, tr("step4_slurm_time", "最长运行时间："), "slurm_time")
+        self._mark_optional_slurm_fields("slurm_nodelist", "slurm_time")
         self._slurm_hideables.extend(
             [
                 self.st_label,
@@ -314,6 +315,17 @@ class WW3StepPanel:
         label.setMinimumHeight(28)
         label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
         return label
+
+    def _mark_optional_slurm_fields(self, *keys: str) -> None:
+        hint = tr("slurm_optional_placeholder", "非必填")
+        for key in keys:
+            field = self.fields.get(key)
+            label = self.field_labels.get(key)
+            if field is not None:
+                field.setPlaceholderText(hint)
+                field.setToolTip(hint)
+            if label is not None:
+                label.setToolTip(hint)
 
     @staticmethod
     def _expand_field(widget: QWidget) -> None:
