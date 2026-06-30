@@ -119,6 +119,8 @@ class WW3MultiNML(NMLPrimitives):
         start_date = self.shel_start_edit.text().strip()
         end_date = self.shel_end_edit.text().strip()
         output_stride = self.output_precision_edit.text().strip()
+        run_start = str(getattr(self, "_restart_start_datetime", "") or f"{start_date} 000000").strip()
+        supports_restart2 = bool(getattr(self, "_supports_restart2", False))
 
         if not (start_date.isdigit() and len(start_date) == 8 and end_date.isdigit() and len(end_date) == 8):
             self.log(tr("date_range_format_error", "❌ 起始/结束日期格式错误，应为 YYYYMMDD。"))
@@ -166,6 +168,7 @@ class WW3MultiNML(NMLPrimitives):
             modified_alltype_point_file = False
             modified_alldate_point = False
             modified_alldate_field = False
+            modified_alldate_restart2 = False
             modified_alltype_field_list = False
             modified_flghg1 = False
             modified_flghg2 = False
@@ -202,7 +205,7 @@ class WW3MultiNML(NMLPrimitives):
                         new_lines.append(self._format_domain_line("DOMAIN%NRGRD", str(len(level_resources))))
                         continue
                     if re.search(r"DOMAIN%START", line):
-                        new_lines.append(self._format_domain_line("DOMAIN%START", f"'{start_date} 000000'"))
+                        new_lines.append(self._format_domain_line("DOMAIN%START", f"'{run_start}'"))
                         continue
                     if re.search(r"DOMAIN%STOP", line):
                         new_lines.append(self._format_domain_line("DOMAIN%STOP", f"'{end_date} 235959'"))
@@ -289,59 +292,67 @@ class WW3MultiNML(NMLPrimitives):
                 if in_output:
                     # ALLDATE%FIELD：统一写入 output_step（输出步长）
                     if re.search(r"ALLDATE%FIELD%START", line, re.IGNORECASE):
-                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                        new_lines.append(f"  ALLDATE%FIELD          = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                         modified_alldate_field = True
                         continue
                     if re.search(r"ALLDATE%FIELD%(STRIDE|STOP)", line, re.IGNORECASE):
                         continue
                     if re.search(r"ALLDATE%FIELD", line) and not re.search(r"ALLDATE%FIELD%", line, re.IGNORECASE):
-                        new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                        new_lines.append(f"  ALLDATE%FIELD          = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                         modified_alldate_field = True
                         continue
 
                     # ALLDATE%POINT：谱点模式下同样使用 output_step
                     if re.search(r"ALLDATE%POINT%START", line, re.IGNORECASE):
                         if is_spectral_point and has_spectral_points:
-                            new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            new_lines.append(f"  ALLDATE%POINT          = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                             modified_alldate_point = True
                         continue
                     if re.search(r"ALLDATE%POINT%(STRIDE|STOP)", line, re.IGNORECASE):
                         continue
                     if re.search(r"ALLDATE%POINT", line) and not re.search(r"ALLDATE%POINT%", line, re.IGNORECASE):
                         if is_spectral_point and has_spectral_points:
-                            new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            new_lines.append(f"  ALLDATE%POINT          = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                             modified_alldate_point = True
                         continue
 
-                    # ALLDATE%RESTART%START/STOP: 更新为正确日期，保留 STRIDE
+                    # ALLDATE%RESTART2：第二 restart 流，写出带时间戳的 checkpoint。
+                    if re.search(r"ALLDATE%RESTART2%START", line, re.IGNORECASE):
+                        if supports_restart2:
+                            new_lines.append(f"  ALLDATE%RESTART2       = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_restart2 = True
+                        continue
+                    if re.search(r"ALLDATE%RESTART2%(STRIDE|STOP)", line, re.IGNORECASE):
+                        continue
+                    if re.search(r"ALLDATE%RESTART2", line, re.IGNORECASE) and not re.search(r"ALLDATE%RESTART2%", line, re.IGNORECASE):
+                        if supports_restart2:
+                            new_lines.append(f"  ALLDATE%RESTART2       = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_restart2 = True
+                        continue
+
+                    # ALLDATE%RESTART: 更新为正确日期，步长与输出步长一致。
                     if re.search(r"ALLDATE%RESTART%START", line, re.IGNORECASE):
-                        # 提取原有步长（从 START 行或回退查找 STRIDE 行）
-                        new_lines.append(f"  ALLDATE%RESTART%START       = '{start_date} 000000'\n")
+                        new_lines.append(f"  ALLDATE%RESTART        = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                         continue
                     if re.search(r"ALLDATE%RESTART%STRIDE", line, re.IGNORECASE):
-                        # 保留原有 STRIDE 值
-                        m = re.search(r"'(\d+)'", line)
-                        restart_step_val = m.group(1) if m else '86400'
-                        new_lines.append(f"  ALLDATE%RESTART%STRIDE      = '{restart_step_val}'\n")
                         continue
                     if re.search(r"ALLDATE%RESTART%STOP", line, re.IGNORECASE):
-                        new_lines.append(f"  ALLDATE%RESTART%STOP        = '{end_date} 235959'\n")
                         continue
                     if re.search(r"ALLDATE%RESTART", line) and not re.search(r"ALLDATE%RESTART%", line, re.IGNORECASE):
-                        # 已经是合并格式
-                        m = re.search(r"'(\d{8}\s+\d{6})'\s*'(\d+)'\s*'(\d{8}\s+\d{6})'", line)
-                        restart_step_val = m.group(2) if m else '86400'
-                        new_lines.append(f"  ALLDATE%RESTART        = '{start_date} 000000' '{restart_step_val}' '{end_date} 235959'\n")
+                        new_lines.append(f"  ALLDATE%RESTART        = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                         continue
 
                     if "/" in line:
                         if not modified_alldate_field:
-                            new_lines.append(f"  ALLDATE%FIELD          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            new_lines.append(f"  ALLDATE%FIELD          = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                             modified_alldate_field = True
                         # 谱点模式：若模板无 POINT 行，在结束前补写
                         if is_spectral_point and has_spectral_points and not modified_alldate_point:
-                            new_lines.append(f"  ALLDATE%POINT          = '{start_date} 000000' '{output_stride}' '{end_date} 235959'\n")
+                            new_lines.append(f"  ALLDATE%POINT          = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
                             modified_alldate_point = True
+                        if supports_restart2 and not modified_alldate_restart2:
+                            new_lines.append(f"  ALLDATE%RESTART2       = '{run_start}' '{output_stride}' '{end_date} 235959'\n")
+                            modified_alldate_restart2 = True
                         in_output = False
                         new_lines.append(line)
                         continue
@@ -422,22 +433,23 @@ class WW3MultiNML(NMLPrimitives):
 
             # 构建日志：列出实际写入的 nml 字段
             field_triple = (
-                f"'{start_date} 000000' '{output_stride}' '{end_date} 235959'"
+                f"'{run_start}' '{output_stride}' '{end_date} 235959'"
             )
             multi_assignments: list[Assignment] = []
             if level_resources:
                 multi_assignments.append(("DOMAIN%NRGRD", str(len(level_resources))))
             multi_assignments.extend(
                 [
-                    ("DOMAIN%START", f"'{start_date} 000000'"),
+                    ("DOMAIN%START", f"'{run_start}'"),
                     ("DOMAIN%STOP", f"'{end_date} 235959'"),
                     ("DOMAIN%FLGHG1", "T"),
                     ("DOMAIN%FLGHG2", "T"),
                     ("ALLDATE%FIELD", field_triple),
-                    ("ALLDATE%RESTART%START", f"'{start_date} 000000'"),
-                    ("ALLDATE%RESTART%STOP", f"'{end_date} 235959'"),
+                    ("ALLDATE%RESTART", field_triple),
                 ]
             )
+            if supports_restart2:
+                multi_assignments.append(("ALLDATE%RESTART2", field_triple))
             multi_assignments.extend(
                 [
                     ("INPUT(1)%FORCING%WINDS", "T" if has_wind else "F"),

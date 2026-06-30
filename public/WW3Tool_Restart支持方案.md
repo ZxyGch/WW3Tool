@@ -100,15 +100,11 @@ ww3:
     # 嵌套可为 map：{ level0: /path/to/restart.ww3, level1: ... }
     input_file: null
 
-    # 手动热启动积分起点。pick_latest_checkpoint=true 时可为空，由最新 checkpoint 自动确定
-    # 格式：YYYYMMDD 或 "YYYYMMDD HHMMSS"
+    # 手动热启动积分起点。pick_latest_checkpoint=true 时可为空，由最新时间戳 checkpoint 自动确定
+    # 格式："YYYYMMDD HHMMSS"
     restart_time: null
 
-    # 写出 restart 的间隔（秒），GUI 中与 ww3.output_step 共用同一个输入框
-    # → DATE%RESTART%STRIDE / ALLDATE%RESTART%STRIDE
-    output_step: 3600
-
-    # Auto Latest / 自动最新：若存在 restart001.ww3 等，自动选最新并链接为 restart.ww3
+    # Auto Latest / 自动最新：扫描 YYYYMMDD.HHMMSS.restart.*，自动选最新并链接为 restart.ww3
     pick_latest_checkpoint: true
 ```
 
@@ -142,7 +138,7 @@ Restart 模式: restart
 |--------|----------|------|
 | 热启动起点 | `DOMAIN%START` | `restart_time` |
 | `ww3.end_date` | `DOMAIN%STOP` | 不变 |
-| `ww3.restart.output_step`（由 `ww3.output_step` 同步） | `DATE%RESTART%STRIDE` | 替换当前「保留模板 STRIDE」行为 |
+| `ww3.output_step` | `DATE%RESTART` / `DATE%RESTART2` 的 STRIDE | 替换当前「保留模板 STRIDE」行为；7.x 额外写出带时间戳 checkpoint |
 | `ww3.start_date` / `ww3.restart.restart_time` | `DATE%RESTART%START` | 热启动：= `restart_time`；冷启动：= `start_date` |
 | `ww3.end_date` | `DATE%RESTART%STOP` | 不变 |
 | `ww3.start_date` / 热启动起点 | `DATE%FIELD`、`DATE%POINT` 等 | 场/点输出起始：冷启动用 `start_date`；热启动用 `restart_time`（或用户可选「从起点起全输出」高级项，首版与 FIELD 一致） |
@@ -157,7 +153,7 @@ Restart 模式: restart
 | params | namelist |
 |--------|----------|
 | 同上 | `DOMAIN%START` / `DOMAIN%STOP` |
-| `ww3.restart.output_step`（由 `ww3.output_step` 同步） | `ALLDATE%RESTART%STRIDE`、`ALLDATE%RESTART%START/STOP` |
+| `ww3.output_step` | `ALLDATE%RESTART` / `ALLDATE%RESTART2` 的 STRIDE、START、STOP |
 | 场输出 | `ALLDATE%FIELD` 起始时间对齐热启动起点 |
 
 各层 **不** 单独写 shel namelist；restart 文件按层放在 `levelK/restart.ww3`，prepare 后 staging 为 `restart.levelK`。
@@ -202,7 +198,7 @@ workdir/
 
 1. 若 `input_file` 为字符串 → 单层：link/copy 到 `restart.ww3`。
 2. 若 `input_file` 为 dict / 列表（按 level 名）→ 各 `levelK/restart.ww3` + staging。
-3. `pick_latest_checkpoint: true` 时，在目标目录扫描 `restart*.ww3`，取最新修改时间且谱头合法的作为输入，并由该 checkpoint 自动确定热启动时刻（首版可简化为「最大编号 N + 可解析时间」）。
+3. `pick_latest_checkpoint: true` 时，在运行脚本中扫描 `YYYYMMDD.HHMMSS.restart.*`，按文件名时间选择最新 checkpoint，并由文件名确定热启动时刻；不会从 `restart.ww3` 二进制里反读时间。
 
 ### 6.3 校验（prepare 阶段必做）
 
@@ -215,7 +211,7 @@ workdir/
 | 自动 checkpoint 模式无法确定 restart 时刻 | 报错：请关闭自动选择并手动填写 `restart_time` |
 | 热启动起点 >= `end_date` | 拒绝 |
 
-时间解析策略：`pick_latest_checkpoint=true` 时优先从最新 checkpoint 自动确定；若无法解析，再要求用户关闭自动选择并手动填写 `restart_time`。手动模式仍需校验 `restart_time` 与文件内时刻是否一致。
+时间解析策略：`pick_latest_checkpoint=true` 时只接受带 `YYYYMMDD.HHMMSS` 前缀的 checkpoint；若找不到，运行脚本直接报错，要求用户关闭自动最新并手动填写 `restart_time`。手动模式不尝试从二进制文件反读时间。
 
 ---
 
@@ -315,24 +311,24 @@ Step 4 增加启动方式下拉：
 
 ### 阶段 A：配置层（1–2 天）
 
-- [ ] `params.yml` 增加 `ww3.restart:` 默认值
-- [ ] `RestartConfig` + 解析；缺省 `mode: cold`
-- [ ] 单元测试：旧 yml 无 `restart` 段仍可加载
+- [x] `params.yml` 增加 `ww3.restart:` 默认值
+- [x] `RestartConfig` + 解析；缺省 `mode: cold`
+- [x] 旧 yml 顶层 `restart:` 仍可加载
 
 ### 阶段 B：namelist + prepare（2–3 天）
 
-- [ ] `ww3_shel_nml.py`：写入 `DATE%RESTART%STRIDE`；热启动改 `DOMAIN%START`
-- [ ] `ww3_multi_nml.py`：同上 `ALLDATE%RESTART%*`
-- [ ] `restart_service.py`：copy/link、校验、日志
-- [ ] prepare 日志打印 §4.1 格式
+- [x] `ww3_shel_nml.py`：写入 `DATE%RESTART` / `DATE%RESTART2`；热启动改 `DOMAIN%START`
+- [x] `ww3_multi_nml.py`：同上 `ALLDATE%RESTART` / `ALLDATE%RESTART2`
+- [x] `restart_service.py`：copy、校验、日志
+- [x] prepare 日志打印 Restart 文件来源
 
 **验收**：`mode: restart` 后 workdir 有 `restart.ww3`，namelist 与 yml 一致；`mode: cold` 与现网一致。
 
 ### 阶段 C：运行脚本（1–2 天）
 
-- [ ] `local.sh` / `server.sh` / `run_service.py` 跳过 `ww3_strt`
-- [ ] 嵌套逐层判断
-- [ ] `run.log` 记录冷/热分支
+- [x] `local.sh` / `server.sh` / `run_service.py` 跳过 `ww3_strt`
+- [x] 嵌套逐层判断
+- [x] `run.log` 记录冷/热分支
 
 **验收**：热启动算例不再调用 `ww3_strt`；冷启动仍调用。
 

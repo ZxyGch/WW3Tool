@@ -43,6 +43,7 @@ Input/Output
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -759,6 +760,8 @@ def parse_pipeline_config(
     Raises:
         ConfigError: When field types, enum values, or path constraints are not satisfied.
     """
+    original_raw = raw if isinstance(raw, dict) else {}
+
     # [EN] 1) Fill empty values in workdir with root params.yml defaults
     # 1) 用根 params.yml 默认值填充工作目录中的空值
     from ..infrastructure.runtime_config import PARAMS_FILE
@@ -1031,7 +1034,14 @@ def parse_pipeline_config(
         }
     )
 
-    restart_raw = _as_dict(ww3_raw.get("restart") or raw.get("restart"), "ww3.restart")
+    original_ww3_raw = original_raw.get("ww3") if isinstance(original_raw.get("ww3"), dict) else {}
+    if isinstance(original_ww3_raw.get("restart"), dict):
+        restart_source = ww3_raw.get("restart")
+    elif isinstance(original_raw.get("restart"), dict):
+        restart_source = original_raw.get("restart")
+    else:
+        restart_source = ww3_raw.get("restart") or raw.get("restart")
+    restart_raw = _as_dict(restart_source, "ww3.restart")
     restart_mode = str(restart_raw.get("mode") or "cold").strip().lower()
     if restart_mode not in {"cold", "restart"}:
         raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
@@ -1141,7 +1151,13 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
     if config.restart.mode not in {"cold", "restart"}:
         raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
     if not str(config.restart.output_step or "").isdigit():
-        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.restart.output_step"))
+        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.output_step"))
+    if config.restart.mode == "restart" and not config.restart.pick_latest_checkpoint:
+        restart_time = str(config.restart.restart_time or "").strip()
+        if not re.match(r"^\d{8}\s+\d{6}$", restart_time):
+            raise ConfigError("ww3.restart.restart_time 必须是 YYYYMMDD HHMMSS")
+        if restart_time[:8] > config.ww3.end_date:
+            raise ConfigError("ww3.restart.restart_time 不能晚于 ww3.end_date")
     if config.grid.grid_type == "nested":
         if config.grid.inner is None:
             raise ConfigError(tr("cfg_nested_inner_required", "nested 网格需要 grid.inner"))
@@ -1264,7 +1280,6 @@ ww3:
     mode: cold
     input_file: null
     restart_time: null
-    output_step: "3600"
     pick_latest_checkpoint: true
 
 # [EN] The following values will be written into the generated ww3_grid.nml

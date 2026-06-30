@@ -821,7 +821,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.\n"
      "#   file_split        – output file splitting: single | hour | day | month | year.\n"
      "#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.\n"
-     "#   restart           – restart / hot-start settings; restart.output_step follows output_step.\n"
+     "#   restart           – restart / hot-start settings; checkpoint stride follows output_step.\n"
      "#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("ww3_grid:",

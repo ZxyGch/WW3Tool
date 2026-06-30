@@ -14,6 +14,7 @@ Python subprocess — no bash needed. ``run_tool()`` runs individual post-proces
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -78,6 +79,117 @@ def _move_if(src: Path, dst: Path) -> None:
     """Move *src* to *dst* if *src* exists."""
     if src.is_file():
         shutil.move(str(src), str(dst))
+
+
+def _restart_settings(workdir: Path) -> dict:
+    path = workdir / "params.yml"
+    if not path.is_file():
+        return {}
+    try:
+        import yaml
+
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+    ww3 = raw.get("ww3") if isinstance(raw, dict) else {}
+    restart = (ww3 or {}).get("restart") if isinstance(ww3, dict) else {}
+    if not isinstance(restart, dict):
+        return {}
+    return restart
+
+
+def _checkpoint_time(path: Path) -> str | None:
+    match = re.match(r"^(\d{8})\.(\d{6})\.restart\.", path.name)
+    if not match:
+        return None
+    return f"{match.group(1)} {match.group(2)}"
+
+
+def _latest_checkpoint(directory: Path, suffix: str) -> Path | None:
+    candidates = [p for p in directory.glob(f"*.restart.{suffix}") if _checkpoint_time(p)]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda p: p.name)[-1]
+
+
+def _update_nml_start_time(path: Path, restart_time: str) -> None:
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    escaped = restart_time.replace("\\", "\\\\")
+    patterns = (
+        r"((?:DOMAIN%START|OUTPUT%FIELD%TIMESTART)\s*=\s*)'[^']+'",
+        r"((?:DATE|ALLDATE)%(?:FIELD|POINT|TRACK|RESTART|RESTART2)\s*=\s*)'[^']+'",
+        r"((?:DATE|ALLDATE)%(?:FIELD|POINT|TRACK|RESTART|RESTART2)%START\s*=\s*)'[^']+'",
+    )
+    for pattern in patterns:
+        text = re.sub(pattern, rf"\1'{escaped}'", text, flags=re.IGNORECASE)
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _prepare_regular_restart(workdir: Path, log: LogCallback) -> tuple[bool, str | None]:
+    settings = _restart_settings(workdir)
+    if str(settings.get("mode") or "cold").strip().lower() != "restart":
+        return False, None
+    pick_latest = bool(settings.get("pick_latest_checkpoint", True))
+    restart_time = str(settings.get("restart_time") or "").strip() or None
+    if pick_latest:
+        checkpoint = _latest_checkpoint(workdir, "ww3")
+        if checkpoint is None:
+            log("❌ Auto Latest failed: no timestamped *.restart.ww3 checkpoint found")
+            raise RuntimeError("Auto Latest restart checkpoint not found")
+        restart_time = _checkpoint_time(checkpoint)
+        shutil.copyfile(checkpoint, workdir / "restart.ww3")
+        log(f"✅ Auto Latest restart: {checkpoint.name} -> restart.ww3 ({restart_time})")
+    elif settings.get("input_file"):
+        src = Path(str(settings["input_file"])).expanduser()
+        if not src.is_file():
+            raise FileNotFoundError(f"Restart 文件不存在：{src}")
+        if src.resolve() != (workdir / "restart.ww3").resolve():
+            shutil.copyfile(src, workdir / "restart.ww3")
+        log(f"✅ Restart file prepared: {src} -> {workdir / 'restart.ww3'}")
+    if not (workdir / "restart.ww3").is_file():
+        raise FileNotFoundError("Restart mode requires restart.ww3")
+    if not restart_time:
+        raise ValueError("Restart mode requires restart_time when Auto Latest is disabled")
+    _update_nml_start_time(workdir / "ww3_shel.nml", restart_time)
+    return True, restart_time
+
+
+def _prepare_nested_restart(workdir: Path, levels: list[tuple[Path, int]], log: LogCallback) -> tuple[bool, str | None]:
+    settings = _restart_settings(workdir)
+    if str(settings.get("mode") or "cold").strip().lower() != "restart":
+        return False, None
+    pick_latest = bool(settings.get("pick_latest_checkpoint", True))
+    restart_time = str(settings.get("restart_time") or "").strip() or None
+    selected_time: str | None = None
+    for level_path, _idx in levels:
+        level = level_path.name
+        destination = level_path / "restart.ww3"
+        if pick_latest:
+            checkpoint = _latest_checkpoint(workdir, level)
+            if checkpoint is None:
+                checkpoint = _latest_checkpoint(level_path, "ww3")
+            if checkpoint is None:
+                raise FileNotFoundError(f"Auto Latest failed: no timestamped restart checkpoint found for {level}")
+            current_time = _checkpoint_time(checkpoint)
+            if selected_time and current_time != selected_time:
+                raise ValueError(f"Nested restart checkpoint times differ: {selected_time} vs {current_time}")
+            selected_time = current_time
+            shutil.copyfile(checkpoint, destination)
+            log(f"✅ Auto Latest restart ({level}): {checkpoint.name} -> {destination.name} ({current_time})")
+        elif not destination.is_file():
+            root_staged = workdir / f"restart.{level}"
+            if root_staged.is_file():
+                shutil.copyfile(root_staged, destination)
+        if not destination.is_file():
+            raise FileNotFoundError(f"Restart mode requires {destination}")
+    if pick_latest:
+        restart_time = selected_time
+    if not restart_time:
+        raise ValueError("Restart mode requires restart_time when Auto Latest is disabled")
+    _update_nml_start_time(workdir / "ww3_multi.nml", restart_time)
+    return True, restart_time
 
 
 def _run_log_callback(workdir: Path, log: LogCallback) -> LogCallback:
@@ -340,6 +452,11 @@ class LocalRunService:
 
     def _workflow_regular(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
         wd = str(wp)
+        try:
+            restart_mode, restart_time = _prepare_regular_restart(wp, log)
+        except Exception as exc:
+            log(f"❌ Restart preparation failed: {exc}")
+            return 1
         log("")
         log("=" * 30 + " " + tr("local_run_step_grid", "运行 ww3_grid") + " " + "=" * 30)
         rc = self._run_tool_in("ww3_grid", wd, bin_dir, log)
@@ -350,11 +467,14 @@ class LocalRunService:
         if rc != 0:
             return rc
 
-        log("")
-        log("=" * 30 + " " + tr("local_run_step_strt", "运行 ww3_strt") + " " + "=" * 30)
-        rc = self._run_tool_in("ww3_strt", wd, bin_dir, log)
-        if rc != 0:
-            return rc
+        if restart_mode:
+            log(f"⏭️ Restart mode: skip ww3_strt, start from {restart_time}")
+        else:
+            log("")
+            log("=" * 30 + " " + tr("local_run_step_strt", "运行 ww3_strt") + " " + "=" * 30)
+            rc = self._run_tool_in("ww3_strt", wd, bin_dir, log)
+            if rc != 0:
+                return rc
 
         rc = self._run_shel_with_fallback(wd, bin_dir, log, nprocs)
         if rc != 0:
@@ -371,6 +491,11 @@ class LocalRunService:
         if not levels:
             log(tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
             return 1
+        try:
+            restart_mode, restart_time = _prepare_nested_restart(wp, levels, log)
+        except Exception as exc:
+            log(f"❌ Restart preparation failed: {exc}")
+            return 1
 
         for level_path, _idx in levels:
             label = level_path.name
@@ -383,11 +508,14 @@ class LocalRunService:
             rc = self._run_prnc_fields(sub, bin_dir, log)
             if rc != 0:
                 return rc
-            log("")
-            log("=" * 30 + " " + tr("local_run_step_strt_label", "运行 ww3_strt ({label})").format(label=label) + " " + "=" * 30)
-            rc = self._run_tool_in("ww3_strt", sub, bin_dir, log)
-            if rc != 0:
-                return rc
+            if restart_mode:
+                log(f"⏭️ Restart mode: skip ww3_strt ({label}), start from {restart_time}")
+            else:
+                log("")
+                log("=" * 30 + " " + tr("local_run_step_strt_label", "运行 ww3_strt ({label})").format(label=label) + " " + "=" * 30)
+                rc = self._run_tool_in("ww3_strt", sub, bin_dir, log)
+                if rc != 0:
+                    return rc
 
         staged = ("mod_def", "restart", "wind", "current", "level", "ice", "ice1")
         for level_path, _idx in levels:

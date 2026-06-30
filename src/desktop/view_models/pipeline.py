@@ -367,6 +367,7 @@ class PipelineViewModel:
             calc_points=calc_points,
             calc_track_points=calc_track_points,
             ww3_overrides=ww3_overrides,
+            restart_overrides=restart_overrides,
             ww3_grid_overrides=ww3_grid_overrides,
             plot_overrides=plot_overrides,
             slurm_overrides=slurm_overrides,

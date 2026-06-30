@@ -45,6 +45,7 @@ from ..ww3 import step4_service as step4_service_module
 from ..ww3.modify_ww3_nml import ModifyWW3NML
 from ..ww3.grid_param_write import write_ww3_grid_parameters_to_nml
 from ..ww3.nested_level_dirs import list_nested_level_paths
+from ..ww3.restart_service import prepare_manual_restart_inputs
 from ..ww3.step4_service import StepFourServiceMixin
 from ..ww3.widget_stubs import _Checkbox, _ComboValue, _Table, _TextValue
 
@@ -83,6 +84,19 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
         self.shel_start_edit = _TextValue(config.ww3.start_date)
         self.shel_end_edit = _TextValue(config.ww3.end_date)
         self.output_precision_edit = _TextValue(config.ww3.output_step)
+        self._restart_mode = config.restart.mode
+        self._restart_pick_latest = bool(config.restart.pick_latest_checkpoint)
+        self._restart_start_datetime = (
+            str(config.restart.restart_time).strip()
+            if config.restart.mode == "restart"
+            and not config.restart.pick_latest_checkpoint
+            and config.restart.restart_time
+            else f"{config.ww3.start_date} 000000"
+        )
+        try:
+            self._supports_restart2 = float(str(config.ww3.version).split()[0]) >= 7.0
+        except ValueError:
+            self._supports_restart2 = str(config.ww3.version).strip().startswith("7")
 
         self.num_n_edit = _TextValue(config.slurm.cores)
         self.num_N_edit = _TextValue(config.slurm.nodes)
@@ -326,6 +340,7 @@ def prepare_ww3_files(
     params_ctx = config.source_path
     with runtime_config.use_params_path(params_ctx), _patched_load_config(app_config):
         adapter.modify_ww3_file()
+    prepare_manual_restart_inputs(config, logger)
     if config.grid.grid_type != "nested":
         _apply_ww3_grid_settings(config, logger)
 
