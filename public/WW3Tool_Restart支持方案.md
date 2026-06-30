@@ -103,11 +103,8 @@ restart:
   # → DATE%RESTART%STRIDE / ALLDATE%RESTART%STRIDE
   output_step: 3600
 
-  # 热启动前：若存在 restart001.ww3 等，是否自动选最新并链接为 restart.ww3
+  # Auto Latest / 自动最新：若存在 restart001.ww3 等，自动选最新并链接为 restart.ww3
   pick_latest_checkpoint: true
-
-  # 写出后是否只保留最新 restartN，删除更早编号（节省空间）
-  keep_latest_only: false
 ```
 
 ### 4.1 与 `ww3:` 段时间字段的关系
@@ -249,14 +246,6 @@ for each levelK:
 stage → ww3_multi → 后处理（最细层）
 ```
 
-### 7.3 写出后处理（可选，`keep_latest_only`）
-
-在 `ww3_shel` / `ww3_multi` 成功后：
-
-- 若存在多个 `restartN.ww3`，保留最新，删除更旧编号（**不删** `restart.ww3` 输入副本，除非用户配置）。
-
----
-
 ## 8. 代码模块划分
 
 | 模块 | 职责 | 建议路径 |
@@ -310,7 +299,7 @@ Step 4 增加启动方式下拉：
 
 - 单选：**冷启动** / **热启动**
 - 首版仅写入 `restart.mode`；冷启动保持现有流程。
-- 后续热启动执行逻辑接入后，`pick_latest_checkpoint=true` 时隐藏文件选择器与 `restart_time`；关闭自动选择后才显示并保存手动文件与时间。restart 写出间隔与第四步已有的输出步长共用一个输入框。
+- 后续热启动执行逻辑接入后，`Auto Latest / 自动最新`（`pick_latest_checkpoint=true`）时隐藏文件选择器与 `restart_time`；关闭自动最新后才显示并保存手动文件与时间。restart 写出间隔与第四步已有的输出步长共用一个输入框。
 - 嵌套热启动后续使用表格按 `level0`…`levelN` 指定各层 restart（可留空=用层目录内已有文件）。
 
 首页**暂不**放 restart；与 `WW3常用配置补充计划.md` §7 一致。

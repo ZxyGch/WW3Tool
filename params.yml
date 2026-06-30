@@ -208,7 +208,6 @@ restart:
   restart_time: null
   output_step: 3600
   pick_latest_checkpoint: true
-  keep_latest_only: false
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
 # Keys follow the Fortran namelist syntax with '%' as sub-key separator.

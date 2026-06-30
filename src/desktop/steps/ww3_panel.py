@@ -189,8 +189,7 @@ class WW3StepPanel:
         self._display_line(wave_grid, 4, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self._restart_line(wave_grid, 5, tr("step4_restart_input_file", "Restart 文件："), "input_file")
         self._restart_line(wave_grid, 6, tr("step4_restart_time", "Restart 时间："), "restart_time", datetime_yyyymmdd_hhmmss_validator())
-        self._restart_checkbox_line(wave_grid, 7, tr("step4_restart_pick_latest", "自动选择最新 checkpoint："), "pick_latest_checkpoint")
-        self._restart_checkbox_line(wave_grid, 8, tr("step4_restart_keep_latest", "仅保留最新 restart："), "keep_latest_only")
+        self._restart_checkbox_line(wave_grid, 7, tr("step4_restart_pick_latest", "自动最新："), "pick_latest_checkpoint")
         self.output_scheme_combo = ComboBox()
         self._output_scheme_fields_by_name: dict[str, list[str]] = {}
         self._server_st_versions: dict[str, str] = {}
@@ -361,7 +360,6 @@ class WW3StepPanel:
         self._restart_fields["input_file"].setText(self._restart_value_text(restart.input_file))
         self._restart_fields["restart_time"].setText(self._restart_value_text(restart.restart_time))
         self._restart_checkboxes["pick_latest_checkpoint"].setChecked(bool(restart.pick_latest_checkpoint))
-        self._restart_checkboxes["keep_latest_only"].setChecked(bool(restart.keep_latest_only))
         self._update_restart_enabled_state()
 
     def _update_restart_enabled_state(self) -> None:
@@ -462,7 +460,6 @@ class WW3StepPanel:
             "restart_time": self._restart_fields["restart_time"].text().strip() if manual_restart else None,
             "output_step": self.fields["ww3_output"].text().strip(),
             "pick_latest_checkpoint": pick_latest,
-            "keep_latest_only": self._restart_checkboxes["keep_latest_only"].isChecked(),
         }
 
     def slurm_overrides(self) -> dict[str, object]:

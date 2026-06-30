@@ -1046,7 +1046,6 @@ def parse_pipeline_config(
         ),
         output_step=restart_output_step,
         pick_latest_checkpoint=_bool_value(restart_raw.get("pick_latest_checkpoint", True), "restart.pick_latest_checkpoint"),
-        keep_latest_only=_bool_value(restart_raw.get("keep_latest_only", False), "restart.keep_latest_only"),
     )
 
     slurm_raw = _as_dict(raw.get("slurm"), "slurm")
@@ -1268,7 +1267,6 @@ restart:
   restart_time: null
   output_step: "3600"
   pick_latest_checkpoint: true
-  keep_latest_only: false
 
 # [EN] The following values will be written into the generated ww3_grid.nml
 # 下列值会写入生成的 ww3_grid.nml
