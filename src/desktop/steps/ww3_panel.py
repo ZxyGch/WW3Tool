@@ -367,7 +367,9 @@ class WW3StepPanel:
     def _update_restart_enabled_state(self) -> None:
         hot_start = combo_selected_user_data(self.restart_mode_combo) == "restart"
         for widget in self._restart_hot_only:
-            widget.setEnabled(hot_start)
+            widget.setVisible(hot_start)
+        if hasattr(self, "widget"):
+            self.widget.updateGeometry()
 
     def _build_param_section(
         self,
