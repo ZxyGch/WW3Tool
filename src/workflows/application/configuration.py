@@ -81,6 +81,7 @@ from ..domain.named_path_preset_yaml import (
     serialize_named_path_preset_block,
 )
 from ..domain.output_scheme_yaml import parse_ww3_output_scheme
+from ..infrastructure.ww3.restart_checkpoints import normalize_restart_time
 from ..domain.parameter_catalog import (
     COASTLINE_PRECISION_OPTIONS,
     FILE_SPLIT_LEGACY_ALIASES,
@@ -796,6 +797,13 @@ def parse_pipeline_config(
             root_data = yaml.safe_load(f) or {}
         raw = _deep_merge_defaults(root_data, raw)
 
+    # 工作目录显式给出的 ww3.output_scheme 整体优先，不与根 params 的方案键递归合并。
+    original_ww3 = _as_dict(original_raw.get("ww3"), "ww3") if original_raw else {}
+    if "output_scheme" in original_ww3:
+        ww3_section = _as_dict(raw.get("ww3"), "ww3")
+        ww3_section["output_scheme"] = original_ww3["output_scheme"]
+        raw["ww3"] = ww3_section
+
     presets = _parameter_presets(raw.get("presets"))
     workdir_raw = _as_dict(raw.get("workdir"), "workdir")
     workdir_path = _resolve_path(
@@ -1071,12 +1079,20 @@ def parse_pipeline_config(
     if restart_mode not in {"cold", "restart"}:
         raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
     restart_output_step = str(ww3.output_step or restart_raw.get("output_step") or "86400").strip()
+    restart_time_raw = (
+        str(restart_raw.get("restart_time")).strip()
+        if restart_raw.get("restart_time") is not None
+        else None
+    )
+    restart_time = normalize_restart_time(restart_time_raw) if restart_time_raw else None
+    if restart_time_raw and not restart_time:
+        raise ConfigError("ww3.restart.restart_time 必须是 YYYYMMDD 或 YYYYMMDD HHMMSS")
     restart = RestartConfig(
         mode=restart_mode,
-        input_file=restart_raw.get("input_file"),
-        restart_time=(
-            str(restart_raw.get("restart_time")).strip()
-            if restart_raw.get("restart_time") is not None
+        restart_time=restart_time,
+        restart_file=(
+            str(restart_raw.get("restart_file")).strip()
+            if restart_raw.get("restart_file") is not None
             else None
         ),
         output_step=restart_output_step,
@@ -1178,11 +1194,14 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
     if not str(config.restart.output_step or "").isdigit():
         raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.output_step"))
     if config.restart.mode == "restart" and not config.restart.pick_latest_checkpoint:
-        restart_time = str(config.restart.restart_time or "").strip()
-        if not re.match(r"^\d{8}\s+\d{6}$", restart_time):
-            raise ConfigError("ww3.restart.restart_time 必须是 YYYYMMDD HHMMSS")
+        restart_time = normalize_restart_time(config.restart.restart_time)
+        if not restart_time:
+            raise ConfigError("ww3.restart.restart_time 必须是 YYYYMMDD 或 YYYYMMDD HHMMSS")
         if restart_time[:8] > config.ww3.end_date:
             raise ConfigError("ww3.restart.restart_time 不能晚于 ww3.end_date")
+        restart_file = str(config.restart.restart_file or "").strip()
+        if restart_file and ("/" in restart_file or "\\" in restart_file):
+            raise ConfigError("ww3.restart.restart_file 只能是工作目录内的文件名")
     if config.grid.grid_type == "nested":
         if config.grid.inner is None:
             raise ConfigError(tr("cfg_nested_inner_required", "nested 网格需要 grid.inner"))
@@ -1303,8 +1322,8 @@ ww3:
     with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
   restart:
     mode: cold
-    input_file: null
     restart_time: null
+    restart_file: null
     pick_latest_checkpoint: true
 
 # [EN] The following values will be written into the generated ww3_grid.nml

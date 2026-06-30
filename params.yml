@@ -198,8 +198,8 @@ ww3:
     with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
   restart:
     mode: cold
-    input_file: null
     restart_time: null
+    restart_file: null
     pick_latest_checkpoint: true
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).

@@ -58,8 +58,8 @@ WW3 手册（`manual/zh/run/design_zh.tex`）要点：
 
 ### 2.4 场景 D：跨工作目录复用 restart
 
-- 从事件 A 的 workdir 拷贝 `restart.ww3` 到事件 B（网格、谱参数相同）。
-- `restart.input_file` 指向源路径；prepare 阶段 copy 或 symlink 到目标 workdir。
+- 从事件 A 的 workdir 拷贝 `restart.ww3`（或带时间戳 checkpoint）到事件 B 的工作目录（网格、谱参数相同）。
+- 不通过配置项指定外部路径；由用户在文件系统层完成拷贝后，在 B 中选择热启动。
 
 ### 2.5 非目标（首版不做）
 
@@ -93,18 +93,12 @@ ww3:
   output_step: 3600
 
   restart:
-    # cold：走 ww3_strt；restart：使用已有 restart.ww3，跳过 ww3_strt
+    # cold：走 ww3_strt；restart：使用工作目录内已有 restart.ww3，跳过 ww3_strt
     mode: cold
 
-    # 手动热启动输入。pick_latest_checkpoint=false 时使用
-    # 嵌套可为 map：{ level0: /path/to/restart.ww3, level1: ... }
-    input_file: null
-
-    # 手动热启动积分起点。pick_latest_checkpoint=true 时可为空，由最新时间戳 checkpoint 自动确定
-    # 格式："YYYYMMDD HHMMSS"
+    # 热启动：选「自动最新」或手填 YYYYMMDD HHMMSS；checkpoint 在运行时的 workdir 扫描
     restart_time: null
 
-    # Auto Latest / 自动最新：扫描 YYYYMMDD.HHMMSS.restart.*，自动选最新并链接为 restart.ww3
     pick_latest_checkpoint: true
 ```
 
@@ -114,7 +108,8 @@ ww3:
 |------|--------|--------|
 | `ww3.start_date` | `DOMAIN%START` | 仅用于强迫/输出**下界**参考；**积分起点**用 `ww3.restart.restart_time` |
 | `ww3.end_date` | `DOMAIN%STOP` | `DOMAIN%STOP` |
-| `ww3.restart.restart_time` | 忽略 | `pick_latest_checkpoint=false` 时使用；`pick_latest_checkpoint=true` 时由最新 checkpoint 自动确定 |
+| `ww3.restart.restart_time` | 忽略 | `pick_latest_checkpoint=false` 时必填 |
+| `ww3.restart.pick_latest_checkpoint` | 忽略 | `true`：运行时扫描最新 checkpoint；`false`：用 `restart_time` |
 
 建议在 prepare 日志中**明确打印**：
 
@@ -196,22 +191,22 @@ workdir/
 
 热启动 prepare：
 
-1. 若 `input_file` 为字符串 → 单层：link/copy 到 `restart.ww3`。
-2. 若 `input_file` 为 dict / 列表（按 level 名）→ 各 `levelK/restart.ww3` + staging。
-3. `pick_latest_checkpoint: true` 时，在运行脚本中扫描 `YYYYMMDD.HHMMSS.restart.*`，按文件名时间选择最新 checkpoint，并由文件名确定热启动时刻；不会从 `restart.ww3` 二进制里反读时间。
+1. 单层：要求工作目录内已有 `restart.ww3`；若存在与 `restart_time` 匹配的带时间戳 checkpoint，运行前复制为 `restart.ww3`。
+2. 嵌套：各 `levelK/restart.ww3` 或根目录 `restart.levelK` staging 规则不变。
+3. 不尝试从 `restart.ww3` 二进制里反读时间；时刻以 `restart_time` 与 checkpoint 文件名为准。
 
 ### 6.3 校验（prepare 阶段必做）
 
 | 检查 | 失败处理 |
 |------|----------|
 | `mod_def.ww3` 存在 | 报错：需先 `ww3_grid` |
-| restart 文件存在且非空 | 报错：指定 `input_file` 或先冷启动 |
+| restart 文件存在且非空 | 报错：工作目录内缺少 `restart.ww3`，需先冷启动或手动放入文件 |
 | 网格未变（对比 `grid.meta` / mod_def 哈希，可选） | 警告或拒绝热启动 |
 | 手动模式下 `restart_time` 与文件内时间（若可解析） | 警告不一致 |
-| 自动 checkpoint 模式无法确定 restart 时刻 | 报错：请关闭自动选择并手动填写 `restart_time` |
+| 自动 checkpoint 模式无法确定 restart 时刻 | 已移除；用户必须在 GUI 下拉或手填 `restart_time` |
 | 热启动起点 >= `end_date` | 拒绝 |
 
-时间解析策略：`pick_latest_checkpoint=true` 时只接受带 `YYYYMMDD.HHMMSS` 前缀的 checkpoint；若找不到，运行脚本直接报错，要求用户关闭自动最新并手动填写 `restart_time`。手动模式不尝试从二进制文件反读时间。
+时间解析策略：只接受带 `YYYYMMDD.HHMMSS` 前缀的 checkpoint 文件名；`restart_time` 必须与所选 checkpoint 一致。不尝试从二进制文件反读时间。
 
 ---
 
@@ -300,7 +295,11 @@ Step 4 增加启动方式下拉：
 
 - 单选：**冷启动** / **热启动**
 - 首版仅写入 `ww3.restart.mode`；冷启动保持现有流程。
-- 后续热启动执行逻辑接入后，`Auto Latest / 自动最新`（`pick_latest_checkpoint=true`）时隐藏文件选择器与 `restart_time`；关闭自动最新后才显示并保存手动文件与时间。restart 写出间隔与第四步已有的输出步长共用一个输入框。
+- 热启动时 **Restart 日期** 为可编辑下拉：首项 **自动最新**（`pick_latest_checkpoint=true`），也可手输 `YYYYMMDD HHMMSS`。
+- 不在 GUI 扫描 workdir（远程运行时目录不在本地）；checkpoint 扫描在 `local-run` / `server.sh` 执行时进行。
+- restart 写出间隔与第四步已有的输出步长共用一个输入框。
+- 热启动统一使用工作目录内已有的 `restart.ww3` 或带时间戳 checkpoint；不提供外部 `input_file` 配置。
+- 热启动时 **起始日期保持可见但只读**；积分起点由 `restart_time` 或自动 checkpoint 决定。
 - 嵌套热启动后续使用表格按 `level0`…`levelN` 指定各层 restart（可留空=用层目录内已有文件）。
 
 首页**暂不**放 restart；与 `WW3常用配置补充计划.md` §7 一致。
@@ -353,7 +352,7 @@ Step 4 增加启动方式下拉：
 | R1 | 默认 cold，无 `restart` 段 | 与当前行为 bit-for-bit 流程一致 |
 | R2 | cold + `ww3.output_step: 3600` | `DATE%RESTART%STRIDE=3600` |
 | R3 | restart + 工作目录内 `restart.ww3` | 跳过 strt，`DOMAIN%START=restart_time` |
-| R4 | restart + 外部 `input_file` | 文件出现在 workdir，`run.log` 记来源 |
+| R4 | restart + 跨目录复用 | 用户手动拷贝 `restart.ww3` 到 workdir 后热启动成功 |
 | R5 | restart + `ww3.output_step: 0` | 不写 restartN |
 | R6 | nested restart 两层均有文件 | 两层跳过 strt，multi 成功 |
 | R7 | restart 但 mod_def 缺失 | prepare 失败，错误中文明确 |
@@ -386,6 +385,6 @@ Step 4 增加启动方式下拉：
 | 核心改动 | prepare 引入 restart；namelist 对齐时间与 STRIDE；运行跳过 `ww3_strt` |
 | 默认行为 | **不变**（`mode: cold`） |
 | 首版范围 | 单层 + 嵌套热启动/续跑；不做 uprstr、不做换网格插值 |
-| 关键配置 | `ww3.restart.mode`、`input_file`、`restart_time`；restart 写出间隔由 `ww3.output_step` 同步 |
+| 关键配置 | `ww3.restart.mode`、`restart_time`；restart 写出间隔由 `ww3.output_step` 同步 |
 
 建议实施顺序：**A → B → C → E → D**，先保证 CLI/脚本路径可用，再补 GUI。

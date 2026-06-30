@@ -617,7 +617,8 @@ class PipelineViewModel:
             raw["ww3"] = {**_as_dict(raw.get("ww3")), **ww3_overrides}
         if restart_overrides:
             ww3_raw = {**_as_dict(raw.get("ww3"))}
-            ww3_raw["restart"] = {**_as_dict(ww3_raw.get("restart")), **restart_overrides}
+            restart_block = {**_as_dict(ww3_raw.get("restart")), **restart_overrides}
+            ww3_raw["restart"] = restart_block
             raw["ww3"] = ww3_raw
             raw.pop("restart", None)
         if ww3_grid_overrides:

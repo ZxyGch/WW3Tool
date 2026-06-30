@@ -45,7 +45,6 @@ from ..ww3 import step4_service as step4_service_module
 from ..ww3.modify_ww3_nml import ModifyWW3NML
 from ..ww3.grid_param_write import write_ww3_grid_parameters_to_nml
 from ..ww3.nested_level_dirs import list_nested_level_paths
-from ..ww3.restart_service import prepare_manual_restart_inputs
 from ..ww3.step4_service import StepFourServiceMixin
 from ..ww3.widget_stubs import _Checkbox, _ComboValue, _Table, _TextValue
 
@@ -180,10 +179,9 @@ def _resolve_st_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
 
 
 def _resolve_output_scheme_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
-    """输出变量方案在运行时配置中的键名（``__params__`` 表示来自 params.yml）。
-
-    [EN] Key name of the output variable scheme in the runtime config (``__params__`` indicates it comes from params.yml).
-    """
+    """输出变量方案名；无界面时与 ``ww3.output_scheme`` 一致。"""
+    if config.ww3.output_scheme:
+        return str(config.ww3.output_scheme)
     return "__params__"
 
 
@@ -344,7 +342,6 @@ def prepare_ww3_files(
     params_ctx = config.source_path
     with runtime_config.use_params_path(params_ctx), _patched_load_config(app_config):
         adapter.modify_ww3_file()
-    prepare_manual_restart_inputs(config, logger)
     if config.grid.grid_type != "nested":
         _apply_ww3_grid_settings(config, logger)
 

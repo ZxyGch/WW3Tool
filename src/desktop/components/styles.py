@@ -25,18 +25,26 @@ def is_dark() -> bool:
 def input_style() -> str:
     if is_dark():
         return """
-            LineEdit {
+            LineEdit, EditableComboBox {
                 background-color: #2D2D2D; border: 1px solid #404040;
                 border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
             }
-            LineEdit:focus { border: 1px solid #404040; }
+            LineEdit:focus, EditableComboBox:focus { border: 1px solid #404040; }
+            LineEdit:read-only, EditableComboBox:read-only {
+                background-color: #2D2D2D; border: 1px solid #404040;
+                color: #FFFFFF;
+            }
         """
     return """
-        LineEdit {
+        LineEdit, EditableComboBox {
             background-color: #FFFFFF; border: 1px solid #D0D0D0;
             border-radius: 4px; padding: 4px 8px; color: #000000;
         }
-        LineEdit:focus { border: 1px solid #D0D0D0; }
+        LineEdit:focus, EditableComboBox:focus { border: 1px solid #D0D0D0; }
+        LineEdit:read-only, EditableComboBox:read-only {
+            background-color: #FFFFFF; border: 1px solid #D0D0D0;
+            color: #000000;
+        }
     """
 
 

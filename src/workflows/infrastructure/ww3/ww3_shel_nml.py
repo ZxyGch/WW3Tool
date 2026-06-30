@@ -168,27 +168,8 @@ class WW3ShelNML(NMLPrimitives):
             modified_any = self._write_type_field_list_to_shel(target_dir, var_list_str)
 
         # 更新 ww3_ounf.nml 的 FIELD%LIST
-        ww3_ounf_path = os.path.join(target_dir, "ww3_ounf.nml")
-        if os.path.exists(ww3_ounf_path):
-            try:
-                with open(ww3_ounf_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                new_lines = []
-                modified = False
-                for line in lines:
-                    line_stripped = line.lstrip()
-                    is_comment = line_stripped.startswith('!')
-                    if not is_comment and re.search(r'FIELD%LIST', line, re.IGNORECASE) and "=" in line:
-                        new_lines.append(f"  FIELD%LIST             =  '{var_list_str}'\n")
-                        modified = True
-                    else:
-                        new_lines.append(line)
-                if modified:
-                    with open(ww3_ounf_path, "w", encoding="utf-8", newline="\n") as f:
-                        f.writelines(new_lines)
-                    modified_any = True
-            except Exception:
-                pass
+        if self._write_ww3_ounf_field_list(target_dir, var_list_str):
+            modified_any = True
 
         if modified_any and self._output_scheme_contains_var("EF"):
             self._modify_namelists_e3d_in_dir(target_dir)
@@ -235,6 +216,7 @@ class WW3ShelNML(NMLPrimitives):
         end_date = self.shel_end_edit.text().strip()
         main_step = output_stride
         run_start = str(getattr(self, "_restart_start_datetime", "") or f"{start_date} 000000").strip()
+        restart_write_start = f"{start_date} 000000"
         supports_restart2 = bool(getattr(self, "_supports_restart2", False))
 
         if not (start_date.isdigit() and len(start_date) == 8 and end_date.isdigit() and len(end_date) == 8):
@@ -305,7 +287,7 @@ class WW3ShelNML(NMLPrimitives):
                     continue
                 if in_output_date and "/" in line:
                     if supports_restart2 and not modified_restart2:
-                        new_lines.append(f"  DATE%RESTART2       = '{run_start}' '{main_step}' '{end_date} 235959'\n")
+                        new_lines.append(f"  DATE%RESTART2       = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
                     in_output_date = False
                     new_lines.append(line)
                     continue
@@ -329,23 +311,23 @@ class WW3ShelNML(NMLPrimitives):
                 if not is_comment and re.search(r"DATE%RESTART2", line, re.IGNORECASE) and "=" in line:
                     if supports_restart2:
                         if re.search(r"DATE%RESTART2%START", line, re.IGNORECASE):
-                            new_lines.append(f"  DATE%RESTART2       = '{run_start}' '{main_step}' '{end_date} 235959'\n")
+                            new_lines.append(f"  DATE%RESTART2       = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
                             modified_restart2 = True
                         elif re.search(r"DATE%RESTART2%(STRIDE|STOP)", line, re.IGNORECASE):
                             pass
                         else:
-                            new_lines.append(f"  DATE%RESTART2       = '{run_start}' '{main_step}' '{end_date} 235959'\n")
+                            new_lines.append(f"  DATE%RESTART2       = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
                             modified_restart2 = True
                     continue
 
                 # DATE%RESTART：普通 restart 输出，步长与输出步长一致。
                 if not is_comment and re.search(r"DATE%RESTART", line, re.IGNORECASE) and "=" in line:
                     if re.search(r"DATE%RESTART%START", line, re.IGNORECASE):
-                        new_lines.append(f"  DATE%RESTART        = '{run_start}' '{main_step}' '{end_date} 235959'\n")
+                        new_lines.append(f"  DATE%RESTART        = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
                     elif re.search(r"DATE%RESTART%(STRIDE|STOP)", line, re.IGNORECASE):
                         pass
                     else:
-                        new_lines.append(f"  DATE%RESTART        = '{run_start}' '{main_step}' '{end_date} 235959'\n")
+                        new_lines.append(f"  DATE%RESTART        = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
                     continue
 
                 # DATE%POINT%START/STRIDE/STOP：跳过（删除），后续由 _modify_ww3_shel_date_point_in_dir 添加正确的 DATE%POINT

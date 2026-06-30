@@ -365,8 +365,8 @@ class RestartConfig:
     """WW3 restart / hot-start settings (corresponds to YAML ``ww3.restart:`` section)."""
 
     mode: str = "cold"
-    input_file: Any = None
     restart_time: Optional[str] = None
+    restart_file: Optional[str] = None
     output_step: Optional[str] = "3600"
     pick_latest_checkpoint: bool = True
 

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable
+from workflows.infrastructure.ww3.restart_checkpoints import normalize_restart_time
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QSizePolicy
-from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import CheckBox, ComboBox, EditableComboBox, LineEdit, PrimaryPushButton
 
 # [EN] Step 4 "spectrum parameters / numerical integration timestep" groups.
 # Step 4「频谱参数 / 数值积分时间步长」分组。
@@ -35,10 +34,20 @@ from ..components.combo_box import (
 from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
-from ..components.validators import datetime_yyyymmdd_hhmmss_validator, date_yyyymmdd_validator, int_validator
+from ..components.validators import date_yyyymmdd_validator, int_validator
 from workflows.domain.config_models import PipelineConfig
 from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES
 from workflows.support.translations import tr
+
+RESTART_AUTO_LATEST = "auto_latest"
+
+
+def restart_auto_latest_label() -> str:
+    return tr("step4_restart_auto_latest", "自动最新")
+
+
+def restart_date_combo_items() -> list[tuple[str, str]]:
+    return [(restart_auto_latest_label(), RESTART_AUTO_LATEST)]
 
 
 def restart_mode_combo_items() -> list[tuple[str, str]]:
@@ -77,13 +86,10 @@ class WW3StepPanel:
         run_pipeline: Callable[[], None],
     ) -> None:
         self._input_style = input_style
+        self._combo_style = combo_style
         self.fields: dict[str, LineEdit] = {}
         self.field_labels: dict[str, QLabel] = {}
-        self._restart_fields: dict[str, LineEdit] = {}
-        self._restart_checkboxes: dict[str, CheckBox] = {}
         self._restart_hot_only: list[QWidget] = []
-        self._restart_manual_only: list[QWidget] = []
-        self._restart_input_file_raw: object = None
         self._spectrum_hideables: list[QWidget] = []
         self._timesteps_hideables: list[QWidget] = []
         self._slurm_hideables: list[QWidget] = []
@@ -191,27 +197,34 @@ class WW3StepPanel:
         wave_grid.addWidget(self.restart_mode_label, 1, 0)
         wave_grid.addWidget(self.restart_mode_combo, 1, 1)
         self.restart_mode_combo.currentIndexChanged.connect(self._update_restart_enabled_state)
-        self._restart_checkbox_line(wave_grid, 2, tr("step4_restart_pick_latest", "自动最新："), "pick_latest_checkpoint")
-        self._restart_line(wave_grid, 3, tr("step4_restart_input_file", "Restart 文件："), "input_file")
-        self._restart_line(wave_grid, 4, tr("step4_restart_time", "Restart 时间："), "restart_time", datetime_yyyymmdd_hhmmss_validator())
-        self._display_line(wave_grid, 5, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
-        self._display_line(wave_grid, 6, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
-        self._display_line(wave_grid, 7, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
+        self._restart_date_combo_line(wave_grid, 2, tr("step4_restart_date", "Restart 日期："))
+        self.restart_file_label = self._field_label(tr("step4_restart_file", "Restart 文件："))
+        self.restart_file_edit = LineEdit()
+        self._style_line_edit(self.restart_file_edit, self._input_style())
+        self.restart_file_edit.setPlaceholderText(tr("step4_restart_file_placeholder", "如 restart036.ww3，留空则按日期匹配"))
+        self._expand_field(self.restart_file_edit)
+        wave_grid.addWidget(self.restart_file_label, 3, 0)
+        wave_grid.addWidget(self.restart_file_edit, 3, 1)
+        self._restart_hot_only.extend((self.restart_file_label, self.restart_file_edit))
+        self.restart_date_combo.currentTextChanged.connect(self._update_restart_enabled_state)
+        self._display_line(wave_grid, 4, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
+        self._display_line(wave_grid, 5, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
+        self._display_line(wave_grid, 6, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
         self.output_scheme_combo = ComboBox()
         self._output_scheme_fields_by_name: dict[str, list[str]] = {}
         self._server_st_versions: dict[str, str] = {}
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
-        wave_grid.addWidget(self.output_scheme_label, 8, 0)
-        wave_grid.addWidget(self.output_scheme_combo, 8, 1)
+        wave_grid.addWidget(self.output_scheme_label, 7, 0)
+        wave_grid.addWidget(self.output_scheme_combo, 7, 1)
         self.file_split_combo = ComboBox()
         self.file_split_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.file_split_combo)
         add_labeled_combo_items(self.file_split_combo, file_split_combo_items())
         self.file_split_label = self._field_label(tr("file_split", "文件分割："))
-        wave_grid.addWidget(self.file_split_label, 9, 0)
-        wave_grid.addWidget(self.file_split_combo, 9, 1)
+        wave_grid.addWidget(self.file_split_label, 8, 0)
+        wave_grid.addWidget(self.file_split_combo, 8, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -339,33 +352,47 @@ class WW3StepPanel:
         edit.setStyleSheet(style)
         edit.setMinimumHeight(33)
 
-    def _restart_line(self, grid: QGridLayout, row: int, label: str, key: str, validator: object | None = None) -> None:
-        label_widget = self._field_label(label)
-        edit = LineEdit()
-        self._style_line_edit(edit, self._input_style())
-        self._expand_field(edit)
-        if validator is not None:
-            edit.setValidator(validator)
-        grid.addWidget(label_widget, row, 0)
-        grid.addWidget(edit, row, 1)
-        self._restart_fields[key] = edit
-        if key in {"input_file", "restart_time"}:
-            self._restart_manual_only.extend((label_widget, edit))
+    def _restart_date_combo_line(self, grid: QGridLayout, row: int, label: str) -> None:
+        self.restart_date_label = self._field_label(label)
+        combo = EditableComboBox()
+        self._style_line_edit(combo, self._input_style())
+        left_align_combo_text(combo)
+        add_labeled_combo_items(combo, restart_date_combo_items())
+        combo.setPlaceholderText(tr("step4_restart_date_placeholder", "自动最新 或 YYYYMMDD [HHMMSS]"))
+        combo.activated.connect(self._on_restart_date_picked)
+        self._expand_field(combo)
+        grid.addWidget(self.restart_date_label, row, 0)
+        grid.addWidget(combo, row, 1)
+        self.restart_date_combo = combo
+        self._restart_hot_only.extend((self.restart_date_label, combo))
+        self._set_restart_date_value(pick_latest=True)
 
-    def _restart_checkbox_line(self, grid: QGridLayout, row: int, label: str, key: str) -> None:
-        label_widget = self._field_label(label)
-        check = create_right_aligned_check_box()
-        holder = QWidget()
-        holder_layout = QHBoxLayout(holder)
-        holder_layout.setContentsMargins(0, 0, 0, 0)
-        holder_layout.addStretch()
-        holder_layout.addWidget(check)
-        grid.addWidget(label_widget, row, 0)
-        grid.addWidget(holder, row, 1)
-        self._restart_checkboxes[key] = check
-        if key == "pick_latest_checkpoint":
-            self._restart_hot_only.extend((label_widget, holder))
-            check.toggled.connect(lambda _checked: self._update_restart_enabled_state())
+    def _on_restart_date_picked(self, index: int) -> None:
+        if index < 0:
+            return
+        text = self.restart_date_combo.itemText(index)
+        self.restart_date_combo._currentIndex = index
+        self.restart_date_combo.setText(text)
+
+    def _set_restart_date_value(self, *, pick_latest: bool, restart_time: str = "") -> None:
+        combo = self.restart_date_combo
+        if pick_latest or not str(restart_time).strip():
+            combo._currentIndex = 0
+            combo.setText(restart_auto_latest_label())
+            return
+        combo._currentIndex = -1
+        combo.setText(str(restart_time).strip())
+
+    def _parse_restart_date_selection(self) -> tuple[bool, str | None]:
+        text = self.restart_date_combo.currentText().strip()
+        data = self.restart_date_combo.currentData()
+        auto_label = restart_auto_latest_label()
+        if data == RESTART_AUTO_LATEST or text == auto_label or text.lower() in {"auto latest", "自动最新"}:
+            return True, None
+        normalized = normalize_restart_time(text)
+        if normalized:
+            return False, normalized
+        return False, text or None
 
     def _restart_value_text(self, value: object) -> str:
         if value is None:
@@ -376,19 +403,47 @@ class WW3StepPanel:
 
     def _render_restart_config(self, config: PipelineConfig) -> None:
         restart = config.restart
-        self._restart_input_file_raw = restart.input_file
-        self._restart_fields["input_file"].setText(self._restart_value_text(restart.input_file))
-        self._restart_fields["restart_time"].setText(self._restart_value_text(restart.restart_time))
-        self._restart_checkboxes["pick_latest_checkpoint"].setChecked(bool(restart.pick_latest_checkpoint))
+        self.restart_date_combo.blockSignals(True)
+        self._set_restart_date_value(
+            pick_latest=bool(restart.pick_latest_checkpoint),
+            restart_time=self._restart_value_text(restart.restart_time),
+        )
+        self.restart_date_combo.blockSignals(False)
+        self.restart_file_edit.setText(self._restart_value_text(restart.restart_file))
         self._update_restart_enabled_state()
+
+    def _restart_pick_latest_selected(self) -> bool:
+        pick_latest, _ = self._parse_restart_date_selection()
+        return pick_latest
 
     def _update_restart_enabled_state(self) -> None:
         hot_start = combo_selected_user_data(self.restart_mode_combo) == "restart"
-        manual_restart = hot_start and not self._restart_checkboxes["pick_latest_checkpoint"].isChecked()
+        pick_latest = self._restart_pick_latest_selected() if hot_start else True
         for widget in self._restart_hot_only:
             widget.setVisible(hot_start)
-        for widget in self._restart_manual_only:
-            widget.setVisible(manual_restart)
+        if hot_start:
+            manual_only = (self.restart_file_label, self.restart_file_edit)
+            for widget in manual_only:
+                widget.setVisible(not pick_latest)
+        if hot_start and not self.restart_date_combo.text().strip():
+            self._set_restart_date_value(pick_latest=True)
+        start_field = self.fields["ww3_start"]
+        if hot_start:
+            start_field.setReadOnly(True)
+            if hasattr(start_field, "setClearButtonEnabled"):
+                start_field.setClearButtonEnabled(False)
+            start_field.setToolTip(
+                tr(
+                    "step4_start_date_readonly_hint",
+                    "热启动时积分起点由 Restart 日期决定；此处为强迫场与完整模拟时段的起始日期。",
+                )
+            )
+        else:
+            start_field.setReadOnly(False)
+            if hasattr(start_field, "setClearButtonEnabled"):
+                start_field.setClearButtonEnabled(True)
+            start_field.setToolTip("")
+        self._style_line_edit(start_field, self._input_style())
         if hasattr(self, "widget"):
             self.widget.updateGeometry()
 
@@ -453,14 +508,13 @@ class WW3StepPanel:
         from workflows.domain.output_scheme_yaml import serialize_ww3_output_scheme
 
         scheme_name = self.output_scheme_combo.currentText().strip()
-        scheme_fields = self._output_scheme_fields_by_name.get(scheme_name, [])
         return {
             "start_date": self.fields["ww3_start"].text().strip(),
             "end_date": self.fields["ww3_end"].text().strip(),
             "output_step": self.fields["ww3_output"].text().strip(),
             "output_scheme": serialize_ww3_output_scheme(
                 scheme_name,
-                {scheme_name: scheme_fields},
+                self._output_scheme_fields_by_name,
             ),
             "file_split": current_file_split_from_combo(self.file_split_combo),
             "version": self.nml_version_combo.currentText().strip(),
@@ -468,18 +522,19 @@ class WW3StepPanel:
 
     def restart_overrides(self) -> dict[str, object]:
         mode = combo_selected_user_data(self.restart_mode_combo) or "cold"
-        pick_latest = self._restart_checkboxes["pick_latest_checkpoint"].isChecked()
-        manual_restart = mode == "restart" and not pick_latest
-        input_file_text = self._restart_fields["input_file"].text().strip()
-        input_file: object = input_file_text if manual_restart and input_file_text else None
-        if manual_restart and input_file_text and input_file_text == self._restart_value_text(self._restart_input_file_raw):
-            input_file = self._restart_input_file_raw
+        pick_latest = True
+        restart_time = None
+        restart_file = None
+        if mode == "restart":
+            pick_latest, restart_time = self._parse_restart_date_selection()
+            if not pick_latest:
+                restart_file = self.restart_file_edit.text().strip() or None
         return {
             "mode": mode,
-            "input_file": input_file,
-            "restart_time": self._restart_fields["restart_time"].text().strip() if manual_restart else None,
-            "output_step": self.fields["ww3_output"].text().strip(),
             "pick_latest_checkpoint": pick_latest,
+            "restart_time": restart_time,
+            "restart_file": restart_file,
+            "output_step": self.fields["ww3_output"].text().strip(),
         }
 
     def slurm_overrides(self) -> dict[str, object]:
@@ -531,9 +586,10 @@ class WW3StepPanel:
             self.cpu_label,
             self.field_labels["slurm_cores"],
             self.field_labels["slurm_nodes"],
-            self.field_labels["ww3_output"],
+            self.restart_date_label,
             self.field_labels["ww3_start"],
             self.field_labels["ww3_end"],
+            self.field_labels["ww3_output"],
             self.output_scheme_label,
             self.file_split_label,
         ]

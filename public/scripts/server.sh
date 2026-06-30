@@ -160,8 +160,14 @@ restart_truthy() {
     esac
 }
 
-checkpoint_time() {
-    basename "$1" | sed -n -E 's/^([0-9]{8})\.([0-9]{6})\.restart\..*$/\1 \2/p'
+find_checkpoint_by_time() {
+    local dir="$1"
+    local suffix="$2"
+    local restart_time="$3"
+    local stamp
+    stamp="$(printf '%s' "$restart_time" | sed -E 's/^([0-9]{8})[[:space:]]+([0-9]{6})$/\1.\2/')"
+    [ -n "$stamp" ] || return 0
+    ls -1 "$dir/${stamp}.restart.${suffix}" 2>/dev/null | head -n 1
 }
 
 latest_checkpoint() {
@@ -170,14 +176,124 @@ latest_checkpoint() {
     local latest=""
     while IFS= read -r candidate; do
         [ -n "$candidate" ] || continue
-        if [ -n "$(checkpoint_time "$candidate")" ]; then
-            latest="$candidate"
-        fi
+        latest="$candidate"
     done <<EOF
 $(ls -1 "$dir"/*.restart."$suffix" 2>/dev/null | sort)
 EOF
     echo "$latest"
 }
+
+latest_numbered_restart() {
+    local dir="$1"
+    local best_index=-1
+    local best_path=""
+    local path index
+    for path in "$dir"/restart[0-9]*.ww3; do
+        [ -f "$path" ] || continue
+        index="$(basename "$path" | sed -E 's/^restart([0-9]+)\.ww3$/\1/i')"
+        [ -n "$index" ] || continue
+        if [ "$index" -gt "$best_index" ]; then
+            best_index="$index"
+            best_path="$path"
+        fi
+    done
+    echo "$best_path"
+}
+
+nml_restart_schedule() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+    python3 - "$file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+pattern = re.compile(
+    r"(?:DATE|ALLDATE)%RESTART\s*=\s*'(\d{8}\s+\d{6})'\s*'(\d+)'",
+    re.IGNORECASE,
+)
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    if line.strip().startswith("!"):
+        continue
+    match = pattern.search(line)
+    if not match:
+        continue
+    stride = int(match.group(2))
+    if stride <= 0:
+        continue
+    print(match.group(1))
+    print(match.group(2))
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+restart_time_for_numbered_index() {
+    local start_time="$1"
+    local stride="$2"
+    local index="$3"
+  python3 - "$start_time" "$stride" "$index" <<'PY'
+import sys
+from datetime import datetime, timedelta
+start = datetime.strptime(sys.argv[1], "%Y%m%d %H%M%S")
+moment = start + timedelta(seconds=int(sys.argv[2]) * int(sys.argv[3]))
+print(moment.strftime("%Y%m%d %H%M%S"))
+PY
+}
+
+numbered_restart_for_time() {
+    local dir="$1"
+    local restart_time="$2"
+    local nml_file="$3"
+    local start_time stride delta index candidate
+    read -r start_time stride <<EOF
+$(nml_restart_schedule "$nml_file")
+EOF
+    [ -n "$start_time" ] && [ -n "$stride" ] && [ "$stride" -gt 0 ] || return 1
+    delta="$(python3 - "$start_time" "$stride" "$restart_time" <<'PY'
+import sys
+from datetime import datetime
+start = datetime.strptime(sys.argv[1], "%Y%m%d %H%M%S")
+target = datetime.strptime(sys.argv[3], "%Y%m%d %H%M%S")
+delta = int((target - start).total_seconds())
+stride = int(sys.argv[2])
+if delta < 0 or delta % stride != 0:
+    raise SystemExit(1)
+print(delta // stride)
+PY
+)" || return 1
+    index="$delta"
+    [ "$index" -gt 0 ] || return 1
+  candidate="$dir/restart$(printf '%03d' "$index").ww3"
+    [ -f "$candidate" ] && echo "$candidate" && return 0
+    candidate="$dir/restart${index}.ww3"
+    [ -f "$candidate" ] && echo "$candidate"
+}
+
+resolve_restart_file_name() {
+    local value="$1"
+    value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+    [ -n "$value" ] || return 0
+    case "$value" in
+        */*|*\\*) return 1 ;;
+    esac
+    echo "$value"
+}
+
+normalize_restart_time_value() {
+    python3 - "$1" <<'PY'
+import re
+import sys
+
+text = sys.argv[1].strip()
+match = re.match(r"^(\d{8})(?:\s+(\d{6}))?$", text)
+if not match:
+    raise SystemExit(1)
+print(f"{match.group(1)} {match.group(2) or '000000'}")
+PY
+}
+
+RESTART_FILE="$(params_restart_value restart_file "")"
 
 update_nml_start_time() {
     local file="$1"
@@ -187,46 +303,77 @@ update_nml_start_time() {
     tmp="${file}.tmp.$$"
     sed -E \
         -e "s/((DOMAIN%START|OUTPUT%FIELD%TIMESTART)[[:space:]]*=[[:space:]]*)'[^']+'/\1'${restart_time}'/g" \
-        -e "s/((DATE|ALLDATE)%(FIELD|POINT|TRACK|RESTART|RESTART2)[[:space:]]*=[[:space:]]*)'[^']+'/\1'${restart_time}'/g" \
-        -e "s/((DATE|ALLDATE)%(FIELD|POINT|TRACK|RESTART|RESTART2)%START[[:space:]]*=[[:space:]]*)'[^']+'/\1'${restart_time}'/g" \
+        -e "s/((DATE|ALLDATE)%(FIELD|POINT|TRACK|RESTART2)[[:space:]]*=[[:space:]]*)'[^']+'/\1'${restart_time}'/g" \
+        -e "s/((DATE|ALLDATE)%(FIELD|POINT|TRACK|RESTART2)%START[[:space:]]*=[[:space:]]*)'[^']+'/\1'${restart_time}'/g" \
         "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
 RESTART_MODE="$(params_restart_value mode cold | tr '[:upper:]' '[:lower:]')"
 RESTART_PICK_LATEST="$(params_restart_value pick_latest_checkpoint true)"
-RESTART_INPUT_FILE="$(params_restart_value input_file "")"
 RESTART_TIME="$(params_restart_value restart_time "")"
 RESTART_RUNTIME_TIME=""
 
 prepare_regular_restart() {
     [ "$RESTART_MODE" = "restart" ] || return 1
+    local checkpoint nml_file="$SCRIPT_ROOT/ww3_shel.nml"
+    local start_time stride index resolved_file
     if restart_truthy "$RESTART_PICK_LATEST"; then
-        local checkpoint
         checkpoint="$(latest_checkpoint "$SCRIPT_ROOT" "ww3")"
-        if [ -z "$checkpoint" ]; then
-            log_msg "❌ Auto Latest failed: no timestamped *.restart.ww3 checkpoint found"
-            fail_exit 1
-        fi
-        RESTART_RUNTIME_TIME="$(checkpoint_time "$checkpoint")"
-        cp -f "$checkpoint" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
-        log_msg "✅ Auto Latest restart: $(basename "$checkpoint") -> restart.ww3 ($RESTART_RUNTIME_TIME)"
-    else
-        RESTART_RUNTIME_TIME="$RESTART_TIME"
-        if [ -n "$RESTART_INPUT_FILE" ] && [ "$RESTART_INPUT_FILE" != "null" ]; then
-            if [ ! -f "$RESTART_INPUT_FILE" ]; then
-                log_msg "❌ Restart file not found: $RESTART_INPUT_FILE"
+        if [ -n "$checkpoint" ] && [ -f "$checkpoint" ]; then
+            RESTART_RUNTIME_TIME="$(basename "$checkpoint" | sed -E 's/^([0-9]{8})\.([0-9]{6})\.restart\..*$/\1 \2/')"
+            cp -f "$checkpoint" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
+            log_msg "✅ Auto Latest restart: $(basename "$checkpoint") -> restart.ww3 ($RESTART_RUNTIME_TIME)"
+        else
+            checkpoint="$(latest_numbered_restart "$SCRIPT_ROOT")"
+            if [ -z "$checkpoint" ] || [ ! -f "$checkpoint" ]; then
+                log_msg "❌ Auto Latest failed: no timestamped or numbered restart checkpoint found"
                 fail_exit 1
             fi
-            cp -f "$RESTART_INPUT_FILE" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
-            log_msg "✅ Restart file prepared: $RESTART_INPUT_FILE -> restart.ww3"
+            read -r start_time stride <<EOF
+$(nml_restart_schedule "$nml_file")
+EOF
+            index="$(basename "$checkpoint" | sed -E 's/^restart([0-9]+)\.ww3$/\1/i')"
+            if [ -z "$start_time" ] || [ -z "$stride" ] || [ -z "$index" ]; then
+                log_msg "❌ Auto Latest failed: cannot infer restart time from nml for $(basename "$checkpoint")"
+                fail_exit 1
+            fi
+            RESTART_RUNTIME_TIME="$(restart_time_for_numbered_index "$start_time" "$stride" "$index")"
+            cp -f "$checkpoint" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
+            log_msg "✅ Auto Latest restart: $(basename "$checkpoint") -> restart.ww3 ($RESTART_RUNTIME_TIME)"
+        fi
+    else
+        RESTART_RUNTIME_TIME="$(normalize_restart_time_value "$RESTART_TIME")" || {
+            log_msg "❌ restart_time must be YYYYMMDD or YYYYMMDD HHMMSS"
+            fail_exit 1
+        }
+        resolved_file="$(resolve_restart_file_name "$RESTART_FILE")" || {
+            log_msg "❌ restart_file must be a filename inside the workdir"
+            fail_exit 1
+        }
+        if [ -n "$resolved_file" ]; then
+            checkpoint="$SCRIPT_ROOT/$resolved_file"
+            if [ ! -f "$checkpoint" ]; then
+                log_msg "❌ Restart file not found: $resolved_file"
+                fail_exit 1
+            fi
+            cp -f "$checkpoint" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
+            log_msg "✅ Restart file: $resolved_file -> restart.ww3 ($RESTART_RUNTIME_TIME)"
+        else
+            checkpoint="$(find_checkpoint_by_time "$SCRIPT_ROOT" "ww3" "$RESTART_RUNTIME_TIME")"
+            if [ -n "$checkpoint" ] && [ -f "$checkpoint" ]; then
+                cp -f "$checkpoint" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
+                log_msg "✅ Restart checkpoint: $(basename "$checkpoint") -> restart.ww3 ($RESTART_RUNTIME_TIME)"
+            else
+                checkpoint="$(numbered_restart_for_time "$SCRIPT_ROOT" "$RESTART_RUNTIME_TIME" "$nml_file")"
+                if [ -n "$checkpoint" ] && [ -f "$checkpoint" ]; then
+                    cp -f "$checkpoint" "$SCRIPT_ROOT/restart.ww3" || fail_exit 1
+                    log_msg "✅ Restart checkpoint: $(basename "$checkpoint") -> restart.ww3 ($RESTART_RUNTIME_TIME)"
+                fi
+            fi
         fi
     fi
     if [ ! -f "$SCRIPT_ROOT/restart.ww3" ]; then
-        log_msg "❌ Restart mode requires restart.ww3"
-        fail_exit 1
-    fi
-    if [ -z "$RESTART_RUNTIME_TIME" ]; then
-        log_msg "❌ Restart mode requires restart_time when Auto Latest is disabled"
+        log_msg "❌ Restart mode requires restart.ww3 (specify restart_file or matching checkpoint)"
         fail_exit 1
     fi
     update_nml_start_time "$SCRIPT_ROOT/ww3_shel.nml" "$RESTART_RUNTIME_TIME"
@@ -247,7 +394,7 @@ prepare_nested_restart() {
                 log_msg "❌ Auto Latest failed: no timestamped restart checkpoint found for $lv"
                 fail_exit 1
             fi
-            current_time="$(checkpoint_time "$checkpoint")"
+            current_time="$(basename "$checkpoint" | sed -E 's/^([0-9]{8})\.([0-9]{6})\.restart\..*$/\1 \2/')"
             if [ -n "$selected_time" ] && [ "$selected_time" != "$current_time" ]; then
                 log_msg "❌ Nested restart checkpoint times differ: $selected_time vs $current_time"
                 fail_exit 1
@@ -255,8 +402,21 @@ prepare_nested_restart() {
             selected_time="$current_time"
             cp -f "$checkpoint" "$SCRIPT_ROOT/$lv/restart.ww3" || fail_exit 1
             log_msg "✅ Auto Latest restart ($lv): $(basename "$checkpoint") -> $lv/restart.ww3 ($current_time)"
-        elif [ ! -f "$SCRIPT_ROOT/$lv/restart.ww3" ] && [ -f "$SCRIPT_ROOT/restart.$lv" ]; then
-            cp -f "$SCRIPT_ROOT/restart.$lv" "$SCRIPT_ROOT/$lv/restart.ww3" || fail_exit 1
+        else
+            if [ -z "$RESTART_TIME" ]; then
+                log_msg "❌ Restart mode requires restart_time when Auto Latest is disabled"
+                fail_exit 1
+            fi
+            checkpoint="$(find_checkpoint_by_time "$SCRIPT_ROOT" "$lv" "$RESTART_TIME")"
+            if [ -z "$checkpoint" ]; then
+                checkpoint="$(find_checkpoint_by_time "$SCRIPT_ROOT/$lv" "ww3" "$RESTART_TIME")"
+            fi
+            if [ -n "$checkpoint" ] && [ -f "$checkpoint" ]; then
+                cp -f "$checkpoint" "$SCRIPT_ROOT/$lv/restart.ww3" || fail_exit 1
+                log_msg "✅ Restart checkpoint ($lv): $(basename "$checkpoint") -> $lv/restart.ww3 ($RESTART_TIME)"
+            elif [ ! -f "$SCRIPT_ROOT/$lv/restart.ww3" ] && [ -f "$SCRIPT_ROOT/restart.$lv" ]; then
+                cp -f "$SCRIPT_ROOT/restart.$lv" "$SCRIPT_ROOT/$lv/restart.ww3" || fail_exit 1
+            fi
         fi
         if [ ! -f "$SCRIPT_ROOT/$lv/restart.ww3" ]; then
             log_msg "❌ Restart mode requires $lv/restart.ww3"

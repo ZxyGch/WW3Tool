@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ...support.translations import tr
+from ..ww3.restart_checkpoints import normalize_restart_time, resolve_regular_restart_source
 
 LogCallback = Callable[[str], None]
 
@@ -98,20 +99,6 @@ def _restart_settings(workdir: Path) -> dict:
     return restart
 
 
-def _checkpoint_time(path: Path) -> str | None:
-    match = re.match(r"^(\d{8})\.(\d{6})\.restart\.", path.name)
-    if not match:
-        return None
-    return f"{match.group(1)} {match.group(2)}"
-
-
-def _latest_checkpoint(directory: Path, suffix: str) -> Path | None:
-    candidates = [p for p in directory.glob(f"*.restart.{suffix}") if _checkpoint_time(p)]
-    if not candidates:
-        return None
-    return sorted(candidates, key=lambda p: p.name)[-1]
-
-
 def _update_nml_start_time(path: Path, restart_time: str) -> None:
     if not path.is_file():
         return
@@ -119,8 +106,8 @@ def _update_nml_start_time(path: Path, restart_time: str) -> None:
     escaped = restart_time.replace("\\", "\\\\")
     patterns = (
         r"((?:DOMAIN%START|OUTPUT%FIELD%TIMESTART)\s*=\s*)'[^']+'",
-        r"((?:DATE|ALLDATE)%(?:FIELD|POINT|TRACK|RESTART|RESTART2)\s*=\s*)'[^']+'",
-        r"((?:DATE|ALLDATE)%(?:FIELD|POINT|TRACK|RESTART|RESTART2)%START\s*=\s*)'[^']+'",
+        r"((?:DATE|ALLDATE)%(?:FIELD|POINT|TRACK|RESTART2)\s*=\s*)'[^']+'",
+        r"((?:DATE|ALLDATE)%(?:FIELD|POINT|TRACK|RESTART2)%START\s*=\s*)'[^']+'",
     )
     for pattern in patterns:
         text = re.sub(pattern, rf"\1'{escaped}'", text, flags=re.IGNORECASE)
@@ -132,28 +119,24 @@ def _prepare_regular_restart(workdir: Path, log: LogCallback) -> tuple[bool, str
     if str(settings.get("mode") or "cold").strip().lower() != "restart":
         return False, None
     pick_latest = bool(settings.get("pick_latest_checkpoint", True))
-    restart_time = str(settings.get("restart_time") or "").strip() or None
+    restart_time = normalize_restart_time(settings.get("restart_time"))
+    restart_file = str(settings.get("restart_file") or "").strip() or None
+    source, resolved_time = resolve_regular_restart_source(
+        workdir,
+        pick_latest=pick_latest,
+        restart_time=restart_time,
+        restart_file=restart_file,
+        nml_path=workdir / "ww3_shel.nml",
+    )
+    shutil.copyfile(source, workdir / "restart.ww3")
     if pick_latest:
-        checkpoint = _latest_checkpoint(workdir, "ww3")
-        if checkpoint is None:
-            log("❌ Auto Latest failed: no timestamped *.restart.ww3 checkpoint found")
-            raise RuntimeError("Auto Latest restart checkpoint not found")
-        restart_time = _checkpoint_time(checkpoint)
-        shutil.copyfile(checkpoint, workdir / "restart.ww3")
-        log(f"✅ Auto Latest restart: {checkpoint.name} -> restart.ww3 ({restart_time})")
-    elif settings.get("input_file"):
-        src = Path(str(settings["input_file"])).expanduser()
-        if not src.is_file():
-            raise FileNotFoundError(f"Restart 文件不存在：{src}")
-        if src.resolve() != (workdir / "restart.ww3").resolve():
-            shutil.copyfile(src, workdir / "restart.ww3")
-        log(f"✅ Restart file prepared: {src} -> {workdir / 'restart.ww3'}")
-    if not (workdir / "restart.ww3").is_file():
-        raise FileNotFoundError("Restart mode requires restart.ww3")
-    if not restart_time:
-        raise ValueError("Restart mode requires restart_time when Auto Latest is disabled")
-    _update_nml_start_time(workdir / "ww3_shel.nml", restart_time)
-    return True, restart_time
+        log(f"✅ Auto Latest restart: {source.name} -> restart.ww3 ({resolved_time})")
+    elif restart_file:
+        log(f"✅ Restart file: {source.name} -> restart.ww3 ({resolved_time})")
+    else:
+        log(f"✅ Restart checkpoint: {source.name} -> restart.ww3 ({resolved_time})")
+    _update_nml_start_time(workdir / "ww3_shel.nml", resolved_time)
+    return True, resolved_time
 
 
 def _prepare_nested_restart(workdir: Path, levels: list[tuple[Path, int]], log: LogCallback) -> tuple[bool, str | None]:
@@ -161,35 +144,67 @@ def _prepare_nested_restart(workdir: Path, levels: list[tuple[Path, int]], log: 
     if str(settings.get("mode") or "cold").strip().lower() != "restart":
         return False, None
     pick_latest = bool(settings.get("pick_latest_checkpoint", True))
-    restart_time = str(settings.get("restart_time") or "").strip() or None
+    restart_time = normalize_restart_time(settings.get("restart_time"))
+    restart_file = str(settings.get("restart_file") or "").strip() or None
+    nml_path = workdir / "ww3_multi.nml"
     selected_time: str | None = None
     for level_path, _idx in levels:
         level = level_path.name
         destination = level_path / "restart.ww3"
+        search_dirs = [workdir, level_path]
+        source: Path | None = None
+        current_time: str | None = None
         if pick_latest:
-            checkpoint = _latest_checkpoint(workdir, level)
-            if checkpoint is None:
-                checkpoint = _latest_checkpoint(level_path, "ww3")
-            if checkpoint is None:
-                raise FileNotFoundError(f"Auto Latest failed: no timestamped restart checkpoint found for {level}")
-            current_time = _checkpoint_time(checkpoint)
-            if selected_time and current_time != selected_time:
-                raise ValueError(f"Nested restart checkpoint times differ: {selected_time} vs {current_time}")
-            selected_time = current_time
-            shutil.copyfile(checkpoint, destination)
-            log(f"✅ Auto Latest restart ({level}): {checkpoint.name} -> {destination.name} ({current_time})")
-        elif not destination.is_file():
-            root_staged = workdir / f"restart.{level}"
-            if root_staged.is_file():
-                shutil.copyfile(root_staged, destination)
-        if not destination.is_file():
-            raise FileNotFoundError(f"Restart mode requires {destination}")
-    if pick_latest:
-        restart_time = selected_time
-    if not restart_time:
+            for search_dir in search_dirs:
+                try:
+                    source, current_time = resolve_regular_restart_source(
+                        search_dir,
+                        pick_latest=True,
+                        restart_time=None,
+                        restart_file=None,
+                        nml_path=nml_path,
+                    )
+                    break
+                except FileNotFoundError:
+                    continue
+            if source is None or current_time is None:
+                raise FileNotFoundError(f"Auto Latest failed: no restart checkpoint found for {level}")
+        else:
+            if not restart_time:
+                raise ValueError("Restart mode requires restart_time when Auto Latest is disabled")
+            current_time = restart_time
+            last_error: Exception | None = None
+            for search_dir in search_dirs:
+                try:
+                    source, _ = resolve_regular_restart_source(
+                        search_dir,
+                        pick_latest=False,
+                        restart_time=restart_time,
+                        restart_file=restart_file,
+                        nml_path=nml_path,
+                    )
+                    break
+                except (FileNotFoundError, ValueError) as exc:
+                    last_error = exc
+                    continue
+            if source is None:
+                root_staged = workdir / f"restart.{level}"
+                if root_staged.is_file():
+                    source = root_staged
+                elif last_error is not None:
+                    raise last_error
+        if source is None:
+            raise FileNotFoundError(f"Restart mode requires restart source for {level}")
+        if selected_time and current_time != selected_time:
+            raise ValueError(f"Nested restart checkpoint times differ: {selected_time} vs {current_time}")
+        selected_time = current_time
+        shutil.copyfile(source, destination)
+        log(f"✅ Restart ({level}): {source.name} -> {destination.name} ({current_time})")
+    resolved_time = selected_time if pick_latest else restart_time
+    if not resolved_time:
         raise ValueError("Restart mode requires restart_time when Auto Latest is disabled")
-    _update_nml_start_time(workdir / "ww3_multi.nml", restart_time)
-    return True, restart_time
+    _update_nml_start_time(nml_path, resolved_time)
+    return True, resolved_time
 
 
 def _run_log_callback(workdir: Path, log: LogCallback) -> LogCallback:

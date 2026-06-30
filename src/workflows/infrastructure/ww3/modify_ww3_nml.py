@@ -567,9 +567,13 @@ class ModifyWW3NML(
             if not scheme_name:
                 return None
 
-            # [EN] Prefer reading from PipelineConfig
-            # 优先从 PipelineConfig 读取
+            # 优先从 PipelineConfig 读取当前启用方案
             loaded_cfg = getattr(self, '_loaded_config', None)
+            if loaded_cfg is not None and getattr(loaded_cfg.ww3, "output_fields", None):
+                selected_vars = [str(v).strip() for v in loaded_cfg.ww3.output_fields if str(v).strip()]
+                if selected_vars:
+                    return ' '.join(selected_vars)
+
             if loaded_cfg is not None and hasattr(loaded_cfg, 'presets'):
                 schemes = dict(loaded_cfg.presets.output_scheme)
                 if getattr(loaded_cfg.ww3, "output_fields", None) and loaded_cfg.ww3.output_scheme:

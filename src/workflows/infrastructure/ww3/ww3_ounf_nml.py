@@ -34,6 +34,34 @@ class WW3OunfNML(NMLPrimitives):
     file splitting options from the GUI into ``ww3_ounf.nml`` in the working directory.
     """
 
+    def _write_ww3_ounf_field_list(self, target_dir: str, var_list_str: str) -> bool:
+        """将 ``FIELD%LIST`` 写入指定目录的 ``ww3_ounf.nml``。"""
+        if not var_list_str or not target_dir or not isinstance(target_dir, str):
+            return False
+        nml_path = os.path.join(target_dir, "ww3_ounf.nml")
+        if not os.path.isfile(nml_path):
+            return False
+        try:
+            with open(nml_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            new_lines = []
+            modified = False
+            for line in lines:
+                line_stripped = line.lstrip()
+                is_comment = line_stripped.startswith("!")
+                if not is_comment and re.search(r"FIELD%LIST", line, re.IGNORECASE) and "=" in line:
+                    new_lines.append(f"  FIELD%LIST             =  '{var_list_str}'\n")
+                    modified = True
+                else:
+                    new_lines.append(line)
+            if not modified:
+                return False
+            with open(nml_path, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(new_lines)
+            return True
+        except OSError:
+            return False
+
     def _apply_ww3_ounf_to_dir(self, target_dir, output_precision, grid_label=""):
         """在指定目录中修改 ww3_ounf.nml
 
@@ -119,6 +147,11 @@ class WW3OunfNML(NMLPrimitives):
                 ("FIELD%TIMESTRIDE", f"'{stride}'"),
                 ("FIELD%TIMESPLIT", str(timesplit_value)),
             ]
+            var_list_str = self._get_output_scheme_var_list() if hasattr(self, "_get_output_scheme_var_list") else None
+            if var_list_str and self._write_ww3_ounf_field_list(target_dir, var_list_str):
+                assignments.append(("FIELD%LIST", f"'{var_list_str}'"))
+                if self._output_scheme_contains_var("EF") if hasattr(self, "_output_scheme_contains_var") else False:
+                    self._modify_namelists_e3d_in_dir(target_dir)
             self.log(
                 prefix
                 + format_nml_log_message(
