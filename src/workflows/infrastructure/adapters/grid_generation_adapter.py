@@ -122,14 +122,9 @@ def _grid_cache_dir() -> Path:
     return cache_dir
 
 
-def _unstructured_workspace_dir() -> Path:
-    """返回非结构网格生成器自己的中间文件工作区。"""
-    return (
-        Path(get_project_meshgen_path())
-        / "unstructured_generator"
-        / "unst_msh_gen"
-        / "mesh_workspace"
-    )
+def _unstructured_workspace_dir(workdir: Path) -> Path:
+    """返回当前任务独立的非结构网格中间文件工作区。"""
+    return workdir / ".mesh_workspace"
 
 
 def _structured_grid_mask_path(folder: Path) -> Path | None:
@@ -672,7 +667,7 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
 def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
     root = Path(get_project_meshgen_path())
     unst_dir = root / "unstructured_generator"
-    mesh_workspace = _unstructured_workspace_dir()
+    mesh_workspace = _unstructured_workspace_dir(config.workdir.path)
     unst_msh_gen_abs = str(unst_dir / "unst_msh_gen")
     jigsaw_root_abs = str(unst_dir / "jigsaw-python")
     base = json.loads(json.dumps(UNST_MSH_GEN_CONFIG_DEFAULTS))
