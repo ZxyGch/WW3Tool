@@ -218,7 +218,7 @@ ww3_grid:
 	TIMESTEPS%DTMIN: 15
 ```
 
-The root `params.yml` (`WW3Tool/params.yml`) is only a **template** with defaults. For a real run, create a separate work directory and edit `params.yml` inside it.
+The root `params.yml` (`WW3Tool/params.yml`) is only a **template** with defaults. For a real run, create a separate work directory and edit `params.yml` inside it — that work-directory file is the authoritative description of one simulation task.
 
 In GUI mode, form values are held in memory first; then the root `params.yml` is copied into the work directory and overwritten with your edits so the work-directory file always matches the root template structure.
 
@@ -414,7 +414,7 @@ forcing:
   auto_associate: true      # If one file has multiple fields, link to multiple slots
 ```
 
-Settings page defaults apply when opening a work directory; actual import still follows home-page selections and buttons.
+Settings page **Forcing configuration** provides default import mode and auto-associate toggle. The home page reads these when you open a work directory; actual import still follows current home-page selections and button clicks.
 
 
 #### Detecting field type
@@ -457,7 +457,7 @@ With `auto_associate: false`, only the slot where you selected the file is updat
 
 #### Work-directory scan
 
-On open, normalized forcing files are detected and GUI buttons restored (`wind.nc`, `current_level.nc`, etc.). Scan only restores display; import still requires **Confirm crop and import** or **Import directly**.
+On open, normalized forcing files are detected and GUI buttons restored (`wind.nc`, `current.nc`, `level.nc`, `ice.nc`, `current_level.nc`, `wind_current_level_ice.nc`, etc.). Scan only restores display; import still requires **Confirm crop and import** or **Import directly**.
 
 
 
@@ -468,9 +468,9 @@ On open, normalized forcing files are detected and GUI buttons restored (`wind.n
 
 ![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
 
-Step 2 builds WW3 grid input from `params.yml` `grid` section. It does **not** run `ww3_grid`; compiling `mod_def.ww3` happens in Step 4 / run scripts.
+Step 2 builds WW3 grid input from `params.yml` `grid` section — turning domain extent, bathymetry, coastlines, and grid type into files WW3 can read. It does **not** run `ww3_grid`; compiling `mod_def.ww3` happens in Step 4 / run scripts.
 
-For meshgen internals see `meshgen/README.md`. Below covers GUI/CLI essentials.
+For meshgen internals see `meshgen/README.md`. Below covers the GUI/CLI fields you change most often and common misunderstandings.
 
 #### GUI workflow
 
@@ -541,14 +541,17 @@ python3 run.py recommend-grid [work_dir_name] --coarse        # Use recommended 
 ```
 
 ```yaml
+# ────────────────────────────────────────────────────────────────────
 # Grid generation (rectangular / SMC / unstructured).
-#   mesh_type – 'structured' | 'smc' | 'unstructured'
-#   grid_type – 'normal' single layer; 'nested' nesting (rectangular only)
-#   gridgen_version – 'Python' or 'MATLAB'
-#   reference_data_path – bathymetry/coastline data; null = auto-detect
-#   lon – [west, east] degrees
-#   lat – [south, north] degrees
-#   structured.nested.levels – coarse to fine when grid_type=nested
+#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
+#   grid_type – 'normal' single layer; 'nested' nesting (rectangular only).
+#   gridgen_version – grid backend: 'Python' or 'MATLAB'.
+#   reference_data_path – bathymetry/coastline directory;
+#                         null = auto-detect project default path.
+#   lon       – main grid longitude range [west, east], degrees.
+#   lat       – main grid latitude range [south, north], degrees.
+#   structured.nested.levels – nesting levels coarse→fine when grid_type=nested.
+# ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
   grid_type: normal
@@ -564,12 +567,12 @@ grid:
 
 | Field | Meaning |
 | --- | --- |
-| `grid.mesh_type` | `structured`, `smc`, `unstructured` |
-| `grid.grid_type` | Rectangular only: `normal` or `nested` |
-| `grid.lon` | `[west, east]` |
-| `grid.lat` | `[south, north]` |
-| `grid.reference_data_path` | Bathymetry/coastline directory |
-| `grid.structured.nested.levels` | Nested levels; `level0` coarsest, `levelN` finest |
+| `grid.mesh_type` | Grid topology: `structured`, `smc`, `unstructured` |
+| `grid.grid_type` | Rectangular only: `normal` single layer, `nested` multi-level |
+| `grid.lon` | Main grid longitude range `[west, east]` |
+| `grid.lat` | Main grid latitude range `[south, north]` |
+| `grid.reference_data_path` | Bathymetry/coastline directory; empty → project default |
+| `grid.structured.nested.levels` | Nested levels coarse→fine; `level0` outermost, `levelN` finest |
 
 #### Structured rectangular grid
 
@@ -589,8 +592,8 @@ Nesting = coarse outer + fine inner for multi-resolution runs. WW3Tool uses WW3 
 | `grid.grid_type` | `nested` enables nesting; `normal` = single layer |
 | `grid.structured.nested.levels` | Ordered coarse→fine; `levels[0]` = level0; 2–99 levels |
 | Per level | `dx`, `dy` (deg), `lon`, `lat` rectangle |
-| `nested_contraction_coefficient` | GUI “matryoshka”: shrink parent extent and halve `dx/dy` for next level |
-| Validation | Fine `dx/dy` < coarse; level k fully inside level k−1 |
+| `nested_contraction_coefficient` | GUI “matryoshka”: shrink parent extent and halve `dx/dy` for next level; can also hand-write each level in yaml |
+| Validation | Fine `dx/dy` < coarse; level k fully inside level k−1; supports 2–99 levels |
 
 Generation layout:
 
@@ -621,22 +624,45 @@ python3 run.py local-run nested_demo
 ```
 
 ```yml
+# Rectangular grid parameters:
+#   bathymetry       – bathymetry dataset name (see presets.structured_bathymetry).
+#   coastline_precision – GSHHG coastline detail (full/high/inter/low/coarse).
+#   min_dist         – minimum spacing filter between adjacent grid points (km).
+#   cut_off          – land-sea mask cutoff; 0 keeps all sea points.
+#   lim_bathy        – wet-fraction threshold for cell retention by depth.
+#   lim_val          – mask classification threshold, 0–1.
+#   split_lim        – cell-split threshold; 0 disables splitting.
+#   lake_tol         – minimum lake size in grid points; smaller lakes are filled.
+#   nested.levels    – nesting levels coarse→fine; level0 = levels[0], finest = levels[-1].
+#   nested.nested_contraction_coefficient – GUI matryoshka shrink factor (≥ 1).
 structured:
   nested:
     nested_contraction_coefficient: 1.3
     levels:
     - dx: 0.05
       dy: 0.05
-      lon: [100.0, 130.0]
-      lat: [10.0, 30.0]
+      lon:
+      - 100.0
+      - 130.0
+      lat:
+      - 10.0
+      - 30.0
     - dx: 0.025
       dy: 0.025
-      lon: [103.4615, 126.5385]
-      lat: [12.3077, 27.6923]
+      lon:
+      - 103.4615
+      - 126.5385
+      lat:
+      - 12.3077
+      - 27.6923
     - dx: 0.0125
       dy: 0.0125
-      lon: [106.1242, 123.8758]
-      lat: [14.0828, 25.9172]
+      lon:
+      - 106.1242
+      - 123.8758
+      lat:
+      - 14.0828
+      - 25.9172
   bathymetry: GEBCO
   coastline_precision: full
   min_dist: 20
@@ -676,13 +702,26 @@ Single layer: `grid.obst`, `grid.bot`, `grid.mask_nobound`, `grid.meta` at work-
 
 #### Unstructured triangular grid
 
-JIGSAW / NOAA `unst_msh_gen`. No `DX/DY`; core knobs: `hmax/hmin/hshr`.
+JIGSAW / NOAA `unst_msh_gen` builds triangular meshes with deep-water scale, nearshore refinement, shallow-wavelength refinement, and bathymetry-gradient controls. No `DX/DY`; core knobs are `hmax/hmin/hshr`.
 
 
 
 ##### params.yml
 
 ```yaml
+# Unstructured (triangular) spacing parameters:
+# hmax – maximum cell spacing in deep water (km).
+# hmin – minimum allowed cell spacing globally (km).
+# hshr – target nearshore spacing (km).
+# nwav – wavelengths resolved per cell.
+# dhdx – spacing variation rate with bathymetry gradient.
+# deep_ocean_threshold_m – depths above this use hmax (m).
+# margin_deg – domain buffer outside the bbox (degrees).
+# edge_segments – coastline boundary segment count.
+# options.data – optional mask / exclusion file.
+# options.command_line_args – extra JIGSAW CLI arguments.
+# options.regional – regional projection center (stereo_lon / stereo_lat).
+
 unstructured:
 	hmax: 100
 	hmin: 2
@@ -730,6 +769,18 @@ SMCGTools-based. Requires SMC-capable WW3 and templates; not the default for sim
 ##### params.yml
 
 ```yml
+# SMC (Spherical Multi-Cell) grid parameters:
+#   bathymetry       – bathymetry dataset name (see presets.smc_bathymetry).
+#   bathy_convention – 'elevation' (up positive) or 'depth' (down positive).
+#   n_levels         – number of cell-scale refinement levels.
+#   wlevel           – water-level reference index.
+#   depmin           – minimum depth threshold; shallower cells removed (m).
+#   dshalw           – shallow-water extra-refinement depth threshold (m).
+#   generate_boundary_cells – whether to generate open-boundary ghost cells.
+#   msea             – minimum cells retained in straits.
+#   options.input    – input preprocessing (auto flip, tolerances, etc.).
+#   options.grid     – grid identity and projection (global, arctic, origin, etc.).
+#   options.output   – output file naming and formatting.
 smc:
   bathymetry: ETOPO2
   bathy_convention: elevation
@@ -788,6 +839,8 @@ If unsure, use **region** — it is the most common.
 
 
 #### params.yml
+
+Step 3 settings live in the `calc` section. The GUI writes mode, points, or track points back to the work-directory `params.yml`; Step 4 `prepare-ww3` reads them to generate `points.list` or `track_i.ww3`.
 
 ```sh
 # No separate Step 3 CLI; edit calc then:
@@ -854,6 +907,7 @@ Step 4 **Auto-configure timesteps** uses CFL stability; values are written to `w
 CLI:
 
 ```sh
+# Writes params.yml ww3_grid.parameters.TIMESTEPS%*
 python3 run.py recommend-cfl new                         # default safe, CFL 0.9
 python3 run.py recommend-cfl new --mode fast             # CFL 1.05
 python3 run.py recommend-cfl new --mode faster           # CFL 1.15
@@ -865,7 +919,7 @@ python3 run.py prepare-ww3 new
 
 ##### CFL calculation
 
-WW3 convention: wave group travel per timestep must not exceed one grid spacing.
+WW3’s `ww3_grid.nml` comments state that wave group travel per timestep must not exceed one grid spacing. Define:
 
 - $\Delta x$: minimum grid spacing (m). Structured/SMC from `dx`/`dy` and latitude; unstructured uses `hmin` (km) as finest scale.
 - $f_1$: lowest spectral frequency `SPECTRUM%FREQ1` (Hz).
@@ -893,6 +947,13 @@ WW3Tool rounds to integer seconds and cascades:
 | DTKTH | Source/sink spectral step | $\approx \mathrm{DTMAX}/2$ without strong currents |
 | DTMIN | Minimum step | Default 15 s |
 
+In short:
+
+- `DTXY` — spatial propagation step; finest grids need smaller values.
+- `DTMAX` — main integration cap; usually scales with `DTXY`.
+- `DTKTH` — source/sink spectral step; use smaller values with strong currents or complex bathymetry.
+- `DTMIN` — adaptive source-term floor; rarely the first knob for accuracy.
+
 Nested grids: CFL recomputed **per level** (fine grids → smaller `DTXY` → more steps). Tied to `ww3_multi.nml` process allocation (§5.5.8).
 
 If the grid is very coarse or `FREQ1` very small, recommended steps may still be too large; reduce spacing or CFL factor rather than blindly increasing `DTMAX`.
@@ -907,33 +968,62 @@ If the grid is very coarse or `FREQ1` very small, recommended steps may still be
 ✅ Copied 8 NML template files to current work directory
 ```
 
-- Copy namelists from `public/6.07_nml/` or `public/7.14_nml/` (per NML version).
-- Copy `local.sh` and `server.sh` from `public/scripts/`. How a case runs step by step: §5.5.9.
+- Copy namelists from `public/6.07_nml/` or `public/7.14_nml/` (per NML version): `ww3_grid.nml`, `ww3_prnc.nml`, `ww3_shel.nml`, `ww3_ounf.nml`, etc.
+- Copy `local.sh` and `server.sh` from `public/scripts/`. They define the WW3 program execution order (`ww3_grid`, `ww3_shel`, …). `local.sh` runs on your machine; `server.sh` runs under Slurm. Step-by-step flow: §5.5.9.
 
 
 #### 5.5.2 Write grid into ww3_grid.nml
 
-Step 2 grid files are synced into `ww3_grid.nml` by grid type:
+Step 2 grid files must be synced into `ww3_grid.nml` grid fields before WW3 can read them. Syntax differs by grid type:
 
 ```log
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml:
   GRID%TYPE  = 'RECT'
-  ...
+  GRID%COORD = 'SPHE'
+  GRID%CLOS  = 'NONE'
+
+  RECT%NX    = 401
+  RECT%NY    = 401
+  RECT%SX    = 0.050000000000
+  RECT%SY    = 0.050000000000
+  RECT%X0    = 110.0000
+  RECT%Y0    = 10.0000
+  DEPTH%SF   = 0.001000
+  OBST%SF    = 0.010000
 ```
 
 ```log
-✅ Unstructured mesh: updated ww3_grid.nml ...
+✅ Unstructured mesh: updated ww3_grid.nml and namelists.nml (&RECT_NML, &DEPTH_NML, &MASK_NML, &OBST_NML blocks commented with !):
   GRID%TYPE     = 'UNST'
   UNST%FILENAME = 'grid.ww3'
+
+  FLAGTR        = 0
 ```
 
 ```log
-✅ SMC mesh: updated ww3_grid.nml ...
+✅ SMC mesh: updated ww3_grid.nml (template &DEPTH_NML, &MASK_NML, &OBST_NML commented with !; appended &DEPTH_NML DEPTH%SF):
+  GRID%TYPE          = 'RECT'
+
+  RECT%NX            = 570
+  RECT%NY            = 598
+  RECT%SX            = 0.033332824707
+  RECT%SY            = 0.033332824707
+  RECT%X0            = 109.9983
+  RECT%Y0            = 9.9985
+  RECT%SF            = 1.00
+  RECT%SF0           = 1.00
   SMC%MCELS%FILENAME = 'grid_cell.dat'
-  ...
+  SMC%ISIDE%FILENAME = 'grid_iside.dat'
+  SMC%JSIDE%FILENAME = 'grid_jside.dat'
+  SMC%SUBTR%FILENAME = 'grid_subtr.dat'
+  SMC%BUNDY%FILENAME = 'grid_bundy.dat'
+  DEPTH%SF           = -1.0
+✅ Updated namelists.nml:
+  NBISMC = 341 (grid_bundy.dat)
+  LvSMC  = 2
 ```
 
-Rectangular: extent, resolution, bathy file. Unstructured: point to `grid.ww3`. SMC: envelope + SMC data files. All automated in Step 4.
+Rectangular: extent, resolution, bathy file. Unstructured: point to `grid.ww3`. SMC: envelope rectangle + SMC cell/side/boundary files. All automated in Step 4.
 
 
 
@@ -941,10 +1031,29 @@ Rectangular: extent, resolution, bathy file. Unstructured: point to `grid.ww3`. 
 #### 5.5.4 Time and output stride
 
 ```log
-✅ Updated ww3_ounp.nml: ...
-✅ Updated ww3_ounf.nml: ...
-✅ Updated ww3_shel.nml: ...
-✅ Modified ww3_prnc.nml: ...
+✅ Updated ww3_ounp.nml:
+  POINT%TIMESTART  = '20250103 000000'
+  POINT%TIMESTRIDE = '3600'
+  POINT%TIMESPLIT  = 0
+✅ Updated ww3_ounf.nml:
+  FIELD%TIMESTART  = '20250103 000000'
+  FIELD%TIMESTRIDE = '3600'
+  FIELD%TIMESPLIT  = 0
+✅ Updated ww3_shel.nml:
+  DOMAIN%START            = '20250103 000000'
+  DOMAIN%STOP             = '20250105 235959'
+  OUTPUT%FIELD%TIMESTART  = '20250103 000000'
+  OUTPUT%FIELD%TIMESTRIDE = '3600'
+  DATE%FIELD              = '20250103 000000' '3600' '20250105 235959'
+  DATE%RESTART%START      = '20250103 000000'
+  DATE%RESTART%STOP       = '20250105 235959'
+
+  TYPE%POINT%FILE         = 'points.list'
+  DATE%POINT              = '20250103 000000' '3600' '20250105 235959'
+  DATE%BOUNDARY           = '20250103 000000' '86400' '20250105 235959'
+✅ Modified ww3_prnc.nml:
+  FORCING%TIMESTART = '20250103 000000'
+  FORCING%TIMESTOP  = '20250105 235959'
 ```
 
 params.yml:
@@ -958,11 +1067,13 @@ ww3:
 
 | Location | Role |
 | --------------------------------------------- | ---------------------------------------------------------------- |
-| `ww3_shel.nml` `DOMAIN%START/STOP` | Main integration window |
-| `ww3_shel.nml` `DATE%FIELD` | When/how often field output is written during integration |
+| `ww3_shel.nml` `DOMAIN%START/STOP` | Overall integration window |
+| `ww3_shel.nml` `DATE%FIELD` | When/how often field output is written during integration; smaller stride → larger `out_grd.ww3` and `ww3.*.nc` |
 | `ww3_ounf.nml` `FIELD%TIMESTART/TIMESTRIDE` | NetCDF field export from `out_grd.ww3` |
 | `ww3_ounp.nml` `POINT%TIMESTART/TIMESTRIDE` | Spectral point NetCDF export |
-| `ww3_prnc.nml` `FORCING%TIMESTART/TIMESTOP` | Forcing preprocessing window; should cover integration |
+| `ww3_prnc.nml` `FORCING%TIMESTART/TIMESTOP` | Forcing preprocessing window; must cover integration |
+
+These fields are not redundant — each serves a different WW3 program.
 
 
 
@@ -1085,11 +1196,18 @@ ww3:
 If Step 1 imported multiple fields, Step 4 shows multi-select (wind required). Separate `ww3_prnc_*.nml` per field type.
 
 ```log
-✅ Copied and modified ww3_prnc_current.nml: ...
-✅ Copied and modified ww3_prnc_level.nml: ...
+✅ Copied and modified ww3_prnc_current.nml:
+  FORCING%FIELD%CURRENTS = T
+  FILE%FILENAME          = 'current_level.nc'
+  FILE%VAR(1)            = 'uo'
+  FILE%VAR(2)            = 'vo'
+✅ Copied and modified ww3_prnc_level.nml:
+  FORCING%FIELD%WATER_LEVELS = T
+  FILE%FILENAME              = 'current_level.nc'
+  FILE%VAR(1)                = 'zos'
 ```
 
-Default `ww3_prnc.nml` is for wind. `ww3_prnc` reads one namelist per run; `local.sh` / `server.sh` rename/swap namelists automatically.
+Default `ww3_prnc.nml` handles wind. `ww3_prnc` reads one namelist per run, so WW3Tool copies the wind template and edits variables for other fields; `local.sh` / `server.sh` rename/swap nml files automatically at runtime.
 
 
 
@@ -1097,7 +1215,7 @@ Default `ww3_prnc.nml` is for wind. `ww3_prnc` reads one namelist per run; `loca
 
 ![](public/resource/README-media/截屏2026-06-28%2019.21.54.png)
 
-Nested: root `ww3_multi.nml` and `points.list` (spectral mode); each `level*/` has its own `ww3_grid.nml`, `mod_def`, etc.
+For nested grids, WW3Tool places `ww3_multi.nml` and `points.list` (spectral mode) at the work root; each `level0/`, `level1/`, … has its own `ww3_grid.nml`, `mod_def`, etc.
 
 ![](public/resource/README-media/截屏2026-06-28%2022.40.04.png)
 
@@ -1108,28 +1226,57 @@ Nested: root `ww3_multi.nml` and `points.list` (spectral mode); each `level*/` h
 &INPUT_GRID_NML
   INPUT(1)%NAME                  = 'wind'
   INPUT(1)%FORCING%WINDS         = T
-  ...
+
+  INPUT(2)%NAME                  = 'current'
+  INPUT(2)%FORCING%CURRENTS      = T
+
+  INPUT(3)%NAME                  = 'level'
+  INPUT(3)%FORCING%WATER_LEVELS  = T
+
+  INPUT(4)%NAME                  = 'ice'
+  INPUT(4)%FORCING%ICE_CONC      = F
+
+  INPUT(5)%NAME                  = 'ice1'
+  INPUT(5)%FORCING%ICE_PARAM1    = F
 /
 
 &MODEL_GRID_NML
+
   MODEL(1)%NAME                  = 'level0'
+  MODEL(1)%FORCING%WINDS         = 'native'
+  MODEL(1)%FORCING%CURRENTS      = 'native'
+  MODEL(1)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(1)%FORCING%ICE_CONC      = 'no'
+  MODEL(1)%FORCING%ICE_PARAM1    = 'no'
   MODEL(1)%RESOURCE              = 1 1 0.00 0.08 F
+
   MODEL(2)%NAME                  = 'level1'
+  MODEL(2)%FORCING%WINDS         = 'native'
+  MODEL(2)%FORCING%CURRENTS      = 'native'
+  MODEL(2)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(2)%FORCING%ICE_CONC      = 'no'
+  MODEL(2)%FORCING%ICE_PARAM1    = 'no'
   MODEL(2)%RESOURCE              = 2 1 0.08 0.24 F
+
   MODEL(3)%NAME                  = 'level2'
+  MODEL(3)%FORCING%WINDS         = 'native'
+  MODEL(3)%FORCING%CURRENTS      = 'native'
+  MODEL(3)%FORCING%WATER_LEVELS  = 'native'
+  MODEL(3)%FORCING%ICE_CONC      = 'no'
+  MODEL(3)%FORCING%ICE_PARAM1    = 'no'
   MODEL(3)%RESOURCE              = 3 1 0.24 1.00 F
 /
 ```
 
-`ww3_multi.nml` chains levels for one `mpirun ww3_multi` integration.
+`ww3_multi.nml` chains all nesting levels into one `mpirun ww3_multi` integration. Each `MODEL(i)%NAME` maps to a level directory (e.g. `level2`), and `MODEL(i)%RESOURCE` declares that level’s role in nesting and MPI parallelism.
 
-`MODEL(i)%RESOURCE` five fields:
+`MODEL(i)%RESOURCE` is five fields on one line:
 
 | Field | Meaning |
 | ------------ | -------------------------------------------------------------------------------------------------------- |
 | `RANK_ID` | Nesting level index: level0 (coarsest) = 1, increases toward fine |
-| `GROUP_ID` | MPI group; WW3Tool default 1 |
-| `COMM_FRAC` | Process share interval `[low, high]` in 0–1; partitions all MPI ranks |
+| `GROUP_ID` | MPI group; WW3Tool default 1 (all levels in one communicator) |
+| `COMM_FRAC` | Process share interval `[low, high]` in 0–1; partitions all MPI ranks. E.g. 48 total ranks and `0.24 1.00` on the finest level ≈ ranks 37–48 |
 | `BOUND_FLAG` | Output nest boundary file `nest.<NAME>`; default `F` |
 
 WW3Tool estimates relative cost `points / DTXY` per level from each `ww3_grid.nml` and writes `COMM_FRAC`.
@@ -1139,11 +1286,25 @@ WW3Tool estimates relative cost `points / DTXY` per level from each `ww3_grid.nm
 
 ##### Shared forcing
 
-Forcing at root; each level `ww3_prnc.nml` uses `../wind.nc`:
+Forcing NetCDF stays at the root; each level `ww3_prnc.nml` references `../wind.nc`:
 
 ```log
 ✅ Modified ww3_prnc.nml:
+  FORCING%FIELD%WINDS = T
   FILE%FILENAME       = '../wind.nc'
+  FILE%VAR(1)         = 'u10'
+  FILE%VAR(2)         = 'v10'
+
+✅ Copied and modified ww3_prnc_current.nml:
+  FORCING%FIELD%CURRENTS = T
+  FILE%FILENAME          = '../current_level.nc'
+  FILE%VAR(1)            = 'uo'
+  FILE%VAR(2)            = 'vo'
+
+✅ Copied and modified ww3_prnc_level.nml:
+  FORCING%FIELD%WATER_LEVELS = T
+  FILE%FILENAME              = '../current_level.nc'
+  FILE%VAR(1)                = 'zos'
 ```
 
 
@@ -1152,24 +1313,35 @@ Forcing at root; each level `ww3_prnc.nml` uses `../wind.nc`:
 
 ```
 &DOMAIN_NML
+  DOMAIN%NRINP  = 0
   DOMAIN%NRGRD  = 3
   DOMAIN%UNIPTS = F
-  ...
+  DOMAIN%FLGHG1 = T
+  DOMAIN%FLGHG2 = T
+  DOMAIN%START  = '20250103 000000'
+  DOMAIN%STOP   = '20250105 235959'
 /
 
 &OUTPUT_TYPE_NML
+  ALLTYPE%FIELD%LIST     = 'HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF'
   ALLTYPE%POINT%FILE     = 'points.list'
   ALLTYPE%POINT%NAME     = 'level2'
 /
 ```
 
-`points.list` only at root; coordinates on finest `levelN`. Raw output `out_pnt.<finest MODEL%NAME>`; scripts move to `levelN/out_pnt.ww3` then run `ww3_ounp` there.
+WW3Tool uses `DOMAIN%UNIPTS = F` (do not merge spectral-point raw output across levels).
+
+`points.list` exists only at the work root; coordinates must lie on the finest `levelN` grid. After `ww3_multi`, the effective spectral raw file is `out_pnt.<finest MODEL%NAME>` at the root (three-level example: `out_pnt.level2`).
+
+`local.sh` / `server.sh` move it to `levelN/out_pnt.ww3`, then run `ww3_ounp` in the finest level directory. Coarse levels do not maintain separate point lists; WW3Tool does not use the `UNIPTS = T` unified-point path.
 
 
 
 ##### Per-level auto CFL
 
-Each level gets its own `TIMESTEPS%DTXY`, `DTMAX`, etc. in that level’s `ww3_grid.nml`:
+Nested levels have different `dx`/`dy` (`level0` coarsest, `levelN` finest), so **propagation timesteps cannot be shared**: CFL requires `DTXY ∝ Δx`; using the coarse level’s `DTXY` on a fine grid is numerically unstable.
+
+In nested mode, Step 4 processes each `level0/`, `level1/`, … in turn. After writing spectral parameters and syncing `grid.meta` into that level’s `ww3_grid.nml`, it **automatically** recomputes CFL (`TIMESTEPS%DTXY`, `DTMAX`, `DTKTH`, `DTMIN`) and writes them back to that level’s `ww3_grid.nml`:
 
 ```log
 ✅ Recomputed CFL timesteps: DTXY=189, DTMAX=567, DTKTH=284 (bathy Cg=24.9m/s)
@@ -1277,13 +1449,15 @@ python3 run.py download-log <workdir>
 
 #### Server connection
 
-Configure SSH before connecting. Three modes:
+Configure SSH before connecting.
 
 ![](public/resource/README-media/截屏2026-06-28%2020.48.27.png)
 
 `default_remote_dir` is the default remote parent for uploaded work directories.
 
-**SSH config Host (recommended)** — uses `server.ssh_config_host`; `host/user/password/key_file` may be null:
+Three SSH modes:
+
+**SSH config Host (recommended)** — uses `server.ssh_config_host`; `host/user/password/key_file` may be null. Best when `~/.ssh/config` already defines a Host alias:
 
 ```yaml
 server:
@@ -1297,7 +1471,7 @@ server:
   remote_dir: ''
 ```
 
-**Password** — `host`, `port`, `user`, `password`:
+**Password** — uses `server.host`, `server.port`, `server.user`, `server.password`. Straightforward for temporary servers or when no key is available; avoid storing passwords in config long term:
 
 ```yaml
 server:
@@ -1314,7 +1488,7 @@ server:
 ![](public/resource/README-media/截屏2026-06-29%2010.24.45.png)
 
 
-**Private key** — `host`, `port`, `user`, `key_file`:
+**Private key** — uses `server.host`, `server.port`, `server.user`, `server.key_file`. Suited for fixed servers and automation. If both password and key are set, the client tries available keys first:
 
 ```yaml
 server:
@@ -1332,34 +1506,53 @@ server:
 
 If `ssh_config_host` is set, `~/.ssh/config` is resolved first; explicit password/key in `params.yml` supplement it.
 
+Priority: when `server.ssh_config_host` is filled, connection uses that Host alias first, then falls back to explicit fields in `params.yml`.
+
 
 
 
 #### Job list and idle resources
 
+These lists help you pick partitions and nodes before submitting long jobs.
+
 ![](public/resource/README-media/截屏2026-06-28%2021.03.35.png)
 
-GUI polls Slurm after connect.
+The GUI polls Slurm automatically after connect.
 
-Job list (`squeue -o '%i %P %j %T %M %D %C %R' -h`):
+The job list shows JobID, partition, job name, state, runtime, node count, cores, and reason/node. GUI command:
+
+```sh
+squeue -o '%i %P %j %T %M %D %C %R' -h
+```
+
+CLI equivalent:
 
 ```sh
 python3 run.py queue-status
 ```
 
-Idle resources (`sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'`):
+Idle resources are parsed per node from state, CPU allocation, partition, and memory:
+
+```sh
+sinfo -h -N -o '%N|%T|%c|%C|%P|%m|%e'
+```
+
+CLI equivalent:
 
 ```sh
 python3 run.py slurm-idle <workdir>
 ```
 
-Note: CLI `queue-status` uses `squeue -l` for full text; GUI uses fixed columns for cards.
+Note: CLI `queue-status` uses `squeue -l` for full text; the GUI card view uses the fixed `-o` format above.
+
 
 
 
 #### Slurm settings
 
-Defaults in settings; editable on Step 5 after connect.
+Defaults live in Settings; Step 5 lets you edit them after connect. Values are written back to the workdir `params.yml` when you click **Confirm Slurm** or run `confirm-slurm`, refreshing `#SBATCH` lines and `MPI_NPROCS` in `server.sh`.
+
+The GUI parses partition lists from the server when possible; the Settings default is only a fallback used when parsing fails. If the parsed list contains that default partition, it is pre-selected.
 
 ![](public/resource/README-media/截屏2026-06-28%2020.48.51.png)
 
@@ -1370,52 +1563,91 @@ Defaults in settings; editable on Step 5 after connect.
   #SBATCH -n    = 48
   #SBATCH -N    = 1
   #SBATCH --mem = 360G
+  #SBATCH -w    = -
+  #SBATCH --time = -
   MPI_NPROCS    = 48
   ST            = ST2
   export PATH   = /public/home/weiyl001/software/wavewatch3/model/exe
 ```
 
-Partition list is parsed from the server when possible; settings default is fallback only.
+Partition list is parsed from the server when possible; the Settings default is only a fallback. If the parsed list contains that default partition, it is pre-selected.
+
+Slurm fields written by Step 5:
+
+- `slurm.job_name` → `#SBATCH -J`; empty → work directory name
+- `slurm.partition` → `#SBATCH -p`; GUI fills from `sinfo` after connect
+- `slurm.nodes` → `#SBATCH -N`
+- `slurm.cores` → `#SBATCH -n` and script `MPI_NPROCS`
+- `slurm.nodelist` → optional `#SBATCH -w` (space-separated nodes, e.g. `node01 node02`); empty → no node pin
+- `slurm.time` → optional `#SBATCH --time` (Slurm format, e.g. `2-00:00:00` or `48:00:00`); empty → template default
+- `slurm.mem` → optional `#SBATCH --mem=`; GUI may suggest from idle resources
+- `slurm.server_st.use` → `export PATH=...` for the server WW3 build
+
+`nodes` and `cores` must be consistent: e.g. `nodes: 2`, `cores: 96` usually means 96 cores across 2 nodes. With `nodelist: node01 node02`, Slurm tries those nodes; success depends on queue policy and free capacity.
+
 
 
 
 #### CLI example
 
-Step 5: connect, resources, `confirm-slurm` — not upload/submit (Step 6).
+Step 5 only connects, inspects resources, and refreshes `server.sh` — not upload/submit (Step 6).
 
 ```yaml
 server:
+  # Prefer ~/.ssh/config Host alias; host/user/password/key_file may be null when set
   ssh_config_host: SHOU
+  host: null
+  port: 22
+  user: null
+  password: null
+  key_file: null
+
+  # Remote work root for upload; remote_dir is usually auto-generated from the workdir name
   default_remote_dir: /public/home/weiyl001/workSpace/
   remote_dir: ''
 
 slurm:
+  # job_name empty → work directory name
   job_name: null
   partition: CPU6240R
   nodes: 1
   cores: 48
+  nodelist: null        # optional; space-separated, e.g. "node01 node02"
+  time: null            # optional; e.g. "2-00:00:00" or "48:00:00"
   mem: 190G
+
+  # server_st.use is the selected server WW3 build
   server_st:
     use: ST2
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
+    ST4: /public/home/weiyl001/software2/ww4/model/exe
 ```
 
 ```sh
+# 1. Test SSH
 python3 run.py connect-test hpc_case
+
+# 2. List idle partitions/cores
 python3 run.py slurm-idle hpc_case
+
+# 3. Write #SBATCH, MPI_NPROCS, ST path into server.sh
 python3 run.py confirm-slurm hpc_case
+
+# 4. Optional: view your queue
 python3 run.py queue-status
 ```
 
-To change only Slurm/ST settings, re-run `confirm-slurm` without repeating Steps 1–4.
+To change only `partition`, `nodes`, `cores`, `nodelist`, `time`, `mem`, or `server_st.use`, re-run `confirm-slurm` without repeating Steps 1–4.
+
 
 
 
 #### ST version management
 
-ST = server WW3 build path written into `server.sh`:
+ST = server WW3 build path written into `server.sh` when you confirm Slurm settings:
 
 ```sh
+#wavewatch3--ST2
 export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
 ```
 
@@ -1427,17 +1659,27 @@ slurm:
     use: ST2
     ST2: /public/home/weiyl001/software/wavewatch3/model/exe
     ST4: /public/home/weiyl001/software2/ww4/model/exe
-    ...
+    ST6: /public/home/weiyl001/software2/ww6/model/exe
+    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
+    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
+    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
+    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
 ```
 
 
 #### ntfy notifications
 
-Poll Slurm on login node; push ntfy to phone when job ends.
+Poll Slurm on the login node; push ntfy to your phone when a job ends.
+
+The persistent watcher is bound to `server.default_remote_dir` (remote work root). PID/log/state files live there, decoupled from per-case workdirs, so clearing one case directory does not stop the watcher.
 
 ```sh
 python3 run.py ntfy-watch work_dir_name
 python3 run.py ntfy-watch-job work_dir_name 12345
+
+# After submit, attach a one-shot watcher (replace 12345 with squeue JobID)
+python3 run.py submit hpc_case
+python3 run.py ntfy-watch-job hpc_case 12345
 ```
 
 
@@ -1461,19 +1703,42 @@ python3 run.py ntfy-watch-job work_dir_name 12345
 | Download log | Remote `run.log` |
 | Execute | Run arbitrary remote shell command (use with care) |
 
+**Server path** — remote directory for upload, submit, and download. If empty, `default_remote_dir` + local folder name is used.
+
+**View file list** — list remote files to verify upload, results, and logs.
+
+**Clear folder** — delete remote files and subdirectories but keep the directory. Destructive; use when the remote tree is messy and you need a full re-upload.
+
+**Upload work directory** — full upload including forcing, namelists, and scripts. Use before first submit.
+
+**Upload non-forcing only** — scripts, namelists, and config without large forcing NetCDF. Use when forcing is already on the server and only parameters changed.
+
+**Submit job** — run `server.sh` / submit Slurm. Does not regenerate namelists or auto-upload; ensure remote files are current first.
+
+**View queue** — refresh Slurm queue (also auto-refreshed after connect on the home page).
+
+**Check completion** — read remote `success` / `fail` markers from `server.sh`. Not live queue status; no marker may mean queued, running, or not started.
+
+**Download results** — download `ww3*.nc`; nested grids → finest `levelN/`.
+
+**Download log** — download remote `run.log` for diagnosis before re-submit.
+
+**Execute** — run the command in the input box on the server (e.g. `squeue`, `tail run.log`). High privilege — verify path and command first.
+
+
 
 
 #### Recommended CLI sequence
 
 ```sh
-python3 run.py upload --confirm work_dir_name
-python3 run.py submit work_dir_name
-python3 run.py check-status work_dir_name
-python3 run.py download-results work_dir_name
-python3 run.py download-log work_dir_name
-python3 run.py cancel-job work_dir_name 12345
+python3 run.py upload --confirm work_dir_name   # full workdir upload
+python3 run.py submit work_dir_name             # submit server.sh on server
+python3 run.py check-status work_dir_name       # read success / fail markers
+python3 run.py download-results work_dir_name   # nested → finest levelN
+python3 run.py download-log work_dir_name       # fetch run.log
+python3 run.py cancel-job work_dir_name 12345   # cancel job
 python3 run.py clear-remote --confirm work_dir_name
-python3 run.py local-run work_dir_name
+python3 run.py local-run work_dir_name          # run local.sh locally
 ```
 
 
@@ -1486,7 +1751,7 @@ server:
   remote_dir: ''
 ```
 
-If `remote_dir` is empty, `default_remote_dir` + work directory name is used. If set, that path is used.
+`default_remote_dir` is the server parent for work directories. If `remote_dir` is empty, the tool uses `default_remote_dir` + work directory name. If `remote_dir` is set, that exact path is used.
 
 
 
@@ -1500,25 +1765,32 @@ If `remote_dir` is empty, `default_remote_dir` + work directory name is used. If
 
 ![](public/resource/README-media/截屏2026-06-29%2015.31.50.png)
 
-Step 7 visualizes/validates existing `ww3*.nc`, spectra, `points.list`, forcing, and external observations. It does **not** re-run WW3.
+Step 7 visualizes and validates existing `ww3*.nc`, spectra, `points.list`, forcing, and external observations. It does **not** re-run WW3 — it only reads finished outputs. If files are missing, download results or inspect `run.log` first.
 
 
 #### Purpose of each plot
 
-| Plot | Purpose |
-|------|---------|
-| Wave-height map | Spatial HS distribution, propagation, coastal decay |
-| Contour map | Gradients and fronts more clearly than fill |
-| Wind-swell overlay | Relate wave direction to wind; distinguish swell vs wind sea |
-| Wave-height video | Time evolution of an event |
-| Wind map | Forcing wind direction (arrow length uniform; direction only) |
-| 2D spectrum | Direction-frequency energy at a point |
-| Points on map | Spectral station locations |
-| Jason-3 observation | Satellite SWH along track |
-| Jason-3 match | Model vs Jason-3 SWH |
-| NDBC stations | Buoy locations for validation |
-| NDBC match | Model vs buoy time series |
+**Wave-height map** — spatial HS distribution: where waves are largest, swell reach, coastal decay, and obvious field anomalies.
 
+**Contour map** — same field with contours for gradients and fronts; better for shelf/island sharp changes and moving high-HS boundaries between times.
+
+**Wind-swell overlay** — wave direction vs wind direction on one map. Mismatch often indicates swell; strong alignment suggests local wind forcing.
+
+**Wave-height video** — time evolution of an event: arrival timing, path continuity, boundary jumps, unnatural flicker.
+
+**Wind map** — input wind direction only (arrow length uniform, not wind speed). Check synoptic rotation and forcing vs wave propagation.
+
+**2D spectrum** — direction–frequency energy at a station; compare shape across sites/times with max-normalized mode.
+
+**Points on map** — spectral station locations before plotting spectra (important for multi-point output).
+
+**Jason-3 observation** — along-track satellite SWH before matching; confirm pass time and coverage.
+
+**Jason-3 match** — model SWH interpolated near Jason-3 track vs altimeter.
+
+**NDBC stations** — buoy locations vs your domain/event path.
+
+**NDBC match** — model vs buoy time series: arrival time, peak bias, duration, decay (often clearer than satellite for coastal sites).
 
 
 #### CLI
@@ -1530,40 +1802,54 @@ Step 7 visualizes/validates existing `ww3*.nc`, spectra, `points.list`, forcing,
 | `plot-jason3` / `plot-jason3-swh` | WW3 fields + Jason-3 | Satellite comparison |
 | `plot-ndbc` | WW3 + NDBC | Buoy comparison |
 
+Plotting never re-runs WW3. If outputs are missing, download results or check `run.log` first.
+
 ```sh
 python3 run.py plot-wave-maps work_dir_name
 python3 run.py plot-wave-maps work_dir_name --contour
+python3 run.py plot-spectrum work_dir_name
 python3 run.py plot-spectrum work_dir_name --station 0
 python3 run.py plot-jason3 work_dir_name
+python3 run.py plot-jason3-swh work_dir_name
 python3 run.py download-jason3 work_dir_name
 python3 run.py plot-ndbc work_dir_name
 python3 run.py download-ndbc work_dir_name
 ```
 
+After a run completes:
 
-#### Example figures
+```sh
+python3 run.py download-results new
+python3 run.py plot-wave-maps new
+python3 run.py plot-spectrum new --mode polar
+```
 
-Wind field:
+
+#### Wind field
 
 ![](public/resource/README-media/wind_20210223_000000.png)
 
-2D spectrum:
+
+#### 2D spectrum
 
 ![](public/resource/README-media/spectrum_P0500_time_20210224_120000.png)
 
 ![](public/resource/README-media/spectrum_P0500_time_20210223_000000.png)
 
-Wave height:
+
+#### Wave-height maps
 
 ![](public/resource/README-media/3021c4434de128e783c2b06f6ba4c1fe876cf416.png)
 ![](public/resource/README-media/bde9091a001999fdacde4c1f804fc5c025a9995f.png)
 
-Wind-swell:
+
+#### Wind-swell overlay
 
 ![](public/resource/README-media/30f4c0333842e78da6437616709d0c884177e7b5.png)
 ![](public/resource/README-media/1968aff8588d84dab9e4750a8e97be006177d709.png)
 
-Satellite match:
+
+#### Satellite match
 
 ![](public/resource/README-media/a705779452ff987b9ffe37f1d18743b72c7f9695.png)
 
@@ -1575,30 +1861,34 @@ Satellite match:
 WW3Tool/
 ├── run.py                  # Entry: deps → locale → GUI / Shell / CLI
 ├── params.yml              # Template (do not run directly; use workdir copy)
-├── public/
+├── public/                 # Global assets
 │   ├── languages/          #   zh_CN.json / en_US.json
-│   ├── 7.14_nml/           #   WW3 namelist templates
+│   ├── 7.14_nml/           #   WW3 namelist templates (ww3_shel.nml, ww3_prnc.nml, …)
 │   ├── 6.07_nml/
-│   ├── scripts/            #   Remote helpers (ww3_ntfy_watch.sh, etc.)
+│   ├── scripts/            #   Remote helpers (ww3_ntfy_watch.sh, local.sh, server.sh, …)
 │   └── forcing/            #   Sample forcing (tests)
-├── meshgen/
-│   ├── structured_generator/
-│   ├── unst_generator/
-│   ├── smc_generator/
-│   ├── reference_data/     #   ~6.5 GB bathymetry/coastline
-│   └── cache/
-├── workSpace/              #   Default work-dir root; one subfolder per case
+├── meshgen/                # Grid generators
+│   ├── structured_generator/  # Structured rectangular (pygridgen)
+│   ├── unst_generator/        # JIGSAW unstructured
+│   ├── smc_generator/         # SMC grid
+│   ├── reference_data/        # Bathymetry/coastline (~6.5 GB)
+│   └── cache/                 # Grid cache (hash-keyed)
+├── workSpace/              # Default work-dir root; one subfolder per case
 └── src/
     ├── desktop/            # PyQt6 GUI
+    │   ├── windows/        #   Main window, settings
+    │   ├── steps/          #   Step panels (ww3_panel, server_connect_panel, …)
+    │   ├── view_models/    #   remote.py, pipeline.py, …
+    │   └── components/     #   Reusable UI widgets
     └── workflows/          # Core logic (DDD-style)
-        ├── interfaces/
-        ├── application/
-        ├── domain/
-        ├── infrastructure/
-        └── support/
+        ├── interfaces/     #   command_line.py, interactive_cli.py, workdir_setup.py
+        ├── application/    #   configuration, preprocessing_workflow, remote_ops, slurm_ops, …
+        ├── domain/         #   config_models, forcing_fields, grid_spacing_recommendation, …
+        ├── infrastructure/ #   forcing/, remote/, plot/, ww3/, adapters/, …
+        └── support/        #   logging, exceptions, …
 ```
 
-GUI and Shell call `src/workflows/application/` use cases.
+GUI and Shell call use cases under `src/workflows/application/`.
 
 
 
@@ -1610,7 +1900,7 @@ GUI and Shell call `src/workflows/application/` use cases.
 
 [https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download)
 
-Register a CDS account first. Use a real name (not random letters) or registration may fail.
+Register a CDS account first. Use a real name (not random letters) or registration may fail. Screenshots below walk through the ERA5 single-levels download form.
 
 ![](public/resource/README-media/7b5a66fa59267d896d32953edbd4b398b59989d3.png)
 
@@ -1668,7 +1958,9 @@ Choose variables; uncheck **Sea surface height above geoid** if you do not need 
 
 [https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/download?dataset=cmems_mod_glo_phy_my_0.083deg_P1D-m_202311](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/download?dataset=cmems_mod_glo_phy_my_0.083deg_P1D-m_202311)
 
-Sea ice area fraction, thickness, and current available.
+Sea ice area fraction, thickness, and current are available from this product.
+
+Ice variables include **Sea ice area fraction** (`siconc`) and **Sea ice thickness**.
 
 ![](public/resource/README-media/d64991a6199b7e91b49be401afeca00ffde51619.png)
 

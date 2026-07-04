@@ -58,6 +58,7 @@ esac
 started_at="$(date '+%F %T')"
 start_epoch="$(date '+%s')"
 host="$(hostname 2>/dev/null || echo unknown-host)"
+# 状态目录相对于启动时 cwd；注入脚本会在 server.default_remote_dir 下启动本 watcher。
 state_dir=".ntfy_watch_state_${NTFY_MODE}"
 mkdir -p "$state_dir"
 

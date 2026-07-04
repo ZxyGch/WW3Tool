@@ -365,11 +365,11 @@ paths:
 #   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
 desktop:
-  language: en_US
+  language: zh_CN
   theme: AUTO
   run_mode: both
   recent_workdirs:
+  - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-07-04_15-08-53
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-29_16-57-02
   - /Volumes/Zxy's Disk/WW3Tool_workSpace/2021/ARR_20210223T0200_0038
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2006/ARR_20060711T2000_0103
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

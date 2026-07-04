@@ -10,10 +10,11 @@
 
 `restart.ww3` 是二进制重启动文件，保存某一时刻全网格二维谱场状态。主积分程序 `ww3_shel`（单层）或 `ww3_multi`（嵌套）在启动时读取它作为初始海浪场。
 
-| 方式 | 如何得到 `restart.ww3` | 何时使用 |
-|------|------------------------|----------|
-| **冷启动** | `ww3_strt` 按风场/JONSWAP 等生成初值 | 新算例、换网格后第一次跑 |
-| **热启动** | 上一次积分输出的 `restart.ww3` 或 `restartN.ww3` 改名 | 延长预报、中断续跑、批量事件接力 |
+
+| 方式       | 如何得到`restart.ww3`                                | 何时使用                         |
+| ------------ | ------------------------------------------------------ | ---------------------------------- |
+| **冷启动** | `ww3_strt` 按风场/JONSWAP 等生成初值                 | 新算例、换网格后第一次跑         |
+| **热启动** | 上一次积分输出的`restart.ww3` 或 `restartN.ww3` 改名 | 延长预报、中断续跑、批量事件接力 |
 
 WW3 手册（`manual/zh/run/design_zh.tex`）要点：
 
@@ -43,7 +44,6 @@ WW3 手册（`manual/zh/run/design_zh.tex`）要点：
 - 希望接着跑到 `2025-01-10`。
 - **要求**：`DOMAIN%START` = restart 内时刻（如 `20250105 235959` 或最后写出时刻）；`DOMAIN%STOP` = 新结束时间；强迫 `FORCING%TIMESTOP` 覆盖新时段；**不跑 `ww3_strt`**。
 
-
 ### 2.2 场景 B：中断续跑
 
 - `ww3_shel` / `ww3_multi` 中途失败，目录里已有最近 checkpoint 的 `restartN.ww3`。
@@ -67,20 +67,17 @@ WW3 手册（`manual/zh/run/design_zh.tex`）要点：
 - 换网格后的 restart 插值（需专门工具）；
 - 自动从 NetCDF 场重建 restart。
 
-
-
 ## 3. WW3Tool 现状
 
-| 环节 | 现状 | 位置 |
-|------|------|------|
-| 运行流程 | 固定 `ww3_grid` → `ww3_prnc` → **`ww3_strt`** → `ww3_shel`/`ww3_multi` | `local.sh`、`server.sh`、`run_service.py` |
-| restart 写出 | 写入 `DATE%RESTART%START/STOP`，**STRIDE 常保留模板 86400**，未接 `params.yml` | `ww3_shel_nml.py`、`ww3_multi_nml.py` |
-| restart 读入 | 无准备逻辑；依赖 `ww3_strt` 生成 | — |
-| 嵌套 staging | `restart.ww3` → `restart.$lv` | `local.sh` L155 |
-| 配置 | `WW3Config` 仅有 `start_date`/`end_date`，无 restart 段 | `config_models.py`、`params.yml` |
-| 文档 | README 提到「后续扩展」 | `README.zh-CN.md` §5.5 |
 
-
+| 环节         | 现状                                                                          | 位置                                      |
+| -------------- | ------------------------------------------------------------------------------- | ------------------------------------------- |
+| 运行流程     | 固定`ww3_grid` → `ww3_prnc` → **`ww3_strt`** → `ww3_shel`/`ww3_multi`      | `local.sh`、`server.sh`、`run_service.py` |
+| restart 写出 | 写入`DATE%RESTART%START/STOP`，**STRIDE 常保留模板 86400**，未接 `params.yml` | `ww3_shel_nml.py`、`ww3_multi_nml.py`     |
+| restart 读入 | 无准备逻辑；依赖`ww3_strt` 生成                                               | —                                        |
+| 嵌套 staging | `restart.ww3` → `restart.$lv`                                                | `local.sh` L155                           |
+| 配置         | `WW3Config` 仅有 `start_date`/`end_date`，无 restart 段                       | `config_models.py`、`params.yml`          |
+| 文档         | README 提到「后续扩展」                                                       | `README.zh-CN.md` §5.5                   |
 
 ## 4. 配置设计（`params.yml`）
 
@@ -104,12 +101,13 @@ ww3:
 
 ### 4.1 与 `ww3:` 段时间字段的关系
 
-| 字段 | 冷启动 | 热启动 |
-|------|--------|--------|
-| `ww3.start_date` | `DOMAIN%START` | 仅用于强迫/输出**下界**参考；**积分起点**用 `ww3.restart.restart_time` |
-| `ww3.end_date` | `DOMAIN%STOP` | `DOMAIN%STOP` |
-| `ww3.restart.restart_time` | 忽略 | `pick_latest_checkpoint=false` 时必填 |
-| `ww3.restart.pick_latest_checkpoint` | 忽略 | `true`：运行时扫描最新 checkpoint；`false`：用 `restart_time` |
+
+| 字段                                 | 冷启动         | 热启动                                                                 |
+| -------------------------------------- | ---------------- | ------------------------------------------------------------------------ |
+| `ww3.start_date`                     | `DOMAIN%START` | 仅用于强迫/输出**下界**参考；**积分起点**用 `ww3.restart.restart_time` |
+| `ww3.end_date`                       | `DOMAIN%STOP`  | `DOMAIN%STOP`                                                          |
+| `ww3.restart.restart_time`           | 忽略           | `pick_latest_checkpoint=false` 时必填                                  |
+| `ww3.restart.pick_latest_checkpoint` | 忽略           | `true`：运行时扫描最新 checkpoint；`false`：用 `restart_time`          |
 
 建议在 prepare 日志中**明确打印**：
 
@@ -129,14 +127,15 @@ Restart 模式: restart
 
 ### 5.1 单层（`ww3_shel.nml`）
 
-| params | namelist | 说明 |
-|--------|----------|------|
-| 热启动起点 | `DOMAIN%START` | `restart_time` |
-| `ww3.end_date` | `DOMAIN%STOP` | 不变 |
-| `ww3.output_step` | `DATE%RESTART` / `DATE%RESTART2` 的 STRIDE | 替换当前「保留模板 STRIDE」行为；7.x 额外写出带时间戳 checkpoint |
-| `ww3.start_date` / `ww3.restart.restart_time` | `DATE%RESTART%START` | 热启动：= `restart_time`；冷启动：= `start_date` |
-| `ww3.end_date` | `DATE%RESTART%STOP` | 不变 |
-| `ww3.start_date` / 热启动起点 | `DATE%FIELD`、`DATE%POINT` 等 | 场/点输出起始：冷启动用 `start_date`；热启动用 `restart_time`（或用户可选「从起点起全输出」高级项，首版与 FIELD 一致） |
+
+| params                                        | namelist                                   | 说明                                                                                                                  |
+| ----------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 热启动起点                                    | `DOMAIN%START`                             | `restart_time`                                                                                                        |
+| `ww3.end_date`                                | `DOMAIN%STOP`                              | 不变                                                                                                                  |
+| `ww3.output_step`                             | `DATE%RESTART` / `DATE%RESTART2` 的 STRIDE | 替换当前「保留模板 STRIDE」行为；7.x 额外写出带时间戳 checkpoint                                                      |
+| `ww3.start_date` / `ww3.restart.restart_time` | `DATE%RESTART%START`                       | 热启动：=`restart_time`；冷启动：= `start_date`                                                                       |
+| `ww3.end_date`                                | `DATE%RESTART%STOP`                        | 不变                                                                                                                  |
+| `ww3.start_date` / 热启动起点                 | `DATE%FIELD`、`DATE%POINT` 等              | 场/点输出起始：冷启动用`start_date`；热启动用 `restart_time`（或用户可选「从起点起全输出」高级项，首版与 FIELD 一致） |
 
 同步修改：
 
@@ -145,11 +144,12 @@ Restart 模式: restart
 
 ### 5.2 嵌套（`ww3_multi.nml`）
 
-| params | namelist |
-|--------|----------|
-| 同上 | `DOMAIN%START` / `DOMAIN%STOP` |
+
+| params            | namelist                                                      |
+| ------------------- | --------------------------------------------------------------- |
+| 同上              | `DOMAIN%START` / `DOMAIN%STOP`                                |
 | `ww3.output_step` | `ALLDATE%RESTART` / `ALLDATE%RESTART2` 的 STRIDE、START、STOP |
-| 场输出 | `ALLDATE%FIELD` 起始时间对齐热启动起点 |
+| 场输出            | `ALLDATE%FIELD` 起始时间对齐热启动起点                        |
 
 各层 **不** 单独写 shel namelist；restart 文件按层放在 `levelK/restart.ww3`，prepare 后 staging 为 `restart.levelK`。
 
@@ -197,14 +197,15 @@ workdir/
 
 ### 6.3 校验（prepare 阶段必做）
 
-| 检查 | 失败处理 |
-|------|----------|
-| `mod_def.ww3` 存在 | 报错：需先 `ww3_grid` |
-| restart 文件存在且非空 | 报错：工作目录内缺少 `restart.ww3`，需先冷启动或手动放入文件 |
-| 网格未变（对比 `grid.meta` / mod_def 哈希，可选） | 警告或拒绝热启动 |
-| 手动模式下 `restart_time` 与文件内时间（若可解析） | 警告不一致 |
-| 自动 checkpoint 模式无法确定 restart 时刻 | 已移除；用户必须在 GUI 下拉或手填 `restart_time` |
-| 热启动起点 >= `end_date` | 拒绝 |
+
+| 检查                                              | 失败处理                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------- |
+| `mod_def.ww3` 存在                                | 报错：需先`ww3_grid`                                        |
+| restart 文件存在且非空                            | 报错：工作目录内缺少`restart.ww3`，需先冷启动或手动放入文件 |
+| 网格未变（对比`grid.meta` / mod_def 哈希，可选）  | 警告或拒绝热启动                                            |
+| 手动模式下`restart_time` 与文件内时间（若可解析） | 警告不一致                                                  |
+| 自动 checkpoint 模式无法确定 restart 时刻         | 已移除；用户必须在 GUI 下拉或手填`restart_time`             |
+| 热启动起点 >=`end_date`                           | 拒绝                                                        |
 
 时间解析策略：只接受带 `YYYYMMDD.HHMMSS` 前缀的 checkpoint 文件名；`restart_time` 必须与所选 checkpoint 一致。不尝试从二进制文件反读时间。
 
@@ -244,16 +245,17 @@ stage → ww3_multi → 后处理（最细层）
 
 ## 8. 代码模块划分
 
-| 模块 | 职责 | 建议路径 |
-|------|------|----------|
-| `RestartConfig` | dataclass + YAML 解析 | `config_models.py` |
-| `restart_service.py` | 校验、copy/link、选 checkpoint、嵌套多层 | `src/workflows/infrastructure/ww3/restart_service.py` |
-| `ww3_shel_nml.py` | `DATE%RESTART%STRIDE`、热启动 `DOMAIN%START` | 已有文件扩展 |
-| `ww3_multi_nml.py` | `ALLDATE%RESTART%STRIDE`、热启动 `DOMAIN%START` | 已有文件扩展 |
-| `ww3_prnc_nml.py` | 强迫时间窗与热启动起点对齐 | 已有文件 |
-| `prepare_ww3_files` | 调用 `restart_service.prepare_restart()` | `ww3_namelist_adapter.py` |
-| `run_service` / shell | 条件跳过 `ww3_strt` | 见 §7 |
-| i18n | `tr("restart_mode_hot", ...)` | `locales/*.json` |
+
+| 模块                  | 职责                                            | 建议路径                                              |
+| ----------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `RestartConfig`       | dataclass + YAML 解析                           | `config_models.py`                                    |
+| `restart_service.py`  | 校验、copy/link、选 checkpoint、嵌套多层        | `src/workflows/infrastructure/ww3/restart_service.py` |
+| `ww3_shel_nml.py`     | `DATE%RESTART%STRIDE`、热启动 `DOMAIN%START`    | 已有文件扩展                                          |
+| `ww3_multi_nml.py`    | `ALLDATE%RESTART%STRIDE`、热启动 `DOMAIN%START` | 已有文件扩展                                          |
+| `ww3_prnc_nml.py`     | 强迫时间窗与热启动起点对齐                      | 已有文件                                              |
+| `prepare_ww3_files`   | 调用`restart_service.prepare_restart()`         | `ww3_namelist_adapter.py`                             |
+| `run_service` / shell | 条件跳过`ww3_strt`                              | 见 §7                                                |
+| i18n                  | `tr("restart_mode_hot", ...)`                   | `locales/*.json`                                      |
 
 ### 8.1 `restart_service.prepare_restart()` 接口（草案）
 
@@ -310,53 +312,54 @@ Step 4 增加启动方式下拉：
 
 ### 阶段 A：配置层（1–2 天）
 
-- [x] `params.yml` 增加 `ww3.restart:` 默认值
-- [x] `RestartConfig` + 解析；缺省 `mode: cold`
-- [x] 旧 yml 顶层 `restart:` 仍可加载
+- [X]  `params.yml` 增加 `ww3.restart:` 默认值
+- [X]  `RestartConfig` + 解析；缺省 `mode: cold`
+- [X]  旧 yml 顶层 `restart:` 仍可加载
 
 ### 阶段 B：namelist + prepare（2–3 天）
 
-- [x] `ww3_shel_nml.py`：写入 `DATE%RESTART` / `DATE%RESTART2`；热启动改 `DOMAIN%START`
-- [x] `ww3_multi_nml.py`：同上 `ALLDATE%RESTART` / `ALLDATE%RESTART2`
-- [x] `restart_service.py`：copy、校验、日志
-- [x] prepare 日志打印 Restart 文件来源
+- [X]  `ww3_shel_nml.py`：写入 `DATE%RESTART` / `DATE%RESTART2`；热启动改 `DOMAIN%START`
+- [X]  `ww3_multi_nml.py`：同上 `ALLDATE%RESTART` / `ALLDATE%RESTART2`
+- [X]  `restart_service.py`：copy、校验、日志
+- [X]  prepare 日志打印 Restart 文件来源
 
 **验收**：`mode: restart` 后 workdir 有 `restart.ww3`，namelist 与 yml 一致；`mode: cold` 与现网一致。
 
 ### 阶段 C：运行脚本（1–2 天）
 
-- [x] `local.sh` / `server.sh` / `run_service.py` 跳过 `ww3_strt`
-- [x] 嵌套逐层判断
-- [x] `run.log` 记录冷/热分支
+- [X]  `local.sh` / `server.sh` / `run_service.py` 跳过 `ww3_strt`
+- [X]  嵌套逐层判断
+- [X]  `run.log` 记录冷/热分支
 
 **验收**：热启动算例不再调用 `ww3_strt`；冷启动仍调用。
 
 ### 阶段 D：GUI + 文档（1–2 天）
 
-- [ ] Step 4 控件
-- [ ] `README.zh-CN.md` §5.5 增「Restart / 热启动」
-- [ ] 本方案链接进 `WW3常用配置补充计划.md` §3.1
+- [ ]  Step 4 控件
+- [ ]  `README.zh-CN.md` §5.5 增「Restart / 热启动」
+- [ ]  本方案链接进 `WW3常用配置补充计划.md` §3.1
 
 ### 阶段 E：回归算例（1 天）
 
-- [ ] 小网格冷启动 2 天 → 写出 restart → 热启动再跑 2 天 → 检查 `log.ww3` 无异常、场输出时间连续
-- [ ] 嵌套 2 层同样流程
-- [ ] 故意删掉 restart → prepare 报错清晰
+- [ ]  小网格冷启动 2 天 → 写出 restart → 热启动再跑 2 天 → 检查 `log.ww3` 无异常、场输出时间连续
+- [ ]  嵌套 2 层同样流程
+- [ ]  故意删掉 restart → prepare 报错清晰
 
 ---
 
 ## 11. 测试用例清单
 
-| ID | 描述 | 期望 |
-|----|------|------|
-| R1 | 默认 cold，无 `restart` 段 | 与当前行为 bit-for-bit 流程一致 |
-| R2 | cold + `ww3.output_step: 3600` | `DATE%RESTART%STRIDE=3600` |
-| R3 | restart + 工作目录内 `restart.ww3` | 跳过 strt，`DOMAIN%START=restart_time` |
-| R4 | restart + 跨目录复用 | 用户手动拷贝 `restart.ww3` 到 workdir 后热启动成功 |
-| R5 | restart + `ww3.output_step: 0` | 不写 restartN |
-| R6 | nested restart 两层均有文件 | 两层跳过 strt，multi 成功 |
-| R7 | restart 但 mod_def 缺失 | prepare 失败，错误中文明确 |
-| R8 | `restart_time` > `end_date` | prepare 失败 |
+
+| ID | 描述                              | 期望                                              |
+| ---- | ----------------------------------- | --------------------------------------------------- |
+| R1 | 默认 cold，无`restart` 段         | 与当前行为 bit-for-bit 流程一致                   |
+| R2 | cold +`ww3.output_step: 3600`     | `DATE%RESTART%STRIDE=3600`                        |
+| R3 | restart + 工作目录内`restart.ww3` | 跳过 strt，`DOMAIN%START=restart_time`            |
+| R4 | restart + 跨目录复用              | 用户手动拷贝`restart.ww3` 到 workdir 后热启动成功 |
+| R5 | restart +`ww3.output_step: 0`     | 不写 restartN                                     |
+| R6 | nested restart 两层均有文件       | 两层跳过 strt，multi 成功                         |
+| R7 | restart 但 mod_def 缺失           | prepare 失败，错误中文明确                        |
+| R8 | `restart_time` > `end_date`       | prepare 失败                                      |
 
 ---
 
@@ -380,11 +383,12 @@ Step 4 增加启动方式下拉：
 
 ## 14. 小结
 
-| 项目 | 内容 |
-|------|------|
-| 核心改动 | prepare 引入 restart；namelist 对齐时间与 STRIDE；运行跳过 `ww3_strt` |
-| 默认行为 | **不变**（`mode: cold`） |
-| 首版范围 | 单层 + 嵌套热启动/续跑；不做 uprstr、不做换网格插值 |
+
+| 项目     | 内容                                                                          |
+| ---------- | ------------------------------------------------------------------------------- |
+| 核心改动 | prepare 引入 restart；namelist 对齐时间与 STRIDE；运行跳过`ww3_strt`          |
+| 默认行为 | **不变**（`mode: cold`）                                                      |
+| 首版范围 | 单层 + 嵌套热启动/续跑；不做 uprstr、不做换网格插值                           |
 | 关键配置 | `ww3.restart.mode`、`restart_time`；restart 写出间隔由 `ww3.output_step` 同步 |
 
 建议实施顺序：**A → B → C → E → D**，先保证 CLI/脚本路径可用，再补 GUI。

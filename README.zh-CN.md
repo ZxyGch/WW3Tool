@@ -1704,7 +1704,7 @@ slurm:
 
 作业在服务器上跑得久时，可在登录节点轮询 Slurm，任务结束往手机推 ntfy 通知。
 
-
+常驻监听绑定到 `server.default_remote_dir`（远程工作根目录），pid/日志/状态文件存放在根目录下，与具体算例 workdir 解耦；清理单个算例目录不会影响 watcher。
 
 对应 params.yml 与 CLI：
 

@@ -1025,25 +1025,25 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _refresh_server_path(self) -> None:
         # [EN] Refresh step 6 server path input field.
-        # [EN] Always ensure workdir name is appended to the resolved base path.
+        # [EN] Explicit ``remote_dir`` is shown as-is; only fall back to default_remote_dir + workdir name.
         """刷新第六步服务器路径输入框。
 
-        无论 remote_dir 是否为空，都通过 _server_path_with_workdir 确保末段包含工作目录名。
+        已填写的 ``remote_dir`` 原样显示；为空时用 default_remote_dir 并追加工作目录名。
         """
         if not hasattr(self, "_server_ops_panel"):
             return
         cfg = self._loaded_config
         if cfg and cfg.server.remote_dir:
-            self._server_ops_panel.set_server_path(self._server_path_with_workdir(cfg.server.remote_dir))
+            self._server_ops_panel.set_server_path(cfg.server.remote_dir.strip())
         else:
             base = cfg.server.default_remote_dir if cfg else ""
             self._server_ops_panel.set_server_path(self._server_path_with_workdir(base))
 
     def _effective_server_path(self, config: PipelineConfig) -> str:
-        # [EN] Always ensure workdir name is appended to the resolved base path.
-        """显示用服务器路径：始终确保末段包含工作目录名。"""
+        # [EN] Explicit remote_dir is literal; default_remote_dir gets workdir name appended.
+        """显示用服务器路径：已填写 remote_dir 时原样返回，否则 default_remote_dir + 工作目录名。"""
         if config.server.remote_dir:
-            return self._server_path_with_workdir(config.server.remote_dir)
+            return config.server.remote_dir.strip()
         return self._server_path_with_workdir(config.server.default_remote_dir)
 
     def _show_home(self) -> None:

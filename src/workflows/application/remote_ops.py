@@ -69,11 +69,8 @@ def _acquire(config: PipelineConfig, existing: Optional[SshClient] = None):
 def _resolve_remote_dir(config: PipelineConfig) -> str:
     """解析并校验远程工作目录路径。
 
-    优先使用 ``server.remote_dir``（第六步输入框写入的实际路径）；
+    优先使用 ``server.remote_dir``（第六步输入框写入的实际路径，按字面量使用）；
     为空时回退到 ``server.default_remote_dir`` + 工作目录名。
-
-    无论来源如何，若路径末段与工作目录名不匹配，自动追加工作目录名，
-    确保始终指向具体的 per-case 远程目录。
     """
     remote_dir = config.server.remote_dir.strip()
     workdir_name = config.workdir.path.name if config.workdir.path else ""
@@ -89,11 +86,6 @@ def _resolve_remote_dir(config: PipelineConfig) -> str:
             remote_dir = base.rstrip("/") if tail == workdir_name else posixpath.join(base.rstrip("/"), workdir_name)
         else:
             remote_dir = base
-    elif workdir_name:
-        # remote_dir 非空但未包含工作目录名 → 自动追加
-        tail = posixpath.basename(remote_dir.rstrip("/"))
-        if tail != workdir_name:
-            remote_dir = posixpath.join(remote_dir.rstrip("/"), workdir_name)
 
     if config.server.user and (remote_dir == "~" or remote_dir.startswith("~/")):
         remote_dir = f"/home/{config.server.user}{remote_dir[1:]}"
@@ -819,20 +811,38 @@ def run_check_status(
             c.close()
 
 
-def _ntfy_topic_for(config: PipelineConfig, remote_dir: str) -> str:
-    digest = hashlib.sha1(remote_dir.encode("utf-8")).hexdigest()[:16]
+def _resolve_ntfy_root_dir(config: PipelineConfig) -> str:
+    """返回远程工作根目录，供 ntfy watcher 存放 pid/日志/状态。
+
+    ntfy 监听与具体算例目录解耦，避免清理单个 workdir 后 watcher 失效。
+    """
+    root = config.server.default_remote_dir.strip()
+    if not root:
+        raise ValueError(
+            tr(
+                "ntfy_root_dir_missing",
+                "❌ server.default_remote_dir 未配置，无法定位 ntfy 监听根目录。请在 params.yml 的 server: 段填写远程工作根目录。",
+            )
+        )
+    if config.server.user and (root == "~" or root.startswith("~/")):
+        root = f"/home/{config.server.user}{root[1:]}"
+    return root.rstrip("/")
+
+
+def _ntfy_topic_for(config: PipelineConfig, ntfy_root: str) -> str:
+    digest = hashlib.sha1(ntfy_root.encode("utf-8")).hexdigest()[:16]
     return f"ww3-{digest}"
 
 
-def _ntfy_status_command(remote_dir: str) -> str:
+def _ntfy_status_command(ntfy_root: str) -> str:
     """Build a remote shell snippet that reports ntfy watcher status."""
     pid_file = "ntfy_watch.pid"
     mode_file = "ntfy_watch.pid.mode"
-    q_remote = shlex.quote(remote_dir)
-    q_pid_path = shlex.quote(posixpath.join(remote_dir, pid_file))
-    q_mode_path = shlex.quote(posixpath.join(remote_dir, mode_file))
+    q_root = shlex.quote(ntfy_root)
+    q_pid_path = shlex.quote(posixpath.join(ntfy_root, pid_file))
+    q_mode_path = shlex.quote(posixpath.join(ntfy_root, mode_file))
     return (
-        f"if [ ! -d {q_remote} ]; then "
+        f"if [ ! -d {q_root} ]; then "
         f"echo NO_DIR; "
         f"elif [ -f {q_pid_path} ]; then "
         f"PID=$(cat {q_pid_path}); "
@@ -849,7 +859,7 @@ def _ntfy_status_command(remote_dir: str) -> str:
 
 
 def _parse_ntfy_status_output(out: str) -> tuple[bool, str | None, bool]:
-    """Return ``(running, pid, workdir_missing)`` from remote status output."""
+    """Return ``(running, pid, root_missing)`` from remote status output."""
     text = (out or "").strip()
     if text == "NO_DIR":
         return False, None, True
@@ -876,29 +886,29 @@ def run_check_ntfy_status(
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
     try:
-        remote_dir = _resolve_remote_dir(config)
-        topic = _ntfy_topic_for(config, remote_dir)
+        ntfy_root = _resolve_ntfy_root_dir(config)
+        topic = _ntfy_topic_for(config, ntfy_root)
         if owns:
             c.connect(log=logger.log)
-        command = _ntfy_status_command(remote_dir)
+        command = _ntfy_status_command(ntfy_root)
         out, err, code = c.exec_command(command, timeout=10)
-        running, pid, workdir_missing = _parse_ntfy_status_output(out)
-        if workdir_missing:
+        running, pid, root_missing = _parse_ntfy_status_output(out)
+        if root_missing:
             logger.log(
                 tr(
-                    "ntfy_status_workdir_missing",
-                    "⚠️ 远程工作目录不存在：{path}（请先上传或确认路径）",
-                ).format(path=remote_dir)
+                    "ntfy_status_root_missing",
+                    "⚠️ 远程工作根目录不存在：{path}（请确认 server.default_remote_dir）",
+                ).format(path=ntfy_root)
             )
         if running:
             logger.log(
                 tr("ntfy_status_running", "✅ ntfy watcher 正在运行 (PID: {pid})").format(pid=pid)
             )
-        elif not workdir_missing:
+        elif not root_missing:
             logger.log(tr("ntfy_status_stopped", "⏹ ntfy watcher 未运行"))
         return RemoteResult(
             success=True,
-            data={"running": running, "pid": pid, "topic": topic, "workdir_missing": workdir_missing},
+            data={"running": running, "pid": pid, "topic": topic, "root_missing": root_missing},
             messages=list(logger.messages),
         )
     except Exception as exc:
@@ -932,8 +942,8 @@ def run_send_ntfy_test(
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
     try:
-        remote_dir = _resolve_remote_dir(config)
-        topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
+        ntfy_root = _resolve_ntfy_root_dir(config)
+        topic = (topic or _ntfy_topic_for(config, ntfy_root)).strip()
         label = "WW3"
         if owns:
             c.connect(log=logger.log)
@@ -1004,8 +1014,8 @@ def run_inject_ntfy_listener(
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
     try:
-        remote_dir = _resolve_remote_dir(config)
-        topic = (topic or _ntfy_topic_for(config, remote_dir)).strip()
+        ntfy_root = _resolve_ntfy_root_dir(config)
+        topic = (topic or _ntfy_topic_for(config, ntfy_root)).strip()
         label = "WW3"
         mode = "once" if mode == "once" else "all"
         job_id = str(job_id or "").strip()
@@ -1019,7 +1029,8 @@ def run_inject_ntfy_listener(
             )
         if owns:
             c.connect(log=logger.log)
-        # [EN] Write the script directly to remote /tmp via base64 (no SFTP upload, no workdir copy).
+        # [EN] Watcher pid/log/state live under server.default_remote_dir, not per-case workdirs.
+        # ntfy 监听状态存放在远程工作根目录，与具体算例目录解耦。
         logger.log(
             tr("ntfy_deploying_watcher", "📤 正在部署 ntfy 监听脚本到远程 /tmp")
         )
@@ -1027,12 +1038,11 @@ def run_inject_ntfy_listener(
             b64_payload = base64.b64encode(f.read()).decode("ascii")
         remote_script = "/tmp/ww3_ntfy_watch.sh"
         q_script = shlex.quote(remote_script)
-        q_remote = shlex.quote(remote_dir)
+        q_root = shlex.quote(ntfy_root)
         q_topic = shlex.quote(topic)
         q_label = shlex.quote(label)
         q_mode = shlex.quote(mode)
         q_jobs = shlex.quote(job_id) if job_id else "''"
-        q_workdirs = q_remote if mode == "all" else "''"
         q_topic_line = shlex.quote(f"ntfy topic: {topic}")
         q_url_line = shlex.quote(f"ntfy url: https://ntfy.sh/{topic}")
         pid_file = "ntfy_watch.pid" if mode == "all" else f"ntfy_watch_{job_id}.pid"
@@ -1044,7 +1054,7 @@ def run_inject_ntfy_listener(
         command = (
             f"echo '{b64_payload}' | base64 -d > {q_script} && "
             f"chmod +x {q_script} && "
-            f"mkdir -p {q_remote} && cd {q_remote} && "
+            f"mkdir -p {q_root} && cd {q_root} && "
             f"if [ -f {q_pid_file} ] && kill -0 $(cat {q_pid_file}) 2>/dev/null "
             f"&& [ \"$(cat {q_mode_file} 2>/dev/null)\" = {q_mode} ]; then "
             f"echo \"ntfy watcher already running: $(cat {q_pid_file})\"; "
@@ -1053,7 +1063,7 @@ def run_inject_ntfy_listener(
             f"kill $(cat {q_pid_file}) 2>/dev/null || true; "
             "fi; "
             f"setsid nohup {q_script} --topic {q_topic} --label {q_label} --mode {q_mode} "
-            f"--jobs {q_jobs} --workdirs {q_workdirs} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
+            f"--jobs {q_jobs} --interval {int(interval)} --timeout-hours {int(timeout_hours)} "
             f"> {q_log_file} 2>&1 < /dev/null & echo $! > {q_pid_file}; "
             f"printf '%s\\n' {q_mode} > {q_mode_file}; "
             f"sleep 0.5; "
@@ -1078,10 +1088,22 @@ def run_inject_ntfy_listener(
             raise RuntimeError(
                 err or out or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code)
             )
-        verify_out, _, _ = c.exec_command(_ntfy_status_command(remote_dir), timeout=10)
-        running, verify_pid, _ = _parse_ntfy_status_output(verify_out)
+        if mode == "all":
+            verify_out, _, _ = c.exec_command(_ntfy_status_command(ntfy_root), timeout=10)
+            running, verify_pid, _ = _parse_ntfy_status_output(verify_out)
+        else:
+            q_pid_path = shlex.quote(posixpath.join(ntfy_root, pid_file))
+            verify_cmd = (
+                f"if [ -f {q_pid_path} ]; then "
+                f"PID=$(cat {q_pid_path}); "
+                f"if kill -0 \"$PID\" 2>/dev/null; then echo \"RUNNING $PID\"; "
+                f"else echo STOPPED; fi; "
+                f"else echo STOPPED; fi"
+            )
+            verify_out, _, _ = c.exec_command(verify_cmd, timeout=10)
+            running, verify_pid, _ = _parse_ntfy_status_output(verify_out)
         if not running:
-            log_path = posixpath.join(remote_dir, log_file)
+            log_path = posixpath.join(ntfy_root, log_file)
             raise RuntimeError(
                 tr(
                     "ntfy_watcher_verify_failed",
@@ -1120,8 +1142,8 @@ def run_inject_ntfy_job_listener(
     # [EN] Generate a per-job topic so it doesn't collide with the global listener.
     # 为单个任务生成独立 topic，避免与全局监听共用同一频道。
     if topic is None:
-        remote_dir = _resolve_remote_dir(config)
-        base_topic = _ntfy_topic_for(config, remote_dir)
+        ntfy_root = _resolve_ntfy_root_dir(config)
+        base_topic = _ntfy_topic_for(config, ntfy_root)
         safe_id = re.sub(r"[^A-Za-z0-9_-]+", "-", job_id.strip()).strip("-")
         topic = f"{base_topic}-job-{safe_id}"
     return run_inject_ntfy_listener(

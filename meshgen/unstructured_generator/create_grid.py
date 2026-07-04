@@ -80,6 +80,109 @@ class _MaskArgs:
         self.mask_file = path
 
 
+def _normalize_lon360(lon: float) -> float:
+    """Wrap longitude to [0, 360)."""
+    return float(lon) % 360.0
+
+
+def _dem_lon_convention(lon: np.ndarray) -> str:
+    lon = np.asarray(lon, dtype=np.float64).ravel()
+    if lon.size >= 2 and float(lon[0]) >= 0.0 and float(lon[-1]) > 180.0 + 1e-6:
+        return "360"
+    return "180"
+
+
+def _align_lon_lat_to_elev(
+    lon: np.ndarray, lat: np.ndarray, elev: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Match 1-D lon/lat node coordinates to (nlat, nlon) elevation grid."""
+    nlat, nlon = elev.shape
+    lon = np.asarray(lon, dtype=np.float64).ravel()
+    lat = np.asarray(lat, dtype=np.float64).ravel()
+    if lon.size > nlon:
+        lon = lon[:nlon]
+    elif lon.size < nlon:
+        raise ValueError(
+            f"DEM lon size {lon.size} smaller than elevation nlon {nlon}"
+        )
+    if lat.size > nlat:
+        lat = lat[:nlat]
+    elif lat.size < nlat:
+        raise ValueError(
+            f"DEM lat size {lat.size} smaller than elevation nlat {nlat}"
+        )
+    return lon, lat
+
+
+def _dem_lon_to_360(lon: np.ndarray, elev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Reorder -180..180 DEM columns into ascending 0..360 longitudes."""
+    lon = np.asarray(lon, dtype=np.float64)
+    lon360 = np.where(lon < 0.0, lon + 360.0, lon)
+    order = np.argsort(lon360)
+    lon360 = lon360[order]
+    elev = np.asarray(elev)[:, order]
+    return lon360, elev
+
+
+def _regional_dem_lon_bounds(
+    lon_min: float,
+    lon_max: float,
+    margin: float,
+    *,
+    dem_conv: str,
+) -> tuple[float, float, bool]:
+    """
+    Map regional box longitudes to DEM subset bounds.
+
+    Returns (lon0, lon1, use_360). When the regional box uses 0–360° east
+    longitudes beyond 180° (e.g. 113–189°E), convert the -180..180 DEM to 0–360
+    so the subset stays contiguous across the antimeridian in index space.
+    """
+    use_360 = False
+    if dem_conv == "180" and float(lon_max) > 180.0:
+        use_360 = True
+        lon0 = max(0.0, float(lon_min) - margin)
+        lon1 = float(lon_max) + margin
+        return lon0, lon1, use_360
+
+    lon0 = float(lon_min) - margin
+    lon1 = float(lon_max) + margin
+    if dem_conv == "360":
+        lon0 = _normalize_lon360(lon0)
+        lon1 = _normalize_lon360(lon1)
+        if lon1 < lon0:
+            raise ValueError(
+                f"regional lon box [{lon_min}, {lon_max}] crosses the antimeridian "
+                "in 0–360° coordinates; split the domain or use a 0–360° DEM."
+            )
+    return lon0, lon1, use_360
+
+
+def _load_dem_arrays(dem_file: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    with nc.Dataset(dem_file, "r") as data:
+        lon = np.asarray(data["lon"][:], dtype=np.float64)
+        lat = np.asarray(data["lat"][:], dtype=np.float64)
+        if "bed_elevation" in data.variables:
+            bed = np.asarray(data["bed_elevation"][:], dtype=np.float64)
+            if "ice_thickness" in data.variables:
+                ice = np.asarray(data["ice_thickness"][:], dtype=np.float64)
+            else:
+                ice = np.zeros_like(bed)
+            z = bed + ice
+        elif "z" in data.variables:
+            z = np.asarray(data["z"][:], dtype=np.float64)
+        else:
+            raise ValueError(f"DEM missing bed_elevation/z: {dem_file}")
+
+    if lon.ndim != 1 or lat.ndim != 1:
+        lon = lon.ravel()
+        lat = lat.ravel()
+    if z.shape == (lon.size, lat.size):
+        z = z.T
+    lon, lat = _align_lon_lat_to_elev(lon, lat, z)
+    return lon, lat, z
+
+
 def _ensure_unst_on_path(unst_dir: Path) -> None:
     root = str(unst_dir.resolve())
     if root not in sys.path:
@@ -193,15 +296,8 @@ def _build_geom_pslg(
 
 
 def _subset_dem(dem_file: str, lon0: float, lon1: float, lat0: float, lat1: float):
-    data = nc.Dataset(dem_file, "r")
-    lon = np.asarray(data["lon"][:], dtype=np.float64)
-    lat = np.asarray(data["lat"][:], dtype=np.float64)
-    bed = np.asarray(data["bed_elevation"][:], dtype=np.float64)
-    if "ice_thickness" in data.variables:
-        ice = np.asarray(data["ice_thickness"][:], dtype=np.float64)
-    else:
-        ice = np.zeros_like(bed)
-    z = bed + ice
+    lon, lat, z = _load_dem_arrays(dem_file)
+    dem_conv = _dem_lon_convention(lon)
 
     if lon[0] > lon[-1]:
         lon = lon[::-1]
@@ -210,15 +306,30 @@ def _subset_dem(dem_file: str, lon0: float, lon1: float, lat0: float, lat1: floa
         lat = lat[::-1]
         z = z[::-1, :]
 
+    use_360 = False
+    if dem_conv == "180" and float(lon1) > 180.0:
+        lon, z = _dem_lon_to_360(lon, z)
+        dem_conv = "360"
+        use_360 = True
+        lon0 = max(0.0, _normalize_lon360(lon0))
+        lon1 = _normalize_lon360(lon1)
+
+    nlon = z.shape[1]
+    nlat = z.shape[0]
     i0 = max(0, int(np.searchsorted(lon, lon0, side="left")) - 2)
-    i1 = min(lon.size, int(np.searchsorted(lon, lon1, side="right")) + 2)
+    i1 = min(nlon, int(np.searchsorted(lon, lon1, side="right")) + 2)
     j0 = max(0, int(np.searchsorted(lat, lat0, side="left")) - 2)
-    j1 = min(lat.size, int(np.searchsorted(lat, lat1, side="right")) + 2)
+    j1 = min(nlat, int(np.searchsorted(lat, lat1, side="right")) + 2)
 
     xs = lon[i0:i1]
     ys = lat[j0:j1]
     zsub = z[j0:j1, i0:i1]
-    data.close()
+    if use_360:
+        print(
+            f"*antimeridian: DEM reordered to 0–360° for subset "
+            f"lon {xs[0]:.3f}..{xs[-1]:.3f}",
+            flush=True,
+        )
     return xs, ys, zsub
 
 
@@ -231,6 +342,30 @@ def _centers_to_grid_edges(c: np.ndarray) -> np.ndarray:
     right = c[-1] + 0.5 * dc[-1]
     mid = 0.5 * (c[:-1] + c[1:])
     return np.concatenate([[left], mid, [right]])
+
+
+def _align_spacing_to_edges(hmat: np.ndarray, xlon: np.ndarray, ylat: np.ndarray) -> np.ndarray:
+    """Ensure spacing array matches edge grid derived from lon/lat centers."""
+    x_edge = _centers_to_grid_edges(xlon)
+    y_edge = _centers_to_grid_edges(ylat)
+    target = (y_edge.size, x_edge.size)
+    if hmat.shape == target:
+        return hmat
+    if hmat.shape[0] == target[0] and abs(hmat.shape[1] - target[1]) == 1:
+        if hmat.shape[1] > target[1]:
+            return hmat[:, : target[1]]
+        out = np.empty(target, dtype=hmat.dtype)
+        out[:, : hmat.shape[1]] = hmat
+        out[:, hmat.shape[1] :] = hmat[:, -1:]
+        return out
+    if abs(hmat.shape[0] - target[0]) == 1 and hmat.shape[1] == target[1]:
+        if hmat.shape[0] > target[0]:
+            return hmat[: target[0], :]
+        out = np.empty(target, dtype=hmat.dtype)
+        out[: hmat.shape[0], :] = hmat
+        out[hmat.shape[0] :, :] = hmat[-1:, :]
+        return out
+    return hmat
 
 
 def _build_regional_spacing(
@@ -295,6 +430,7 @@ def _build_regional_spacing(
         hmat, elev_aln, land_aln, hmax, depth_m=deep_threshold_m
     )
 
+    hmat = _align_spacing_to_edges(hmat, xlon, ylat)
     x_edge = _centers_to_grid_edges(xlon)
     y_edge = _centers_to_grid_edges(ylat)
     if hmat.shape != (y_edge.size, x_edge.size):
@@ -362,10 +498,26 @@ def run_regional_from_config(
         f"lat [{lat_min},{lat_max}]  margin {margin} deg"
     )
 
+    dem_conv = "180"
+    if os.path.isfile(dem_path):
+        with nc.Dataset(dem_path, "r") as _probe:
+            if "lon" in _probe.variables:
+                dem_conv = _dem_lon_convention(np.asarray(_probe["lon"][:]))
+
+    dem_lon0, dem_lon1, use_360 = _regional_dem_lon_bounds(
+        lon_min, lon_max, margin, dem_conv=dem_conv
+    )
+    if use_360:
+        print(
+            f"*antimeridian: regional lon_max={lon_max} > 180°, "
+            f"DEM subset uses 0–360° lon [{dem_lon0:.3f}, {dem_lon1:.3f}]",
+            flush=True,
+        )
+
     xs, ys, elev = _subset_dem(
         dem_path,
-        lon_min - margin,
-        lon_max + margin,
+        dem_lon0,
+        dem_lon1,
         lat_min - margin,
         lat_max + margin,
     )
