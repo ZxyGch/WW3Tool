@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import Any
 
 
@@ -27,7 +26,6 @@ def create_window():
 
 def main(argv: list[str] | None = None) -> int:
     try:
-        from PyQt6.QtGui import QIcon
         from PyQt6.QtWidgets import QApplication
     except ImportError as exc:
         raise SystemExit(
@@ -45,11 +43,14 @@ def main(argv: list[str] | None = None) -> int:
 
     arguments = [sys.argv[0], *(argv if argv is not None else sys.argv[1:])]
     app = QApplication(arguments)
-    icon = Path(__file__).resolve().parents[2] / "public" / "resource" / "logo.png"
-    if icon.exists():
-        app.setWindowIcon(QIcon(str(icon)))
+    from .branding import load_logo_icon, apply_window_logo
+
+    icon = load_logo_icon()
+    if icon is not None:
+        app.setWindowIcon(icon)
 
     window = create_window()
+    apply_window_logo(window)
     window.show()
     if not _select_initial_work_directory(window):
         return 0

@@ -735,6 +735,224 @@ def run_node_status(
             c.close()
 
 
+_SQUEUE_ALL_USERS_CMD = "squeue -a -h -o '%i|%u|%P|%j|%T|%M|%D|%C|%R' -S i"
+# 部分集群 squeue -a 仍只返回当前用户；sacct -a 可看到全部用户 RUNNING/PENDING 作业。
+_SACCT_ACTIVE_CMD = (
+    "sacct -a -s RUNNING,PENDING -P -n "
+    "--format=JobID,User,Partition,JobName,State,Elapsed,AllocNodes,AllocCPUS,NodeList"
+)
+_SQUEUE_STATE_LABELS = {
+    "RUNNING": ("queue_status_running", "运行中"),
+    "PENDING": ("queue_status_pending", "等待中"),
+    "COMPLETING": ("queue_status_completing", "完成中"),
+    "CONFIGURING": ("queue_status_configuring", "配置中"),
+    "SUSPENDED": ("queue_status_suspended", "挂起"),
+    "PREEMPTED": ("cluster_job_state_preempted", "被抢占"),
+    "REQUEUED": ("cluster_job_state_requeued", "重新排队"),
+}
+
+
+def _resolve_remote_username(config: PipelineConfig, c: SshClient) -> str:
+    user = str(config.server.user or "").strip()
+    if user:
+        return user
+    out, _, _ = c.exec_command("whoami", timeout=5)
+    return out.strip()
+
+
+def _parse_squeue_all_users(out: str) -> list[dict]:
+    jobs: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 9:
+            continue
+        jobs.append(
+            {
+                "jobid": parts[0],
+                "user": parts[1],
+                "partition": parts[2],
+                "name": parts[3],
+                "state": parts[4],
+                "time": parts[5],
+                "nodes": parts[6],
+                "cpus": parts[7],
+                "nodelist": parts[8],
+                "reason": parts[9] if len(parts) > 9 else "",
+            }
+        )
+    return jobs
+
+
+def _parse_sacct_active_jobs(out: str) -> list[dict]:
+    """解析 sacct -a 输出，跳过 .batch / .extern 等子作业行。"""
+    jobs: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 8:
+            continue
+        jobid = parts[0]
+        user = parts[1]
+        if not user or "." in jobid:
+            continue
+        nodelist = parts[8] if len(parts) > 8 else ""
+        if nodelist in {"None assigned", "None", ""}:
+            nodelist = ""
+        jobs.append(
+            {
+                "jobid": jobid,
+                "user": user,
+                "partition": parts[2],
+                "name": parts[3],
+                "state": parts[4],
+                "time": parts[5],
+                "nodes": parts[6] or "0",
+                "cpus": parts[7],
+                "nodelist": nodelist,
+                "reason": "",
+            }
+        )
+    jobs.sort(key=lambda j: (j["user"], j["jobid"]))
+    return jobs
+
+
+def _fetch_cluster_active_jobs(c: SshClient, logger: CoreLogger) -> tuple[list[dict], str]:
+    """优先 sacct -a（全用户）；若 sacct 为空再回退 squeue。"""
+    out, err, code = c.exec_command(_SACCT_ACTIVE_CMD, timeout=20)
+    if code != 0:
+        logger.log(tr("cluster_jobs_sacct_warning", "⚠️ sacct 查询失败，回退 squeue：{error}").format(error=err or out))
+    elif err:
+        logger.log(tr("step5_cpu_cmd_error", "⚠️ sacct 命令错误: {error}").format(error=err))
+    jobs = _parse_sacct_active_jobs(out)
+    if jobs:
+        return jobs, "sacct"
+
+    out, err, code = c.exec_command(_SQUEUE_ALL_USERS_CMD, timeout=15)
+    if code != 0:
+        raise RuntimeError(err or out or tr("remote_command_exit_code", "远程命令退出码 {code}").format(code=code))
+    if err:
+        logger.log(tr("squeue_cmd_error", "⚠️ squeue 错误: {error}").format(error=err))
+    return _parse_squeue_all_users(out), "squeue"
+
+
+def _state_label(state: str) -> str:
+    key, default = _SQUEUE_STATE_LABELS.get(state.upper(), (None, state))
+    return tr(key, default) if key else state
+
+
+def _format_cluster_job_rows(jobs: list[dict]) -> list[str]:
+    if not jobs:
+        return [tr("cluster_jobs_log_section_empty", "  （无）")]
+    headers = [
+        tr("cluster_jobs_col_jobid", "JobID"),
+        tr("cluster_jobs_col_user", "用户"),
+        tr("cluster_jobs_col_partition", "分区"),
+        tr("cluster_jobs_col_name", "作业名"),
+        tr("cluster_jobs_col_state", "状态"),
+        tr("cluster_jobs_col_time", "已运行"),
+        tr("cluster_jobs_col_nodes", "节点"),
+        tr("cluster_jobs_col_cpus", "核数"),
+        tr("cluster_jobs_col_nodelist_reason", "节点/排队原因"),
+    ]
+    rows = [
+        [
+            job["jobid"],
+            job["user"],
+            job["partition"],
+            job["name"],
+            _state_label(job["state"]),
+            job["time"],
+            job["nodes"],
+            job["cpus"],
+            job.get("nodelist") or job.get("reason") or "",
+        ]
+        for job in jobs
+    ]
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for idx, cell in enumerate(row):
+            widths[idx] = max(widths[idx], len(str(cell)))
+
+    def fmt_row(cells: list[str]) -> str:
+        parts = []
+        for idx, cell in enumerate(cells):
+            text = str(cell)
+            if idx in {0, 5, 6, 7}:
+                parts.append(text.rjust(widths[idx]))
+            else:
+                parts.append(text.ljust(widths[idx]))
+        return "  " + "  ".join(parts)
+
+    lines = [fmt_row(headers), "  " + "  ".join("-" * w for w in widths)]
+    lines.extend(fmt_row(row) for row in rows)
+    return lines
+
+
+def run_cluster_jobs_log(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """查询全集群 Slurm 队列并在日志中列出各用户任务（重点展示他人作业）。"""
+    logger = CoreLogger(callback=log)
+    c, owns = _acquire(config, client)
+    try:
+        if owns:
+            c.connect(log=logger.log)
+        me = _resolve_remote_username(config, c)
+        jobs, source = _fetch_cluster_active_jobs(c, logger)
+        mine = [job for job in jobs if job["user"] == me]
+        others = [job for job in jobs if job["user"] != me]
+
+        if source == "sacct":
+            logger.log(tr("cluster_jobs_log_header", "📋 集群任务概览（sacct -a，RUNNING/PENDING）"))
+            logger.log(
+                tr(
+                    "cluster_jobs_log_sacct_note",
+                    "   说明：本集群 squeue 通常只显示本人任务，此处用 sacct 查看全部用户。",
+                )
+            )
+        else:
+            logger.log(tr("cluster_jobs_log_header_squeue", "📋 集群任务概览（squeue -a）"))
+        logger.log(
+            tr(
+                "cluster_jobs_log_summary",
+                "   活跃任务 {total} 个 | 本人 {mine} 个 | 其他用户 {others} 个",
+            ).format(total=len(jobs), mine=len(mine), others=len(others))
+        )
+        if me:
+            logger.log(tr("cluster_jobs_log_current_user", "   当前账号：{user}").format(user=me))
+
+        logger.log(tr("cluster_jobs_log_others_header", "👥 其他用户任务（{count} 个）：").format(count=len(others)))
+        for line in _format_cluster_job_rows(others):
+            logger.log(line)
+
+        logger.log(tr("cluster_jobs_log_mine_header", "🙋 本人任务（{count} 个）：").format(count=len(mine)))
+        for line in _format_cluster_job_rows(mine):
+            logger.log(line)
+
+        if not jobs:
+            logger.log(tr("cluster_jobs_log_all_empty", "ℹ️ 当前集群没有运行中或排队中的 Slurm 任务"))
+
+        return RemoteResult(
+            success=True,
+            data={"jobs": jobs, "mine": mine, "others": others, "current_user": me, "source": source},
+            messages=list(logger.messages),
+        )
+    except Exception as exc:
+        logger.log(tr("cluster_jobs_log_failed", "❌ 查询集群任务失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), data=None, messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
+
 def run_submit(
     config: PipelineConfig,
     log: Optional[LogCallback] = None,

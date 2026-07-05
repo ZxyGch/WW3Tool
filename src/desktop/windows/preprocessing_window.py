@@ -93,6 +93,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         setTheme(Theme.AUTO)
         setThemeColor(QColor(0, 120, 212))
         super().__init__()
+        from ..branding import apply_window_logo
+
+        apply_window_logo(self)
         self._base_title = tr("app_title", "海浪模式 WAVEWATCH III 可视化运行软件")
         self.setWindowTitle(self._base_title)
         _lang = _load_runtime_config().get("LANGUAGE", "zh_CN")
@@ -678,6 +681,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             inject_ntfy=self._server_inject_ntfy,
             watch_job_ntfy=self._server_watch_ntfy_job,
             node_status=self._server_node_status,
+            cluster_jobs_log=self._server_cluster_jobs_log,
             cancel=self._server_cancel,
             log=self._append_log,
         )
@@ -2969,6 +2973,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _server_node_status(self) -> None:
         self._run_job(self._remote_vm.node_status)
+
+    def _server_cluster_jobs_log(self) -> None:
+        self._run_job(self._remote_vm.cluster_jobs_log)
 
     def _server_clear(self) -> None:
         remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""

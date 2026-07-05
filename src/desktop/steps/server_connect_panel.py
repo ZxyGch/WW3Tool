@@ -69,6 +69,7 @@ class ServerConnectPanel:
         inject_ntfy: Callable[[], None],
         watch_job_ntfy: Callable[[], None],
         node_status: Callable[[], None],
+        cluster_jobs_log: Callable[[], None],
         cancel: Callable[[], None],
         log: Callable[[str], None] | None = None,
     ) -> None:
@@ -260,6 +261,11 @@ class ServerConnectPanel:
             node_status,
         )
         confirm_slurm_layout.addWidget(self.node_status_button)
+        self.cluster_jobs_log_button = create_button(
+            tr("step6_cluster_jobs_log", "查看集群任务（他人）"),
+            cluster_jobs_log,
+        )
+        confirm_slurm_layout.addWidget(self.cluster_jobs_log_button)
         layout.addWidget(self._confirm_slurm_widget)
 
         self._group.viewLayout.addLayout(layout)
