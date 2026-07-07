@@ -48,16 +48,16 @@ forcing:
 #               one (2 to 99 levels).
 # ────────────────────────────────────────────────────────────────────
 grid:
-  mesh_type: structured
+  mesh_type: unstructured
   grid_type: normal
   gridgen_version: Python
   reference_data_path: /Users/zxy/ocean/Paper/WW3Tool/meshgen/reference_data
   lon:
-  - 110.0
-  - 130.0
+  - 105.0
+  - 160.0
   lat:
-  - 10.0
-  - 30.0
+  - 0.0
+  - 45.0
   # Structured grid options:
   #   bathymetry       – GEBCO | ETOP1 | ETOP2
   #   coastline_precision – full | high | inter | low | coarse
@@ -161,8 +161,8 @@ grid:
       command_line_args:
         black_sea: 3
       regional:
-        stereo_lon: 120.0
-        stereo_lat: 20.0
+        stereo_lon: 132.5
+        stereo_lat: 22.5
 # ────────────────────────────────────────────────────────────────────
 # Calculation mode:
 #   mode – 'region' (gridded output over the full domain) or
