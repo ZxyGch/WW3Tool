@@ -272,9 +272,16 @@ _SINFO_NODE_FORMAT = "'%N|%T|%c|%C|%P|%m|%e'"
 
 
 def _parse_slurm_memory_mb(value: str | None) -> int | None:
-    """将 Slurm/sinfo 内存字符串解析为 MB（整数）。"""
+    """将 Slurm/sinfo 内存字符串解析为 MB（整数）。
+
+    支持 ``515471``、``190G``、``515471+``（分区级 ``%m`` 的最小值标记）等写法。
+    """
     text = str(value or "").strip().upper().replace(" ", "")
     if not text or text in {"N/A", "NA", "*", "NONE"}:
+        return None
+    # 分区级 sinfo 常见 ``515471+``，``+`` 表示不低于该值，取数字部分即可。
+    text = text.rstrip("+")
+    if not text:
         return None
     match = re.match(r"^(\d+)([KMGT])?$", text)
     if not match:
@@ -298,8 +305,17 @@ def format_slurm_memory_mb(mem_mb: int) -> str:
     return f"{mem_mb}M"
 
 
-def suggest_slurm_mem_for_partition(idle_rows: list[dict], partition: str = "") -> str | None:
-    """根据空闲资源表，为指定分区推荐最大可用内存。"""
+def suggest_slurm_mem_for_partition(
+    idle_rows: list[dict],
+    partition: str = "",
+    *,
+    partition_mem: dict[str, int] | None = None,
+) -> str | None:
+    """根据空闲资源表，为指定分区推荐最大可用内存。
+
+    优先使用空闲节点上的 ``free_mem_mb`` / ``total_mem_mb``；若该分区当前无空闲行，
+    则回退到 ``sinfo -o '%P|%m'`` 解析得到的分区节点内存上限。
+    """
     partition = str(partition or "").strip()
     candidates: list[int] = []
     for row in idle_rows or []:
@@ -317,11 +333,23 @@ def suggest_slurm_mem_for_partition(idle_rows: list[dict], partition: str = "") 
             mem_mb = total_mb
         if mem_mb:
             candidates.append(mem_mb)
-    if not candidates and partition:
-        return suggest_slurm_mem_for_partition(idle_rows, "")
-    if not candidates:
-        return None
-    return format_slurm_memory_mb(max(candidates))
+    if candidates:
+        return format_slurm_memory_mb(max(candidates))
+    if partition and partition_mem:
+        mem_mb = partition_mem.get(partition)
+        if isinstance(mem_mb, int) and mem_mb > 0:
+            return format_slurm_memory_mb(mem_mb)
+    if not partition:
+        for row in idle_rows or []:
+            if not isinstance(row, dict):
+                continue
+            for key in ("free_mem_mb", "total_mem_mb"):
+                value = row.get(key)
+                if isinstance(value, int) and value > 0:
+                    candidates.append(value)
+        if candidates:
+            return format_slurm_memory_mb(max(candidates))
+    return None
 
 
 def _single_node_idle_cores(row: dict) -> int:
@@ -356,7 +384,12 @@ def _idle_rows_for_partition(idle_rows: list[dict], partition: str) -> list[dict
     return result
 
 
-def suggest_slurm_config_for_partition(idle_rows: list[dict], partition: str = "") -> dict[str, object] | None:
+def suggest_slurm_config_for_partition(
+    idle_rows: list[dict],
+    partition: str = "",
+    *,
+    partition_mem: dict[str, int] | None = None,
+) -> dict[str, object] | None:
     """推荐单节点 Slurm 配置：1 节点、单节点最多可用核数、最大可用内存。
 
     ``partition`` 为空时，在全部空闲资源中自动选取单节点可用核数最多的分区。
@@ -380,13 +413,17 @@ def suggest_slurm_config_for_partition(idle_rows: list[dict], partition: str = "
     cores = _single_node_idle_cores(best)
     if not cpu or cores <= 0:
         return None
-    mem = suggest_slurm_mem_for_partition(idle_rows, cpu) or ""
+    mem = suggest_slurm_mem_for_partition(idle_rows, cpu, partition_mem=partition_mem) or ""
     return {"partition": cpu, "nodes": 1, "cores": cores, "mem": mem}
 
 
-def suggest_slurm_config(idle_rows: list[dict]) -> dict[str, object] | None:
+def suggest_slurm_config(
+    idle_rows: list[dict],
+    *,
+    partition_mem: dict[str, int] | None = None,
+) -> dict[str, object] | None:
     """从全部空闲资源自动选取最优分区并推荐单节点 Slurm 配置。"""
-    return suggest_slurm_config_for_partition(idle_rows, "")
+    return suggest_slurm_config_for_partition(idle_rows, "", partition_mem=partition_mem)
 
 
 def _parse_sinfo_partition_memory(out: str) -> dict[str, int]:
@@ -435,14 +472,27 @@ def _fetch_partition_memory_mb(client) -> dict[str, int]:
     return _parse_sinfo_partition_memory(out)
 
 
-def _attach_idle_memory_from_sinfo(client, idle_rows: list[dict]) -> list[dict]:
-    """若节点级 sinfo 未返回内存，回退查询分区 ``%m`` 并合并。"""
-    if not idle_rows:
-        return idle_rows
-    if all(isinstance(row, dict) and (row.get("free_mem_mb") or row.get("total_mem_mb")) for row in idle_rows):
-        return idle_rows
-    partition_mem = _fetch_partition_memory_mb(client)
-    return _enrich_idle_summary_memory(idle_rows, partition_mem)
+def _attach_idle_memory_from_sinfo(
+    client,
+    idle_rows: list[dict],
+    *,
+    partition_mem: dict[str, int] | None = None,
+) -> tuple[list[dict], dict[str, int]]:
+    """若节点级 sinfo 未返回内存，回退查询分区 ``%m`` 并合并。
+
+    Returns:
+        ``(enriched_idle_rows, partition_mem_mb)``；后者供 GUI 在分区无空闲节点时填写内存。
+    """
+    mem_map = dict(partition_mem or {})
+    if not mem_map:
+        mem_map = _fetch_partition_memory_mb(client)
+    if idle_rows and mem_map:
+        if not all(
+            isinstance(row, dict) and (row.get("free_mem_mb") or row.get("total_mem_mb"))
+            for row in idle_rows
+        ):
+            idle_rows = _enrich_idle_summary_memory(idle_rows, mem_map)
+    return idle_rows, mem_map
 
 
 def _parse_sinfo_idle_resources(out: str) -> dict:
@@ -563,7 +613,7 @@ def run_slurm_idle_resources(
         if err:
             logger.log(tr("sinfo_cmd_warning", "⚠️ sinfo 警告: {error}").format(error=err))
         data = _parse_sinfo_idle_resources(out)
-        idle_summary = _attach_idle_memory_from_sinfo(c, data.get("idle_summary", []))
+        idle_summary, _partition_mem = _attach_idle_memory_from_sinfo(c, data.get("idle_summary", []))
         data["idle_summary"] = idle_summary
         logger.log(
             tr(
@@ -1636,13 +1686,14 @@ def run_server_status(
 
         idle_data: list = []
         partitions: list[str] = []
+        partition_mem: dict[str, int] = {}
         sinfo_out, sinfo_err, _ = c.exec_command(
             f"sinfo -h -N -o {_SINFO_NODE_FORMAT}",
             timeout=10,
         )
         if not sinfo_err:
             sinfo_data = _parse_sinfo_idle_resources(sinfo_out)
-            idle_data = _attach_idle_memory_from_sinfo(c, sinfo_data.get("idle_summary", []))
+            idle_data, partition_mem = _attach_idle_memory_from_sinfo(c, sinfo_data.get("idle_summary", []))
             partitions = sinfo_data.get("partitions", [])
 
         # 任务队列
@@ -1653,13 +1704,22 @@ def run_server_status(
 
         return RemoteResult(
             success=True,
-            data={"cpu": cpu_data, "idle": idle_data, "partitions": partitions, "queue": queue_lines},
+            data={
+                "cpu": cpu_data,
+                "idle": idle_data,
+                "partitions": partitions,
+                "partition_mem": partition_mem,
+                "queue": queue_lines,
+            },
             messages=list(logger.messages),
         )
     except Exception as exc:
         logger.log(tr("server_status_failed", "❌ 获取服务器状态失败：{error}").format(error=exc))
         return RemoteResult(
-            success=False, error=str(exc), data={"cpu": [], "idle": [], "partitions": [], "queue": []}, messages=list(logger.messages)
+            success=False,
+            error=str(exc),
+            data={"cpu": [], "idle": [], "partitions": [], "partition_mem": {}, "queue": []},
+            messages=list(logger.messages),
         )
     finally:
         if owns:

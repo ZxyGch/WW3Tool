@@ -58,7 +58,7 @@ class ServerOpsPanel:
         # 第二行：上传目录 + 提交任务
         row2 = QHBoxLayout()
         row2.setSpacing(8)
-        row2.addWidget(create_button(tr("step7_upload", "上传工作目录文件夹到服务器"), upload))
+        row2.addWidget(create_button(tr("step7_upload", "上传到服务器"), upload))
         row2.addWidget(create_button(tr("step7_submit", "提交计算任务"), submit))
         layout.addLayout(row2)
 

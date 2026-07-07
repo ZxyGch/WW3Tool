@@ -861,7 +861,7 @@
   "step7_server_path": "服务器路径:",
   "step7_view_files": "查看文件列表",
   "step7_view_queue": "查看任务队列",
-  "step7_upload": "上传工作目录文件夹到服务器",
+  "step7_upload": "上传到服务器",
   "step7_upload_without_forcing": "上传非强迫场文件到服务器",
   "step7_submit": "提交计算任务",
   "step7_check": "检查是否已完成",

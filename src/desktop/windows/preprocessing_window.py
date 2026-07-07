@@ -2796,10 +2796,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             cpu_data = data.get("cpu", []) or []
             idle_data = data.get("idle", []) or []
             partition_data = data.get("partitions", []) or []
+            partition_mem = data.get("partition_mem", {}) or {}
             queue_lines = data.get("queue", []) or []
 
             def apply_status() -> None:
                 self._server_connect_panel.update_cpu_table(cpu_data)
+                self._server_connect_panel.update_partition_memory(partition_mem)
                 self._server_connect_panel.update_idle_resources(idle_data)
                 self._server_connect_panel.replace_cpu_options_if_changed(partition_data)
                 self._server_connect_panel.update_queue_table(queue_lines)

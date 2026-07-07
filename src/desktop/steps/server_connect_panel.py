@@ -83,6 +83,7 @@ class ServerConnectPanel:
         self._queue_structure_signature: tuple = ()
         self._queue_task_tables: list[EdgeAlignedTableWidget] = []
         self._idle_rows: list[dict] = []
+        self._partition_mem_mb: dict[str, int] = {}
         self.fields: dict[str, LineEdit] = {}
         self.field_labels: dict[str, QLabel] = {}
 
@@ -447,19 +448,25 @@ class ServerConnectPanel:
         self._apply_suggested_slurm_mem()
 
     def _on_cpu_partition_changed(self, _text: str) -> None:
+        # 切换分区时重新自动填写该分区最大可用内存
+        self._slurm_mem_user_edited = False
         self._apply_suggested_slurm_mem()
 
     def _on_slurm_mem_user_edited(self, _text: str) -> None:
         self._slurm_mem_user_edited = True
 
     def _apply_suggested_slurm_mem(self) -> None:
-        """根据当前分区空闲资源，自动填写最大可用内存（不覆盖用户手改值）。"""
+        """根据当前分区空闲资源或分区节点内存上限，自动填写最大可用内存（不覆盖用户手改值）。"""
         if "slurm_mem" not in self.fields:
             return
         if self._slurm_mem_user_edited:
             return
         partition = self.cpu_combo.currentText().strip()
-        suggested = suggest_slurm_mem_for_partition(self.idle_resources(), partition)
+        suggested = suggest_slurm_mem_for_partition(
+            self.idle_resources(),
+            partition,
+            partition_mem=self._partition_mem_mb,
+        )
         if not suggested:
             return
         self.fields["slurm_mem"].setText(suggested)
@@ -467,6 +474,14 @@ class ServerConnectPanel:
     def apply_suggested_slurm_mem(self) -> None:
         """供外部在刷新服务器状态后再次尝试填写内存。"""
         self._apply_suggested_slurm_mem()
+
+    def update_partition_memory(self, mapping: dict | None) -> None:
+        """缓存各分区节点内存上限（MB），供无空闲节点时填写 Slurm 内存。"""
+        self._partition_mem_mb = {
+            str(key).strip(): int(value)
+            for key, value in (mapping or {}).items()
+            if str(key).strip() and isinstance(value, int) and value > 0
+        }
 
     def idle_resources(self) -> list[dict]:
         return list(getattr(self, "_idle_rows", []))
@@ -511,7 +526,7 @@ class ServerConnectPanel:
 
     def _apply_recommended_slurm_config(self) -> None:
         """从空闲资源自动选分区，并填入 1 节点 + 单节点最大可用核数 + 最大可用内存。"""
-        suggestion = suggest_slurm_config(self.idle_resources())
+        suggestion = suggest_slurm_config(self.idle_resources(), partition_mem=self._partition_mem_mb)
         if not suggestion:
             self._log(
                 tr(

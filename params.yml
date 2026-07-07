@@ -193,9 +193,7 @@ ww3:
   output_step: 3600
   file_split: single
   output_scheme:
-    use: with_spectrum
     standard: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS
-    with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
   restart:
     mode: cold
     restart_time: null
@@ -365,7 +363,7 @@ paths:
 #   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
 desktop:
-  language: zh_CN
+  language: en_US
   theme: AUTO
   run_mode: both
   recent_workdirs:
