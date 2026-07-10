@@ -161,9 +161,8 @@ VENV_DIR = ROOT / ".venv"
 # [EN] Lightweight CLI subcommands that don't require the full venv/dependencies.
 _LIGHT_CLI_COMMANDS = {"--help", "-h", "print-example", "workdir"}
 
-# 项目所需的全部依赖包及其对应的导入模块名。
-# [EN] All required packages and their importable module names.
-_REQUIRED_IMPORTS = {
+# 核心依赖（CLI / Shell / Desktop 共用）
+_CORE_REQUIRED_IMPORTS = {
     "numpy": "numpy",
     "netCDF4": "netCDF4",
     "pandas": "pandas",
@@ -174,12 +173,29 @@ _REQUIRED_IMPORTS = {
     "scikit-image": "skimage",
     "opencv-python": "cv2",
     "paramiko": "paramiko",
-    "PyQt6": "PyQt6.QtWidgets",
-    "PyQt6-Fluent-Widgets": "qfluentwidgets",
     "requests": "requests",
     "PyYAML": "yaml",
     "pyfiglet": "pyfiglet",
 }
+
+# 仅 Desktop / 交互式 GUI 需要
+_GUI_REQUIRED_IMPORTS = {
+    "PyQt6": "PyQt6.QtWidgets",
+    "PyQt6-Fluent-Widgets": "qfluentwidgets",
+}
+
+# 向后兼容：完整依赖表
+_REQUIRED_IMPORTS = {**_CORE_REQUIRED_IMPORTS, **_GUI_REQUIRED_IMPORTS}
+
+
+def _required_imports(mode: str) -> dict[str, str]:
+    """按运行模式返回需检查的依赖。CLI / Shell 不检查 GUI 包。
+
+    [EN] Return the dependency map to check for *mode*. CLI and shell skip GUI packages.
+    """
+    if mode == "desktop":
+        return dict(_REQUIRED_IMPORTS)
+    return dict(_CORE_REQUIRED_IMPORTS)
 
 # 用于在子进程中检测缺失依赖的内联脚本。
 # [EN] Inline script to detect missing dependencies in a subprocess.
@@ -264,16 +280,18 @@ def _apply_language(lang: str | None) -> None:
 
 
 def _requires_full_dependencies(mode: str, rest: list[str]) -> bool:
-    """判断当前调用是否需要检查虚拟环境与完整依赖。
+    """判断当前调用是否需要检查虚拟环境与依赖。
 
-    Desktop 与 interactive 始终需要完整依赖；CLI 下的 help / print-example /
+    Desktop 与 shell 始终检查（shell 不含 GUI 包）；CLI 下 help / print-example /
     workdir 可跳过。
 
-    [EN] Whether the current invocation needs the full venv/dependency check.
-    Desktop and interactive always do; for the CLI, help / print-example /
-    workdir can be skipped.
+    [EN] Whether the current invocation needs the venv/dependency check.
+    Desktop and shell always check (shell excludes GUI packages); CLI help /
+    print-example / workdir can be skipped.
     """
-    if mode != "cli":
+    if mode == "desktop":
+        return True
+    if mode == "shell":
         return True
     if not rest:
         return True
@@ -306,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if _requires_full_dependencies(mode, rest):
         try:
-            _ensure_runtime(entry_script=ENTRY_SCRIPT, argv=original)
+            _ensure_runtime(entry_script=ENTRY_SCRIPT, argv=original, mode=mode)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             print(
                 _tr("cli_dependency_init_failed", "依赖初始化失败：{error}").format(error=exc),
@@ -360,9 +378,10 @@ def _is_externally_managed_environment() -> bool:
     return marker.is_file()
 
 
-def _missing_requirements() -> list[str]:
+def _missing_requirements(required: dict[str, str] | None = None) -> list[str]:
+    req = required if required is not None else _REQUIRED_IMPORTS
     missing: list[str] = []
-    for requirement, module_name in _REQUIRED_IMPORTS.items():
+    for requirement, module_name in req.items():
         try:
             available = importlib.util.find_spec(module_name) is not None
         except (ImportError, ModuleNotFoundError, ValueError):
@@ -372,9 +391,9 @@ def _missing_requirements() -> list[str]:
     return missing
 
 
-def _missing_requirements_for_python(python: Path) -> list[str]:
+def _missing_requirements_for_python(python: Path, required: dict[str, str]) -> list[str]:
     proc = subprocess.run(
-        [str(python), "-c", _CHECK_SCRIPT, json.dumps(_REQUIRED_IMPORTS)],
+        [str(python), "-c", _CHECK_SCRIPT, json.dumps(required)],
         capture_output=True,
         text=True,
         check=False,
@@ -405,7 +424,13 @@ def _resolve_install_python() -> Path:
     return Path(sys.executable)
 
 
-def _pip_install(python: Path) -> None:
+def _pip_install(python: Path, packages: list[str] | None = None) -> None:
+    if packages:
+        subprocess.run(
+            [str(python), "-m", "pip", "install", *packages],
+            check=True,
+        )
+        return
     subprocess.run(
         [str(python), "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)],
         check=True,
@@ -424,53 +449,61 @@ def _reexec(python: Path, entry_script: Path, argv: list[str]) -> None:
     os.execv(str(python), args)
 
 
-def _ensure_dependencies(*, quiet: bool = False) -> Path | None:
+def _ensure_dependencies(*, quiet: bool = False, mode: str = "desktop") -> Path | None:
     """Install missing dependencies. Returns venv python when caller must re-exec."""
-    missing = _missing_requirements()
+    required = _required_imports(mode)
+    missing = _missing_requirements(required)
     if not missing:
         if not quiet:
             print("Dependency check passed.")
         return None
 
-    if not REQUIREMENTS_FILE.is_file():
-        raise RuntimeError(f"Requirements file not found: {REQUIREMENTS_FILE}")
-
     print("Missing dependencies, installing automatically: " + ", ".join(missing))
     install_python = _resolve_install_python()
     try:
-        _pip_install(install_python)
+        # CLI / Shell 只装缺失的核心包，避免在无显示环境拉 PyQt6
+        if mode == "desktop":
+            _pip_install(install_python)
+        else:
+            _pip_install(install_python, missing)
     except subprocess.CalledProcessError:
         if _different_executable_path(install_python, Path(sys.executable)):
             raise
         install_python = _ensure_project_venv()
-        _pip_install(install_python)
+        if mode == "desktop":
+            _pip_install(install_python)
+        else:
+            _pip_install(install_python, missing)
 
     if _different_executable_path(install_python, Path(sys.executable)):
         return install_python
 
-    remaining = _missing_requirements()
+    remaining = _missing_requirements(required)
     if remaining:
         raise RuntimeError("Still unimportable after installation: " + ", ".join(remaining))
     print("Dependencies installed.")
     return None
 
 
-def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None) -> None:
+def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None, mode: str = "cli") -> None:
     """Ensure dependencies and re-exec into the project venv when needed."""
     argv = list(argv or [])
+    required = _required_imports(mode)
     venv_python = _venv_python_path()
 
     if venv_python.is_file() and not _running_in_project_venv():
         print(f"Using project virtual environment: {VENV_DIR}")
         _reexec(venv_python, entry_script, argv)
 
-    reexec_python = _ensure_dependencies()
+    reexec_python = _ensure_dependencies(mode=mode)
     if reexec_python is not None:
         print(f"Switched to project virtual environment: {VENV_DIR}")
         _reexec(reexec_python, entry_script, argv)
 
-    if _missing_requirements():
-        raise RuntimeError("Still unimportable after installation: " + ", ".join(_missing_requirements()))
+    if _missing_requirements(required):
+        raise RuntimeError(
+            "Still unimportable after installation: " + ", ".join(_missing_requirements(required))
+        )
 
 
 if __name__ == "__main__":
