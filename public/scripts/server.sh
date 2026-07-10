@@ -43,11 +43,14 @@ rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
 # If login-shell MPICH libraries shadow Intel MPI, prepend Intel runtime libs after probe.
 # Edit _WW3_INTEL_LD when moving to another host; hosts without this issue skip the export.
-_WW3_INTEL_LD="/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib/release:/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib:/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/libfabric/lib:/public/home/weiyl001/intel/compilers_and_libraries_2019.0.117/linux/compiler/lib/intel64_lin:/public/home/weiyl001/software/netcdf/lib"
+_WW3_INTEL_MPI_BIN="/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/bin"
+_WW3_INTEL_LD="/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib/release:/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib:/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/libfabric/lib:/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/compiler/lib/intel64_lin:/public/home/weiyl001/bin/deps/netcdf/lib"
 ensure_ww3_mpi_runtime() {
     if [ -n "${WW3_MPI_RUNTIME_FIXED:-}" ]; then
         return 0
     fi
+    # Prefer Intel mpirun over login-shell MPICH; avoids Slurm pmi_args parse errors in ww3_prnc.
+    export PATH="${_WW3_INTEL_MPI_BIN}:${PATH}"
     local probe
     probe=$(ww3_grid 2>&1 | head -8 || true)
     if echo "$probe" | grep -q "mpi_f08_compile_constants_mp_mpi_comm_world_\|symbol lookup error"; then
@@ -60,6 +63,23 @@ ensure_ww3_mpi_runtime() {
         fi
     fi
     WW3_MPI_RUNTIME_FIXED=1
+}
+
+# ww3_prnc: MPI build under Slurm may invoke MPICH mpiexec with unsupported pmi_args.
+run_ww3_prnc_cmd() {
+    echo -e "
+============================== Running mpirun -n 1 ww3_prnc ==============================" >> "$LOG"
+    mpirun -n 1 ww3_prnc >> "$LOG" 2>&1
+    local rc=$?
+    if [ "$rc" -eq 0 ]; then
+        return 0
+    fi
+    echo -e "
+============================== mpirun ww3_prnc failed (exit $rc); retrying direct ww3_prnc ==============================" >> "$LOG"
+    env -u PMI_RANK -u PMI_SIZE -u PMI_FD -u PMI_JOB -u PMI_PROCESS -u PMI_MMU \
+        -u PMIX_NAMESPACE -u PMIX_RANK -u SLURM_MPI_TYPE -u OMPI_MCA_ess \
+        ww3_prnc >> "$LOG" 2>&1
+    return $?
 }
 
 # Abort the run: drop a 'fail' marker (keep run.log) and exit with the given code
@@ -87,36 +107,36 @@ run_step() {
 run_prnc_with_fields() {
     if [ -f "ww3_prnc_current.nml" ] || [ -f "ww3_prnc_level.nml" ] || [ -f "ww3_prnc_ice.nml" ] || [ -f "ww3_prnc_ice1.nml" ]; then
         # Multiple forcing files found; process sequentially
-        run_step "ww3_prnc (wind)" ww3_prnc
+        run_step "ww3_prnc (wind)" run_ww3_prnc_cmd
         mv ww3_prnc.nml ww3_prnc_wind.nml
 
         if [ -f "ww3_prnc_current.nml" ]; then
             mv ww3_prnc_current.nml ww3_prnc.nml
-            run_step "ww3_prnc (current)" ww3_prnc
+            run_step "ww3_prnc (current)" run_ww3_prnc_cmd
             mv ww3_prnc.nml ww3_prnc_current.nml
         fi
 
         if [ -f "ww3_prnc_level.nml" ]; then
             mv ww3_prnc_level.nml ww3_prnc.nml
-            run_step "ww3_prnc (level)" ww3_prnc
+            run_step "ww3_prnc (level)" run_ww3_prnc_cmd
             mv ww3_prnc.nml ww3_prnc_level.nml
         fi
 
         if [ -f "ww3_prnc_ice.nml" ]; then
             mv ww3_prnc_ice.nml ww3_prnc.nml
-            run_step "ww3_prnc (ice)" ww3_prnc
+            run_step "ww3_prnc (ice)" run_ww3_prnc_cmd
             mv ww3_prnc.nml ww3_prnc_ice.nml
         fi
 
         if [ -f "ww3_prnc_ice1.nml" ]; then
             mv ww3_prnc_ice1.nml ww3_prnc.nml
-            run_step "ww3_prnc (ice1)" ww3_prnc
+            run_step "ww3_prnc (ice1)" run_ww3_prnc_cmd
             mv ww3_prnc.nml ww3_prnc_ice1.nml
         fi
 
         mv ww3_prnc_wind.nml ww3_prnc.nml
     else
-        run_step "ww3_prnc" ww3_prnc
+        run_step "ww3_prnc" run_ww3_prnc_cmd
     fi
 }
 

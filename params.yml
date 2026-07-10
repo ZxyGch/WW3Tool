@@ -237,14 +237,14 @@ slurm:
   mem: 190G
   server_st:
     use: ST2
-    ST2: /public/home/weiyl001/software/wavewatch3/model/exe
-    ST4: /public/home/weiyl001/software2/ww4/model/exe
-    ST6: /public/home/weiyl001/software2/ww6/model/exe
-    ST6A: /public/home/weiyl001/software2/ww6a/model/exe
-    ST6B: /public/home/weiyl001/software2/ww6b/model/exe
-    7.14 ST2: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST2/bin
-    7.14 ST4: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST4/bin
-    7.14 ST6: /public/home/weiyl001/software/ww3_714/WW3-develop/install_ST6/bin
+    ST2: /public/home/weiyl001/bin/wavewatch3/6.07/st2/model/exe
+    ST4: /public/home/weiyl001/bin/wavewatch3/6.07/st4/model/exe
+    ST6: /public/home/weiyl001/bin/wavewatch3/6.07/st6/model/exe
+    ST6A: /public/home/weiyl001/bin/wavewatch3/6.07/st6a/model/exe
+    ST6B: /public/home/weiyl001/bin/wavewatch3/6.07/st6b/model/exe
+    7.14 ST2: /public/home/weiyl001/bin/wavewatch3/7.14/st2/bin
+    7.14 ST4: /public/home/weiyl001/bin/wavewatch3/7.14/st4/bin
+    7.14 ST6: /public/home/weiyl001/bin/wavewatch3/7.14/st6/bin
 # ────────────────────────────────────────────────────────────────────
 # Local WW3 run settings (Step 5 local execution panel).
 #   local_st – local WW3 binaries: use + name: path (multi-scheme only).
@@ -339,7 +339,7 @@ server:
   user: null
   password: null
   key_file: null
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/oldWorkSpace/
   remote_dir: ''
   ssh_config_host: SHOU
 # ────────────────────────────────────────────────────────────────────
@@ -369,5 +369,4 @@ desktop:
   recent_workdirs:
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-07-04_15-08-53
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-29_16-57-02
-  - /Volumes/Zxy's Disk/WW3Tool_workSpace/2021/ARR_20210223T0200_0038
   forcing_field_dir: /Users/zxy/ocean/Paper/WW3Tool/public/forcing

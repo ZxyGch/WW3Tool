@@ -203,13 +203,61 @@ job_state() {
         return
     fi
     if command -v sacct >/dev/null 2>&1; then
-        state="$(sacct -n -X -P -j "$job_id" --format=State,ExitCode --starttime="${started_at%% *}" 2>/dev/null | awk -F'|' 'NF {print $1 "|" $2; exit}')"
+        # 不用 --starttime 过滤：作业可能在 watcher 之前就已提交/开跑
+        state="$(sacct -n -X -P -j "$job_id" --format=State,ExitCode 2>/dev/null | awk -F'|' 'NF {print $1 "|" $2; exit}')"
         if [ -n "$state" ]; then
             echo "$state"
             return
         fi
     fi
     echo "UNKNOWN_DONE"
+}
+
+# sacct Elapsed 形如 02:15:33 或 1-12:30:00 → 秒
+sacct_elapsed_to_seconds() {
+    local e="${1// /}"
+    if [ -z "$e" ] || [ "$e" = "None" ] || [ "$e" = "00:00:00" ]; then
+        echo 0
+        return
+    fi
+    local days=0 rest="$e"
+    if [[ "$e" == *-* ]]; then
+        days="${e%%-*}"
+        rest="${e#*-}"
+    fi
+    local h m s
+    IFS=':' read -r h m s <<< "$rest"
+    h="${h#0}"; [ -z "$h" ] && h=0
+    m="${m#0}"; [ -z "$m" ] && m=0
+    s="${s#0}"; [ -z "$s" ] && s=0
+    echo $(( days * 86400 + h * 3600 + m * 60 + s ))
+}
+
+job_elapsed_seconds() {
+    job_id="$1"
+    if ! command -v sacct >/dev/null 2>&1; then
+        return 1
+    fi
+    local raw
+    raw="$(sacct -n -X -P -j "$job_id" --format=Elapsed 2>/dev/null | head -1 | tr -d '[:space:]')"
+    if [ -z "$raw" ] || [ "$raw" = "None" ]; then
+        return 1
+    fi
+    sacct_elapsed_to_seconds "$raw"
+}
+
+job_started_at() {
+    job_id="$1"
+    if command -v sacct >/dev/null 2>&1; then
+        local t
+        t="$(sacct -n -X -P -j "$job_id" --format=Start 2>/dev/null | head -1 | tr -d '[:space:]')"
+        if [ -n "$t" ] && [ "$t" != "None" ]; then
+            # sacct 常见格式 2026-07-09T12:55:21 或 2026-07-09T12:55:21+0800
+            printf '%s' "$t" | tr 'T' ' ' | cut -c1-19
+            return
+        fi
+    fi
+    echo "$started_at"
 }
 
 workdir_state() {
@@ -279,13 +327,18 @@ notify_finished_job() {
     if [ -f "$state_dir/job_${job_id}.done" ]; then
         return 0
     fi
-    local jname elapsed_secs elapsed_text finished_at
+    local jname elapsed_secs elapsed_text finished_at job_started
     jname="$(job_name "$job_id")"
     finished_at="$(date '+%F %T')"
-    elapsed_secs=$(($(date '+%s') - start_epoch))
+    job_started="$(job_started_at "$job_id")"
+    if elapsed_secs="$(job_elapsed_seconds "$job_id" 2>/dev/null)" && [ "${elapsed_secs:-0}" -gt 0 ]; then
+        :
+    else
+        elapsed_secs=$(($(date '+%s') - start_epoch))
+    fi
     elapsed_text="$(format_elapsed "$elapsed_secs")"
     {
-        echo "Started: ${started_at}"
+        echo "Started: ${job_started}"
         echo "Finished: ${finished_at}"
         echo "JobID: ${job_id}"
         echo "JobName: ${jname}"
@@ -341,7 +394,12 @@ Jobs:
 "
             for job in $NTFY_JOBS; do
                 state="$(job_state "$job")"
-                summary="${summary}- JobID ${job}: $(clean_state "$state")
+                js="$(job_elapsed_seconds "$job" 2>/dev/null || echo 0)"
+                el_suffix=""
+                if [ "${js:-0}" -gt 0 ]; then
+                    el_suffix=" elapsed=$(format_elapsed "$js")"
+                fi
+                summary="${summary}- JobID ${job}: $(clean_state "$state")${el_suffix}
 "
                 case "$state" in
                     ACTIVE*) active=$((active + 1)) ;;
@@ -406,7 +464,17 @@ Timeout reached while ${active} target(s) were still active.
         title="❌ Fail"
     fi
     finished_at="$(date '+%F %T')"
+    max_job_elapsed=0
+    if [ -n "$NTFY_JOBS" ]; then
+        for job in $NTFY_JOBS; do
+            js="$(job_elapsed_seconds "$job" 2>/dev/null || echo 0)"
+            [ "${js:-0}" -gt "$max_job_elapsed" ] && max_job_elapsed="$js"
+        done
+    fi
     elapsed=$(($(date '+%s') - start_epoch))
+    if [ "$max_job_elapsed" -gt 0 ]; then
+        elapsed="$max_job_elapsed"
+    fi
     summary="${summary}
 Finished: ${finished_at}
 Elapsed: $(format_elapsed "$elapsed")
