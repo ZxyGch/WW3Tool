@@ -2548,5 +2548,11 @@
   "step4_smc_rect_inferred_from_bathy": "ℹ️ SMC：grid.json 无 ww3_rect，已从 bathymetry_file 推断 &RECT_NML；建议重新运行 smc_generator/create_grid.py 以便写入 ww3_rect。",
   "step4_smc_rect_parse_failed": "⚠️ SMC：无法从 grid.json（ww3_rect 或 bathymetry_file）解析底网格，&RECT_NML 可能仍为模板值（如 NX=301），ww3_grid 会报 SMC longitude 越界。",
   "step4_ww3_ounp_drop_spectra_type": "✅ 已按 WW3 {ver} 从 ww3_ounp.nml 移除不支持的 SPECTRA%TYPE 行",
-  "step5_local_st_not_configured": "未配置本地 ST"
+  "step5_local_st_not_configured": "未配置本地 ST",
+  "ref_data_download_confirm": "是否下载？[y/N]: ",
+  "ref_data_download_skipped": "已跳过下载，无法生成网格",
+  "cli_help_download_ref_data": "reference_data 缺失时自动从 GitHub 下载（约 6.5 GB）",
+  "cli_help_no_download_ref_data": "reference_data 缺失时直接报错，不自动下载",
+  "cli_ref_data_conflict": "❌ --download-ref-data 与 --no-download-ref-data 不能同时使用",
+  "cli_ref_data_missing_non_tty": "❌ reference_data 缺失。非交互式环境请使用 --download-ref-data 自动下载，或 --no-download-ref-data 明确拒绝。"
 }

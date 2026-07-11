@@ -31,7 +31,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from ..runtime_config import (
     SMC_GRID_JSON_DEFAULTS,
@@ -101,6 +101,47 @@ def _check_reference_data(ref_dir: Path) -> None:
             + f"\n目录：{ref_dir}"
             + "\n" + "\n".join(diag_lines)
         )
+
+
+def list_missing_reference_data(config: GridConfig) -> tuple[Path, list[str]]:
+    """返回 reference_data 目录及缺失的必要文件清单。
+
+    [EN] Return the reference_data directory and a list of missing required files.
+    """
+    ref_dir = _reference_dir(config)
+    missing = [name for name in REFERENCE_DATA_REQUIRED_FILES if not (ref_dir / name).exists()]
+    return ref_dir, missing
+
+
+def _import_get_reference_data_module() -> Any:
+    """动态导入 meshgen/get_reference_data.py（meshgen 可能不在 sys.path 中）。
+
+    [EN] Dynamically import meshgen/get_reference_data.py since meshgen may not be on sys.path.
+    """
+    import importlib.util as _ilu
+
+    meshgen_path = Path(get_project_meshgen_path())
+    module_path = meshgen_path.parent / "meshgen" / "get_reference_data.py"
+    spec = _ilu.spec_from_file_location("get_reference_data", str(module_path))
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"未找到 reference_data 下载脚本：{module_path}")
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def download_reference_data(config: GridConfig, log: Callable[[str], None]) -> None:
+    """从 GitHub Release 下载并解压 reference_data 到配置目录。
+
+    [EN] Download and extract reference_data from the GitHub Release to the configured directory.
+    """
+    ref_dir, missing = list_missing_reference_data(config)
+    if not missing:
+        log(tr("ref_data_download_complete", "✅ reference_data 已存在，无需下载"))
+        return
+    work_dir = ref_dir.parent
+    mod = _import_get_reference_data_module()
+    mod.download_reference_data_github(work_dir, ref_dir, log=lambda msg, **kw: log(str(msg)))
 
 
 # 用户面板的测深源名称 -> pygridgen ref_grid（亦即缓存键中标识测深数据的稳定名称）。
@@ -578,6 +619,8 @@ def _save_unstructured_cache(cache_key: str, grid_file: Path, grid_json: Dict[st
 
 
 def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
+    ref_dir = _reference_dir(config.grid)
+    _check_reference_data(ref_dir)
     root = Path(get_project_meshgen_path())
     smc_dir = root / "smc_generator"
     cfg = json.loads(json.dumps(SMC_GRID_JSON_DEFAULTS))
@@ -665,6 +708,8 @@ def _generate_smc(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool
 
 
 def _generate_unstructured(config: PipelineConfig, logger: CoreLogger, *, use_cache: bool = True) -> None:
+    ref_dir = _reference_dir(config.grid)
+    _check_reference_data(ref_dir)
     root = Path(get_project_meshgen_path())
     unst_dir = root / "unstructured_generator"
     mesh_workspace = _unstructured_workspace_dir(config.workdir.path)

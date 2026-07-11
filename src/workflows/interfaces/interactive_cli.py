@@ -714,6 +714,17 @@ class InteractiveCLI(cmd.Cmd):
             return False
         return True
 
+    def _prompt_download_ref_data(self, ref_dir: str, missing: list[str]) -> bool:
+        """交互式询问是否下载缺失的 reference_data。
+
+        [EN] Interactively ask whether to download missing reference_data.
+        """
+        try:
+            ans = input(_warn(tr("ref_data_download_confirm", "是否下载？[y/N]: ")))
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return ans.strip().lower() in {"y", "yes", "是"}
+
     def _log_callback(self, message: str) -> None:
         """日志回调函数，实时输出到终端。
 
@@ -879,7 +890,15 @@ class InteractiveCLI(cmd.Cmd):
         if not self._reload_config_for_stage("grid"):
             return
         try:
-            from ..application.grid_preparation import run_generate_grid
+            from ..application.grid_preparation import ensure_reference_data, run_generate_grid
+
+            if not ensure_reference_data(
+                self._config,
+                log=self._log_callback,
+                prompt_callback=self._prompt_download_ref_data,
+            ):
+                print(_warn(tr("ref_data_download_skipped", "已跳过下载，无法生成网格")))
+                return
             print(_info(tr("icli_start_grid", "▶ 开始生成网格...")))
             run_generate_grid(self._config, log=self._log_callback, use_cache=True)
             print(_success(tr("icli_done_grid", "✅ 网格生成完成")))
@@ -897,6 +916,15 @@ class InteractiveCLI(cmd.Cmd):
             return
         try:
             from ..application.preprocessing_workflow import run_pipeline
+            from ..application.grid_preparation import ensure_reference_data
+
+            if not ensure_reference_data(
+                self._config,
+                log=self._log_callback,
+                prompt_callback=self._prompt_download_ref_data,
+            ):
+                print(_warn(tr("ref_data_download_skipped", "已跳过下载，无法生成网格")))
+                return
             print(_info(tr("icli_start_pipeline", "▶ 开始完整预处理...")))
             run_pipeline(
                 self._config,

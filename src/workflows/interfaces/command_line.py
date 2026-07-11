@@ -207,6 +207,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "[workdir] Run only grid generation"))
     p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_grid.add_argument(
+        "--download-ref-data",
+        action="store_true",
+        help=tr("cli_help_download_ref_data", "Automatically download missing reference_data (~6.5 GB)"),
+    )
+    p_grid.add_argument(
+        "--no-download-ref-data",
+        action="store_true",
+        help=tr("cli_help_no_download_ref_data", "Fail immediately if reference_data is missing"),
+    )
 
     p_recgrid = sub.add_parser(
         "recommend-grid",
@@ -227,6 +237,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("cli_help_run_workflow", "[workdir] Run full preprocessing (forcing → grid → WW3 namelist)"),
     )
     p_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_run.add_argument(
+        "--download-ref-data",
+        action="store_true",
+        help=tr("cli_help_download_ref_data", "Automatically download missing reference_data (~6.5 GB)"),
+    )
+    p_run.add_argument(
+        "--no-download-ref-data",
+        action="store_true",
+        help=tr("cli_help_no_download_ref_data", "Fail immediately if reference_data is missing"),
+    )
 
     p_prepare_ww3 = sub.add_parser(
         "prepare-ww3",
@@ -432,6 +452,51 @@ def _run_workdir(path: str) -> int:
         return 1
 
 
+def _resolve_reference_data_cli(config, args) -> bool:
+    """根据 CLI 参数处理 reference_data 缺失：自动下载、询问或报错。
+
+    返回 True 表示已就绪，False 表示无法继续。
+    """
+    from ..application.grid_preparation import ensure_reference_data
+
+    auto_download = bool(getattr(args, "download_ref_data", False))
+    no_download = bool(getattr(args, "no_download_ref_data", False))
+    if auto_download and no_download:
+        print(
+            tr("cli_ref_data_conflict", "❌ --download-ref-data 与 --no-download-ref-data 不能同时使用"),
+            file=sys.stderr,
+        )
+        return False
+
+    if no_download:
+        # 只检查，不下载，缺失时 ensure_reference_data 会打印提示并返回 False
+        return ensure_reference_data(config, log=print, auto_download=False)
+
+    if auto_download:
+        return ensure_reference_data(config, log=print, auto_download=True)
+
+    # 未指定旗帜时：TTY 询问，非 TTY 报错
+    if sys.stdin.isatty():
+
+        def _prompt(ref_dir: str, missing: list[str]) -> bool:
+            try:
+                ans = input(tr("ref_data_download_confirm", "是否下载？[y/N]: "))
+            except (EOFError, KeyboardInterrupt):
+                return False
+            return ans.strip().lower() in {"y", "yes", "是"}
+
+        return ensure_reference_data(config, log=print, prompt_callback=_prompt)
+
+    print(
+        tr(
+            "cli_ref_data_missing_non_tty",
+            "❌ reference_data 缺失。非交互式环境请使用 --download-ref-data 自动下载，或 --no-download-ref-data 明确拒绝。",
+        ),
+        file=sys.stderr,
+    )
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI 主入口：解析命令、加载配置并执行对应用例。
 
@@ -538,6 +603,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "generate-grid":
             from ..application.grid_preparation import run_generate_grid
+
+            if not _resolve_reference_data_cli(config, args):
+                return 1
             run_generate_grid(config, log=print, use_cache=True)
             return 0
 
@@ -547,6 +615,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "run-workflow":
             from ..application.preprocessing_workflow import run_pipeline
+
+            if not _resolve_reference_data_cli(config, args):
+                return 1
             run_pipeline(
                 config,
                 log=print,

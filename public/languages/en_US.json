@@ -2548,5 +2548,11 @@
   "step4_smc_rect_inferred_from_bathy": "ℹ️ SMC: grid.json has no ww3_rect; inferred &RECT_NML from bathymetry_file. Re-run smc_generator/create_grid.py to write ww3_rect.",
   "step4_smc_rect_parse_failed": "⚠️ SMC: cannot parse base grid from grid.json (ww3_rect or bathymetry_file); &RECT_NML may still be template values (e.g. NX=301), ww3_grid may report SMC longitude out of range.",
   "step4_ww3_ounp_drop_spectra_type": "✅ Removed unsupported SPECTRA%TYPE line from ww3_ounp.nml for WW3 {ver}",
-  "step5_local_st_not_configured": "Local ST not configured"
+  "step5_local_st_not_configured": "Local ST not configured",
+  "ref_data_download_confirm": "Download? [y/N]: ",
+  "ref_data_download_skipped": "Skipped download; cannot generate grid",
+  "cli_help_download_ref_data": "Automatically download missing reference_data from GitHub (~6.5 GB)",
+  "cli_help_no_download_ref_data": "Fail immediately if reference_data is missing instead of downloading",
+  "cli_ref_data_conflict": "❌ --download-ref-data and --no-download-ref-data cannot be used together",
+  "cli_ref_data_missing_non_tty": "❌ reference_data is missing. In non-interactive mode use --download-ref-data to download or --no-download-ref-data to decline."
 }

@@ -26,10 +26,14 @@ Input/Output
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from ..domain.config_models import PipelineConfig
-from ..infrastructure.adapters.grid_generation_adapter import generate_grid
+from ..infrastructure.adapters.grid_generation_adapter import (
+    download_reference_data,
+    generate_grid,
+    list_missing_reference_data,
+)
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
 from .configuration import validate_pipeline_config
@@ -52,6 +56,62 @@ class GridGenerationResult:
 
     workdir: str
     messages: List[str] = field(default_factory=list)
+
+
+def ensure_reference_data(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    auto_download: bool = False,
+    prompt_callback: Optional[Callable[[str, list[str]], bool]] = None,
+) -> bool:
+    """检查 reference_data 是否完整，必要时自动下载或交互式询问。
+
+    参数:
+        config: 流水线配置。
+        log: 日志回调。
+        auto_download: 缺失时是否直接下载（非交互式脚本使用）。
+        prompt_callback: 交互式询问回调，接收 (ref_dir, missing) 返回 True/False。
+
+    返回:
+        True 表示 reference_data 已就绪；False 表示用户拒绝下载且数据缺失。
+
+    [EN] Check whether reference_data is complete and download or prompt when missing.
+
+    Args:
+        config: Pipeline configuration.
+        log: Optional log callback.
+        auto_download: Download directly when files are missing (for non-interactive scripts).
+        prompt_callback: Interactive prompt callback receiving (ref_dir, missing), returning True/False.
+
+    Returns:
+        True if reference_data is ready; False if the user declined and data is still missing.
+    """
+    _log = log or print
+    ref_dir, missing = list_missing_reference_data(config.grid)
+    if not missing:
+        return True
+
+    _log(
+        tr(
+            "ref_data_missing_prompt",
+            "reference_data 目录中缺少必要的数据文件（海岸线、地形等），无法生成网格。\n\n路径：{path}\n\n是否从 GitHub 下载？（约 6.5 GB）",
+        ).format(path=ref_dir)
+    )
+
+    if auto_download:
+        _log(tr("ref_data_downloading", "📥 正在下载 reference_data（约 6.5 GB），请耐心等待..."))
+        download_reference_data(config.grid, log=_log)
+        return True
+
+    if prompt_callback is not None:
+        if prompt_callback(str(ref_dir), missing):
+            _log(tr("ref_data_downloading", "📥 正在下载 reference_data（约 6.5 GB），请耐心等待..."))
+            download_reference_data(config.grid, log=_log)
+            return True
+        return False
+
+    return False
 
 
 def run_generate_grid(
