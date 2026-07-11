@@ -40,7 +40,11 @@ _TITLE = "在地图上选点（点击地图选择点位，可多选）"
 
 
 class MapPointPickerDialog(MessageBoxBase):
-    """卡片式选点对话框：左侧地图画布，右侧确认/取消/删除上一个点。"""
+    """卡片式选点对话框：左侧地图画布，右侧确认/取消/删除上一个点。
+
+    [EN] Card-style point-picker dialog: map canvas on the left, confirm / cancel /
+    delete-last-point buttons on the right.
+    """
 
     def __init__(
         self,

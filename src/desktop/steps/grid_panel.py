@@ -18,7 +18,11 @@ from workflows.support.translations import tr
 
 
 def _contract(bounds: list[float], factor: float) -> list[float]:
-    """把 [min,max] 区间按 factor 向中心收缩（factor>1 收紧）。"""
+    """把 [min,max] 区间按 factor 向中心收缩（factor>1 收紧）。
+
+    [EN] Shrink the [min,max] range toward its center by ``factor`` (``factor>1``
+    tightens the range).
+    """
     center = (bounds[0] + bounds[1]) / 2
     half = abs(bounds[1] - bounds[0]) / (2 * factor)
     return [center - half, center + half]
@@ -26,7 +30,12 @@ def _contract(bounds: list[float], factor: float) -> list[float]:
 
 class _LevelCard(QWidget):
     """一层（level1…levelN）嵌套网格的输入卡片：dx/dy、经纬度边界、
-    可选积分步/输出步。增删由面板底部的统一按钮控制。"""
+    可选积分步/输出步。增删由面板底部的统一按钮控制。
+
+    [EN] Input card for one nested level (level1…levelN): dx/dy, lon/lat bounds,
+    and optional integration/output steps. Adding/removing levels is controlled by
+    the unified buttons at the bottom of the panel.
+    """
 
     def __init__(
         self,
@@ -41,6 +50,8 @@ class _LevelCard(QWidget):
 
         root = QVBoxLayout(self)
         # 左右不内缩，使卡片字段与上方 level0 网格参数左右对齐；仅留上下间距
+        # [EN] No left/right margins so card fields align with the level0 grid fields
+        # above; only top/bottom spacing is kept.
         root.setContentsMargins(0, 6, 0, 6)
         root.setSpacing(8)
 
@@ -124,7 +135,11 @@ class _LevelCard(QWidget):
             self.fields["lat_north"].setText(f"{region.lat[1]:.4f}")
 
     def region_floats(self):
-        """返回 (dx, dy, lon, lat) 浮点；任一字段无法解析时返回 None（供校验/套娃用）。"""
+        """返回 (dx, dy, lon, lat) 浮点；任一字段无法解析时返回 None（供校验/套娃用）。
+
+        [EN] Return (dx, dy, lon, lat) as floats; return ``None`` if any field cannot
+        be parsed (used for validation / nesting).
+        """
         try:
             return (
                 float(self.fields["dx"].text()),
@@ -195,6 +210,7 @@ class GridStepPanel:
         type_grid.addWidget(self.mesh_type_combo, 1, 1)
 
         # level0（最粗 / 主域）参数块
+        # [EN] Level0 (coarsest / master domain) parameter block.
         self.outer_grid_title = section_title(tr("step2_level0_params", "level0（最粗）网格参数"))
         self.outer_grid_title.hide()
         layout.addWidget(self.outer_grid_title)
@@ -209,6 +225,7 @@ class GridStepPanel:
         layout.addLayout(outer_grid)
 
         # level1…levelN：可增删层卡片列表
+        # [EN] level1…levelN: list of addable/removable level cards.
         self.levels_widget = QWidget()
         self.levels_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         levels_layout = QVBoxLayout(self.levels_widget)
@@ -235,6 +252,7 @@ class GridStepPanel:
         layout.addLayout(type_grid)
 
         # SMC 内联参数（选择 SMC 网格时显示）
+        # [EN] SMC inline parameters (shown when SMC mesh is selected).
         self.smc_params_widget = QWidget()
         smc_layout = QGridLayout(self.smc_params_widget)
         smc_layout.setContentsMargins(0, 0, 0, 0)
@@ -245,6 +263,7 @@ class GridStepPanel:
         layout.addWidget(self.smc_params_widget)
 
         # 非结构网格内联参数（选择非结构网格时显示）
+        # [EN] Unstructured-mesh inline parameters (shown when unstructured mesh is selected).
         self.unst_params_widget = QWidget()
         unst_layout = QGridLayout(self.unst_params_widget)
         unst_layout.setContentsMargins(0, 0, 0, 0)
@@ -273,6 +292,7 @@ class GridStepPanel:
         self.grid_button = create_button(tr("step2_create_grid", "生成网格"), generate_grid)
         self.visualize_button = create_button(tr("step2_visualize_grid", "网格可视化"), visualize_grid)
         # 添加/删除层并排一行（嵌套模式）
+        # [EN] Add/delete level buttons in one row (nested mode).
         level_btn_row = QHBoxLayout()
         level_btn_row.setContentsMargins(0, 0, 0, 0)
         level_btn_row.setSpacing(10)
@@ -310,10 +330,12 @@ class GridStepPanel:
 
     def render(self, grid: GridConfig) -> None:
         # 阻止 combo 信号级联，避免 handler 在 render 过程中重置值和可见性
+        # [EN] Block combo signal cascades so handlers don't reset values/visibility during render.
         self.grid_type_combo.blockSignals(True)
         self.mesh_type_combo.blockSignals(True)
         try:
             # level0 / 主网格 ← grid.outer（= nested_levels[0]）
+            # [EN] level0 / master grid ← grid.outer (= nested_levels[0]).
             self.set_value("grid_dx", f"{grid.outer.dx:g}")
             self.set_value("grid_dy", f"{grid.outer.dy:g}")
             self.set_value("grid_lon_west", f"{grid.outer.lon[0]:.4f}")
@@ -337,6 +359,7 @@ class GridStepPanel:
                 if grid.unstructured.deep_ocean_threshold_m is not None:
                     self._unst_deep_threshold.setText(str(grid.unstructured.deep_ocean_threshold_m))
             # 重建 level1…levelN 卡片
+            # [EN] Rebuild level1…levelN cards.
             self._clear_cards()
             for region in (grid.nested_levels or [])[1:]:
                 card = self._make_card()
@@ -348,6 +371,7 @@ class GridStepPanel:
             self.grid_type_combo.blockSignals(False)
             self.mesh_type_combo.blockSignals(False)
         # 所有值设置完毕后再应用可见性状态
+        # [EN] Apply visibility states only after all values have been set.
         self._on_grid_type_changed()
         self._on_mesh_type_changed()
         self._validate_levels()
@@ -427,6 +451,7 @@ class GridStepPanel:
         from workflows.domain.timestep_recommendation import cfl_spacing_meters
 
         idx = self.mesh_type_combo.currentIndex()  # 0 结构化, 1 SMC, 2 非结构化
+        # [EN] 0 = structured, 1 = SMC, 2 = unstructured.
         if idx == 2:  # unstructured
             try:
                 hmin = float(self._unst_hmin.text().strip())
@@ -434,6 +459,7 @@ class GridStepPanel:
                 return None, "need_hmin"
             return cfl_spacing_meters("unstructured", hmin_km=hmin)
         # 结构化 / SMC：度制基准格距 + 纬度
+        # [EN] Structured / SMC: degree-based base spacing + latitude.
         try:
             dx = float(self.fields["grid_dx"].text().strip())
             dy = float(self.fields["grid_dy"].text().strip())
@@ -442,6 +468,7 @@ class GridStepPanel:
         except ValueError:
             return None, "need_grid"
         # 嵌套时用最细层的 dx/dy（CFL 由最细网格决定）
+        # [EN] For nested grids use the finest-level dx/dy (CFL is governed by the finest grid).
         if self.is_nested and self.level_cards:
             finest = self.level_cards[-1].region_floats()
             if finest is not None:
@@ -513,6 +540,7 @@ class GridStepPanel:
         self.fields[key].setText(str(value))
 
     # ── 层卡片管理 ──────────────────────────────────────────────
+    # [EN] Level-card management.
 
     def _make_card(self) -> _LevelCard:
         return _LevelCard(
@@ -537,6 +565,7 @@ class GridStepPanel:
 
     def _delete_last_level(self) -> None:
         # 删最后一层；至少保留 level0 + 1 层（即 ≥1 张卡），不允许删光
+        # [EN] Delete the last level; keep at least level0 + 1 level (i.e. ≥1 card).
         if len(self.level_cards) <= 1:
             return
         card = self.level_cards.pop()
@@ -555,11 +584,13 @@ class GridStepPanel:
         n_cards = len(self.level_cards)
         for i, card in enumerate(self.level_cards):
             idx = i + 1  # level0 是主域块，卡片从 level1 起
+            # [EN] level0 is the master-domain block; cards start from level1.
             if i == n_cards - 1:
                 card.set_title(tr("step2_level_finest", "level{i}（最细）").format(i=idx))
             else:
                 card.set_title(tr("step2_level_n", "level{i}").format(i=idx))
         # 仅剩 1 层时禁止删除（保证嵌套至少 2 层）
+        # [EN] Disable delete when only one level remains (nested needs at least 2 levels).
         self.delete_level_button.setEnabled(n_cards > 1)
 
     def _last_level_floats(self):
@@ -586,7 +617,11 @@ class GridStepPanel:
             return 1.3
 
     def _auto_telescope(self) -> None:
-        """从 level0（主域）起，按收缩系数逐层往里算范围、dx 逐层减半，批量填好各层。"""
+        """从 level0（主域）起，按收缩系数逐层往里算范围、dx 逐层减半，批量填好各层。
+
+        [EN] Starting from level0 (master domain), shrink the range by the contraction
+        factor and halve dx for each successive level, filling all levels in batch.
+        """
         base = self._grid_region_floats()
         if base is None:
             return
@@ -602,7 +637,12 @@ class GridStepPanel:
         self._validate_levels()
 
     def _validate_levels(self) -> None:
-        """实时校验：逐层 dx 递减 + 套娃 + 层数 ≤ 99；违例在卡片下方红字提示。"""
+        """实时校验：逐层 dx 递减 + 套娃 + 层数 ≤ 99；违例在卡片下方红字提示。
+
+        [EN] Real-time validation: each finer level must have smaller dx, each level
+        must be nested inside the previous one, and total levels ≤ 99. Violations are
+        shown in red text below the cards.
+        """
         if not self.is_nested:
             self.levels_hint.hide()
             return
@@ -630,6 +670,7 @@ class GridStepPanel:
         self.levels_hint.setVisible(bool(hint))
 
     # ── 内部辅助 ────────────────────────────────────────────────
+    # [EN] Internal helpers.
 
     def _region_overrides(self, prefix: str) -> dict[str, object]:
         return {

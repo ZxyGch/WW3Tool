@@ -19,7 +19,10 @@ from workflows.support.translations import tr
 
 class LocalRunPanel:
     # [EN] Local run controls: ST version dropdown + run/stop + ounf/ounp/trnc.
-    """本地运行控件：ST 版本下拉框 + 运行/停止 + ounf/ounp/trnc。"""
+    """本地运行控件：ST 版本下拉框 + 运行/停止 + ounf/ounp/trnc。
+
+    [EN] Local run controls: ST version dropdown + run/stop + ounf/ounp/trnc.
+    """
 
     def __init__(
         self,
@@ -40,6 +43,7 @@ class LocalRunPanel:
 
         # [EN] Check if local ST versions are configured
         # 检查是否已配置本地 ST 版本
+        # [EN] Check whether local ST versions have been configured.
         self._local_st_versions = self._load_local_st_versions()
         self.st_combo: ComboBox | None = None
         self._st_row_widget: QWidget | None = None
@@ -99,7 +103,10 @@ class LocalRunPanel:
 
     @staticmethod
     def _load_local_st_versions() -> list[dict[str, str]]:
-        """从 runtime_config 读取已配置的本地 ST 版本列表。"""
+        """从 runtime_config 读取已配置的本地 ST 版本列表。
+
+        [EN] Read the configured local ST version list from runtime_config.
+        """
         try:
             config = runtime_config.load_full_config()
             versions = config.get("LOCAL_ST_VERSIONS")
@@ -116,6 +123,7 @@ class LocalRunPanel:
     def bin_dir(self) -> str:
         # [EN] If using ST version dropdown, look up the path from config
         # 如果使用 ST 版本下拉框，从配置中查找路径
+        # [EN] If the ST version dropdown is used, look up the executable path from config.
         if self.st_combo is not None and self._local_st_versions:
             selected = self.st_combo.currentText().strip()
             for ver in self._local_st_versions:

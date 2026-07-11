@@ -162,6 +162,7 @@ VENV_DIR = ROOT / ".venv"
 _LIGHT_CLI_COMMANDS = {"--help", "-h", "print-example", "workdir"}
 
 # 核心依赖（CLI / Shell / Desktop 共用）
+# [EN] Core dependencies shared by CLI, Shell, and Desktop.
 _CORE_REQUIRED_IMPORTS = {
     "numpy": "numpy",
     "netCDF4": "netCDF4",
@@ -179,12 +180,14 @@ _CORE_REQUIRED_IMPORTS = {
 }
 
 # 仅 Desktop / 交互式 GUI 需要
+# [EN] Required only for Desktop / interactive GUI.
 _GUI_REQUIRED_IMPORTS = {
     "PyQt6": "PyQt6.QtWidgets",
     "PyQt6-Fluent-Widgets": "qfluentwidgets",
 }
 
 # 向后兼容：完整依赖表
+# [EN] Backward-compatible full dependency map.
 _REQUIRED_IMPORTS = {**_CORE_REQUIRED_IMPORTS, **_GUI_REQUIRED_IMPORTS}
 
 

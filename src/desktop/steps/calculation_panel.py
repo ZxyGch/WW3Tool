@@ -165,7 +165,11 @@ class CalculationStepPanel:
 
     def _set_header_row(self, table: EdgeAlignedTableWidget, kind: str) -> None:
         # [EN] Write header cells in row 0 (matching src: hide Qt column headers, use first row as header).
-        """在第 0 行写入表头单元格（与 src 一致：隐藏 Qt 列头，用首行作表头）。"""
+        """在第 0 行写入表头单元格（与 src 一致：隐藏 Qt 列头，用首行作表头）。
+
+        [EN] Write header cells in row 0 (same as src: hide Qt column headers and use
+        the first row as the header).
+        """
         if table.rowCount() == 0:
             table.insertRow(0)
         for col, (title, _align) in enumerate(self._headers(kind)):
@@ -267,7 +271,11 @@ class CalculationStepPanel:
         self._notify_points_changed()
 
     def _replace_points_from_map(self, kind: str, points: list[dict]) -> None:
-        """用地图选点结果覆盖当前点位表（含删除已有/新增）。"""
+        """用地图选点结果覆盖当前点位表（含删除已有/新增）。
+
+        [EN] Overwrite the current point table with map-picking results (includes
+        deleting existing / adding new points).
+        """
         table = self._table(kind)
         rows: list[list] = []
         for p in points:
@@ -336,7 +344,11 @@ class CalculationStepPanel:
 
     def _selected_data_row(self, kind: str) -> int | None:
         # [EN] Currently selected data row (row 0 is header, returns ``None`` for no valid selection).
-        """当前选中数据行（第 0 行为表头，返回 ``None`` 表示无有效选择）。"""
+        """当前选中数据行（第 0 行为表头，返回 ``None`` 表示无有效选择）。
+
+        [EN] Currently selected data row (row 0 is the header; returns ``None`` when
+        there is no valid selection).
+        """
         row = self._table(kind).currentRow()
         return row if row >= 1 else None
 
@@ -349,7 +361,11 @@ class CalculationStepPanel:
 
     def _is_duplicate(self, kind: str, point: dict, *, exclude_row: int | None = None) -> bool:
         # [EN] Check if a point with the same coordinates or name already exists.
-        """检查是否存在相同坐标或名称的点位，可选排除某行（用于编辑场景）。"""
+        """检查是否存在相同坐标或名称的点位，可选排除某行（用于编辑场景）。
+
+        [EN] Check whether a point with the same coordinates or name already exists,
+        optionally excluding a row (used in the edit scenario).
+        """
         table = self._table(kind)
         new_lon = point.get("lon")
         new_lat = point.get("lat")
@@ -379,7 +395,11 @@ class CalculationStepPanel:
 
     def _resize_table_to_content(self, table: EdgeAlignedTableWidget) -> None:
         # [EN] Fix table height to total row height so it fully expands with no scrollbar.
-        """将表格高度固定为所有行的总高，使其完全展开、不出现滚动条。"""
+        """将表格高度固定为所有行的总高，使其完全展开、不出现滚动条。
+
+        [EN] Fix the table height to the total row height so it fully expands and
+        shows no scrollbar.
+        """
         table.expand_to_contents()
 
     def _write_row(self, kind: str, row: int, point: dict) -> None:
@@ -411,6 +431,7 @@ class CalculationStepPanel:
         rows: list[list] = []
         for row in range(1, table.rowCount()):  # [EN] Row 0 is the header
             # 第 0 行是表头
+            # [EN] Row 0 is the header.
             cells: list = []
             ok = True
             for col in range(table.columnCount()):
