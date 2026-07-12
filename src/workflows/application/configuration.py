@@ -1078,7 +1078,12 @@ def parse_pipeline_config(
     restart_mode = str(restart_raw.get("mode") or "cold").strip().lower()
     if restart_mode not in {"cold", "restart"}:
         raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
-    restart_output_step = str(ww3.output_step or restart_raw.get("output_step") or "86400").strip()
+    restart_output_step_raw = restart_raw.get("output_step")
+    restart_output_step = (
+        str(restart_output_step_raw).strip()
+        if restart_output_step_raw is not None and str(restart_output_step_raw).strip()
+        else None
+    )
     restart_time_raw = (
         str(restart_raw.get("restart_time")).strip()
         if restart_raw.get("restart_time") is not None
@@ -1191,8 +1196,11 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
             raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label=label))
     if config.restart.mode not in {"cold", "restart"}:
         raise ConfigError("ww3.restart.mode 必须是 cold 或 restart")
-    if not str(config.restart.output_step or "").isdigit():
-        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.output_step"))
+    restart_output_step = str(config.restart.output_step or "").strip()
+    if restart_output_step and (
+        not restart_output_step.isdigit() or int(restart_output_step) < 0
+    ):
+        raise ConfigError(tr("cfg_must_be_seconds", "{label} 必须是秒数").format(label="ww3.restart.output_step"))
     if config.restart.mode == "restart" and not config.restart.pick_latest_checkpoint:
         restart_time = normalize_restart_time(config.restart.restart_time)
         if not restart_time:

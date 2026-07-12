@@ -16,6 +16,23 @@ from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
 
 _SHEL_GROUP_PREFIXES = ("TYPE%", "DATE%POINT", "DATE%BOUNDARY")
+_DISABLED_RESTART_TRIPLE = "'19990101 000000' '0' '19990101 000000'"
+
+
+def _restart_output_step(value: object) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not text.isdigit() or int(text) <= 0:
+        return None
+    return text
+
+
+def _restart_date_triple(start: str, stop: str, step: object) -> str:
+    restart_step = _restart_output_step(step)
+    if not restart_step:
+        return _DISABLED_RESTART_TRIPLE
+    return f"'{start}' '{restart_step}' '{stop}'"
 
 
 def _ww3_shel_time_assignments(
@@ -26,20 +43,22 @@ def _ww3_shel_time_assignments(
     include_spectral_point: bool = False,
     run_start: str | None = None,
     include_restart2: bool = False,
+    restart_step: object = None,
 ) -> list[Assignment]:
     """ww3_shel.nml 时间/输出相关写入项（日志与文档用）。"""
     run_start = run_start or f"{start_date} 000000"
     field_triple = f"'{run_start}' '{main_step}' '{end_date} 235959'"
+    restart_triple = _restart_date_triple(f"{start_date} 000000", f"{end_date} 235959", restart_step)
     assignments: list[Assignment] = [
         ("DOMAIN%START", f"'{run_start}'"),
         ("DOMAIN%STOP", f"'{end_date} 235959'"),
         ("OUTPUT%FIELD%TIMESTART", f"'{run_start}'"),
         ("OUTPUT%FIELD%TIMESTRIDE", f"'{main_step}'"),
         ("DATE%FIELD", field_triple),
-        ("DATE%RESTART", field_triple),
+        ("DATE%RESTART", restart_triple),
     ]
     if include_restart2:
-        assignments.append(("DATE%RESTART2", field_triple))
+        assignments.append(("DATE%RESTART2", restart_triple))
     if include_spectral_point:
         assignments.append(("TYPE%POINT%FILE", "'points.list'"))
         assignments.extend(
@@ -58,6 +77,7 @@ def format_spectral_point_shel_log_message(
     *,
     run_start: str | None = None,
     include_restart2: bool = False,
+    restart_step: object = None,
 ) -> str:
     """生成谱点模式 ww3_shel.nml 更新日志（多行、等号对齐）。
 
@@ -73,6 +93,7 @@ def format_spectral_point_shel_log_message(
             include_spectral_point=True,
             run_start=run_start,
             include_restart2=include_restart2,
+            restart_step=restart_step,
         ),
         blank_before_prefixes=_SHEL_GROUP_PREFIXES,
     )
@@ -85,6 +106,7 @@ def format_ww3_shel_time_log_message(
     *,
     run_start: str | None = None,
     include_restart2: bool = False,
+    restart_step: object = None,
 ) -> str:
     """生成普通模式 ww3_shel.nml 时间更新日志。"""
     return format_nml_log_message(
@@ -96,6 +118,7 @@ def format_ww3_shel_time_log_message(
             main_step,
             run_start=run_start,
             include_restart2=include_restart2,
+            restart_step=restart_step,
         ),
     )
 
@@ -217,6 +240,9 @@ class WW3ShelNML(NMLPrimitives):
         main_step = output_stride
         run_start = str(getattr(self, "_restart_start_datetime", "") or f"{start_date} 000000").strip()
         restart_write_start = f"{start_date} 000000"
+        restart_config = getattr(getattr(self, "_loaded_config", None), "restart", None)
+        restart_output_step = _restart_output_step(getattr(restart_config, "output_step", None))
+        restart_triple = _restart_date_triple(restart_write_start, f"{end_date} 235959", restart_output_step)
         supports_restart2 = bool(getattr(self, "_supports_restart2", False))
 
         if not (start_date.isdigit() and len(start_date) == 8 and end_date.isdigit() and len(end_date) == 8):
@@ -287,7 +313,7 @@ class WW3ShelNML(NMLPrimitives):
                     continue
                 if in_output_date and "/" in line:
                     if supports_restart2 and not modified_restart2:
-                        new_lines.append(f"  DATE%RESTART2       = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
+                        new_lines.append(f"  DATE%RESTART2       = {restart_triple}\n")
                     in_output_date = False
                     new_lines.append(line)
                     continue
@@ -311,23 +337,23 @@ class WW3ShelNML(NMLPrimitives):
                 if not is_comment and re.search(r"DATE%RESTART2", line, re.IGNORECASE) and "=" in line:
                     if supports_restart2:
                         if re.search(r"DATE%RESTART2%START", line, re.IGNORECASE):
-                            new_lines.append(f"  DATE%RESTART2       = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
+                            new_lines.append(f"  DATE%RESTART2       = {restart_triple}\n")
                             modified_restart2 = True
                         elif re.search(r"DATE%RESTART2%(STRIDE|STOP)", line, re.IGNORECASE):
                             pass
                         else:
-                            new_lines.append(f"  DATE%RESTART2       = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
+                            new_lines.append(f"  DATE%RESTART2       = {restart_triple}\n")
                             modified_restart2 = True
                     continue
 
-                # DATE%RESTART：普通 restart 输出，步长与输出步长一致。
+                # DATE%RESTART：默认禁用周期性 restart 输出；需要时由 ww3.restart.output_step 显式开启。
                 if not is_comment and re.search(r"DATE%RESTART", line, re.IGNORECASE) and "=" in line:
                     if re.search(r"DATE%RESTART%START", line, re.IGNORECASE):
-                        new_lines.append(f"  DATE%RESTART        = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
+                        new_lines.append(f"  DATE%RESTART        = {restart_triple}\n")
                     elif re.search(r"DATE%RESTART%(STRIDE|STOP)", line, re.IGNORECASE):
                         pass
                     else:
-                        new_lines.append(f"  DATE%RESTART        = '{restart_write_start}' '{main_step}' '{end_date} 235959'\n")
+                        new_lines.append(f"  DATE%RESTART        = {restart_triple}\n")
                     continue
 
                 # DATE%POINT%START/STRIDE/STOP：跳过（删除），后续由 _modify_ww3_shel_date_point_in_dir 添加正确的 DATE%POINT
@@ -369,6 +395,7 @@ class WW3ShelNML(NMLPrimitives):
                             main_step,
                             run_start=run_start,
                             include_restart2=supports_restart2,
+                            restart_step=restart_output_step,
                         )
                     )
                 else:
@@ -380,6 +407,7 @@ class WW3ShelNML(NMLPrimitives):
                             main_step,
                             run_start=run_start,
                             include_restart2=supports_restart2,
+                            restart_step=restart_output_step,
                         )
                     )
             else:
@@ -391,6 +419,7 @@ class WW3ShelNML(NMLPrimitives):
                         main_step,
                         run_start=run_start,
                         include_restart2=supports_restart2,
+                        restart_step=restart_output_step,
                     )
                 )
 
