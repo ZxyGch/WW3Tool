@@ -343,9 +343,9 @@ server:
   user: null
   password: null
   key_file: null
-  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/oldWorkSpace/
   remote_dir: ''
-  ssh_config_host: SHOU-TS
+  ssh_config_host: SHOU
 # ────────────────────────────────────────────────────────────────────
 # External tool and data directory paths.
 #   matlab_path       – MATLAB executable for grid generators that require it.
