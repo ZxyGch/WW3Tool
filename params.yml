@@ -236,15 +236,19 @@ slurm:
   time: null
   mem: 190G
   server_st:
-    use: ST2
-    ST2: /public/home/weiyl001/bin/wavewatch3/6.07/st2/model/exe
-    ST4: /public/home/weiyl001/bin/wavewatch3/6.07/st4/model/exe
-    ST6: /public/home/weiyl001/bin/wavewatch3/6.07/st6/model/exe
-    ST6A: /public/home/weiyl001/bin/wavewatch3/6.07/st6a/model/exe
-    ST6B: /public/home/weiyl001/bin/wavewatch3/6.07/st6b/model/exe
+    use: 6.07 ST2
+    6.07 ST2: /public/home/weiyl001/bin/wavewatch3/6.07/st2/model/exe
+    6.07 ST4: /public/home/weiyl001/bin/wavewatch3/6.07/st4/model/exe
+    6.07 ST6: /public/home/weiyl001/bin/wavewatch3/6.07/st6/model/exe
+    6.07 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st2_unst/model/exe
+    6.07 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst/model/exe
+    6.07 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st6_unst/model/exe
     7.14 ST2: /public/home/weiyl001/bin/wavewatch3/7.14/st2/bin
     7.14 ST4: /public/home/weiyl001/bin/wavewatch3/7.14/st4/bin
     7.14 ST6: /public/home/weiyl001/bin/wavewatch3/7.14/st6/bin
+    7.14 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st2_unst/bin
+    7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st4_unst/bin
+    7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st6_unst/bin
 # ────────────────────────────────────────────────────────────────────
 # Local WW3 run settings (Step 5 local execution panel).
 #   local_st – local WW3 binaries: use + name: path (multi-scheme only).
@@ -339,9 +343,9 @@ server:
   user: null
   password: null
   key_file: null
-  default_remote_dir: /public/home/weiyl001/user/gongchuheng/oldWorkSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
-  ssh_config_host: SHOU
+  ssh_config_host: SHOU-TS
 # ────────────────────────────────────────────────────────────────────
 # External tool and data directory paths.
 #   matlab_path       – MATLAB executable for grid generators that require it.
