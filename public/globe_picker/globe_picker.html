@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3D 地球选择区域</title>
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js">
+</script>
+<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, "Segoe UI", sans-serif; }
+  #map { width: 100%; height: 100%; }
+
+  /* Toolbar */
+  #toolbar {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 10; background: rgba(32, 32, 32, 0.88); backdrop-filter: blur(8px);
+    border-radius: 10px; padding: 6px; display: flex; gap: 4px;
+    align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  #toolbar button, #toolbar select {
+    padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  #toolbar button {
+    background: transparent; color: #ccc; min-width: 36px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #toolbar button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  #toolbar button.active { background: #4a90d9; color: #fff; }
+  #toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #toolbar .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.15); margin: 0 4px; }
+  #toolbar select {
+    background: rgba(255,255,255,0.08); color: #ccc; outline: none; min-width: 80px;
+  }
+  #toolbar select:hover { background: rgba(255,255,255,0.15); }
+
+  /* Info panel */
+  #info-panel {
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+    z-index: 10; background: rgba(32, 32, 32, 0.88); backdrop-filter: blur(8px);
+    border-radius: 10px; padding: 12px 20px; display: none; align-items: center;
+    gap: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    color: #eee; font-size: 13px;
+  }
+  #info-panel.visible { display: flex; }
+  #info-panel .coord-box { text-align: center; }
+  #info-panel .coord-box .label { font-size: 11px; color: #999; }
+  #info-panel .coord-box .value { font-size: 14px; font-weight: 600; color: #4fc3f7; font-family: 'SF Mono', 'Menlo', monospace; }
+  #status-panel {
+    position: absolute; top: 16px; left: 16px; z-index: 10;
+    max-width: min(420px, calc(100% - 32px));
+    padding: 8px 12px; border-radius: 6px;
+    background: rgba(32, 32, 32, 0.82); color: #d8d8d8;
+    font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,0.25);
+  }
+  #status-panel.error { background: rgba(125, 35, 35, 0.92); color: #fff; }
+  #confirm-btn {
+    padding: 7px 20px; border: none; border-radius: 6px; font-size: 13px;
+    cursor: pointer; font-weight: 500; background: #27ae60; color: white;
+  }
+  #confirm-btn:hover { background: #219a52; }
+  #confirm-btn:disabled { background: #444; color: #888; cursor: default; }
+  #confirm-btn:disabled:hover { background: #444; }
+  .maplibregl-ctrl-top-right { top: 12px !important; right: 12px !important; }
+  .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0 0 4px 0; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="status-panel">正在加载高清地图...</div>
+
+<div id="toolbar">
+  <select id="style-select">
+    <option value="osm">🌐 街道图</option>
+    <option value="satellite">🛰️ 卫星图</option>
+    <option value="dark">🌙 暗色图</option>
+    <option value="light">☀️ 亮色图</option>
+  </select>
+  <div class="separator"></div>
+  <button id="pan-btn" class="active" title="平移">🖐</button>
+  <button id="rect-btn" title="绘制矩形" disabled>▭</button>
+</div>
+
+<div id="info-panel">
+  <div class="coord-box"><div class="label">西</div><div class="value" id="west">--</div></div>
+  <div class="coord-box"><div class="label">东</div><div class="value" id="east">--</div></div>
+  <div class="coord-box"><div class="label">南</div><div class="value" id="south">--</div></div>
+  <div class="coord-box"><div class="label">北</div><div class="value" id="north">--</div></div>
+  <button id="confirm-btn" disabled>✓ 确认</button>
+</div>
+
+<script>
+(function() {
+  // -- 栅格瓦片源（卫星 / 暗色 / 亮色） --
+  var RASTER_STYLES = {
+    satellite: {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      attribution: '© Esri'
+    },
+    dark: {
+      type: 'raster',
+      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '© CARTO'
+    },
+    light: {
+      type: 'raster',
+      tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '© CARTO'
+    }
+  };
+
+  // -- 状态 --
+  var tool = 'pan';          // 'pan' | 'rect'
+  var isDrawing = false;
+  var startPoint = null;
+  var currentRect = null;
+  var hasRect = false;
+  var currentStyle = 'osm';
+  var drawingSourceReady = false;
+  var eventsBound = false;
+  var lastPoint = null;
+
+  // -- DOM 引用 --
+  var coordEls = {
+    west: document.getElementById('west'),
+    east: document.getElementById('east'),
+    south: document.getElementById('south'),
+    north: document.getElementById('north')
+  };
+  var infoPanel = document.getElementById('info-panel');
+  var confirmBtn = document.getElementById('confirm-btn');
+  var panBtn = document.getElementById('pan-btn');
+  var rectBtn = document.getElementById('rect-btn');
+  var styleSelect = document.getElementById('style-select');
+  var statusPanel = document.getElementById('status-panel');
+
+  function setStatus(message, isError) {
+    statusPanel.textContent = message;
+    statusPanel.classList.toggle('error', Boolean(isError));
+  }
+
+  if (typeof maplibregl === 'undefined') {
+    setStatus('地图引擎加载失败，请检查网络连接后重试。', true);
+    return;
+  }
+
+  // -- MapLibre: 使用矢量瓦片样式（清晰度高），globe 投影 --
+  var map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://demotiles.maplibre.org/style.json',
+    projection: 'globe',
+    center: [120, 20],
+    zoom: 2.8,
+    minZoom: 2,
+    maxZoom: 22,
+    renderWorldCopies: false,
+    dragRotate: false,
+    touchPitch: false
+  });
+
+  // -- 地图控件 --
+  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+  // ----------------------------------------------------------------
+  //  绘制层管理
+  // ----------------------------------------------------------------
+
+  function addDrawingLayers() {
+    drawingSourceReady = false;
+    // 先移除旧的绘制层（切换样式后 style.load 时会重建）
+    try { map.removeLayer('draw-rect-outline'); } catch(_) {}
+    try { map.removeLayer('draw-rect-fill'); } catch(_) {}
+    try { map.removeSource('draw-rect'); } catch(_) {}
+
+    map.addSource('draw-rect', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'draw-rect-fill', type: 'fill', source: 'draw-rect',
+      paint: { 'fill-color': '#ffcc00', 'fill-opacity': 0.22 }
+    });
+    map.addLayer({
+      id: 'draw-rect-outline', type: 'line', source: 'draw-rect',
+      paint: { 'line-color': '#ff3b30', 'line-width': 4, 'line-opacity': 1, 'line-blur': 0 }
+    });
+    drawingSourceReady = true;
+    setStatus('地图已就绪，可拖动地球或点击矩形按钮选择范围。', false);
+  }
+
+  // ----------------------------------------------------------------
+  //  矩形绘制函数
+  // ----------------------------------------------------------------
+
+  function updateRectangle(north, south, east, west) {
+    if (!drawingSourceReady || !map.getSource('draw-rect')) return false;
+    var coords = [[[west, north], [east, north], [east, south], [west, south], [west, north]]];
+    try {
+      map.getSource('draw-rect').setData({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: coords }
+      });
+    } catch(e) {
+      setStatus('矩形图层更新失败，请重新选择底图后重试。', true);
+      return false;
+    }
+    currentRect = { west: west, east: east, south: south, north: north };
+    hasRect = true;
+    return true;
+  }
+
+  function showCoords(west, east, south, north) {
+    coordEls.west.textContent  = west.toFixed(3);
+    coordEls.east.textContent  = east.toFixed(3);
+    coordEls.south.textContent = south.toFixed(3);
+    coordEls.north.textContent = north.toFixed(3);
+    infoPanel.classList.add('visible');
+    confirmBtn.disabled = false;
+  }
+
+  function clearRectangle() {
+    try {
+      map.getSource('draw-rect').setData({
+        type: 'FeatureCollection',
+        features: []
+      });
+    } catch(_) {}
+    ['west','east','south','north'].forEach(function(k) { coordEls[k].textContent = '--'; });
+    infoPanel.classList.remove('visible');
+    currentRect = null;
+    hasRect = false;
+    confirmBtn.disabled = true;
+  }
+
+  function setTool(t) {
+    tool = t;
+    panBtn.classList.toggle('active', t === 'pan');
+    rectBtn.classList.toggle('active', t === 'rect');
+    if (t === 'pan') {
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+    } else {
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = 'crosshair';
+    }
+  }
+
+  // ----------------------------------------------------------------
+  //  底图切换
+  // ----------------------------------------------------------------
+
+  function switchStyle(styleId) {
+    if (styleId === currentStyle) return;
+    currentStyle = styleId;
+    clearRectangle();
+    drawingSourceReady = false;
+    rectBtn.disabled = true;
+
+    if (styleId === 'osm') {
+      map.setStyle('https://demotiles.maplibre.org/style.json');
+    } else {
+      map.setStyle({
+        version: 8,
+        sources: { 'base-tiles': RASTER_STYLES[styleId] },
+        layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
+      });
+    }
+    // 样式切换完成后重建绘制层
+    map.once('style.load', function() {
+      addDrawingLayers();
+      rectBtn.disabled = false;
+    });
+  }
+
+  // ----------------------------------------------------------------
+  //  map.on('load') — 确保地图与 GL 上下文就绪后再绑定交互
+  // ----------------------------------------------------------------
+
+  map.on('load', function() {
+    addDrawingLayers();
+    rectBtn.disabled = false;
+    if (eventsBound) return;
+    eventsBound = true;
+
+    // 使用 MapLibre 的事件坐标，而不是 canvas 的 offsetX/offsetY。
+    // QWebEngine 在高 DPI 或控件缩放时，offset 坐标可能与地图坐标不一致。
+    map.on('mousedown', function(e) {
+      if (tool !== 'rect' || !drawingSourceReady) return;
+      e.preventDefault();
+      isDrawing = true;
+      startPoint = e.point;
+      lastPoint = e.point;
+      map.dragPan.disable();
+    });
+
+    map.on('mousemove', function(e) {
+      if (!isDrawing || !startPoint || tool !== 'rect') return;
+      lastPoint = e.point;
+      var p = map.unproject(e.point);
+      var start = map.unproject(startPoint);
+      updateRectangle(
+        Math.max(start.lat, p.lat), Math.min(start.lat, p.lat),
+        Math.max(start.lng, p.lng), Math.min(start.lng, p.lng)
+      );
+    });
+
+    function finishDrawing(point) {
+      if (!isDrawing || !startPoint || tool !== 'rect') return;
+      var endPoint = point || lastPoint;
+      if (!endPoint) return;
+      isDrawing = false;
+      var start = map.unproject(startPoint);
+      var end = map.unproject(endPoint);
+      var west = Math.min(start.lng, end.lng);
+      var east = Math.max(start.lng, end.lng);
+      var south = Math.min(start.lat, end.lat);
+      var north = Math.max(start.lat, end.lat);
+      if (updateRectangle(north, south, east, west)) {
+        showCoords(west, east, south, north);
+      }
+      startPoint = null;
+      lastPoint = null;
+      setTool('pan');
+    }
+
+    map.on('mouseup', function(e) { finishDrawing(e.point); });
+    window.addEventListener('mouseup', function() { finishDrawing(); });
+
+    map.getCanvas().addEventListener('contextmenu', function(e) { e.preventDefault(); });
+  });
+
+  map.on('error', function(e) {
+    var message = e && e.error && e.error.message ? e.error.message : '底图资源加载失败';
+    setStatus('地图资源加载异常：' + message, true);
+  });
+
+  // ----------------------------------------------------------------
+  //  Toolbar & 按钮事件
+  // ----------------------------------------------------------------
+
+  styleSelect.addEventListener('change', function(e) {
+    switchStyle(e.target.value);
+  });
+
+  panBtn.addEventListener('click', function() {
+    setTool('pan');
+  });
+
+  rectBtn.addEventListener('click', function() {
+    if (rectBtn.disabled) return;
+    clearRectangle();
+    setTool('rect');
+  });
+
+  confirmBtn.addEventListener('click', function() {
+    if (!hasRect || !currentRect) return;
+    window.__globeResult = {
+      west:  currentRect.west,
+      east:  currentRect.east,
+      south: currentRect.south,
+      north: currentRect.north
+    };
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && hasRect) confirmBtn.click();
+  });
+})();
+</script>
+</body>
+</html>
