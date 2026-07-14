@@ -30,6 +30,12 @@
   #toolbar button:hover { background: rgba(255,255,255,0.1); color: #fff; }
   #toolbar button.active { background: #4a90d9; color: #fff; }
   #toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #toolbar .mode-button {
+    min-width: 76px; height: 32px; padding: 0 12px;
+    border: 1px solid transparent; border-radius: 4px;
+    font-size: 13px; font-weight: 400; white-space: nowrap;
+  }
+  #toolbar .mode-button.active { border-color: rgba(255,255,255,0.12); }
   #toolbar .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.15); margin: 0 4px; }
   #point-tools { display: none; align-items: center; gap: 4px; }
   #point-tools.visible { display: flex; }
@@ -160,8 +166,8 @@
     </div>
   </div>
   <div class="separator"></div>
-  <button id="pan-btn" class="active" title="平移">🖐</button>
-  <button id="rect-btn" title="绘制矩形" disabled>▭</button>
+  <button id="pan-btn" class="mode-button active" title="拖动地图">拖动地图</button>
+  <button id="rect-btn" class="mode-button" title="框选区域" disabled>框选区域</button>
   <div id="point-tools">
     <div class="separator"></div>
     <span id="point-count">0</span>
@@ -213,7 +219,7 @@
   var UI_TEXT = {
     zh: {
       administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
-      pan: '平移', rectangle: '绘制矩形', confirm: '确认',
+      pan: '拖动地图', rectangle: '框选区域', confirm: '确认',
       west: '西', east: '东', south: '南', north: '北',
       loading: '正在加载高清地图...', engineError: '地图引擎加载失败，请检查网络连接后重试。',
       ready: '地图已就绪，可拖动地球或点击矩形按钮选择范围。',
@@ -230,7 +236,7 @@
     },
     en: {
       administrative: 'Administrative chart', satellite: 'Satellite', dark: 'Dark', light: 'Light',
-      pan: 'Pan', rectangle: 'Draw rectangle', confirm: 'Confirm',
+      pan: 'Pan map', rectangle: 'Select region', confirm: 'Confirm',
       west: 'W', east: 'E', south: 'S', north: 'N',
       loading: 'Loading high-resolution map...', engineError: 'Map engine failed to load. Check the network and retry.',
       ready: 'Map ready. Pan the globe or draw a rectangular region.',
@@ -363,7 +369,9 @@
     });
     styleSelectLabel.textContent = text[currentStyle];
     panBtn.title = text.pan;
+    panBtn.textContent = text.pan;
     rectBtn.title = text.rectangle;
+    rectBtn.textContent = text.rectangle;
     confirmBtn.textContent = '✓ ' + text.confirm;
     ['west', 'east', 'south', 'north'].forEach(function(key) {
       document.getElementById('label-' + key).textContent = text[key];
