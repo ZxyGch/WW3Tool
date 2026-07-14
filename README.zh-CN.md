@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
+
 
 WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理与运行辅助工具**。它不替代 WW3 本身的可执行程序（ww3_grid、ww3_prnc、ww3_shel 等），而是负责：
 

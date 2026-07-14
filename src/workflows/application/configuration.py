@@ -1100,6 +1100,11 @@ def parse_pipeline_config(
             if restart_raw.get("restart_file") is not None
             else None
         ),
+        restart_step=(
+            int(restart_raw["restart_step"])
+            if restart_raw.get("restart_step") is not None
+            else None
+        ),
         output_step=restart_output_step,
         pick_latest_checkpoint=_bool_value(restart_raw.get("pick_latest_checkpoint", True), "ww3.restart.pick_latest_checkpoint"),
     )

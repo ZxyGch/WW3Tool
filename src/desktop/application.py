@@ -25,6 +25,12 @@ def create_window():
 
 
 def main(argv: list[str] | None = None) -> int:
+    # [EN] Must set AA_ShareOpenGLContexts before QApplication for QWebEngineView.
+    import PyQt6.QtCore
+    PyQt6.QtCore.QCoreApplication.setAttribute(
+        PyQt6.QtCore.Qt.ApplicationAttribute.AA_ShareOpenGLContexts
+    )
+
     try:
         from PyQt6.QtWidgets import QApplication
     except ImportError as exc:

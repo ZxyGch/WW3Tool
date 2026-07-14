@@ -198,6 +198,7 @@ ww3:
     mode: cold
     restart_time: null
     restart_file: null
+    restart_step: 0
     pick_latest_checkpoint: true
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
