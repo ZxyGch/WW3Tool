@@ -253,9 +253,14 @@
     // 先移除旧的绘制层（切换样式后 style.load 时会重建）
     try { map.removeLayer('draw-rect-outline'); } catch(_) {}
     try { map.removeLayer('draw-rect-fill'); } catch(_) {}
+    try { map.removeSource('draw-rect-outline-source'); } catch(_) {}
     try { map.removeSource('draw-rect'); } catch(_) {}
 
     map.addSource('draw-rect', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addSource('draw-rect-outline-source', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
     });
@@ -264,7 +269,7 @@
       paint: { 'fill-color': '#6bbcff', 'fill-opacity': 0.16 }
     });
     map.addLayer({
-      id: 'draw-rect-outline', type: 'line', source: 'draw-rect',
+      id: 'draw-rect-outline', type: 'line', source: 'draw-rect-outline-source',
       paint: { 'line-color': '#1677d2', 'line-width': 1.5, 'line-opacity': 0.95, 'line-blur': 0 }
     });
     drawingSourceReady = true;
@@ -282,7 +287,7 @@
     return value;
   }
 
-  function rectangleGeometry(north, south, east, west) {
+  function normalizedDrawLongitudes(east, west) {
     var drawWest = west;
     var drawEast = east;
     while (drawWest < -180) {
@@ -293,6 +298,13 @@
       drawWest -= 360;
       drawEast -= 360;
     }
+    return { west: drawWest, east: drawEast };
+  }
+
+  function rectangleGeometry(north, south, east, west) {
+    var draw = normalizedDrawLongitudes(east, west);
+    var drawWest = draw.west;
+    var drawEast = draw.east;
 
     function ring(left, right) {
       return [[left, north], [right, north], [right, south], [left, south], [left, north]];
@@ -311,12 +323,49 @@
     };
   }
 
+  function rectangleOutlineGeometry(north, south, east, west) {
+    var draw = normalizedDrawLongitudes(east, west);
+    var drawWest = draw.west;
+    var drawEast = draw.east;
+
+    if (drawEast <= 180) {
+      return {
+        type: 'LineString',
+        coordinates: [
+          [drawWest, north], [drawEast, north], [drawEast, south],
+          [drawWest, south], [drawWest, north]
+        ]
+      };
+    }
+
+    var wrappedEast = drawEast - 360;
+    return {
+      type: 'MultiLineString',
+      coordinates: [
+        [[drawWest, north], [180, north]],
+        [[-180, north], [wrappedEast, north]],
+        [[drawWest, south], [180, south]],
+        [[-180, south], [wrappedEast, south]],
+        [[drawWest, south], [drawWest, north]],
+        [[wrappedEast, south], [wrappedEast, north]]
+      ]
+    };
+  }
+
   function updateRectangle(north, south, east, west) {
-    if (!drawingSourceReady || !map.getSource('draw-rect')) return false;
+    if (
+      !drawingSourceReady
+      || !map.getSource('draw-rect')
+      || !map.getSource('draw-rect-outline-source')
+    ) return false;
     try {
       map.getSource('draw-rect').setData({
         type: 'Feature',
         geometry: rectangleGeometry(north, south, east, west)
+      });
+      map.getSource('draw-rect-outline-source').setData({
+        type: 'Feature',
+        geometry: rectangleOutlineGeometry(north, south, east, west)
       });
     } catch(e) {
       setStatus('矩形图层更新失败，请重新选择底图后重试。', true);
@@ -351,6 +400,10 @@
   function clearRectangle() {
     try {
       map.getSource('draw-rect').setData({
+        type: 'FeatureCollection',
+        features: []
+      });
+      map.getSource('draw-rect-outline-source').setData({
         type: 'FeatureCollection',
         features: []
       });
