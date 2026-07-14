@@ -89,12 +89,12 @@
 
 <div id="map"></div>
 <div id="status-panel">正在加载高清地图...</div>
-<div id="map-attribution">OpenFreeMap © OpenMapTiles · OpenStreetMap</div>
+<div id="map-attribution">OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap</div>
 
 <div id="toolbar">
   <div class="style-select-wrap">
     <select id="style-select" aria-label="地图类型">
-      <option value="street">街道图</option>
+      <option value="administrative">行政区划海图</option>
       <option value="satellite">卫星图</option>
       <option value="dark">暗色图</option>
       <option value="light">亮色图</option>
@@ -117,9 +117,9 @@
 (async function() {
   // -- 底图瓦片源 --
   var RASTER_STYLES = {
-    street: {
+    administrative: {
       style: 'https://tiles.openfreemap.org/styles/bright',
-      attribution: 'OpenFreeMap © OpenMapTiles · OpenStreetMap'
+      attribution: 'OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap'
     },
     satellite: {
       type: 'raster',
@@ -143,7 +143,7 @@
   var appLanguage = new URLSearchParams(window.location.search).get('lang') === 'en' ? 'en' : 'zh';
   var UI_TEXT = {
     zh: {
-      street: '街道图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
+      administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
       pan: '平移', rectangle: '绘制矩形', confirm: '确认',
       west: '西', east: '东', south: '南', north: '北',
       loading: '正在加载高清地图...', engineError: '地图引擎加载失败，请检查网络连接后重试。',
@@ -155,7 +155,7 @@
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
     },
     en: {
-      street: 'Street', satellite: 'Satellite', dark: 'Dark', light: 'Light',
+      administrative: 'Administrative chart', satellite: 'Satellite', dark: 'Dark', light: 'Light',
       pan: 'Pan', rectangle: 'Draw rectangle', confirm: 'Confirm',
       west: 'W', east: 'E', south: 'S', north: 'N',
       loading: 'Loading high-resolution map...', engineError: 'Map engine failed to load. Check the network and retry.',
@@ -175,7 +175,7 @@
   var startPoint = null;
   var currentRect = null;
   var hasRect = false;
-  var currentStyle = 'street';
+  var currentStyle = 'administrative';
   var drawingSourceReady = false;
   var eventsBound = false;
   var lastPoint = null;
@@ -203,7 +203,7 @@
   }
 
   function applyUiLanguage() {
-    ['street', 'satellite', 'dark', 'light'].forEach(function(key) {
+    ['administrative', 'satellite', 'dark', 'light'].forEach(function(key) {
       styleSelect.querySelector('option[value="' + key + '"]').textContent = text[key];
     });
     panBtn.title = text.pan;
@@ -222,38 +222,77 @@
     return;
   }
 
-  function optimizeStreetStyle(style) {
+  function optimizeAdministrativeStyle(style) {
     var optimized = JSON.parse(JSON.stringify(style));
     optimized.layers = (optimized.layers || []).filter(function(layer) {
-      return !/(poi|housenumber|building|aeroway|airport|transit)/i.test(String(layer.id || ''));
+      var id = String(layer.id || '');
+      return /^(background|water$|water-intermittent|landcover-glacier|boundary_|label_|water_name_|ferry$|road_area_pier$|road_pier$)/i.test(id);
     });
     var labelExpression = appLanguage === 'en'
       ? ['get', 'name:en']
       : ['coalesce', ['get', 'name:zh-Hans'], ['get', 'name:zh'], ['get', 'name:en']];
     optimized.layers.forEach(function(layer) {
+      if (layer.id === 'boundary_3') {
+        layer.filter = [
+          'all', ['>=', ['get', 'admin_level'], 3], ['<=', ['get', 'admin_level'], 10],
+          ['!=', ['get', 'maritime'], 1], ['!=', ['get', 'disputed'], 1],
+          ['!', ['has', 'claimed_by']]
+        ];
+      }
+      if (layer.id === 'label_other') {
+        layer.filter = [
+          'match', ['get', 'class'],
+          ['province', 'borough', 'county', 'district', 'suburb'], true, false
+        ];
+      }
+      if (layer.id === 'ferry') {
+        layer.paint = {
+          'line-color': '#1684ad',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.8, 10, 1.8],
+          'line-opacity': 0.9,
+          'line-dasharray': [3, 2]
+        };
+      }
       if (layer.type !== 'symbol' || !layer.layout || layer.layout['text-field'] == null) return;
       if (JSON.stringify(layer.layout['text-field']).toLowerCase().indexOf('name') === -1) return;
       layer.layout['text-field'] = labelExpression;
     });
+    var labelIndex = optimized.layers.findIndex(function(layer) {
+      return String(layer.id || '').indexOf('label_') === 0;
+    });
+    optimized.layers.splice(labelIndex < 0 ? optimized.layers.length : labelIndex, 0, {
+      id: 'boundary_maritime',
+      type: 'line',
+      source: 'openmaptiles',
+      'source-layer': 'boundary',
+      minzoom: 3,
+      filter: ['all', ['==', ['get', 'admin_level'], 2], ['==', ['get', 'maritime'], 1]],
+      paint: {
+        'line-color': '#3d8fa8',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.7, 9, 1.3],
+        'line-opacity': 0.7,
+        'line-dasharray': [3, 2]
+      }
+    });
     return optimized;
   }
 
-  async function loadStreetStyle() {
+  async function loadAdministrativeStyle() {
     try {
-      var response = await fetch(RASTER_STYLES.street.style, { cache: 'force-cache' });
+      var response = await fetch(RASTER_STYLES.administrative.style, { cache: 'force-cache' });
       if (!response.ok) throw new Error('HTTP ' + response.status);
-      return optimizeStreetStyle(await response.json());
+      return optimizeAdministrativeStyle(await response.json());
     } catch (_) {
-      return RASTER_STYLES.street.style;
+      return RASTER_STYLES.administrative.style;
     }
   }
 
-  var streetStyle = await loadStreetStyle();
+  var administrativeStyle = await loadAdministrativeStyle();
 
-  // -- MapLibre: 使用 OSM 矢量街道样式和 globe 投影 --
+  // -- MapLibre: 使用 OSM 行政区划样式和 globe 投影 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: streetStyle,
+    style: administrativeStyle,
     projection: 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -271,47 +310,40 @@
   // -- 地图控件 --
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
+  var navigationOverlayTimer = null;
+
+  function addNavigationOverlay() {
+    if (currentStyle !== 'administrative' || map.getSource('open-seamap')) return;
+    map.addSource('open-seamap', {
+      type: 'raster',
+      tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      minzoom: 3,
+      maxzoom: 18
+    });
+    var beforeLayer = map.getLayer('draw-rect-fill') ? 'draw-rect-fill' : undefined;
+    var seamarkLayer = {
+      id: 'open-seamap-layer',
+      type: 'raster',
+      source: 'open-seamap',
+      minzoom: 3,
+      paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0 }
+    };
+    if (beforeLayer) map.addLayer(seamarkLayer, beforeLayer);
+    else map.addLayer(seamarkLayer);
+  }
+
+  function scheduleNavigationOverlay() {
+    if (navigationOverlayTimer !== null) window.clearTimeout(navigationOverlayTimer);
+    navigationOverlayTimer = window.setTimeout(function() {
+      navigationOverlayTimer = null;
+      if (currentStyle === 'administrative' && map.isStyleLoaded()) addNavigationOverlay();
+    }, 250);
+  }
+
   // ----------------------------------------------------------------
   //  绘制层管理
   // ----------------------------------------------------------------
-
-  function addGraticuleLayer() {
-    try { map.removeLayer('globe-graticule'); } catch(_) {}
-    try { map.removeSource('globe-graticule'); } catch(_) {}
-
-    var lines = [];
-    for (var lon = -180; lon <= 180; lon += 30) {
-      var meridian = [];
-      for (var lat = -85; lat <= 85; lat += 5) meridian.push([lon, lat]);
-      lines.push(meridian);
-    }
-    for (var lat = -60; lat <= 60; lat += 30) {
-      var parallel = [];
-      for (var lon = -180; lon <= 180; lon += 5) parallel.push([lon, lat]);
-      lines.push(parallel);
-    }
-    map.addSource('globe-graticule', {
-      type: 'geojson',
-      data: { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: lines } }
-    });
-    map.addLayer({
-      id: 'globe-graticule', type: 'line', source: 'globe-graticule',
-      paint: {
-        'line-color': '#65727d', 'line-width': 0.8,
-        'line-opacity': 0.55, 'line-dasharray': [2, 2]
-      }
-    });
-  }
-
-  function simplifyLandStyle() {
-    var layers = map.getStyle().layers || [];
-    layers.forEach(function(layer) {
-      var id = String(layer.id || '').toLowerCase();
-      if (/(road|street|highway|transport|poi)/.test(id)) {
-        try { map.setLayoutProperty(layer.id, 'visibility', 'none'); } catch(_) {}
-      }
-    });
-  }
 
   function addDrawingLayers() {
     drawingSourceReady = false;
@@ -500,15 +532,21 @@
   function switchStyle(styleId) {
     if (styleId === currentStyle) return;
     currentStyle = styleId;
+    if (navigationOverlayTimer !== null) {
+      window.clearTimeout(navigationOverlayTimer);
+      navigationOverlayTimer = null;
+    }
     attributionEl.textContent = RASTER_STYLES[styleId].attribution;
     clearRectangle();
     drawingSourceReady = false;
     // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
     rectBtn.disabled = false;
 
-    if (styleId === 'street') {
+    if (styleId === 'administrative') {
       map.setStyle(
-        typeof streetStyle === 'string' ? streetStyle : JSON.parse(JSON.stringify(streetStyle))
+        typeof administrativeStyle === 'string'
+          ? administrativeStyle
+          : JSON.parse(JSON.stringify(administrativeStyle))
       );
     } else {
       map.setStyle({
@@ -520,6 +558,7 @@
     // 样式切换完成后重建绘制层
     map.once('style.load', function() {
       addDrawingLayers();
+      if (styleId === 'administrative') scheduleNavigationOverlay();
       rectBtn.disabled = false;
     });
 
@@ -528,6 +567,7 @@
       if (drawingSourceReady) return;
       if (map.isStyleLoaded && map.isStyleLoaded()) {
         addDrawingLayers();
+        if (styleId === 'administrative') scheduleNavigationOverlay();
         rectBtn.disabled = false;
         return;
       }
@@ -546,6 +586,7 @@
 
   map.on('load', function() {
     addDrawingLayers();
+    scheduleNavigationOverlay();
     rectBtn.disabled = false;
     if (eventsBound) return;
     eventsBound = true;
