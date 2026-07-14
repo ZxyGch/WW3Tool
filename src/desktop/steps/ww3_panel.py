@@ -380,8 +380,6 @@ class WW3StepPanel:
         add_labeled_combo_items(combo, restart_date_combo_items())
         combo.setPlaceholderText(tr("step4_restart_date_placeholder", "自动最新 或 YYYYMMDD [HHMMSS]"))
         combo.activated.connect(self._on_restart_date_picked)
-        # 监听文本变化：当用户选择"手动"时自动清空输入框
-        combo.textChanged.connect(self._on_restart_date_text_changed)
         self._expand_field(combo)
         grid.addWidget(self.restart_date_label, row, 0)
         grid.addWidget(combo, row, 1)
@@ -392,22 +390,23 @@ class WW3StepPanel:
     def _on_restart_date_picked(self, index: int) -> None:
         if index < 0:
             return
-        # activated 信号处理保留用于非"手动"选项的选中逻辑
-        # "手动"的清空操作由 _on_restart_date_text_changed 处理
-        pass
-
-    def _on_restart_date_text_changed(self, text: str) -> None:
-        """当文本变为"手动"/"Manual"时自动清空输入框。"""
-        manual_label = restart_manual_label()
-        if text == manual_label:
-            # 用 QTimer 延迟到事件循环末尾，确保在所有内部信号处理完成后清空
-            QTimer.singleShot(0, lambda: self.restart_date_combo.setText(""))
-
-    def _on_restart_date_picked(self, index: int) -> None:
-        if index < 0:
+        if self.restart_date_combo.itemData(index) == RESTART_MANUAL:
+            QTimer.singleShot(0, lambda selected=index: self._activate_manual_restart_date(selected))
             return
         self.restart_date_combo._currentIndex = index
         self.restart_date_combo.setText(self.restart_date_combo.itemText(index))
+
+    def _activate_manual_restart_date(self, index: int) -> None:
+        """Keep the editable combo in manual mode while presenting an empty editor."""
+        combo = self.restart_date_combo
+        combo.blockSignals(True)
+        try:
+            combo._currentIndex = index
+            combo.setText("")
+            combo._currentIndex = index
+        finally:
+            combo.blockSignals(False)
+        self._update_restart_enabled_state()
 
     def _set_restart_date_value(self, *, pick_latest: bool, restart_time: str = "") -> None:
         combo = self.restart_date_combo
@@ -462,8 +461,6 @@ class WW3StepPanel:
             manual_only = (self.restart_file_label, self.restart_file_edit)
             for widget in manual_only:
                 widget.setVisible(not pick_latest)
-        if hot_start and not self.restart_date_combo.text().strip():
-            self._set_restart_date_value(pick_latest=True)
         start_field = self.fields["ww3_start"]
         if hot_start:
             start_field.setReadOnly(True)
