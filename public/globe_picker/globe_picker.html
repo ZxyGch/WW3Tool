@@ -31,6 +31,14 @@
   #toolbar button.active { background: #4a90d9; color: #fff; }
   #toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
   #toolbar .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.15); margin: 0 4px; }
+  #point-tools { display: none; align-items: center; gap: 4px; }
+  #point-tools.visible { display: flex; }
+  #point-count {
+    min-width: 54px; padding: 0 8px; color: #ddd; font-size: 12px;
+    text-align: center; white-space: nowrap;
+  }
+  #point-tools #confirm-points-btn { min-width: 76px; background: #237a4b; color: #fff; }
+  #point-tools #confirm-points-btn:hover { background: #2b8f59; }
   .style-select-wrap { position: relative; display: flex; align-items: center; }
   .style-select-wrap::after {
     content: "⌄"; position: absolute; right: 10px; top: 50%; transform: translateY(-56%);
@@ -79,6 +87,19 @@
   .legend-item { display: flex; align-items: center; gap: 8px; min-height: 22px; }
   .legend-color { width: 18px; height: 3px; flex: 0 0 18px; border-radius: 1px; }
   .legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .point-marker {
+    position: relative; width: 12px; height: 12px;
+    border: 2px solid #fff; border-radius: 50%;
+    background: #1687d9; box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+  }
+  .point-marker.new { background: #e25555; }
+  .point-marker-label {
+    position: absolute; left: 14px; top: -6px; max-width: 150px;
+    padding: 2px 5px; border-radius: 3px;
+    background: rgba(32,32,32,0.82); color: #fff;
+    font-size: 11px; line-height: 16px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  }
   #confirm-btn {
     padding: 7px 20px; border: none; border-radius: 6px; font-size: 13px;
     cursor: pointer; font-weight: 500; background: #27ae60; color: white;
@@ -115,6 +136,12 @@
   <div class="separator"></div>
   <button id="pan-btn" class="active" title="平移">🖐</button>
   <button id="rect-btn" title="绘制矩形" disabled>▭</button>
+  <div id="point-tools">
+    <div class="separator"></div>
+    <span id="point-count">0</span>
+    <button id="delete-point-btn" title="删除上一个点">↶</button>
+    <button id="confirm-points-btn">✓ 确认点位</button>
+  </div>
 </div>
 
 <div id="info-panel">
@@ -154,7 +181,9 @@
   };
   var queryParams = new URLSearchParams(window.location.search);
   var appLanguage = queryParams.get('lang') === 'en' ? 'en' : 'zh';
-  var selectionEnabled = queryParams.get('mode') !== 'display';
+  var interactionMode = queryParams.get('mode') || 'select';
+  var selectionEnabled = interactionMode === 'select';
+  var pointSelectionEnabled = interactionMode === 'points';
   var UI_TEXT = {
     zh: {
       administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
@@ -167,6 +196,9 @@
       styleTimeout: '底图仍在加载，请稍候再选择矩形。',
       initialBounds: '已显示当前网格范围，可点击矩形按钮重新选择。',
       displayingRegions: '已显示 {count} 个强迫场范围。',
+      pointReady: '点击地图添加点位，拖动地图可平移。',
+      pointCount: '{count} 个点', deletePoint: '删除上一个点', confirmPoints: '确认点位',
+      pointOutside: '该位置不在网格范围内。', duplicatePoint: '该位置已有点位。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
     },
@@ -181,6 +213,9 @@
       styleTimeout: 'The map style is still loading. Please try again shortly.',
       initialBounds: 'Current grid bounds are displayed. Click the rectangle button to redraw.',
       displayingRegions: 'Displaying {count} forcing-field region(s).',
+      pointReady: 'Click the map to add points. Drag to pan.',
+      pointCount: '{count} point(s)', deletePoint: 'Delete last point', confirmPoints: 'Confirm points',
+      pointOutside: 'This location is outside the grid region.', duplicatePoint: 'A point already exists here.',
       selected: 'Region selected. Click the rectangle button to redraw.',
       drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
     }
@@ -230,6 +265,31 @@
 
   var displayRegions = readDisplayRegions(queryParams);
 
+  function readJsonObject(params, key) {
+    var raw = params.get(key);
+    if (!raw) return null;
+    try {
+      var value = JSON.parse(raw);
+      return value && typeof value === 'object' ? value : null;
+    } catch (_) { return null; }
+  }
+
+  function readPoints(params) {
+    var parsed = readJsonObject(params, 'points');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(function(point) {
+      point.lon = Number(point.lon);
+      point.lat = Number(point.lat);
+      return Number.isFinite(point.lon) && Number.isFinite(point.lat)
+        && point.lat >= -90 && point.lat <= 90;
+    });
+  }
+
+  var pointBounds = readJsonObject(queryParams, 'pointBounds');
+  var selectedPoints = readPoints(queryParams);
+  var initialPointCount = selectedPoints.length;
+  var pointMarkers = [];
+
   // -- 状态 --
   var tool = 'pan';          // 'pan' | 'rect'
   var isDrawing = false;
@@ -258,6 +318,10 @@
   var statusPanel = document.getElementById('status-panel');
   var attributionEl = document.getElementById('map-attribution');
   var regionLegend = document.getElementById('region-legend');
+  var pointTools = document.getElementById('point-tools');
+  var pointCount = document.getElementById('point-count');
+  var deletePointBtn = document.getElementById('delete-point-btn');
+  var confirmPointsBtn = document.getElementById('confirm-points-btn');
 
   function setStatus(message, isError) {
     statusPanel.textContent = message;
@@ -278,6 +342,12 @@
     if (!selectionEnabled) {
       rectBtn.style.display = 'none';
       confirmBtn.style.display = 'none';
+    }
+    if (pointSelectionEnabled) {
+      pointTools.classList.add('visible');
+      deletePointBtn.title = text.deletePoint;
+      confirmPointsBtn.textContent = '✓ ' + text.confirmPoints;
+      updatePointTools();
     }
   }
 
@@ -626,7 +696,87 @@
     });
     renderRegionLegend();
     fitDisplayRegions();
-    setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
+    if (pointSelectionEnabled) {
+      renderPointMarkers();
+      setStatus(text.pointReady, false);
+    } else {
+      setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
+    }
+  }
+
+  function updatePointTools() {
+    pointCount.textContent = text.pointCount.replace('{count}', String(selectedPoints.length));
+    deletePointBtn.disabled = selectedPoints.length === 0;
+    confirmPointsBtn.disabled = false;
+  }
+
+  function renderPointMarkers() {
+    pointMarkers.forEach(function(marker) { marker.remove(); });
+    pointMarkers = [];
+    selectedPoints.forEach(function(point, index) {
+      var markerElement = document.createElement('div');
+      markerElement.className = 'point-marker' + (index >= initialPointCount ? ' new' : '');
+      var label = document.createElement('span');
+      label.className = 'point-marker-label';
+      label.textContent = String(point.name || index);
+      markerElement.appendChild(label);
+      pointMarkers.push(
+        new maplibregl.Marker({ element: markerElement, anchor: 'center' })
+          .setLngLat([point.lon, point.lat])
+          .addTo(map)
+      );
+    });
+    updatePointTools();
+  }
+
+  function longitudeForPointBounds(longitude) {
+    if (!pointBounds) return longitude;
+    var value = longitude;
+    while (value < Number(pointBounds.west)) value += 360;
+    while (value >= Number(pointBounds.west) + 360) value -= 360;
+    return value;
+  }
+
+  function pointInsideBounds(longitude, latitude) {
+    if (!pointBounds) return true;
+    var west = Number(pointBounds.west);
+    var east = Number(pointBounds.east);
+    var south = Number(pointBounds.south);
+    var north = Number(pointBounds.north);
+    if (![west, east, south, north].every(Number.isFinite)) return true;
+    while (east <= west) east += 360;
+    var lon = longitudeForPointBounds(longitude);
+    return lon >= west - 1e-6 && lon <= east + 1e-6
+      && latitude >= south - 1e-6 && latitude <= north + 1e-6;
+  }
+
+  function addSelectedPoint(lngLat) {
+    var longitude = longitudeForPointBounds(lngLat.lng);
+    var latitude = Number(lngLat.lat);
+    if (!pointInsideBounds(longitude, latitude)) {
+      setStatus(text.pointOutside, true);
+      return;
+    }
+    var duplicate = selectedPoints.some(function(point) {
+      return Math.abs(point.lon - longitude) < 1e-3 && Math.abs(point.lat - latitude) < 1e-3;
+    });
+    if (duplicate) {
+      setStatus(text.duplicatePoint, true);
+      return;
+    }
+    var usedNames = selectedPoints.reduce(function(result, point) {
+      result[String(point.name || '')] = true;
+      return result;
+    }, {});
+    var nextName = selectedPoints.length;
+    while (usedNames[String(nextName)]) nextName += 1;
+    selectedPoints.push({
+      lon: longitude,
+      lat: latitude,
+      name: String(nextName)
+    });
+    renderPointMarkers();
+    setStatus(text.pointReady, false);
   }
 
   function renderRegionLegend() {
@@ -833,6 +983,10 @@
     window.addEventListener('mouseup', function() { finishDrawing(); });
 
     map.getCanvas().addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    if (pointSelectionEnabled) {
+      map.getCanvas().style.cursor = 'crosshair';
+      map.on('click', function(e) { addSelectedPoint(e.lngLat); });
+    }
   });
 
   map.on('error', function(e) {
@@ -873,8 +1027,29 @@
     };
   });
 
+  deletePointBtn.addEventListener('click', function() {
+    if (!pointSelectionEnabled || selectedPoints.length === 0) return;
+    selectedPoints.pop();
+    initialPointCount = Math.min(initialPointCount, selectedPoints.length);
+    renderPointMarkers();
+    setStatus(text.pointReady, false);
+  });
+
+  confirmPointsBtn.addEventListener('click', function() {
+    if (!pointSelectionEnabled) return;
+    window.__globePointResult = selectedPoints.map(function(point) {
+      return {
+        lon: point.lon,
+        lat: point.lat,
+        name: String(point.name || ''),
+        datetime: point.datetime == null ? undefined : String(point.datetime)
+      };
+    });
+  });
+
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && hasRect) confirmBtn.click();
+    if (e.key === 'Enter' && pointSelectionEnabled) confirmPointsBtn.click();
+    else if (e.key === 'Enter' && hasRect) confirmBtn.click();
   });
 })();
 </script>

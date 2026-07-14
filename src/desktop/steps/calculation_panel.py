@@ -79,13 +79,11 @@ class CalculationStepPanel:
         create_button: Callable[[str, Callable[..., object]], object],
         combo_style: Callable[[], str],
         input_style: Callable[[], str] | None = None,
-        button_style: Callable[[], str] | None = None,
         bounds_provider: Callable[[], dict | None] | None = None,
         notify: Callable[[str], None] | None = None,
         points_changed: Callable[[], None] | None = None,
     ) -> None:
         self._input_style = input_style or (lambda: "")
-        self._button_style = button_style or (lambda: "")
         self._bounds_provider = bounds_provider or (lambda: None)
         self._notify = notify or (lambda _msg: None)
         self._points_changed = points_changed or (lambda: None)
@@ -149,6 +147,9 @@ class CalculationStepPanel:
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._set_header_row(table, kind)
+        block_layout.addWidget(
+            create_button(tr("step3_select_on_map", "在地图上选点"), lambda: self._select_on_map(kind))
+        )
         block_layout.addWidget(table)
         self._resize_table_to_content(table)
 
@@ -158,7 +159,6 @@ class CalculationStepPanel:
         crud_row.addWidget(create_button(tr("edit", "修改"), lambda: self._edit(kind)), 1)
         crud_row.addWidget(create_button(tr("delete", "删除"), lambda: self._delete(kind)), 1)
         block_layout.addLayout(crud_row)
-        block_layout.addWidget(create_button(tr("step3_select_on_map", "在地图上选点"), lambda: self._select_on_map(kind)))
         import_key, import_default = _IMPORT_KEYS[kind]
         block_layout.addWidget(create_button(tr(import_key, import_default), lambda: self._import(kind)))
         return block, table
@@ -249,22 +249,35 @@ class CalculationStepPanel:
         if not bounds:
             self._notify(tr("step3_cannot_read_map_range_generate_grid", "无法读取网格范围，请先在第一步生成网格"))
             return
-        try:
-            from ..components.map_point_picker_dialog import MapPointPickerDialog
-        except ImportError as exc:
-            self._notify(tr("step3_map_picker_unavailable", "地图选点不可用（缺少 matplotlib/cartopy）：{error}").format(error=exc))
-            return
+        from ..components.globe_picker_dialog import GlobePickerDialog
+
         existing = self.points() if kind == "spectral" else self.track_points()
-        try:
-            dialog = MapPointPickerDialog(
-                self.widget.window(),
-                bounds=bounds,
-                existing_points=existing,
-                button_style=self._button_style(),
-            )
-        except ImportError as exc:
-            self._notify(tr("step3_map_picker_unavailable", "地图选点不可用（缺少 matplotlib/cartopy）：{error}").format(error=exc))
-            return
+        levels = bounds.get("levels") or [
+            {
+                "lon_min": bounds["lon_min"],
+                "lon_max": bounds["lon_max"],
+                "lat_min": bounds["lat_min"],
+                "lat_max": bounds["lat_max"],
+                "label": tr("step3_map_grid_range", "网格范围"),
+            }
+        ]
+        display_regions = [
+            {
+                "label": level.get("label") or f"level{index}",
+                "west": level["lon_min"],
+                "east": level["lon_max"],
+                "south": level["lat_min"],
+                "north": level["lat_max"],
+            }
+            for index, level in enumerate(levels)
+        ]
+        dialog = GlobePickerDialog(
+            self.widget.window(),
+            display_regions=display_regions,
+            selection_enabled=False,
+            point_selection_bounds=bounds,
+            existing_points=existing,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self._replace_points_from_map(kind, dialog.result_points)

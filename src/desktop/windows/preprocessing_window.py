@@ -626,7 +626,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             create_button=self._primary_button,
             combo_style=self._combo_style,
             input_style=self._input_style,
-            button_style=self._button_style,
             bounds_provider=self._calc_grid_bounds,
             notify=self._append_log,
             points_changed=self._persist_step3_points_to_params,

@@ -38,6 +38,8 @@ class GlobePickerDialog(QWidget):
         *,
         display_regions: Sequence[dict[str, object]] | None = None,
         selection_enabled: bool = True,
+        point_selection_bounds: dict[str, object] | None = None,
+        existing_points: Sequence[dict[str, object]] | None = None,
     ):
         host = parent or QApplication.activeWindow()
         if host is None:
@@ -45,9 +47,11 @@ class GlobePickerDialog(QWidget):
         super().__init__(host)
 
         self._bounds: tuple[float, float, float, float] | None = None
+        self.result_points: list[dict[str, object]] = []
         self._result = self.DialogCode.Rejected
         self._event_loop: QEventLoop | None = None
-        self._selection_enabled = selection_enabled
+        self._point_selection_enabled = point_selection_bounds is not None
+        self._selection_enabled = selection_enabled and not self._point_selection_enabled
 
         self.setObjectName("globePickerOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -91,8 +95,11 @@ class GlobePickerDialog(QWidget):
         html_url = QUrl.fromLocalFile(str(html_path.resolve()))
         query = QUrlQuery()
         query.addQueryItem("lang", self._map_language())
-        query.addQueryItem("mode", "select" if selection_enabled else "display")
-        if selection_enabled:
+        if self._point_selection_enabled:
+            query.addQueryItem("mode", "points")
+        else:
+            query.addQueryItem("mode", "select" if self._selection_enabled else "display")
+        if self._selection_enabled:
             initial_bounds = self._initial_bounds(host)
             if initial_bounds is not None:
                 for key, value in zip(("west", "east", "south", "north"), initial_bounds):
@@ -102,6 +109,18 @@ class GlobePickerDialog(QWidget):
             query.addQueryItem(
                 "regions",
                 json.dumps(encoded_regions, ensure_ascii=False, separators=(",", ":")),
+            )
+        if self._point_selection_enabled:
+            encoded_bounds = self._point_bounds(point_selection_bounds or {})
+            if encoded_bounds is not None:
+                query.addQueryItem(
+                    "pointBounds",
+                    json.dumps(encoded_bounds, separators=(",", ":")),
+                )
+            encoded_points = self._points(existing_points or ())
+            query.addQueryItem(
+                "points",
+                json.dumps(encoded_points, ensure_ascii=False, separators=(",", ":")),
             )
         html_url.setQuery(query)
         self._webview.load(html_url)
@@ -178,6 +197,46 @@ class GlobePickerDialog(QWidget):
                     "north": north,
                 }
             )
+        return result
+
+    @staticmethod
+    def _point_bounds(bounds: dict[str, object]) -> dict[str, float] | None:
+        try:
+            result = {
+                "west": float(bounds["lon_min"]),
+                "east": float(bounds["lon_max"]),
+                "south": float(bounds["lat_min"]),
+                "north": float(bounds["lat_max"]),
+            }
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not all(math.isfinite(value) for value in result.values()):
+            return None
+        if result["south"] >= result["north"] or result["south"] < -90 or result["north"] > 90:
+            return None
+        while result["east"] <= result["west"]:
+            result["east"] += 360
+        return result if result["east"] - result["west"] <= 360 else None
+
+    @staticmethod
+    def _points(points: Sequence[dict[str, object]]) -> list[dict[str, object]]:
+        result: list[dict[str, object]] = []
+        for index, point in enumerate(points):
+            try:
+                lon = float(point["lon"])
+                lat = float(point["lat"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not math.isfinite(lon) or not math.isfinite(lat) or lat < -90 or lat > 90:
+                continue
+            item: dict[str, object] = {
+                "lon": lon,
+                "lat": lat,
+                "name": str(point.get("name") or index),
+            }
+            if "datetime" in point:
+                item["datetime"] = str(point.get("datetime") or "")
+            result.append(item)
         return result
 
     def exec(self) -> QDialog.DialogCode:
@@ -271,16 +330,23 @@ class GlobePickerDialog(QWidget):
         if ok:
             self._restore_host_frameless()
             QTimer.singleShot(0, self._restore_host_frameless)
-            if self._selection_enabled:
+            if self._selection_enabled or self._point_selection_enabled:
                 self._check_timer.start()
 
     def _poll_result(self) -> None:
+        result_name = "__globePointResult" if self._point_selection_enabled else "__globeResult"
         self._webview.page().runJavaScript(
-            "window.__globeResult || null",
+            f"window.{result_name} || null",
             self._on_js_result,
         )
 
     def _on_js_result(self, result: object) -> None:
+        if self._point_selection_enabled:
+            if not isinstance(result, list):
+                return
+            self.result_points = self._points(result)
+            self.accept()
+            return
         if not isinstance(result, dict):
             return
         try:

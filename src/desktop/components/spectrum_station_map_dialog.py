@@ -1,7 +1,7 @@
 """二维谱站点地图对话框。
 
-在 matplotlib/cartopy 地图上展示二维谱输出站点位置。采用与第三步「在地图上选点」
-（:class:`MapPointPickerDialog`）一致的卡片式弹窗样式（``MessageBoxBase`` 遮罩卡片），
+在 matplotlib/cartopy 地图上展示二维谱输出站点位置。采用
+``MessageBoxBase`` 遮罩卡片式弹窗，
 站点以绿色圆点标注。仅展示，不可交互选点。
 
 matplotlib/cartopy 缺失时构造抛 ``ImportError``，由调用方降级提示。
@@ -9,8 +9,8 @@ matplotlib/cartopy 缺失时构造抛 ``ImportError``，由调用方降级提示
 [EN] 2D spectrum station map dialog.
 
 Displays 2D spectral output station locations on a matplotlib/cartopy map, using the
-same card-style popup (``MessageBoxBase`` masked card) as the Step-3 "Select Points on
-Map" dialog (:class:`MapPointPickerDialog`). Stations are marked with green dots.
+same card-style popup (``MessageBoxBase`` masked card) as the previous map dialogs.
+Stations are marked with green dots.
 Display-only (no interactive picking). If matplotlib/cartopy is missing, construction
 raises ``ImportError`` for the caller to handle.
 """
@@ -198,7 +198,7 @@ class SpectrumStationMapDialog(MessageBoxBase):
         ax.text(0.5, 0.5, message, ha="center", va="center", fontsize=14, transform=ax.transAxes)
         ax.set_axis_off()
 
-    # ── close / sizing (mirror MapPointPickerDialog) ─────────────────────────
+    # ── close / sizing ──────────────────────────────────────────────────
 
     def _close(self) -> None:
         QDialog.done(self, int(QDialog.DialogCode.Accepted))
