@@ -19,7 +19,7 @@
     border-radius: 10px; padding: 6px; display: flex; gap: 4px;
     align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   }
-  #toolbar button, #toolbar select {
+  #toolbar button {
     padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px;
     cursor: pointer; transition: all 0.15s;
   }
@@ -31,10 +31,22 @@
   #toolbar button.active { background: #4a90d9; color: #fff; }
   #toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
   #toolbar .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.15); margin: 0 4px; }
-  #toolbar select {
-    background: rgba(255,255,255,0.08); color: #ccc; outline: none; min-width: 80px;
+  .style-select-wrap { position: relative; display: flex; align-items: center; }
+  .style-select-wrap::after {
+    content: "⌄"; position: absolute; right: 10px; top: 50%; transform: translateY(-56%);
+    color: #c8c8c8; font-size: 15px; line-height: 1; pointer-events: none;
   }
-  #toolbar select:hover { background: rgba(255,255,255,0.15); }
+  #toolbar select {
+    appearance: none; -webkit-appearance: none;
+    width: 112px; height: 32px; padding: 0 30px 0 11px;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+    background: #2d2d2d; color: #f2f2f2; outline: none;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  }
+  #toolbar select:hover { background: #383838; border-color: rgba(255,255,255,0.32); }
+  #toolbar select:focus { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,0.22); }
+  #toolbar select option { background: #2d2d2d; color: #f2f2f2; }
 
   /* Info panel */
   #info-panel {
@@ -65,20 +77,29 @@
   #confirm-btn:disabled:hover { background: #444; }
   .maplibregl-ctrl-top-right { top: 12px !important; right: 12px !important; }
   .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0 0 4px 0; }
+  #map-attribution {
+    position: absolute; right: 8px; bottom: 6px; z-index: 9;
+    padding: 2px 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.72); color: #4f5962;
+    font-size: 10px; line-height: 1.3; pointer-events: none;
+  }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 <div id="status-panel">正在加载高清地图...</div>
+<div id="map-attribution">© OpenStreetMap contributors</div>
 
 <div id="toolbar">
-  <select id="style-select">
-    <option value="street">🌐 街道图</option>
-    <option value="satellite">🛰️ 卫星图</option>
-    <option value="dark">🌙 暗色图</option>
-    <option value="light">☀️ 亮色图</option>
-  </select>
+  <div class="style-select-wrap">
+    <select id="style-select" aria-label="地图类型">
+      <option value="street">街道图</option>
+      <option value="satellite">卫星图</option>
+      <option value="dark">暗色图</option>
+      <option value="light">亮色图</option>
+    </select>
+  </div>
   <div class="separator"></div>
   <button id="pan-btn" class="active" title="平移">🖐</button>
   <button id="rect-btn" title="绘制矩形" disabled>▭</button>
@@ -128,7 +149,7 @@
   var startPoint = null;
   var currentRect = null;
   var hasRect = false;
-  var currentStyle = 'land';
+  var currentStyle = 'street';
   var drawingSourceReady = false;
   var eventsBound = false;
   var lastPoint = null;
@@ -148,6 +169,7 @@
   var rectBtn = document.getElementById('rect-btn');
   var styleSelect = document.getElementById('style-select');
   var statusPanel = document.getElementById('status-panel');
+  var attributionEl = document.getElementById('map-attribution');
 
   function setStatus(message, isError) {
     statusPanel.textContent = message;
@@ -177,12 +199,12 @@
     refreshExpiredTiles: false,
     maxTileCacheSize: 64,
     dragRotate: false,
-    touchPitch: false
+    touchPitch: false,
+    attributionControl: false
   });
 
   // -- 地图控件 --
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
-  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
   // ----------------------------------------------------------------
   //  绘制层管理
@@ -325,6 +347,7 @@
   function switchStyle(styleId) {
     if (styleId === currentStyle) return;
     currentStyle = styleId;
+    attributionEl.textContent = RASTER_STYLES[styleId].attribution;
     clearRectangle();
     drawingSourceReady = false;
     // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。

@@ -37,6 +37,8 @@ class GlobePickerDialog(QWidget):
         self._bounds: tuple[float, float, float, float] | None = None
         self._result = self.DialogCode.Rejected
         self._event_loop: QEventLoop | None = None
+        self._host_title_bar = getattr(host, "titleBar", None)
+        self._host_title_bar_was_visible: bool | None = None
 
         self.setObjectName("globePickerOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -88,6 +90,7 @@ class GlobePickerDialog(QWidget):
     def exec(self) -> QDialog.DialogCode:
         """Run a local event loop while keeping the picker inside the main window."""
         self._result = self.DialogCode.Rejected
+        self._hide_host_title_bar()
         self._sync_to_host()
         self.show()
         self.raise_()
@@ -110,8 +113,24 @@ class GlobePickerDialog(QWidget):
         self._result = result
         self._check_timer.stop()
         self.hide()
+        self._restore_host_title_bar()
         if self._event_loop is not None and self._event_loop.isRunning():
             self._event_loop.quit()
+
+    def _hide_host_title_bar(self) -> None:
+        if self._host_title_bar is None:
+            return
+        if self._host_title_bar_was_visible is None:
+            self._host_title_bar_was_visible = self._host_title_bar.isVisible()
+        self._host_title_bar.hide()
+
+    def _restore_host_title_bar(self) -> None:
+        if self._host_title_bar is None:
+            return
+        if self._host_title_bar_was_visible:
+            self._host_title_bar.show()
+            self._host_title_bar.raise_()
+        self._host_title_bar_was_visible = None
 
     def _sync_to_host(self) -> None:
         host = self.parentWidget()
@@ -129,6 +148,7 @@ class GlobePickerDialog(QWidget):
         }:
             self._sync_to_host()
             if self.isVisible():
+                self._hide_host_title_bar()
                 QTimer.singleShot(0, self.raise_)
         return super().eventFilter(watched, event)
 
@@ -142,6 +162,15 @@ class GlobePickerDialog(QWidget):
             self.reject()
             return
         super().keyPressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and not self._card.geometry().contains(event.position().toPoint())
+        ):
+            self.reject()
+            return
+        super().mouseReleaseEvent(event)
 
     def _on_page_loaded(self, ok: bool) -> None:
         if ok:
