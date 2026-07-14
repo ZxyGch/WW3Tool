@@ -11,7 +11,6 @@ from pathlib import Path
 from PyQt6.QtCore import QEvent, QEventLoop, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor
 from PyQt6.QtWebEngineCore import QWebEngineSettings
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -21,6 +20,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qframelesswindow.webengine import FramelessWebEngineView
 
 
 class GlobePickerDialog(QWidget):
@@ -37,8 +37,6 @@ class GlobePickerDialog(QWidget):
         self._bounds: tuple[float, float, float, float] | None = None
         self._result = self.DialogCode.Rejected
         self._event_loop: QEventLoop | None = None
-        self._host_title_bar = getattr(host, "titleBar", None)
-        self._host_title_bar_was_visible: bool | None = None
 
         self.setObjectName("globePickerOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -60,7 +58,8 @@ class GlobePickerDialog(QWidget):
         card_layout.setContentsMargins(8, 8, 8, 8)
         card_layout.setSpacing(0)
 
-        self._webview = QWebEngineView(self._card)
+        # qframelesswindow 会在 WebEngine 创建原生视图后重新应用 macOS 无边框状态。
+        self._webview = FramelessWebEngineView(self._card)
         self._webview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._webview.setMinimumSize(320, 240)
         self._webview.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
@@ -90,7 +89,7 @@ class GlobePickerDialog(QWidget):
     def exec(self) -> QDialog.DialogCode:
         """Run a local event loop while keeping the picker inside the main window."""
         self._result = self.DialogCode.Rejected
-        self._hide_host_title_bar()
+        self._restore_host_frameless()
         self._sync_to_host()
         self.show()
         self.raise_()
@@ -113,24 +112,27 @@ class GlobePickerDialog(QWidget):
         self._result = result
         self._check_timer.stop()
         self.hide()
-        self._restore_host_title_bar()
+        self._restore_host_frameless()
+        QTimer.singleShot(0, self._restore_host_frameless)
         if self._event_loop is not None and self._event_loop.isRunning():
             self._event_loop.quit()
 
-    def _hide_host_title_bar(self) -> None:
-        if self._host_title_bar is None:
+    def _restore_host_frameless(self) -> None:
+        host = self.parentWidget()
+        if host is None:
             return
-        if self._host_title_bar_was_visible is None:
-            self._host_title_bar_was_visible = self._host_title_bar.isVisible()
-        self._host_title_bar.hide()
-
-    def _restore_host_title_bar(self) -> None:
-        if self._host_title_bar is None:
-            return
-        if self._host_title_bar_was_visible:
-            self._host_title_bar.show()
-            self._host_title_bar.raise_()
-        self._host_title_bar_was_visible = None
+        update_frameless = getattr(host, "updateFrameless", None)
+        if callable(update_frameless):
+            update_frameless()
+        set_system_buttons = getattr(host, "setSystemTitleBarButtonVisible", None)
+        if callable(set_system_buttons):
+            set_system_buttons(False)
+        if self.isVisible():
+            self.raise_()
+        else:
+            title_bar = getattr(host, "titleBar", None)
+            if title_bar is not None:
+                title_bar.raise_()
 
     def _sync_to_host(self) -> None:
         host = self.parentWidget()
@@ -148,7 +150,6 @@ class GlobePickerDialog(QWidget):
         }:
             self._sync_to_host()
             if self.isVisible():
-                self._hide_host_title_bar()
                 QTimer.singleShot(0, self.raise_)
         return super().eventFilter(watched, event)
 
@@ -174,6 +175,8 @@ class GlobePickerDialog(QWidget):
 
     def _on_page_loaded(self, ok: bool) -> None:
         if ok:
+            self._restore_host_frameless()
+            QTimer.singleShot(0, self._restore_host_frameless)
             self._check_timer.start()
 
     def _poll_result(self) -> None:
