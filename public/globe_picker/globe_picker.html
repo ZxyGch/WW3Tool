@@ -194,7 +194,7 @@
     zoom: 2.8,
     minZoom: 2,
     maxZoom: 22,
-    renderWorldCopies: false,
+    renderWorldCopies: true,
     fadeDuration: 0,
     refreshExpiredTiles: false,
     maxTileCacheSize: 64,
@@ -275,13 +275,48 @@
   //  矩形绘制函数
   // ----------------------------------------------------------------
 
+  function unwrapLongitude(longitude, reference) {
+    var value = longitude;
+    while (value - reference > 180) value -= 360;
+    while (value - reference < -180) value += 360;
+    return value;
+  }
+
+  function rectangleGeometry(north, south, east, west) {
+    var drawWest = west;
+    var drawEast = east;
+    while (drawWest < -180) {
+      drawWest += 360;
+      drawEast += 360;
+    }
+    while (drawWest >= 180) {
+      drawWest -= 360;
+      drawEast -= 360;
+    }
+
+    function ring(left, right) {
+      return [[left, north], [right, north], [right, south], [left, south], [left, north]];
+    }
+
+    if (drawEast <= 180) {
+      return { type: 'Polygon', coordinates: [ring(drawWest, drawEast)] };
+    }
+
+    return {
+      type: 'MultiPolygon',
+      coordinates: [
+        [ring(drawWest, 180)],
+        [ring(-180, drawEast - 360)]
+      ]
+    };
+  }
+
   function updateRectangle(north, south, east, west) {
     if (!drawingSourceReady || !map.getSource('draw-rect')) return false;
-    var coords = [[[west, north], [east, north], [east, south], [west, south], [west, north]]];
     try {
       map.getSource('draw-rect').setData({
         type: 'Feature',
-        geometry: { type: 'Polygon', coordinates: coords }
+        geometry: rectangleGeometry(north, south, east, west)
       });
     } catch(e) {
       setStatus('矩形图层更新失败，请重新选择底图后重试。', true);
@@ -415,9 +450,10 @@
       lastPoint = e.point;
       var p = map.unproject(e.point);
       var start = map.unproject(startPoint);
+      var endLongitude = unwrapLongitude(p.lng, start.lng);
       scheduleRectanglePreview(
         Math.max(start.lat, p.lat), Math.min(start.lat, p.lat),
-        Math.max(start.lng, p.lng), Math.min(start.lng, p.lng)
+        Math.max(start.lng, endLongitude), Math.min(start.lng, endLongitude)
       );
     });
 
@@ -433,8 +469,9 @@
       previewBounds = null;
       var start = map.unproject(startPoint);
       var end = map.unproject(endPoint);
-      var west = Math.min(start.lng, end.lng);
-      var east = Math.max(start.lng, end.lng);
+      var endLongitude = unwrapLongitude(end.lng, start.lng);
+      var west = Math.min(start.lng, endLongitude);
+      var east = Math.max(start.lng, endLongitude);
       var south = Math.min(start.lat, end.lat);
       var north = Math.max(start.lat, end.lat);
       if (updateRectangle(north, south, east, west)) {
