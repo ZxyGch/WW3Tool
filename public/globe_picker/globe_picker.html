@@ -74,7 +74,7 @@
 
 <div id="toolbar">
   <select id="style-select">
-    <option value="land">🌐 海陆范围图</option>
+    <option value="street">🌐 街道图</option>
     <option value="satellite">🛰️ 卫星图</option>
     <option value="dark">🌙 暗色图</option>
     <option value="light">☀️ 亮色图</option>
@@ -98,9 +98,9 @@
   var RASTER_STYLES = {
     street: {
       type: 'raster',
-      tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
-      attribution: '© CARTO © OpenStreetMap contributors'
+      attribution: '© OpenStreetMap contributors'
     },
     satellite: {
       type: 'raster',
@@ -157,12 +157,14 @@
     return;
   }
 
-  var LAND_STYLE = 'https://demotiles.maplibre.org/style.json';
-
-  // -- MapLibre: 使用矢量海陆样式和 globe 投影 --
+  // -- MapLibre: 使用标准 OpenStreetMap 街道瓦片和 globe 投影 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: LAND_STYLE,
+    style: {
+      version: 8,
+      sources: { 'base-tiles': RASTER_STYLES.street },
+      layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
+    },
     projection: 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -175,6 +177,7 @@
 
   // -- 地图控件 --
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
   // ----------------------------------------------------------------
   //  绘制层管理
@@ -310,8 +313,12 @@
     // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
     rectBtn.disabled = false;
 
-    if (styleId === 'land') {
-      map.setStyle(LAND_STYLE);
+    if (styleId === 'street') {
+      map.setStyle({
+        version: 8,
+        sources: { 'base-tiles': RASTER_STYLES.street },
+        layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
+      });
     } else {
       map.setStyle({
         version: 8,
@@ -321,10 +328,6 @@
     }
     // 样式切换完成后重建绘制层
     map.once('style.load', function() {
-      if (styleId === 'land') {
-        simplifyLandStyle();
-        addGraticuleLayer();
-      }
       addDrawingLayers();
       rectBtn.disabled = false;
     });
@@ -333,10 +336,6 @@
     function waitForStyleReady(attempt) {
       if (drawingSourceReady) return;
       if (map.isStyleLoaded && map.isStyleLoaded()) {
-        if (styleId === 'land') {
-          simplifyLandStyle();
-          addGraticuleLayer();
-        }
         addDrawingLayers();
         rectBtn.disabled = false;
         return;
@@ -355,8 +354,6 @@
   // ----------------------------------------------------------------
 
   map.on('load', function() {
-    simplifyLandStyle();
-    addGraticuleLayer();
     addDrawingLayers();
     rectBtn.disabled = false;
     if (eventsBound) return;
