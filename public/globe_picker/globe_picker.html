@@ -40,22 +40,44 @@
   #point-tools #delete-point-btn { min-width: 56px; }
   #point-tools #confirm-points-btn { min-width: 76px; background: #237a4b; color: #fff; }
   #point-tools #confirm-points-btn:hover { background: #2b8f59; }
-  .style-select-wrap { position: relative; display: flex; align-items: center; }
-  .style-select-wrap::after {
-    content: "⌄"; position: absolute; right: 10px; top: 50%; transform: translateY(-56%);
-    color: #c8c8c8; font-size: 15px; line-height: 1; pointer-events: none;
+  .style-combo { position: relative; width: 158px; }
+  #toolbar #style-select-button {
+    width: 158px; height: 32px; padding: 0 10px;
+    border: 1px solid #404040; border-radius: 4px;
+    background: #2d2d2d; color: #fff;
+    justify-content: space-between; gap: 10px;
+    font-size: 13px; font-weight: 400; text-align: left;
   }
-  #toolbar select {
-    appearance: none; -webkit-appearance: none;
-    width: 112px; height: 32px; padding: 0 30px 0 11px;
-    border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
-    background: #2d2d2d; color: #f2f2f2; outline: none;
-    font-size: 13px; font-weight: 500; cursor: pointer;
-    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  #toolbar #style-select-button:hover,
+  #toolbar #style-select-button[aria-expanded="true"] { background: #383838; }
+  #style-select-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .combo-chevron {
+    width: 7px; height: 7px; flex: 0 0 7px;
+    border-right: 1.5px solid #d0d0d0; border-bottom: 1.5px solid #d0d0d0;
+    transform: rotate(45deg) translate(-1px, -1px);
+    transition: transform 0.15s ease;
   }
-  #toolbar select:hover { background: #383838; border-color: rgba(255,255,255,0.32); }
-  #toolbar select:focus { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,0.22); }
-  #toolbar select option { background: #2d2d2d; color: #f2f2f2; }
+  #style-select-button[aria-expanded="true"] .combo-chevron {
+    transform: rotate(225deg) translate(-1px, -1px);
+  }
+  #style-select-menu {
+    position: absolute; top: 38px; left: 0; z-index: 30;
+    display: none; width: 158px; padding: 4px;
+    border: 1px solid #404040; border-radius: 6px;
+    background: #2d2d2d; box-shadow: 0 8px 24px rgba(0,0,0,0.38);
+  }
+  #style-select-menu.visible { display: block; }
+  #toolbar #style-select-menu .style-option {
+    width: 100%; min-height: 32px; padding: 6px 9px;
+    border: 0; border-radius: 4px;
+    justify-content: flex-start; color: #f2f2f2;
+    background: transparent; font-size: 13px; font-weight: 400;
+    text-align: left; white-space: nowrap;
+  }
+  #toolbar #style-select-menu .style-option:hover { background: #3d3d3d; }
+  #toolbar #style-select-menu .style-option.selected {
+    background: #353535; box-shadow: inset 3px 0 #0078d4;
+  }
 
   /* Info panel */
   #info-panel {
@@ -125,13 +147,17 @@
 <div id="region-legend"></div>
 
 <div id="toolbar">
-  <div class="style-select-wrap">
-    <select id="style-select" aria-label="地图类型">
-      <option value="administrative">行政区划海图</option>
-      <option value="satellite">卫星图</option>
-      <option value="dark">暗色图</option>
-      <option value="light">亮色图</option>
-    </select>
+  <div id="style-select" class="style-combo">
+    <button id="style-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <span id="style-select-label">行政区划海图</span>
+      <span class="combo-chevron" aria-hidden="true"></span>
+    </button>
+    <div id="style-select-menu" role="listbox">
+      <button class="style-option selected" type="button" role="option" data-value="administrative">行政区划海图</button>
+      <button class="style-option" type="button" role="option" data-value="satellite">卫星图</button>
+      <button class="style-option" type="button" role="option" data-value="dark">暗色图</button>
+      <button class="style-option" type="button" role="option" data-value="light">亮色图</button>
+    </div>
   </div>
   <div class="separator"></div>
   <button id="pan-btn" class="active" title="平移">🖐</button>
@@ -314,6 +340,10 @@
   var panBtn = document.getElementById('pan-btn');
   var rectBtn = document.getElementById('rect-btn');
   var styleSelect = document.getElementById('style-select');
+  var styleSelectButton = document.getElementById('style-select-button');
+  var styleSelectLabel = document.getElementById('style-select-label');
+  var styleSelectMenu = document.getElementById('style-select-menu');
+  var styleOptions = Array.prototype.slice.call(document.querySelectorAll('.style-option'));
   var statusPanel = document.getElementById('status-panel');
   var attributionEl = document.getElementById('map-attribution');
   var regionLegend = document.getElementById('region-legend');
@@ -328,9 +358,10 @@
   }
 
   function applyUiLanguage() {
-    ['administrative', 'satellite', 'dark', 'light'].forEach(function(key) {
-      styleSelect.querySelector('option[value="' + key + '"]').textContent = text[key];
+    styleOptions.forEach(function(option) {
+      option.textContent = text[option.dataset.value];
     });
+    styleSelectLabel.textContent = text[currentStyle];
     panBtn.title = text.pan;
     rectBtn.title = text.rectangle;
     confirmBtn.textContent = '✓ ' + text.confirm;
@@ -869,6 +900,12 @@
   // ----------------------------------------------------------------
 
   function switchStyle(styleId) {
+    styleSelectLabel.textContent = text[styleId];
+    styleOptions.forEach(function(option) {
+      var selected = option.dataset.value === styleId;
+      option.classList.toggle('selected', selected);
+      option.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
     if (styleId === currentStyle) return;
     currentStyle = styleId;
     if (navigationOverlayTimer !== null) {
@@ -998,8 +1035,46 @@
   //  Toolbar & 按钮事件
   // ----------------------------------------------------------------
 
-  styleSelect.addEventListener('change', function(e) {
-    switchStyle(e.target.value);
+  function setStyleMenuOpen(open) {
+    styleSelectMenu.classList.toggle('visible', open);
+    styleSelectButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  styleSelectButton.addEventListener('click', function() {
+    setStyleMenuOpen(!styleSelectMenu.classList.contains('visible'));
+  });
+
+  styleOptions.forEach(function(option, index) {
+    option.addEventListener('click', function() {
+      setStyleMenuOpen(false);
+      switchStyle(option.dataset.value);
+      styleSelectButton.focus();
+    });
+    option.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        setStyleMenuOpen(false);
+        styleSelectButton.focus();
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        var step = event.key === 'ArrowDown' ? 1 : -1;
+        styleOptions[(index + step + styleOptions.length) % styleOptions.length].focus();
+      }
+    });
+  });
+
+  styleSelectButton.addEventListener('keydown', function(event) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setStyleMenuOpen(true);
+      var selectedIndex = styleOptions.findIndex(function(option) {
+        return option.dataset.value === currentStyle;
+      });
+      styleOptions[Math.max(0, selectedIndex)].focus();
+    }
+  });
+
+  document.addEventListener('mousedown', function(event) {
+    if (!styleSelect.contains(event.target)) setStyleMenuOpen(false);
   });
 
   panBtn.addEventListener('click', function() {
