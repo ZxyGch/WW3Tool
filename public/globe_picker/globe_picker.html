@@ -89,7 +89,7 @@
 
 <div id="map"></div>
 <div id="status-panel">正在加载高清地图...</div>
-<div id="map-attribution">© OpenStreetMap contributors</div>
+<div id="map-attribution">OpenFreeMap © OpenMapTiles · OpenStreetMap</div>
 
 <div id="toolbar">
   <div class="style-select-wrap">
@@ -118,10 +118,8 @@
   // -- 底图瓦片源 --
   var RASTER_STYLES = {
     street: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap contributors'
+      style: 'https://tiles.openfreemap.org/styles/bright',
+      attribution: 'OpenFreeMap © OpenMapTiles · OpenStreetMap'
     },
     satellite: {
       type: 'raster',
@@ -181,14 +179,10 @@
     return;
   }
 
-  // -- MapLibre: 使用标准 OpenStreetMap 街道瓦片和 globe 投影 --
+  // -- MapLibre: 使用 OSM 矢量街道样式和 globe 投影 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: {
-      version: 8,
-      sources: { 'base-tiles': RASTER_STYLES.street },
-      layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
-    },
+    style: RASTER_STYLES.street.style,
     projection: 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -442,11 +436,7 @@
     rectBtn.disabled = false;
 
     if (styleId === 'street') {
-      map.setStyle({
-        version: 8,
-        sources: { 'base-tiles': RASTER_STYLES.street },
-        layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
-      });
+      map.setStyle(RASTER_STYLES.street.style);
     } else {
       map.setStyle({
         version: 8,
