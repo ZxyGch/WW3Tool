@@ -71,9 +71,9 @@ The CLI’s “one command, one step, no manual interaction” design is natural
 | | validate [workdir] | Validate `params.yml` |
 | | config [workdir] | Print configuration summary |
 | | print-params [workdir] | Print raw `params.yml` |
-| Preprocessing | prepare-forcing [workdir] | Prepare forcing fields (Step 1) |
+| Preprocessing | generate-grid [workdir] | Generate grid (Step 1) |
 | | merge-forcing <in1.nc> [...] -o <out.nc> | Standalone tool: validate and merge forcing NetCDF |
-| | generate-grid [workdir] | Generate grid (Step 2) |
+| | prepare-forcing [workdir] | Prepare forcing fields (Step 2) |
 | | recommend-grid [workdir] [--coarse\|--fine] | Recommend grid spacing from domain extent |
 | | recommend-cfl [workdir] [--mode safe\|fast\|faster] [--factor X] | Recommend timesteps from CFL formula |
 | | prepare-ww3 [workdir] | Generate WW3 namelists only |
@@ -122,12 +122,12 @@ work_dir_name/
 ├── server.sh                          # Server Slurm script; copied from public/scripts/server.sh and patched
 ├── success / fail                     # Empty marker files for last run success or failure
 │
-├── wind.nc                            # Normalized wind forcing, usually from Step 1
+├── wind.nc                            # Normalized wind forcing, usually from Step 2
 ├── current.nc                         # Normalized current forcing, optional
 ├── level.nc                           # Normalized water-level forcing, optional
 ├── ice.nc                             # Normalized sea-ice forcing, optional
 │
-├── grid.bot                           # Bathymetry grid; Step 2 or import
+├── grid.bot                           # Bathymetry grid; Step 1 or import
 ├── grid.obst                          # Obstruction grid; common for structured grids
 ├── grid.meta                          # Grid metadata recorded by WW3Tool
 ├── mod_def.ww3                        # WW3 grid definition from ww3_grid
@@ -268,8 +268,8 @@ Typical end-to-end chain:
 
 ```
 → [Create or load work directory]  Copy root params.yml into work directory
-→ [Step 1 Forcing preparation] Validate, repair, copy/move forcing into work directory
-→ [Step 2 Grid generation] Call meshgen to build grid files
+→ [Step 1 Grid generation] Call meshgen to build grid files
+→ [Step 2 Forcing preparation] Validate, repair, copy/move forcing into work directory
 → [Step 3 Computation mode] Region / spectral points / track
 → [Step 4 WW3 configuration] Configure namelist files
 → [Step 5 Connect server] SSH, Slurm, server WW3 version
@@ -279,8 +279,8 @@ Typical end-to-end chain:
 
 ```mermaid
 flowchart LR
-  A[Forcing NetCDF] --> B[Step 1 Forcing prep]
-  B --> C[Step 2 Grid generation]
+  A[Grid params / bathymetry / coastline] --> B[Step 1 Grid generation]
+  B --> C[Step 2 Forcing preparation]
   C --> D[Step 3 Computation mode
   region / points / track]
   D --> E[Step 4 WW3 config
@@ -317,7 +317,7 @@ When creating a work directory, the program:
 ```swift
 workdir:
 	path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
-	default_workspace: /Volumes/Zxy's Disk/WW3Tool_workSpace/
+	default_workspace: /public/home/weiyl001/user/gongchuheng/WorkSpace/ShangHai/
 ```
 
 `path` — work directory path  
@@ -360,121 +360,20 @@ ww3> queue-status
 
 
 
-### 5.2 Step 1 — Forcing Preparation
+### 5.2 Step 1 — Grid Generation
 
-Step 1 imports external NetCDF forcing into the work directory and normalizes it for later steps. Supported fields: wind, current, water level, sea ice.
+Step 1 builds WW3 grid input from the `params.yml` `grid` section — turning domain extent, bathymetry, coastlines, and grid type into files WW3 can read. It does **not** run `ww3_grid`; compiling `mod_def.ww3` happens in Step 4 / run scripts.
 
 ![](public/resource/README-media/截屏2026-06-28%2010.50.13.png)
 
 
 #### GUI workflow
 
-Step 1 on the home page is **select first, then confirm import**:
-
-1. Click wind / current / level / ice buttons to choose NetCDF files.
-2. After selection, the log shows file info (variables, time range, lat/lon extent). This step only reads metadata; no copy, move, or crop yet.
-
-![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
-
-
-3. With one or more fields selected, common time and spatial extents are read into Step 1 inputs. When opening an existing work directory, standard files (`wind.nc`, `current.nc`, etc.) are scanned and extents filled when possible.
-4. To crop, edit time/lat/lon, then click **Confirm crop and import**. Time format: `YYYYMMDD`; space: decimal degrees.
-5. To import without cropping, click **Import directly without cropping**. Files are copied or moved in full, then normalized.
-
-Import modes:
-
-- **Copy**: keep originals; write processed files into the work directory.
-- **Move**: remove or relocate originals after import. With crop, the source is not moved as-is; a cropped file is written first, then the source is deleted on success.
-
-Helper buttons:
-
-- **Read common extent**: re-read common time/lat/lon from selected fields into Step 1 inputs.
-- **View map**: show spatial extent of up to four fields.
-- **View all field info**: dump info for all selected fields to the log.
-- **×** next to each field button: clear selection; if pointing at a normalized file in the work directory, optionally delete it and clear references.
-
-
-#### params.yml
-
-Step 1 settings are under `forcing`:
-
-```sh
-python3 run.py prepare-forcing [work_dir_name]    # Prepare forcing
-```
-
-```yaml
-forcing:
-  wind: null
-  current: null
-  level: null
-  ice: null
-  process_mode: copy        # copy or move
-  crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]; empty = no crop
-  crop_bbox: []             # [west, east, south, north]; empty = no crop
-  auto_associate: true      # If one file has multiple fields, link to multiple slots
-```
-
-Settings page **Forcing configuration** provides default import mode and auto-associate toggle. The home page reads these when you open a work directory; actual import still follows current home-page selections and button clicks.
-
-
-#### Detecting field type
-
-Field type is inferred from NetCDF variable names:
-
-- **Wind**: any of u10/v10, wndewd/wndnwd, uwnd/vwnd (case-insensitive)
-- **Current**: uo/vo
-- **Water level**: zos
-- **Ice**: siconc
-
-
-#### Normalization
-
-```swift
-🔄 Rewriting time metadata to WW3-readable char attributes (units + calendar)
-
-✅ Forcing field normalized and saved to: /User/WW3Tool/workSpace/2026-06-29_16-57-02/wind.nc
-```
-
-After confirm import:
-
-1. Rename variants (e.g. `wndewd/wndnwd`, `uwnd/vwnd` → wind; `uo/vo`, `zos`, `siconc` → respective fields).
-2. Coordinates unified to `longitude`, `latitude`, `time`; dimensions and dependent variables updated.
-3. Output named by field type: `wind.nc`, `current.nc`, etc.; combined names like `current_level.nc` when multiple fields share one file with `auto_associate`.
-4. Latitude flipped from descending to ascending if needed (avoids WW3 6.07.1 `ww3_prnc` `EXTCDE(32)` on regular lat-lon grids).
-5. Normalized files feed Step 4 `ww3_prnc.nml` generation; no manual namelist edits for original variable names.
-
-
-#### Multi-field auto-association
-
-If one NetCDF contains multiple field types and `forcing.auto_associate: true`, all detected types are linked to the same normalized file path in multiple GUI slots.
-
-Examples:
-
-- File with `uo/vo` and `zos` → `current_level.nc`; current and level slots both point to it.
-- File with wind, current, level, ice → `wind_current_level_ice.nc`; all four slots point to it.
-
-With `auto_associate: false`, only the slot where you selected the file is updated.
-
-#### Work-directory scan
-
-On open, normalized forcing files are detected and GUI buttons restored (`wind.nc`, `current.nc`, `level.nc`, `ice.nc`, `current_level.nc`, `wind_current_level_ice.nc`, etc.). Scan only restores display; import still requires **Confirm crop and import** or **Import directly**.
-
-
-
-
-
-
-### 5.3 Step 2 — Grid Generation
-
-![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
-
-Step 2 builds WW3 grid input from `params.yml` `grid` section — turning domain extent, bathymetry, coastlines, and grid type into files WW3 can read. It does **not** run `ww3_grid`; compiling `mod_def.ww3` happens in Step 4 / run scripts.
+Step 1 on the home page is **set grid params, preview bounds, then generate grid**:
 
 For meshgen internals see `meshgen/README.md`. Below covers the GUI/CLI fields you change most often and common misunderstandings.
 
-#### GUI workflow
-
-Recommended order on Step 2:
+Recommended order on Step 1:
 
 
 ![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
@@ -493,7 +392,7 @@ Missing `reference_data` triggers a download prompt. Results are cached under `m
 
 The reference data package (GEBCO, ETOPO1/2, coastlines, etc.) is required for grid generation.
 
-If `WW3Tool/meshgen/reference_data` is missing, Step 2 shows a download dialog:
+If `WW3Tool/meshgen/reference_data` is missing, Step 1 shows a download dialog:
 
 ![](public/resource/README-media/截屏2026-06-29%2017.01.09.png)
 
@@ -820,6 +719,108 @@ smc:
 
 
 
+### 5.3 Step 2 — Forcing Preparation
+
+![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
+
+Step 2 imports external NetCDF forcing into the work directory and normalizes it for later steps. Supported fields: wind, current, water level, sea ice.
+
+#### GUI workflow
+
+Recommended order on Step 2:
+
+1. Click wind / current / level / ice buttons to choose NetCDF files.
+2. After selection, the log shows file info (variables, time range, lat/lon extent). This step only reads metadata; no copy, move, or crop yet.
+
+![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
+
+
+3. To crop, edit time/lat/lon, then click **Confirm crop and import**. Time format: `YYYYMMDD`; space: decimal degrees.
+4. To import without cropping, click **Import directly without cropping**. Files are copied or moved in full, then normalized.
+
+Import modes:
+
+- **Copy**: keep originals; write processed files into the work directory.
+- **Move**: remove or relocate originals after import. With crop, the source is not moved as-is; a cropped file is written first, then the source is deleted on success.
+
+Helper buttons:
+
+- **View Map**: generate a region preview image from the current Step 2 lon/lat bounds.
+- **View map**: show spatial extent of up to four fields.
+- **View all field info**: dump info for all selected fields to the log.
+- **×** next to each field button: clear selection; if pointing at a normalized file in the work directory, optionally delete it and clear references.
+
+
+#### params.yml
+
+Step 2 settings are under `forcing`:
+
+```sh
+python3 run.py prepare-forcing [work_dir_name]    # Prepare forcing
+```
+
+```yaml
+forcing:
+  wind: null
+  current: null
+  level: null
+  ice: null
+  process_mode: copy        # copy or move
+  crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]; empty = no crop
+  crop_bbox: []             # [west, east, south, north]; empty = no crop
+  auto_associate: true      # If one file has multiple fields, link to multiple slots
+```
+
+Settings page **Forcing configuration** provides default import mode and auto-associate toggle. The home page reads these when you open a work directory; actual import still follows current home-page selections and button clicks.
+
+
+#### Detecting field type
+
+Field type is inferred from NetCDF variable names:
+
+- **Wind**: any of u10/v10, wndewd/wndnwd, uwnd/vwnd (case-insensitive)
+- **Current**: uo/vo
+- **Water level**: zos
+- **Ice**: siconc
+
+
+#### Normalization
+
+```swift
+🔄 Rewriting time metadata to WW3-readable char attributes (units + calendar)
+
+✅ Forcing field normalized and saved to: /User/WW3Tool/workSpace/2026-06-29_16-57-02/wind.nc
+```
+
+After confirm import:
+
+1. Rename variants (e.g. `wndewd/wndnwd`, `uwnd/vwnd` → wind; `uo/vo`, `zos`, `siconc` → respective fields).
+2. Coordinates unified to `longitude`, `latitude`, `time`; dimensions and dependent variables updated.
+3. Output named by field type: `wind.nc`, `current.nc`, etc.; combined names like `current_level.nc` when multiple fields share one file with `auto_associate`.
+4. Latitude flipped from descending to ascending if needed (avoids WW3 6.07.1 `ww3_prnc` `EXTCDE(32)` on regular lat-lon grids).
+5. Normalized files feed Step 4 `ww3_prnc.nml` generation; no manual namelist edits for original variable names.
+
+
+#### Multi-field auto-association
+
+If one NetCDF contains multiple field types and `forcing.auto_associate: true`, all detected types are linked to the same normalized file path in multiple GUI slots.
+
+Examples:
+
+- File with `uo/vo` and `zos` → `current_level.nc`; current and level slots both point to it.
+- File with wind, current, level, ice → `wind_current_level_ice.nc`; all four slots point to it.
+
+With `auto_associate: false`, only the slot where you selected the file is updated.
+
+#### Work-directory scan
+
+On open, normalized forcing files are detected and GUI buttons restored (`wind.nc`, `current.nc`, `level.nc`, `ice.nc`, `current_level.nc`, `wind_current_level_ice.nc`, etc.). Scan only restores display; import still requires **Confirm crop and import** or **Import directly**.
+
+
+
+
+
+
 ### 5.4 Step 3 — Computation Mode
 
 Computation mode chooses whether WW3 integrates over the full grid, fixed spectral points, or a moving track. Set in `calc.mode` (GUI Step 3). No dedicated CLI subcommand; read during `prepare-ww3` or `run-workflow`.
@@ -974,7 +975,7 @@ If the grid is very coarse or `FREQ1` very small, recommended steps may still be
 
 #### 5.5.2 Write grid into ww3_grid.nml
 
-Step 2 grid files must be synced into `ww3_grid.nml` grid fields before WW3 can read them. Syntax differs by grid type:
+Step 1 grid files must be synced into `ww3_grid.nml` grid fields before WW3 can read them. Syntax differs by grid type:
 
 ```log
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml:
@@ -1193,7 +1194,7 @@ ww3:
 
 ![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
 
-If Step 1 imported multiple fields, Step 4 shows multi-select (wind required). Separate `ww3_prnc_*.nml` per field type.
+If Step 2 imported multiple fields, Step 4 shows multi-select (wind required). Separate `ww3_prnc_*.nml` per field type.
 
 ```log
 ✅ Copied and modified ww3_prnc_current.nml:
@@ -1366,10 +1367,10 @@ Below is a **cold start** pipeline. Hot restart adds a few steps at the top and 
 If Step 4 chose hot restart, before anything else the script: finds the latest checkpoint in the work directory → copies it to `restart.ww3` → updates integration/output start times in `ww3_shel.nml` (§5.5.5). Cold start skips this.
 
 **1. `ww3_grid`**  
-Reads `ww3_grid.nml` (from Step 2 grid in Step 4) and `grid.bot`, etc., and builds `mod_def.ww3`. Required for all later steps.
+Reads `ww3_grid.nml` (from Step 1 grid in Step 4) and `grid.bot`, etc., and builds `mod_def.ww3`. Required for all later steps.
 
 **2. `ww3_prnc` (possibly several times)**  
-Reads `ww3_prnc.nml` and Step 1 NetCDF forcing, producing `wind.ww3` and similar binaries. WW3 handles one forcing type per invocation, so if Step 4 enabled current, level, ice, the script renames nml files and runs **wind → current → level → ice** in order (§5.5.7 log examples).
+Reads `ww3_prnc.nml` and Step 2 NetCDF forcing, producing `wind.ww3` and similar binaries. WW3 handles one forcing type per invocation, so if Step 4 enabled current, level, ice, the script renames nml files and runs **wind → current → level → ice** in order (§5.5.7 log examples).
 
 **3. `ww3_strt` (cold only)**  
 Builds the initial spectrum and writes `restart.ww3`. On hot restart, `restart.ww3` is already in place from step 0; the log shows `skip ww3_strt`.
@@ -1467,7 +1468,7 @@ server:
   user: null
   password: null
   key_file: null
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 
@@ -1481,7 +1482,7 @@ server:
   user: <server-user>
   password: <server-password>
   key_file: null
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 
@@ -1498,7 +1499,7 @@ server:
   user: <server-user>
   password: null
   key_file: /Users/<name>/.ssh/id_rsa
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 
@@ -1603,7 +1604,7 @@ server:
   key_file: null
 
   # Remote work root for upload; remote_dir is usually auto-generated from the workdir name
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 
 slurm:
@@ -1747,7 +1748,7 @@ python3 run.py local-run work_dir_name          # run local.sh locally
 
 ```yaml
 server:
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 

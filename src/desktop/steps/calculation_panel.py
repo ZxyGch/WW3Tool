@@ -247,7 +247,7 @@ class CalculationStepPanel:
     def _select_on_map(self, kind: str) -> None:
         bounds = self._bounds_provider()
         if not bounds:
-            self._notify(tr("step3_cannot_read_map_range_generate_grid", "无法读取网格范围，请先在第二步生成网格"))
+            self._notify(tr("step3_cannot_read_map_range_generate_grid", "无法读取网格范围，请先在第一步生成网格"))
             return
         try:
             from ..components.map_point_picker_dialog import MapPointPickerDialog

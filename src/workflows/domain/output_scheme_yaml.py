@@ -17,6 +17,26 @@
     output_scheme:
       name: with_spectrum
       fields: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
+
+[EN] Parse and serialize the ww3.output_scheme YAML block.
+
+Recommended style: scheme name → space-separated fields::
+
+    output_scheme:
+      use: with_spectrum          # specify the active scheme when multiple schemes exist
+      standard: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS
+      with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
+
+``use`` can be omitted when only one scheme is defined::
+
+    output_scheme:
+      with_spectrum: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
+
+Legacy format (supported for backward compatibility)::
+
+    output_scheme:
+      name: with_spectrum
+      fields: HS DIR FP T02 WND PHS PTP PDIR PWS PNR TWS EF
 """
 
 from __future__ import annotations
@@ -30,7 +50,10 @@ SYNTHETIC_OUTPUT_SCHEME_KEYS = frozenset({"__params__"})
 
 
 def visible_output_scheme_names(schemes: Mapping[str, object]) -> list[str]:
-    """返回应展示给用户的方案名（排除 __params__ 等内部键）。"""
+    """返回应展示给用户的方案名（排除 __params__ 等内部键）。
+
+    [EN] Return scheme names that should be shown to the user (excluding internal keys such as __params__).
+    """
     return sorted(
         str(name)
         for name in schemes
@@ -39,7 +62,10 @@ def visible_output_scheme_names(schemes: Mapping[str, object]) -> list[str]:
 
 
 def visible_output_schemes(schemes: Mapping[str, Sequence[str]]) -> dict[str, list[str]]:
-    """返回应展示/编辑的方案映射（排除内部合成键）。"""
+    """返回应展示/编辑的方案映射（排除内部合成键）。
+
+    [EN] Return the scheme mapping to display/edit (excluding internal synthetic keys).
+    """
     return {
         str(name): list(fields)
         for name, fields in schemes.items()
@@ -63,7 +89,10 @@ def _normalize_field_codes(raw_fields: Iterable[str], path: str) -> list[str]:
 
 
 def parse_output_fields_value(value: Any, path: str) -> list[str]:
-    """解析字段列表（字符串或数组）。"""
+    """解析字段列表（字符串或数组）。
+
+    [EN] Parse a field list (string or array).
+    """
     if isinstance(value, str):
         raw_fields = value.replace(",", " ").split()
     elif isinstance(value, list):
@@ -82,7 +111,10 @@ def parse_ww3_output_scheme(
     *,
     path: str = "ww3.output_scheme",
 ) -> tuple[str, list[str], dict[str, list[str]]]:
-    """解析 ``ww3.output_scheme``，返回 (当前方案名, 当前字段, yaml 内定义的全部方案)。"""
+    """解析 ``ww3.output_scheme``，返回 (当前方案名, 当前字段, yaml 内定义的全部方案)。
+
+    [EN] Parse ``ww3.output_scheme`` and return (active scheme name, active fields, all schemes defined in YAML).
+    """
     if value is None:
         raise ValueError(f"{path} 不能为空")
 
@@ -136,7 +168,10 @@ def serialize_ww3_output_scheme(
     active: str,
     schemes: Mapping[str, Sequence[str]],
 ) -> dict[str, str]:
-    """将方案映射写回 YAML 友好格式（use + 方案名: 字段字符串）。"""
+    """将方案映射写回 YAML 友好格式（use + 方案名: 字段字符串）。
+
+    [EN] Serialize the scheme mapping back to YAML-friendly format (use + scheme-name: field string).
+    """
     active_name = str(active).strip()
     body: dict[str, str] = {}
     for name, fields in schemes.items():

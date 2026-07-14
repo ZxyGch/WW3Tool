@@ -1,8 +1,15 @@
 """SMC 底网格 RECT 与强迫场裁剪范围对齐工具。
 
 ``ww3_prnc`` 会把风/流/水位插值到 ``ww3_rect_geo`` 定义的**整块**底网格上，
-而 SMC 胞元对齐到全球 SMC 经纬步长后，该范围往往比第二步 ``grid.lon/lat`` 或
+而 SMC 胞元对齐到全球 SMC 经纬步长后，该范围往往比第一步 ``grid.lon/lat`` 或
 ``regional_bounds`` 外扩约 0.03°–0.25°（尤其东侧受 ERA5 0.25° 格点量化影响）。
+
+[EN] Utility for aligning the SMC base-mesh RECT with forcing-crop bounds.
+
+``ww3_prnc`` interpolates wind/current/water-level onto the whole base mesh defined by
+``ww3_rect_geo``. After SMC cells are snapped to global SMC lat/lon steps, this rectangle
+is usually 0.03°–0.25° larger than the Step-1 ``grid.lon/lat`` or ``regional_bounds``,
+especially on the east side due to ERA5 0.25° grid quantization.
 """
 from __future__ import annotations
 
@@ -17,7 +24,10 @@ DEFAULT_FORCING_SNAP_DEG = 0.25
 
 
 def read_ww3_rect_geo(work_dir: str | Path) -> dict[str, float] | None:
-    """从工作目录 ``grid.json`` 读取 ``ww3_rect_geo``。"""
+    """从工作目录 ``grid.json`` 读取 ``ww3_rect_geo``。
+
+    [EN] Read ``ww3_rect_geo`` from ``grid.json`` in the working directory.
+    """
     path = Path(work_dir).expanduser() / "grid.json"
     if not path.is_file():
         return None
@@ -49,6 +59,11 @@ def recommended_forcing_bbox(
     """由 ``ww3_rect_geo`` 计算强迫场裁剪框 ``[west, east, south, north]``。
 
     向外取整到 ``snap_deg``（默认 ERA5 0.25°），保证裁剪后 NetCDF 仍含覆盖 RECT 的格点。
+
+    [EN] Compute the forcing crop box ``[west, east, south, north]`` from ``ww3_rect_geo``.
+
+    Outward-rounded to ``snap_deg`` (default ERA5 0.25°) so the cropped NetCDF still contains
+    grid points covering the RECT.
     """
     west = float(rect_geo["lon_west"]) - margin_deg
     east = float(rect_geo["lon_east"]) + margin_deg
@@ -63,7 +78,10 @@ def recommended_forcing_bbox(
 
 
 def forcing_nc_lonlat_bounds(nc_path: str | Path) -> tuple[float, float, float, float] | None:
-    """返回 NetCDF 的 (lon_min, lon_max, lat_min, lat_max)。"""
+    """返回 NetCDF 的 (lon_min, lon_max, lat_min, lat_max)。
+
+    [EN] Return the NetCDF (lon_min, lon_max, lat_min, lat_max).
+    """
     try:
         with nc.Dataset(str(nc_path), "r") as ds:
             lon_vn = lat_vn = None
@@ -90,7 +108,10 @@ def forcing_covers_rect(
     *,
     eps: float = 0.01,
 ) -> bool:
-    """风场/流场范围是否覆盖 SMC RECT 地理包络。"""
+    """风场/流场范围是否覆盖 SMC RECT 地理包络。
+
+    [EN] Check whether the wind/current field extent covers the SMC RECT geographic envelope.
+    """
     wlo, whi, wla, wlz = forcing_bounds
     lon_w = float(rect_geo["lon_west"])
     lon_e = float(rect_geo["lon_east"])

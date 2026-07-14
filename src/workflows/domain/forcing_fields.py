@@ -1,23 +1,23 @@
 """强迫场（forcing）选择与路径状态模型。
 
-本模块属于 ``domain/`` 领域层，定义强迫场类型枚举及 Step 1 相关状态容器，
+本模块属于 ``domain/`` 领域层，定义强迫场类型枚举及 Step 2 相关状态容器，
 供无界面 CLI 与 Desktop 预处理流程共用，避免 UI 与业务逻辑耦合。
 
 主要消费者：
 - ``application/forcing_preparation.py``：强迫场准备用例
 - ``application/forcing_inspection.py``：文件检测与自动关联
-- ``desktop/view_models/forcing_step.py``：桌面端 Step 1 视图模型
+- ``desktop/view_models/forcing_step.py``：桌面端 Step 2 视图模型
 
 [EN] Forcing field selection and path state models.
 
 This module belongs to the ``domain/`` layer and defines forcing field type
-enumerations and Step 1 related state containers, shared by the headless CLI
+enumerations and Step 2 related state containers, shared by the headless CLI
 and Desktop preprocessing workflows to avoid coupling UI with business logic.
 
 Main consumers:
 - ``application/forcing_preparation.py``: forcing preparation use case
 - ``application/forcing_inspection.py``: file detection and auto-association
-- ``desktop/view_models/forcing_step.py``: desktop Step 1 view model
+- ``desktop/view_models/forcing_step.py``: desktop Step 2 view model
 """
 
 from __future__ import annotations
@@ -30,11 +30,11 @@ from typing import Optional
 class ForcingField(str, Enum):
     """WW3 强迫场类型枚举。
 
-    成员值与 ``Step1Files`` 及 ``ForcingConfig`` 中的字段名一致。
+    成员值与 ``Step2Files`` 及 ``ForcingConfig`` 中的字段名一致。
 
     [EN] WW3 forcing field type enumeration.
 
-    Member values correspond to field names in ``Step1Files`` and ``ForcingConfig``.
+    Member values correspond to field names in ``Step2Files`` and ``ForcingConfig``.
     """
 
     WIND = "wind"
@@ -54,7 +54,7 @@ FORCING_FIELD_ORDER = (
 
 
 @dataclass
-class Step1Files:
+class Step2Files:
     """各强迫场类型对应的源文件路径。
 
     路径以字符串形式存储（通常为绝对路径），未选择时为 ``None``。
@@ -120,12 +120,12 @@ class Step1Files:
             return
         self.set(forcing_field, None)
 
-    def copy(self) -> "Step1Files":
+    def copy(self) -> "Step2Files":
         """返回当前路径映射的浅拷贝。
 
         [EN] Return a shallow copy of the current path mapping.
         """
-        return Step1Files(wind=self.wind, current=self.current, level=self.level, ice=self.ice)
+        return Step2Files(wind=self.wind, current=self.current, level=self.level, ice=self.ice)
 
     def existing_items(self) -> list[tuple[ForcingField, str]]:
         """列出所有已配置（非空）的强迫场及其路径。
@@ -146,30 +146,30 @@ class Step1Files:
 
 
 @dataclass
-class Step1State:
-    """Step 1（强迫场准备）的完整运行时状态。
+class Step2State:
+    """Step 2（强迫场准备）的完整运行时状态。
 
     聚合目录选择、各场文件路径、处理进度标志及处理模式等 UI/工作流共享字段。
 
-    [EN] Complete runtime state for Step 1 (forcing preparation).
+    [EN] Complete runtime state for Step 2 (forcing preparation).
 
     Aggregates folder selection, per-field file paths, processing progress flags,
     and processing mode — fields shared by UI and workflow.
     """
 
     selected_folder: Optional[str] = None
-    files: Step1Files = field(default_factory=Step1Files)
+    files: Step2Files = field(default_factory=Step2Files)
     is_processing: bool = False
     processing_message: str = ""
     auto_associate: bool = True
     process_mode: str = "copy"
 
-    def copy(self) -> "Step1State":
-        """返回包含独立 ``Step1Files`` 副本的状态快照。
+    def copy(self) -> "Step2State":
+        """返回包含独立 ``Step2Files`` 副本的状态快照。
 
-        [EN] Return a state snapshot with an independent ``Step1Files`` copy.
+        [EN] Return a state snapshot with an independent ``Step2Files`` copy.
         """
-        return Step1State(
+        return Step2State(
             selected_folder=self.selected_folder,
             files=self.files.copy(),
             is_processing=self.is_processing,

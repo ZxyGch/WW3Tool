@@ -1,10 +1,19 @@
 """WW3 ``ww3_prnc`` 强迫场时间轴元数据检测与修复。
 
+[EN] WW3 ``ww3_prnc`` forcing field time-axis metadata detection and fix.
+
 CMEMS / ERA5 等 CF-1.11 NetCDF-4 文件常把 ``time:units`` / ``time:calendar`` 存为
 NetCDF-4 **string** 类型属性；WW3 Fortran 端按经典 **char** 属性读取，会报
 ``calendar ATTRIBUTE NOT DEFINED`` 与 ``PREMATURE END OF TIME ATTRIBUTE``。
 
-本模块在 Step 1 归一化前检测上述问题，并在写出时强制使用 WW3 可读的属性格式。
+[EN] CF-1.11 NetCDF-4 files from CMEMS / ERA5 often store ``time:units`` / ``time:calendar``
+as NetCDF-4 **string** attributes; the WW3 Fortran side reads them as classic **char**
+attributes, raising ``calendar ATTRIBUTE NOT DEFINED`` and ``PREMATURE END OF TIME ATTRIBUTE``.
+
+本模块在 Step 2 归一化前检测上述问题，并在写出时强制使用 WW3 可读的属性格式。
+
+[EN] This module detects the above issues before Step 2 normalization and forces the use of
+attribute formats readable by WW3 when writing output.
 """
 
 from __future__ import annotations
@@ -32,14 +41,20 @@ _TIME_CANDIDATES = ("valid_time", "time", "Time", "TIME", "t", "MT", "mt")
 
 @dataclass(frozen=True)
 class TimeMetadataIssue:
-    """单条 WW3 时间元数据兼容性问题。"""
+    """单条 WW3 时间元数据兼容性问题。
+
+    [EN] A single WW3 time-metadata compatibility issue.
+    """
 
     code: str
     detail: str = ""
 
 
 def pick_time_variable_name(dataset) -> Optional[str]:
-    """在已打开的 NetCDF 数据集中解析时间变量名。"""
+    """在已打开的 NetCDF 数据集中解析时间变量名。
+
+    [EN] Resolve the time variable name in an opened NetCDF dataset.
+    """
     for name in _TIME_CANDIDATES:
         if name in dataset.variables:
             return name
@@ -47,7 +62,10 @@ def pick_time_variable_name(dataset) -> Optional[str]:
 
 
 def has_nc_string_time_attributes(file_path: str) -> bool:
-    """用 ``ncdump -h`` 检测 ``time:units/calendar`` 是否为 NetCDF-4 string 属性。"""
+    """用 ``ncdump -h`` 检测 ``time:units/calendar`` 是否为 NetCDF-4 string 属性。
+
+    [EN] Use ``ncdump -h`` to detect whether ``time:units/calendar`` are stored as NetCDF-4 string attributes.
+    """
     if not shutil.which("ncdump"):
         return False
     try:
@@ -67,7 +85,10 @@ def audit_time_metadata_for_ww3(
     *,
     time_name: Optional[str] = None,
 ) -> List[TimeMetadataIssue]:
-    """检查强迫场 NetCDF 的 ``time`` 元数据是否可被 WW3 ``ww3_prnc`` 读取。"""
+    """检查强迫场 NetCDF 的 ``time`` 元数据是否可被 WW3 ``ww3_prnc`` 读取。
+
+    [EN] Check whether the ``time`` metadata of a forcing NetCDF can be read by WW3 ``ww3_prnc``.
+    """
     from netCDF4 import Dataset
 
     issues: List[TimeMetadataIssue] = []
@@ -110,12 +131,18 @@ def time_metadata_needs_ww3_fix(
     *,
     time_name: Optional[str] = None,
 ) -> bool:
-    """是否存在需要重写的 WW3 时间元数据问题。"""
+    """是否存在需要重写的 WW3 时间元数据问题。
+
+    [EN] Whether there are WW3 time-metadata issues that need to be rewritten.
+    """
     return bool(audit_time_metadata_for_ww3(file_path, time_name=time_name))
 
 
 def normalize_time_units_for_ww3(units: str) -> str:
-    """把 ``since YYYY-MM-DD`` 补全为 ``since YYYY-MM-DD 00:00:00``。"""
+    """把 ``since YYYY-MM-DD`` 补全为 ``since YYYY-MM-DD 00:00:00``。
+
+    [EN] Pad ``since YYYY-MM-DD`` to ``since YYYY-MM-DD 00:00:00``.
+    """
     value = (units or "").strip()
     if not value:
         return value
@@ -130,7 +157,10 @@ def normalize_time_units_for_ww3(units: str) -> str:
 
 
 def normalize_calendar_for_ww3(calendar: Optional[str]) -> str:
-    """把非 WW3 支持的 calendar 映射为 ``gregorian``。"""
+    """把非 WW3 支持的 calendar 映射为 ``gregorian``。
+
+    [EN] Map calendars not supported by WW3 to ``gregorian``.
+    """
     value = (calendar or "gregorian").strip().lower()
     if value in _WW3_ALLOWED_CALENDARS:
         return value
@@ -142,7 +172,10 @@ def format_time_metadata_issue_logs(
     *,
     log: Optional[Callable[[str], None]] = None,
 ) -> List[str]:
-    """将检测结果格式化为可写入日志的文本行。"""
+    """将检测结果格式化为可写入日志的文本行。
+
+    [EN] Format detection results into log-writable text lines.
+    """
     lines: List[str] = []
     for issue in issues:
         if issue.code in {"nc_string_attr", "invalid_units"}:

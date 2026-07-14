@@ -81,8 +81,8 @@ class WW3OunpNML(NMLPrimitives):
         # 修改 namelists.nml
         self._modify_namelists_e3d_in_dir(target_dir)
 
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         # [EN] Export points.list (nested: once at workdir root, see _apply_all_params_nested)
@@ -155,8 +155,8 @@ class WW3OunpNML(NMLPrimitives):
 
         # [EN] Check if nested grid mode
         # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
@@ -241,8 +241,8 @@ class WW3OunpNML(NMLPrimitives):
 
         # [EN] Check if nested grid mode
         # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:

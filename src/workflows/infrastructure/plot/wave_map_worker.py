@@ -2,6 +2,10 @@
 
 在独立子进程中读取 WW3 波高等场变量，支持结构化网格、非结构三角网及 SMC
 点序列输出；可生成 cartopy 填色图、等值线图，并可选合成动画视频。
+
+[EN] [EN] Wave-height filled-contour and contour-line worker — spatial visualization of WW3 field output NetCDF.
+
+Reads WW3 wave-height and other field variables in a separate subprocess, supports structured grids, unstructured triangular meshes and SMC point-sequence outputs; can generate cartopy filled-contour maps, contour-line maps, and optionally composite animation videos.
 """
 
 import os
@@ -58,6 +62,10 @@ def _try_load_smc_plot_geometry(grid_dir, ww3_lon, ww3_lat):
     """当点序列输出与 ``grid_cell.dat`` 匹配时，加载 SMC 单元多边形与排序索引供绘图使用。
 
     成功时返回包含 ``polygons``、``order`` 等键的字典；失败或不可用时返回 ``None``。
+    
+    [EN] [EN] When point-sequence output matches ``grid_cell.dat``, load SMC cell polygons and sorting indices for plotting.
+    
+    On success returns a dict containing ``polygons``, ``order`` and other keys; returns ``None`` on failure or if unavailable.
     """
     if (
         _load_smc_run_info is None
@@ -104,6 +112,8 @@ def _try_load_smc_plot_geometry(grid_dir, ww3_lon, ww3_lat):
 
 
 def _sanitize_nc_field(raw_var, raw):
+    
+    # [EN] [EN] Apply missing-value, valid-range and abnormally-large-value masking to a NetCDF field variable, returning a float ndarray.
     """对 NetCDF 场变量应用缺测值、有效范围及异常大值掩膜，返回 float ndarray。"""
     arr = np.asarray(raw, dtype=float)
     fv = getattr(raw_var, "_FillValue", None)
@@ -135,9 +145,16 @@ def _make_wave_maps_worker(selected_folder, time_step_hours, log_queue, result_q
 
     支持指定波高 NetCDF、自定义输出目录、海岸线叠加及 MP4 视频合成。
     结果路径列表经 ``result_queue`` 回传。
+    
+    [EN] [EN] Generate a sequence of WW3 wave-height (and optional wind-field) filled-contour maps by time step in a subprocess.
+    
+    Supports specifying a wave-height NetCDF, custom output directory, coastline overlay and MP4 video composition.
+    The list of result paths is returned via ``result_queue``.
     """
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)
@@ -871,9 +888,13 @@ def _make_contour_maps_worker(selected_folder, time_step_hours, log_queue, resul
                                FIGSIZE=(16,12), DPI=300, UPSAMPLE_FACTOR=3, CLIM_PCT=99.0,
                                CARTOPY_COAST_RES='10m', output_folder=None, show_land_coastline=True,
                                manual_wind=None, wave_height_file=None, clear_output=True):
+    
+    # [EN] [EN] Generate a sequence of WW3 wave-height contour-line maps by time step in a subprocess (cartopy projection).
     """在子进程中按时间步长生成 WW3 波高等值线图序列（cartopy 投影）。"""
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)

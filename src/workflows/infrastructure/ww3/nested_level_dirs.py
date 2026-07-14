@@ -13,7 +13,11 @@ _LEVEL_DIR_RE = re.compile(r"^level\d+$")
 
 
 def list_nested_level_entries(workdir: str | Path) -> list[tuple[Path, int]]:
-    """返回 ``[(path, index), ...]``，按 level 序号升序（level0 最粗）。"""
+    """返回 ``[(path, index), ...]``，按 level 序号升序（level0 最粗）。
+
+    [EN] Return ``[(path, index), ...]`` sorted by level index in ascending
+    order (level0 is the coarsest).
+    """
     root = Path(workdir)
     try:
         names = os.listdir(root)

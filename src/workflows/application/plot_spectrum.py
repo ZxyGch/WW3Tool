@@ -40,6 +40,15 @@ class SpectrumResult:
         messages: 执行过程中的日志消息。
         success: 操作是否成功完成。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Return result of directional spectrum plotting operation.
+
+    Attributes:
+        output_folder: WW3 result root directory (images are placed under the ``photo/`` subdirectory).
+        image_files: List of generated ``spectrum_*.png`` paths.
+        messages: Log messages during execution.
+        success: Whether the operation completed successfully.
+        error: Error description on failure; ``None`` on success.
     """
 
     output_folder: str
@@ -50,7 +59,10 @@ class SpectrumResult:
 
 
 def _resolve_result_folder(config: PipelineConfig) -> Path:
-    """解析 WW3 结果目录：使用 ``workdir``。"""
+    """解析 WW3 结果目录：使用 ``workdir``。
+
+    [EN] Resolve the WW3 result directory: use ``workdir``.
+    """
     return config.workdir.path
 
 
@@ -77,6 +89,19 @@ def run_spectrum(
 
     Returns:
         ``SpectrumResult``；worker 报错时 ``success=False``。
+
+    [EN] Generate 2D directional spectrum plots from WW3 spectral output NetCDF.
+
+    Args:
+        config: Pipeline config (``plot.spectrum`` section controls threshold and plot mode).
+        log: Optional log callback.
+        mode: Plotting scope -- ``"first"`` for the first station/time step only,
+            ``"all"`` for all, ``"selected"`` for a single station by ``station_index``.
+        station_index: Station index used when ``mode="selected"``.
+        spec_file: Optional, specifies the spectrum nc file path; auto-search if omitted.
+
+    Returns:
+        ``SpectrumResult``; ``success=False`` when the worker reports an error.
     """
     from ..infrastructure.plot.spectrum_worker import (
         _generate_all_spectrum_worker,

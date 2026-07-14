@@ -971,7 +971,11 @@ def _read_alias_float(mapping: dict[str, Any], aliases: list[str], label: str) -
 
 
 def _print_smc_run_banner() -> None:
-    """Banner line width 70；标题在等宽显示下居中（字符列）。"""
+    """Banner line width 70；标题在等宽显示下居中（字符列）。
+
+    [EN] Banner line width 70; the title is centered in a fixed-width display
+    (character columns).
+    """
     sys.stdout.flush()
     print("=" * 70, flush=True)
     title = "SMC Mesh Generation By SMCGTools"
@@ -981,6 +985,8 @@ def _print_smc_run_banner() -> None:
 
 def main() -> None:
     # 重定向到管道时，尽量行缓冲，便于 GUI 实时显示子进程输出（配合 PYTHONUNBUFFERED / python -u）
+    # [EN] When redirected to a pipe, use line buffering so the GUI can display
+    # subprocess output in real time (works with PYTHONUNBUFFERED / python -u).
     try:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(line_buffering=True)

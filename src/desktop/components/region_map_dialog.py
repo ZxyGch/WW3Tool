@@ -1,9 +1,9 @@
-"""Region map loading + display dialog for Step 2 "查看地图".
+"""Region map loading + display dialog for Step 1 "查看地图".
 
 Uses qfluentwidgets MessageBoxBase so the platform-level compositing (semi-transparent
 overlay, click-outside-to-close, rounded card) is handled by qfluentwidgets itself.
 
-[EN] Region map loading + display dialog for Step 2 "View Map".
+[EN] Region map loading + display dialog for Step 1 "View Map".
 
 Uses qfluentwidgets MessageBoxBase so the platform-level compositing (semi-transparent
 overlay, click-outside-to-close, rounded card) is handled by qfluentwidgets itself.
@@ -123,7 +123,7 @@ class RegionMapDialog(MessageBoxBase):
         loading_w = QWidget()
         loading_layout = QVBoxLayout(loading_w)
         loading_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._loading_label = QLabel(tr("step2_generating_map", "正在生成地图..."))
+        self._loading_label = QLabel(tr("step1_generating_map", "正在生成地图..."))
         self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._loading_label.setWordWrap(True)
         loading_layout.addWidget(self._loading_label)
@@ -159,7 +159,7 @@ class RegionMapDialog(MessageBoxBase):
         """Switch from loading to map image. Call from the on_done callback."""
         pm = QPixmap(png_path)
         if pm.isNull():
-            self.show_error(tr("step2_map_image_load_failed", "无法加载地图图片"))
+            self.show_error(tr("step1_map_image_load_failed", "无法加载地图图片"))
             return
         while self._image_layout.count():
             item = self._image_layout.takeAt(0)
@@ -174,7 +174,7 @@ class RegionMapDialog(MessageBoxBase):
         QtCore.QTimer.singleShot(50, map_label._apply_scale)
 
     def show_error(self, message: str) -> None:
-        self._loading_label.setText(tr("step2_map_generation_failed", "地图生成失败：{message}").format(message=message))
+        self._loading_label.setText(tr("step1_map_generation_failed", "地图生成失败：{message}").format(message=message))
         self._loading_bar.setVisible(False)
 
     # ── sizing ────────────────────────────────────────────────────────────────

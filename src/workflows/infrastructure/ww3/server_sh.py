@@ -219,6 +219,7 @@ class ServerSh(NMLPrimitives):
                 i += 1
 
             # 模板无 --mem 时，在 -N 后补一行
+            # [EN] If the template has no --mem, append one after -N.
             if mem and not mem_found:
                 for idx, out_line in enumerate(new_lines):
                     if out_line.strip().startswith("#SBATCH -N"):

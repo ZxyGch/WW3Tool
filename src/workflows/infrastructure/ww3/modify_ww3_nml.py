@@ -104,6 +104,7 @@ class ModifyWW3NML(
         
         # [EN] Check and update each forcing field file path
         # 检查并更新每个强迫场文件路径
+        # [EN] Check and update each forcing-field file path.
         forcing_fields = {
             'selected_origin_file': ['wind'],
             'selected_current_file': ['current'],
@@ -113,6 +114,7 @@ class ModifyWW3NML(
         
         # [EN] Map attribute names to checkbox key names
         # 映射属性名到复选框键名
+        # [EN] Map attribute names to checkbox keys.
         attr_to_checkbox = {
             'selected_origin_file': 'wind',
             'selected_current_file': 'current',
@@ -128,25 +130,30 @@ class ModifyWW3NML(
                 
                 # [EN] If file path exists, check if it is in the new working directory
                 # 如果文件路径存在，检查是否在新工作目录中
+                # [EN] If the file path exists, check whether it is in the new working directory.
                 if os.path.exists(file_path):
                     abs_file_path = os.path.abspath(file_path)
                     # [EN] Use commonpath to check if file is in the new working directory
                     # 使用 commonpath 检查文件是否在新工作目录中
+                    # [EN] Use commonpath to check whether the file is in the new working directory.
                     try:
                         common_path = os.path.commonpath([abs_file_path, abs_selected_folder])
                         if common_path != abs_selected_folder:
                             # [EN] File not in new working directory, try to find a file with the same name
                             # 文件不在新工作目录中，尝试在新工作目录中查找同名文件
+                            # [EN] File is not in the new work directory; try to find a same-name file there.
                             file_name = os.path.basename(file_path)
                             new_file_path = os.path.join(self.selected_folder, file_name)
                             
                             if os.path.exists(new_file_path):
                                 # [EN] Same-name file exists in new working directory, update path
                                 # 新工作目录中有同名文件，更新路径
+                                # [EN] A same-name file exists in the new work directory; update the path.
                                 setattr(self, attr_name, new_file_path)
                             else:
                                 # [EN] No same-name file, try to find files containing keywords
                                 # 新工作目录中没有同名文件，尝试查找包含关键词的文件
+                                # [EN] No same-name file in the new work directory; try to find files containing keywords.
                                 found = False
                                 import glob
                                 for keyword in keywords:
@@ -155,16 +162,19 @@ class ModifyWW3NML(
                                     if matching_files:
                                         # [EN] Prefer files containing all keywords (multi-field coexisting files)
                                         # 优先选择包含所有关键词的文件（多场并存文件）
+                                        # [EN] Prefer files containing all keywords (multi-field coexisting files).
                                         best_match = None
                                         for match_file in matching_files:
                                             match_name = os.path.basename(match_file).lower()
                                             # [EN] If filename contains all keywords, prefer it
                                             # 如果文件名包含所有关键词，优先选择
+                                            # [EN] If the file name contains all keywords, prefer it.
                                             if all(kw.lower() in match_name for kw in keywords):
                                                 best_match = match_file
                                                 break
                                         # [EN] If no file with all keywords found, use the first match
                                         # 如果没有找到包含所有关键词的文件，使用第一个匹配的文件
+                                        # [EN] If no file contains all keywords, use the first matched file.
                                         if not best_match and matching_files:
                                             best_match = matching_files[0]
                                         
@@ -176,6 +186,7 @@ class ModifyWW3NML(
                                 if not found:
                                     # [EN] No matching file found in new working directory, clear reference and uncheck checkbox
                                     # 新工作目录中没有找到对应的文件，清除引用并取消复选框
+                                    # [EN] No matching file in the new work directory; clear the reference and uncheck the checkbox.
                                     setattr(self, attr_name, None)
                                     checkbox_key = attr_to_checkbox.get(attr_name)
                                     if checkbox_key and hasattr(self, 'forcing_field_checkboxes') and checkbox_key in self.forcing_field_checkboxes:
@@ -184,6 +195,7 @@ class ModifyWW3NML(
                     except ValueError:
                         # [EN] Paths not on same drive (Windows) or incomparable, clear reference
                         # 路径不在同一驱动器上（Windows）或无法比较，清除引用
+                        # [EN] Paths are on different drives (Windows) or incomparable; clear the reference.
                         setattr(self, attr_name, None)
                         checkbox_key = attr_to_checkbox.get(attr_name)
                         if checkbox_key and hasattr(self, 'forcing_field_checkboxes') and checkbox_key in self.forcing_field_checkboxes:
@@ -192,6 +204,7 @@ class ModifyWW3NML(
                 else:
                     # [EN] File does not exist, try to find in new working directory
                     # 文件不存在，尝试在新工作目录中查找
+                    # [EN] File does not exist; try to find it in the new working directory.
                     file_name = os.path.basename(file_path) if isinstance(file_path, str) else None
                     if file_name:
                         new_file_path = os.path.join(self.selected_folder, file_name)
@@ -200,6 +213,7 @@ class ModifyWW3NML(
                         else:
                             # [EN] Try to find files containing keywords
                             # 尝试查找包含关键词的文件
+                            # [EN] Try to find files containing keywords.
                             found = False
                             import glob
                             for keyword in keywords:
@@ -208,6 +222,7 @@ class ModifyWW3NML(
                                 if matching_files:
                                     # [EN] Prefer files containing all keywords (multi-field coexisting files)
                                     # 优先选择包含所有关键词的文件（多场并存文件）
+                                    # [EN] Prefer files containing all keywords (multi-field coexisting files).
                                     best_match = None
                                     for match_file in matching_files:
                                         match_name = os.path.basename(match_file).lower()
@@ -225,6 +240,7 @@ class ModifyWW3NML(
                             if not found:
                                 # [EN] No matching file found in new working directory, clear reference and uncheck checkbox
                                 # 新工作目录中没有找到对应的文件，清除引用并取消复选框
+                                # [EN] No matching file in the new work directory; clear the reference and uncheck the checkbox.
                                 setattr(self, attr_name, None)
                                 checkbox_key = attr_to_checkbox.get(attr_name)
                                 if checkbox_key and hasattr(self, 'forcing_field_checkboxes') and checkbox_key in self.forcing_field_checkboxes:
@@ -233,6 +249,7 @@ class ModifyWW3NML(
                     else:
                         # [EN] File path invalid, clear reference and uncheck checkbox
                         # 文件路径无效，清除引用并取消复选框
+                        # [EN] File path is invalid; clear the reference and uncheck the checkbox.
                         setattr(self, attr_name, None)
                         checkbox_key = attr_to_checkbox.get(attr_name)
                         if checkbox_key and hasattr(self, 'forcing_field_checkboxes') and checkbox_key in self.forcing_field_checkboxes:
@@ -250,62 +267,77 @@ class ModifyWW3NML(
         
         # [EN] Validate and update forcing field file paths (ensure files are in the new working directory)
         # 验证并更新强迫场文件路径（确保文件在新工作目录中）
+        # [EN] Validate and update forcing-field file paths (ensure files are in the new working directory).
         self._validate_and_update_forcing_field_paths()
 
         # [EN] Check if a spectral partition output scheme is selected (for subsequent log display)
         # 检查是否选择了谱分区输出方案（用于后续显示日志）
+        # [EN] Check whether a spectral-partition output scheme is selected (for later log display).
         has_output_scheme = self._get_output_scheme_var_list() is not None
 
         # [EN] Check if current computation mode is track mode
         # 检查当前计算模式是否为轨迹计算
+        # [EN] Check whether the current computation mode is track mode.
         is_track_mode = self._is_track_mode()
 
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
         
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         if grid_type == nested_text or grid_type == "嵌套网格":
             # [EN] Nested grid mode: merge all operations, outer and inner grids each completed under one separator line
             # 嵌套网格模式：合并所有操作，外网格和内网格各自在一个分隔线下完成
+            # [EN] Nested-grid mode: merge all operations; outer and inner grids each complete under one separator line.
             self._apply_all_params_nested(has_output_scheme)
         else:
             # [EN] Normal grid mode: process according to original workflow
             # 普通网格模式：按原流程处理
+            # [EN] Normal-grid mode: process according to the original workflow.
             # [EN] Copy files first (so subsequent modifications apply to working directory files)
             # 先复制文件（这样后续修改才能应用到工作目录的文件）
+            # [EN] Copy files first so subsequent modifications apply to files in the working directory.
             self.copy_public_and_meta_to_grid()
 
             # [EN] After copying files, apply spectral partition output scheme to working directory
             # 在复制文件后，应用谱分区输出方案到工作目录
+            # [EN] After copying files, apply the spectral-partition output scheme to the working directory.
             if has_output_scheme:
                 self._apply_output_scheme_to_dir(self.selected_folder)
             
             # [EN] Update server.sh file
             # 更新 server.sh 文件
+            # [EN] Update the server.sh file.
             self.modify_server_sh_file()
             # [EN] Check if namelists.nml E3D parameter needs modification
             # 检查是否需要修改 namelists.nml 中的 E3D 参数
+            # [EN] Check whether the E3D parameter in namelists.nml needs modification.
             self._modify_namelists_e3d_if_needed()
             # [EN] Check if ww3_ounp.nml needs modification (spectral point-by-point computation mode)
             # 检查是否需要修改 ww3_ounp.nml（二维谱点计算模式）
+            # [EN] Check whether ww3_ounp.nml needs modification (spectral point-by-point computation mode).
             self._modify_ww3_ounp_if_needed()
             # [EN] Execute Step 5 functionality: apply WW3 parameters
             # 再执行第五步的功能：应用 WW3 参数
+            # [EN] Then execute Step 5 functionality: apply WW3 parameters.
             self.apply_ww3_params()
             # [EN] Modify time range in ww3_prnc.nml
             # 修改 ww3_prnc.nml 中的时间范围
+            # [EN] Modify the time range in ww3_prnc.nml.
             self._modify_ww3_prnc_times()
             # [EN] Generate corresponding ww3_prnc_*.nml files based on selected forcing fields
             # 根据选择的强迫场生成对应的 ww3_prnc_*.nml 文件
+            # [EN] Generate corresponding ww3_prnc_*.nml files based on selected forcing fields.
             self._generate_forcing_field_prnc_files()
             # [EN] Modify INPUT%FORCING%* settings in ww3_shel.nml
             # 修改 ww3_shel.nml 中的 INPUT%FORCING%* 设置
+            # [EN] Modify INPUT%FORCING%* settings in ww3_shel.nml.
             self._modify_ww3_shel_forcing_inputs()
         
         # [EN] After copying and applying parameters, if in track mode, generate track_i.ww3
         # 在复制和应用参数之后，如果是轨迹计算，生成 track_i.ww3 并写航迹 namelist
+        # [EN] After copying and applying parameters, if in track mode, generate track_i.ww3 and write the track namelist.
         if is_track_mode:
             self._generate_track_i_ww3_file()
-            nested_text = tr("step2_grid_type_nested", "嵌套网格")
+            nested_text = tr("step1_grid_type_nested", "嵌套网格")
             is_nested = grid_type in (nested_text, "嵌套网格")
             if is_nested:
                 workdir_multi = os.path.join(self.selected_folder, "ww3_multi.nml")
@@ -328,23 +360,25 @@ class ModifyWW3NML(
         Normal grid workflow: copy public files -> rewrite ww3_grid.nml by unstructured / SMC / RECT
         branch and sync grid.meta or set namelists.nml flags.
         """
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
 
         # [EN] Nested grid mode: all operations done in _apply_all_params_nested, skip here
         # 嵌套网格模式：所有操作在 _apply_all_params_nested 中完成，这里跳过
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        # [EN] Nested-grid mode: all operations are done in _apply_all_params_nested; skip here.
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         if grid_type == nested_text or grid_type == "嵌套网格":
             return
 
         # [EN] Normal grid mode: copy files and sync meta (rewrite ww3_grid.nml / namelists.nml for unstructured grids)
         # 普通网格模式：复制文件并同步 meta（非结构网格则改写 ww3_grid.nml / namelists.nml）
+        # [EN] Normal-grid mode: copy files and sync meta (rewrite ww3_grid.nml / namelists.nml for unstructured grids).
         self.copy_public_files()
-        if self._is_step2_unstructured_mesh():
+        if self._is_step1_unstructured_mesh():
             wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
             self._transform_ww3_grid_nml_for_unstructured(wgp)
             nlp = os.path.join(self.selected_folder, "namelists.nml")
             self._set_namelists_misc_flagtr_zero(nlp)
-        elif self._is_step2_smc_mesh():
+        elif self._is_step1_smc_mesh():
             wgp = os.path.join(self.selected_folder, "ww3_grid.nml")
             self._transform_ww3_grid_nml_for_smcc(wgp)
             self._sync_smc_psmc_namelist_if_needed()
@@ -358,9 +392,9 @@ class ModifyWW3NML(
 
         [EN] Apply WW3 runtime parameters (Step 5 functionality).
         """
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
 
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         if grid_type == nested_text or grid_type == "嵌套网格":
             self._apply_ww3_params_nested()
         else:
@@ -373,6 +407,7 @@ class ModifyWW3NML(
         """
         # [EN] Get the NML template directory
         # 获取 NML 模板目录路径
+        # [EN] Get the NML template directory path.
         src_dir = get_nml_template_dir()
         scripts_dir = os.path.join(PUBLIC_DIR, "scripts")
         if not os.path.exists(src_dir):
@@ -381,8 +416,9 @@ class ModifyWW3NML(
 
         # [EN] Check if nested grid mode
         # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        # [EN] Check whether it is nested-grid mode.
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         copied_files = []
@@ -391,6 +427,7 @@ class ModifyWW3NML(
         try:
             # [EN] Copy server.sh (prefer public/scripts/server.sh)
             # 复制 server.sh（优先使用 public/scripts/server.sh）
+            # [EN] Copy server.sh (prefer public/scripts/server.sh).
             server_script_path = os.path.normpath(os.path.join(scripts_dir, "server.sh"))
             if not os.path.isfile(server_script_path):
                 server_script_path = os.path.normpath(os.path.join(src_dir, "server.sh"))
@@ -402,6 +439,7 @@ class ModifyWW3NML(
                 copied_files.append("server.sh")
                 # [EN] Clean up \\r
                 # 清理 \r
+                # [EN] Clean up \r.
                 try:
                     with open(dst_path, 'rb') as f:
                         content = f.read()
@@ -416,6 +454,7 @@ class ModifyWW3NML(
             
             # [EN] Only copy ww3_multi.nml / local.sh in nested grid mode
             # 只有在嵌套网格模式下才复制 ww3_multi.nml / local.sh
+            # [EN] Copy ww3_multi.nml / local.sh only in nested-grid mode.
             if is_nested_grid:
                 multi_nml_path = os.path.join(src_dir, "ww3_multi.nml")
                 if os.path.isfile(multi_nml_path):
@@ -445,13 +484,19 @@ class ModifyWW3NML(
             self.log(tr("copy_public_files_error", "❌ 复制公共文件时出错：{error}").format(error=e))
 
     def _nested_level_dirs(self):
-        """返回嵌套各层目录 [(dir_path, idx), ...]，按 level 序号排序。"""
+        """返回嵌套各层目录 [(dir_path, idx), ...]，按 level 序号排序。
+
+        [EN] Return nested level directories as [(dir_path, idx), ...], sorted by level index.
+        """
         from .nested_level_dirs import list_nested_level_entries
 
         return [(str(path), idx) for path, idx in list_nested_level_entries(self.selected_folder)]
 
     def _output_stride(self):
-        """全局输出步长（秒），统一用于 ww3_shel / ww3_ounp / ww3_ounf。"""
+        """全局输出步长（秒），统一用于 ww3_shel / ww3_ounp / ww3_ounf。
+
+        [EN] Global output stride (seconds), used uniformly for ww3_shel / ww3_ounp / ww3_ounf.
+        """
         return self.output_precision_edit.text().strip()
 
     def _apply_all_params_nested(self, has_output_scheme=False):
@@ -469,6 +514,7 @@ class ModifyWW3NML(
         output_stride = self._output_stride()
 
         # 公共文件（server.sh + ww3_multi.nml）
+        # [EN] Common files (server.sh + ww3_multi.nml).
         self.log("")
         self.log("=" * 70)
         self.log(tr("step4_public_files_start", "🔄 【工作目录】开始处理公共文件..."))
@@ -500,9 +546,10 @@ class ModifyWW3NML(
                                               self.shel_end_edit.text().strip(), output_stride)
             self._apply_config_parameters_to_grid_nml_in_dir(dir_path, level_idx=idx)
             # 按各层自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
+            # [EN] Recalculate CFL timesteps from each level's own dx and the global FREQ1 (finer grids have smaller DTXY).
             self._apply_cfl_timesteps_to_grid_nml(dir_path)
 
-        if self._is_step2_smc_mesh():
+        if self._is_step1_smc_mesh():
             self._smc_warn_forcing_covers_ww3_rect(self.selected_folder, grid_label="nested")
 
     def _apply_ww3_params_nested(self):
@@ -525,6 +572,7 @@ class ModifyWW3NML(
             self._modify_ww3_prnc_nml_for_nested(dir_path, grid_label="")
 
         # 修改 ww3_multi.nml
+        # [EN] Modify ww3_multi.nml.
         workdir_multi_nml = os.path.join(self.selected_folder, "ww3_multi.nml")
         if os.path.exists(workdir_multi_nml):
             self._modify_ww3_multi_nml(workdir_multi_nml)
@@ -540,9 +588,11 @@ class ModifyWW3NML(
         """
         # [EN] Apply ww3_ounf.nml
         # 应用 ww3_ounf.nml
+        # [EN] Apply ww3_ounf.nml.
         self.apply_ww3_ounf()
         # [EN] Modify ww3_shel.nml
         # 修改 ww3_shel.nml
+        # [EN] Modify ww3_shel.nml.
         self.modify_ww3_shel_times()
 
     def _apply_ww3_params_to_dir(self, target_dir, output_precision, grid_label=""):
@@ -568,6 +618,7 @@ class ModifyWW3NML(
                 return None
 
             # 优先从 PipelineConfig 读取当前启用方案
+            # [EN] Prefer reading the currently active scheme from PipelineConfig.
             loaded_cfg = getattr(self, '_loaded_config', None)
             if loaded_cfg is not None and getattr(loaded_cfg.ww3, "output_fields", None):
                 selected_vars = [str(v).strip() for v in loaded_cfg.ww3.output_fields if str(v).strip()]
@@ -581,6 +632,7 @@ class ModifyWW3NML(
                     schemes[current_name] = list(loaded_cfg.ww3.output_fields)
                     schemes["__params__"] = list(loaded_cfg.ww3.output_fields)
                 # __params__ 是合成键，实际对应 ww3.output_scheme 指定的预设
+                # [EN] __params__ is a synthetic key; it actually corresponds to the preset specified by ww3.output_scheme.
                 # [EN] __params__ is a synthetic key; resolve to the actual preset name
                 if (
                     scheme_name == "__params__"

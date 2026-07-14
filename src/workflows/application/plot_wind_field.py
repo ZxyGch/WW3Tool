@@ -67,6 +67,15 @@ class WindFieldResult:
         messages: 执行过程中的日志消息。
         success: 操作是否成功完成。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Return result of wind field map plotting operation.
+
+    Attributes:
+        output_folder: Result output root directory (images are placed under the ``photo/field/`` subdirectory).
+        image_files: List of generated PNG image paths.
+        messages: Log messages during execution.
+        success: Whether the operation completed successfully.
+        error: Error description on failure; ``None`` on success.
     """
 
     output_folder: str
@@ -77,12 +86,18 @@ class WindFieldResult:
 
 
 def _resolve_result_folder(config: PipelineConfig) -> Path:
-    """解析结果目录：使用 ``workdir``。"""
+    """解析结果目录：使用 ``workdir``。
+
+    [EN] Resolve the result directory: use ``workdir``.
+    """
     return config.workdir.path
 
 
 def _collect_wind_images(output_folder: str) -> List[str]:
-    """在 ``output_folder/photo/wind_field/`` 下收集 ``wind_*.png`` 文件路径。"""
+    """在 ``output_folder/photo/wind_field/`` 下收集 ``wind_*.png`` 文件路径。
+
+    [EN] Collect ``wind_*.png`` file paths under ``output_folder/photo/wind_field/``.
+    """
     return collect_photo_files(output_folder, SUBDIR_WIND_FIELD, "wind_*.png")
 
 
@@ -107,6 +122,20 @@ def run_wind_field(
 
     Returns:
         ``WindFieldResult``；worker 报错时 ``success=False``。
+
+    [EN] Generate 10m wind speed filled contour map sequence from a wind field NetCDF file.
+
+    Args:
+        config: Pipeline config (``plot.wind_field`` section provides defaults).
+        log: Optional log callback.
+        wind_file: Wind field NetCDF file path; auto-discovered in the result directory if empty.
+        time_step_hours: Output time interval (hours), overriding the config value.
+        flag_type: Overlay flag type (``"arrow"`` / ``"barb"`` / ``"none"``;
+            legacy values ``"箭头"`` / ``"风旗"`` / ``"无"`` are still normalized and accepted).
+        density_step: Arrow/barb decimation stride.
+
+    Returns:
+        ``WindFieldResult``; ``success=False`` when the worker reports an error.
     """
     from ..infrastructure.plot.wind_field_worker import _make_wind_field_worker
 

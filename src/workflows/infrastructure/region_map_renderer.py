@@ -1,8 +1,13 @@
 """将配置的网格区域渲染为地理 PNG 预览图。
 
-在 Step 2 网格设置阶段，根据 ``GridConfig`` 中外/内（嵌套）矩形范围，
+在 Step 1 网格设置阶段，根据 ``GridConfig`` 中外/内（嵌套）矩形范围，
 用 cartopy 绘制底图与范围框，供用户确认模拟域位置。
 近全球范围使用 PlateCarree，避免 Mercator 在极高纬度产生 NaN/Inf。
+
+[EN] Render the configured grid region as a geographic PNG preview map.
+
+During the Step 1 grid-setup stage, draw the basemap and domain bounding boxes from the outer/inner (nested) rectangles in ``GridConfig`` for the user to confirm the simulation domain location.
+Near-global ranges use PlateCarree to avoid NaN/Inf from Mercator at very high latitudes.
 """
 
 from __future__ import annotations
@@ -24,6 +29,14 @@ def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequen
     参数:
         grid: 含 outer/inner 经纬度范围的网格配置
         output_path: 输出 PNG 路径（父目录需已存在或由调用方创建）
+    
+    [EN] Render a PNG preview of the outer grid (and inner grid when nested) extent.
+
+    figsize is dynamically computed from the actual aspect ratio of the map content so that the PNG matches the content proportion and avoids large blank margins in dialogs.
+
+    Parameters:
+        grid: grid configuration containing outer/inner longitude/latitude ranges
+        output_path: output PNG path (parent directory must exist or be created by caller)
     """
     import matplotlib
 
@@ -86,7 +99,10 @@ def render_region_map_png(grid: GridConfig, output_path: Path, *, labels: Sequen
 
 
 def _configure_chinese_font(matplotlib) -> None:
-    """按操作系统选择可用 CJK 字体，避免图例/标题缺字。"""
+    """按操作系统选择可用 CJK 字体，避免图例/标题缺字。
+
+    [EN] Select an available CJK font according to the operating system to avoid missing glyphs in legends/titles.
+    """
     from matplotlib import font_manager
 
     candidates = {
@@ -104,6 +120,8 @@ def _configure_chinese_font(matplotlib) -> None:
 
 
 def _draw_lon_lat_box(axis, lon: list[float], lat: list[float], color, label: str, transform) -> None:
+    
+    # Draw a longitude/latitude rectangle on the map and add it to the legend.
     """在地图上绘制经纬度矩形框并加入图例。"""
     import matplotlib.pyplot as plt
 

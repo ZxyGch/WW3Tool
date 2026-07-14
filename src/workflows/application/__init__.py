@@ -6,15 +6,34 @@
 
 流水线步骤对应关系
 ------------------
-- **Step 1 强迫场**：``run_prepare_forcing``、``report_forcing_file_overviews``
-- **Step 2 网格**：``run_generate_grid``、``read_wind_bounds``、``visualize_grid`` 等
-- **完整预处理**：``run_pipeline``（强迫场 + 网格 + WW3 namelist）
+- **Step 1 网格**：``run_generate_grid``、``read_wind_bounds``、``visualize_grid`` 等
+- **Step 2 强迫场**：``run_prepare_forcing``、``report_forcing_file_overviews``
+- **完整预处理**：``run_pipeline``（网格 + 强迫场 + WW3 namelist）
 - **配置**：``load_pipeline_config``、``parse_pipeline_config``、``validate_pipeline_config``
 
 输入/输出
 ---------
 - 输入：``params.yml`` 解析后的 ``PipelineConfig``，或 YAML 文件路径
 - 输出：各步骤对应的结果 dataclass（``PipelineResult``、``GridGenerationResult`` 等）
+
+[EN] Application-layer use-case package for WW3Tool headless workflows.
+
+This package aggregates use cases for preprocessing, grid generation, plotting, and remote
+operations, invoked by both the CLI and the desktop GUI. It uses lazy imports (``__getattr__``) to
+avoid pulling in the full scientific-computing dependency stack when only loading configurations or
+viewing help.
+
+Pipeline step mapping
+---------------------
+- **Step 1 Grid**: ``run_generate_grid``, ``read_wind_bounds``, ``visualize_grid``, etc.
+- **Step 2 Forcing**: ``run_prepare_forcing``, ``report_forcing_file_overviews``
+- **Full preprocessing**: ``run_pipeline`` (grid + forcing + WW3 namelist)
+- **Configuration**: ``load_pipeline_config``, ``parse_pipeline_config``, ``validate_pipeline_config``
+
+Inputs/outputs
+--------------
+- Input: ``PipelineConfig`` parsed from ``params.yml``, or a YAML file path.
+- Output: result dataclasses for each step (``PipelineResult``, ``GridGenerationResult``, etc.).
 """
 
 __all__ = [
@@ -40,7 +59,10 @@ __all__ = [
 
 
 def __getattr__(name):
-    """按需延迟导入子模块中的公开符号，减轻启动时的依赖负担。"""
+    """按需延迟导入子模块中的公开符号，减轻启动时的依赖负担。
+
+    [EN] Lazily import public symbols from submodules to reduce startup dependency overhead.
+    """
     if name in {"ConfigError", "load_pipeline_config", "parse_pipeline_config", "validate_pipeline_config"}:
         from .configuration import ConfigError, load_pipeline_config, parse_pipeline_config, validate_pipeline_config
 

@@ -449,6 +449,7 @@ class ServerConnectPanel:
 
     def _on_cpu_partition_changed(self, _text: str) -> None:
         # 切换分区时重新自动填写该分区最大可用内存
+        # [EN] When switching partitions, re-auto-fill the maximum available memory for that partition.
         self._slurm_mem_user_edited = False
         self._apply_suggested_slurm_mem()
 
@@ -456,7 +457,11 @@ class ServerConnectPanel:
         self._slurm_mem_user_edited = True
 
     def _apply_suggested_slurm_mem(self) -> None:
-        """根据当前分区空闲资源或分区节点内存上限，自动填写最大可用内存（不覆盖用户手改值）。"""
+        """根据当前分区空闲资源或分区节点内存上限，自动填写最大可用内存（不覆盖用户手改值）。
+
+        [EN] Automatically fill in the maximum available memory based on the current partition's idle
+        resources or the partition node memory limit (does not overwrite user-edited values).
+        """
         if "slurm_mem" not in self.fields:
             return
         if self._slurm_mem_user_edited:
@@ -472,11 +477,18 @@ class ServerConnectPanel:
         self.fields["slurm_mem"].setText(suggested)
 
     def apply_suggested_slurm_mem(self) -> None:
-        """供外部在刷新服务器状态后再次尝试填写内存。"""
+        """供外部在刷新服务器状态后再次尝试填写内存。
+
+        [EN] For external callers to retry filling the memory after refreshing server status.
+        """
         self._apply_suggested_slurm_mem()
 
     def update_partition_memory(self, mapping: dict | None) -> None:
-        """缓存各分区节点内存上限（MB），供无空闲节点时填写 Slurm 内存。"""
+        """缓存各分区节点内存上限（MB），供无空闲节点时填写 Slurm 内存。
+
+        [EN] Cache the per-partition node memory limit (MB) for filling Slurm memory when no idle
+        nodes are available.
+        """
         self._partition_mem_mb = {
             str(key).strip(): int(value)
             for key, value in (mapping or {}).items()
@@ -525,7 +537,11 @@ class ServerConnectPanel:
         }
 
     def _apply_recommended_slurm_config(self) -> None:
-        """从空闲资源自动选分区，并填入 1 节点 + 单节点最大可用核数 + 最大可用内存。"""
+        """从空闲资源自动选分区，并填入 1 节点 + 单节点最大可用核数 + 最大可用内存。
+
+        [EN] Automatically select a partition from idle resources and fill in 1 node + the maximum
+        available cores per node + the maximum available memory.
+        """
         suggestion = suggest_slurm_config(self.idle_resources(), partition_mem=self._partition_mem_mb)
         if not suggestion:
             self._log(
@@ -585,6 +601,7 @@ class ServerConnectPanel:
         server_values = [str(value).strip() for value in values if str(value).strip()]
         if not server_values:
             # 服务器连不上或未解析到分区：回退到默认分区
+            # [EN] Server unreachable or no partitions parsed: fall back to the default partition.
             default_partition = getattr(self, "_default_partition", "")
             target = [default_partition] if default_partition else []
             current = [self.cpu_combo.itemText(i) for i in range(self.cpu_combo.count())]
@@ -602,6 +619,8 @@ class ServerConnectPanel:
         self.cpu_combo.clear()
         self.cpu_combo.addItems(deduped)
         # 解析到的分区中若含默认分区则优先选中；否则保留原选择，再否则取第一个
+        # [EN] If the parsed partitions include the default, select it first; otherwise keep the
+        # previous selection, or fall back to the first available partition.
         default_partition = getattr(self, "_default_partition", "")
         if default_partition and default_partition in deduped:
             self.cpu_combo.setCurrentText(default_partition)

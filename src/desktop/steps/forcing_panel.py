@@ -1,4 +1,4 @@
-"""Step 1 panel for selecting forcing fields."""
+"""Step 2 panel for selecting forcing fields."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from workflows.support.translations import tr
 
 
 class ForcingStepPanel:
-    """Own Step 1 widgets while the window coordinates processing actions."""
+    """Own Step 2 widgets while the window coordinates processing actions."""
 
     def __init__(
         self,
@@ -37,16 +37,16 @@ class ForcingStepPanel:
         self.path_buttons: dict[str, PrimaryPushButton] = {}
         self.clear_buttons: dict[str, PrimaryPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
-        group, layout = create_header_card(parent, tr("step1_title", "第一步：选择强迫场文件"), include_vbox_style=True)
+        group, layout = create_header_card(parent, tr("step2_title", "第二步：选择强迫场文件"), include_vbox_style=True)
         grid = QGridLayout()
         grid.setSpacing(10)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 0)
         for row, label, key, button_text in (
-            (0, tr("step1_label_wind", "风场："), "wind", tr("step1_choose_wind", "选择风场")),
-            (1, tr("step1_label_current", "流场："), "current", tr("step1_choose_current", "选择流场")),
-            (2, tr("step1_label_level", "水位场："), "level", tr("step1_choose_level", "选择水位场")),
-            (3, tr("step1_label_ice", "海冰场："), "ice", tr("step1_choose_ice", "选择海冰场")),
+            (0, tr("step2_label_wind", "风场："), "wind", tr("step2_choose_wind", "选择风场")),
+            (1, tr("step2_label_current", "流场："), "current", tr("step2_choose_current", "选择流场")),
+            (2, tr("step2_label_level", "水位场："), "level", tr("step2_choose_level", "选择水位场")),
+            (3, tr("step2_label_ice", "海冰场："), "ice", tr("step2_choose_ice", "选择海冰场")),
         ):
             self._add_path_button_pair(grid, row, label, key, button_text, create_button, browse_path, clear_path)
         layout.addLayout(grid)
@@ -54,8 +54,8 @@ class ForcingStepPanel:
         self.mode = ComboBox(parent)
         self.mode.setStyleSheet(combo_style())
         for label, value in (
-            (tr("step1_mode_copy_full", "复制"), "copy"),
-            (tr("step1_mode_move_full", "剪切"), "move"),
+            (tr("step2_mode_copy_full", "复制"), "copy"),
+            (tr("step2_mode_move_full", "剪切"), "move"),
         ):
             self.mode.addItem(label)
             self.mode.setItemData(self.mode.count() - 1, value)
@@ -66,38 +66,38 @@ class ForcingStepPanel:
         range_grid.setVerticalSpacing(8)
         range_grid.setColumnStretch(1, 1)
         range_grid.setColumnStretch(3, 1)
-        range_grid.addWidget(QLabel(tr("step1_process_mode", "导入模式：")), 0, 0)
+        range_grid.addWidget(QLabel(tr("step2_process_mode", "导入模式：")), 0, 0)
         range_grid.addWidget(self.mode, 0, 1, 1, 3)
         self._add_range_pair(
             range_grid,
             1,
-            tr("step1_time_range", "时间："),
+            tr("step2_time_range", "时间："),
             "time_start",
             "time_end",
-            placeholder=tr("step1_date_placeholder", "YYYYMMDD"),
+            placeholder=tr("step2_date_placeholder", "YYYYMMDD"),
         )
         self._add_range_pair(
             range_grid,
             2,
-            tr("step1_lat_range", "纬度："),
+            tr("step2_lat_range", "纬度："),
             "lat_south",
             "lat_north",
-            start_placeholder=tr("step1_lat_south_placeholder", "-40"),
-            end_placeholder=tr("step1_lat_north_placeholder", "20"),
+            start_placeholder=tr("step2_lat_south_placeholder", "-40"),
+            end_placeholder=tr("step2_lat_north_placeholder", "20"),
         )
         self._add_range_pair(
             range_grid,
             3,
-            tr("step1_lon_range", "经度："),
+            tr("step2_lon_range", "经度："),
             "lon_west",
             "lon_east",
-            start_placeholder=tr("step1_lon_west_placeholder", "-30"),
-            end_placeholder=tr("step1_lon_east_placeholder", "110"),
+            start_placeholder=tr("step2_lon_west_placeholder", "-30"),
+            end_placeholder=tr("step2_lon_east_placeholder", "110"),
         )
         layout.addLayout(range_grid)
 
         self.load_intersection_button = create_button(
-            tr("step1_load_intersection", "读取公共范围"),
+            tr("step2_load_intersection", "读取公共范围"),
             load_intersection,
         )
         layout.addWidget(self.load_intersection_button)
@@ -106,13 +106,13 @@ class ForcingStepPanel:
         layout.addWidget(self.map_button)
 
         self.crop_import_button = create_button(
-            tr("step1_confirm_crop_import", "确认裁剪并导入"),
+            tr("step2_confirm_crop_import", "确认裁剪并导入"),
             crop_import,
         )
         layout.addWidget(self.crop_import_button)
 
         self.direct_import_button = create_button(
-            tr("step1_direct_import", "直接导入，不进行裁剪"),
+            tr("step2_direct_import", "直接导入，不进行裁剪"),
             direct_import,
         )
         layout.addWidget(self.direct_import_button)
@@ -124,7 +124,7 @@ class ForcingStepPanel:
         self.status = QLabel(tr("status_waiting", "等待执行"))
         self.status.hide()
 
-        info_button = create_button(tr("step1_view_field_files_info", "查看所有场文件信息"), show_file_info)
+        info_button = create_button(tr("step2_view_field_files_info", "查看所有场文件信息"), show_file_info)
         layout.addWidget(info_button)
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
@@ -209,7 +209,7 @@ class ForcingStepPanel:
         clear_button.setStyleSheet(_clear_button_style(clear_button.styleSheet()))
         side = max(button.sizeHint().height(), clear_button.sizeHint().height())
         clear_button.setFixedSize(side, side)
-        clear_button.setToolTip(tr("step1_clear_forcing_selection", "清除选择"))
+        clear_button.setToolTip(tr("step2_clear_forcing_selection", "清除选择"))
         grid.addWidget(QLabel(label), row, 0)
         grid.addWidget(button, row, 1)
         grid.addWidget(clear_button, row, 2)

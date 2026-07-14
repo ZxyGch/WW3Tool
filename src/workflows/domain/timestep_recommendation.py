@@ -69,6 +69,13 @@ def compute_tcfl(dxy_m: float, freq1: float, cg_max: Optional[float] = None) -> 
 
     默认 Cg_max 用深水群速度 ``G/(4π·FREQ1)``（与 ``dxy_m·FREQ1·4π/G`` 等价）；
     若传入 ``cg_max``（按地形由色散关系算出的域内最大群速度），则用它。
+
+    [EN] CFL time = Δx / Cg_max.
+
+    By default Cg_max uses the deep-water group velocity ``G/(4π·FREQ1)``
+    (equivalent to ``dxy_m·FREQ1·4π/G``). If ``cg_max`` is passed (the domain
+    maximum group velocity computed from the dispersion relation over bathymetry),
+    it is used instead.
     """
     if dxy_m <= 0:
         raise ValueError("grid spacing must be positive")
@@ -82,7 +89,10 @@ def compute_tcfl(dxy_m: float, freq1: float, cg_max: Optional[float] = None) -> 
 
 
 def deep_water_cg(freq1: float) -> float:
-    """最低频波的深水群速度（m/s）：Cg = G/(4π·FREQ1)。"""
+    """最低频波的深水群速度（m/s）：Cg = G/(4π·FREQ1)。
+
+    [EN] Deep-water group velocity (m/s) of the lowest-frequency wave: Cg = G/(4π·FREQ1).
+    """
     if freq1 <= 0:
         raise ValueError("FREQ1 must be positive")
     return G / (4.0 * PI * freq1)
@@ -93,14 +103,23 @@ def group_velocity(freq: float, depth: float) -> float:
 
     解色散关系 ``ω² = g·k·tanh(k·h)`` 求 k，再 ``Cg = (C/2)(1 + 2kh/sinh(2kh))``。
     中等水深的 Cg 会超过深水值（峰值约在 0.2~0.4 倍深水波长处）。
+
+    [EN] Linear wave theory group velocity (m/s): Cg of a wave with frequency ``freq`` (Hz)
+    at water depth ``depth`` (m).
+
+    Solves the dispersion relation ``ω² = g·k·tanh(k·h)`` for k, then
+    ``Cg = (C/2)(1 + 2kh/sinh(2kh))``.
+    Cg in intermediate depths can exceed the deep-water value (peak around 0.2–0.4 deep-water wavelengths).
     """
     if freq <= 0 or depth <= 0:
         return 0.0
     omega = 2.0 * PI * freq
     k = omega * omega / G  # 深水初值
+    # [EN] Deep-water initial guess for k
     for _ in range(60):
         kh = k * depth
         if kh > 50.0:  # 深水：tanh≈1，初值即解
+            # [EN] Deep water: tanh≈1, so the initial guess is already the solution
             break
         th = math.tanh(kh)
         f = G * k * th - omega * omega
@@ -126,6 +145,11 @@ def max_group_velocity(
     """域内 FREQ1 波的最大群速度（m/s）：在 [depth_min, depth_max] 上扫描取最大。
 
     捕捉中等水深处超过深水值的峰值；以深水群速度为下限兜底（全深水域即回到深水值）。
+
+    [EN] Maximum group velocity (m/s) of the FREQ1 wave within the domain, obtained by scanning [depth_min, depth_max].
+
+    Captures the peak that exceeds the deep-water value in intermediate depths;
+    lower-bounded by the deep-water group velocity (returns to deep-water value in fully deep domains).
     """
     if freq1 <= 0:
         raise ValueError("FREQ1 must be positive")
@@ -157,15 +181,21 @@ def cfl_spacing_meters(
       （SMC 的多分辨率只把部分 cell 往粗合并，base 即最细，故与结构化同源。）
     - 非结构化：最细边 = ``hmin``（km），直接换算成米，不经过度→米。
 
-    [EN] Minimum grid spacing (m) for the CFL formula, by mesh type. SMC's base
-    cell is its finest cell (coarsening only merges cells upward), so it shares
-    the structured path; unstructured uses ``hmin`` (km) directly.
+    [EN] Minimum grid spacing (m) for the CFL formula, by mesh type.
+
+    Returns ``(dxy_m, reason)``: ``reason`` is empty on success; on failure ``dxy_m`` is ``None``
+    and ``reason`` is an error token (``"need_grid"`` / ``"need_hmin"``).
+
+    - Structured / SMC: finest cell = base spacing ``dx/dy`` (degrees), converted to meters by latitude.
+      (SMC multi-resolution only coarsens selected cells upward; the base is the finest, so it follows the structured path.)
+    - Unstructured: finest edge = ``hmin`` (km), converted directly to meters without degree→meter conversion.
     """
     if mesh_type == "unstructured":
         if hmin_km is None or hmin_km <= 0:
             return None, "need_hmin"
         return float(hmin_km) * 1000.0, ""
     # 结构化与 SMC：度制基准格距
+    # [EN] Structured and SMC: base spacing in degrees
     if not dx_deg or not dy_deg or dx_deg <= 0 or dy_deg <= 0:
         return None, "need_grid"
     return grid_spacing_meters(float(dx_deg), float(dy_deg), lat_deg), ""
@@ -185,7 +215,13 @@ def recommend_timesteps(
     """Return WW3-compatible timestep seconds from a lon/lat grid and FREQ1.
 
     ``cg_max`` 可选：按地形由色散关系算出的域内最大群速度（见 ``max_group_velocity``）；
-    省略则用深水近似。"""
+    省略则用深水近似。
+
+    [EN] Return WW3-compatible timestep seconds from a lon/lat grid and FREQ1.
+
+    ``cg_max`` is optional: the domain maximum group velocity computed from the dispersion
+    relation over bathymetry (see ``max_group_velocity``); omitted means deep-water approximation.
+    """
     dxy_m = grid_spacing_meters(dx_deg, dy_deg, lat_deg)
     return recommend_timesteps_from_spacing(
         dxy_m=dxy_m,
@@ -210,7 +246,14 @@ def recommend_timesteps_from_spacing(
 
     Mesh-type-agnostic core: callers resolve ``dxy_m`` via ``cfl_spacing_meters``
     (structured/SMC from degree spacing, unstructured from ``hmin``).
-    ``cg_max`` 可选：按地形修正的最大群速度，省略则用深水近似。"""
+    ``cg_max`` 可选：按地形修正的最大群速度，省略则用深水近似。
+
+    [EN] Return WW3-compatible timestep seconds from an explicit minimum spacing (m).
+
+    Mesh-type-agnostic core: callers resolve ``dxy_m`` via ``cfl_spacing_meters``
+    (structured/SMC from degree spacing, unstructured from ``hmin``).
+    ``cg_max`` is optional: bathymetry-corrected maximum group velocity; omitted means deep-water approximation.
+    """
     tcfl = compute_tcfl(dxy_m, freq1, cg_max=cg_max)
     dtxy = max(1, int(round(cfl_factor * tcfl)))
     dtmax = max(1, int(round(3.0 * dtxy)))

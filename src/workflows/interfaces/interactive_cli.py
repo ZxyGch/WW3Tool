@@ -187,7 +187,8 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
         (
             tr("icli_grp_preproc", "预处理"),
             [
-                ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 1）")),
+                ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 1）")),
+                ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 2）")),
                 (
                     "merge-forcing <in1.nc> [...] -o <out.nc> [--time-range ...] [--bbox ...]",
                     tr(
@@ -195,8 +196,7 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
                         "Standalone: validate forcing NetCDFs, concat in time and/or merge variables (no workdir needed)",
                     ),
                 ),
-                ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 2）")),
-                ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑强迫场和网格）")),
+                ("prepare-ww3", tr("icli_help_prepare_ww3", "仅生成 WW3 namelist（不重跑网格和强迫场）")),
                 ("recommend-cfl", tr("icli_help_recommend_cfl", "按 CFL 公式推荐时间步长")),
                 ("recommend-grid", tr("icli_help_recommend_grid", "按区域范围推荐网格间距/分辨率（--coarse 偏粗 / --fine 偏细）")),
                 ("run-workflow", tr("icli_help_run_workflow", "完整预处理流程")),
@@ -811,10 +811,35 @@ class InteractiveCLI(cmd.Cmd):
     def complete_validate(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         return []
 
-    def do_prepare_forcing(self, arg: str) -> None:
-        """prepare-forcing  — 准备强迫场（Step 1）
+    def do_generate_grid(self, arg: str) -> None:
+        """generate-grid  — 生成网格（Step 1）
 
-        [EN] prepare-forcing  — Prepare forcing fields (Step 1)
+        [EN] generate-grid  — Generate grid (Step 1)
+        """
+        if not self._require_config():
+            return
+        if not self._reload_config_for_stage("grid"):
+            return
+        try:
+            from ..application.grid_preparation import ensure_reference_data, run_generate_grid
+
+            if not ensure_reference_data(
+                self._config,
+                log=self._log_callback,
+                prompt_callback=self._prompt_download_ref_data,
+            ):
+                print(_warn(tr("ref_data_download_skipped", "已跳过下载，无法生成网格")))
+                return
+            print(_info(tr("icli_start_grid", "▶ 开始生成网格...")))
+            run_generate_grid(self._config, log=self._log_callback, use_cache=True)
+            print(_success(tr("icli_done_grid", "✅ 网格生成完成")))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_prepare_forcing(self, arg: str) -> None:
+        """prepare-forcing  — 准备强迫场（Step 2）
+
+        [EN] prepare-forcing  — Prepare forcing fields (Step 2)
         """
         if not self._require_config():
             return
@@ -880,31 +905,6 @@ class InteractiveCLI(cmd.Cmd):
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
-    def do_generate_grid(self, arg: str) -> None:
-        """generate-grid  — 生成网格（Step 2）
-
-        [EN] generate-grid  — Generate grid (Step 2)
-        """
-        if not self._require_config():
-            return
-        if not self._reload_config_for_stage("grid"):
-            return
-        try:
-            from ..application.grid_preparation import ensure_reference_data, run_generate_grid
-
-            if not ensure_reference_data(
-                self._config,
-                log=self._log_callback,
-                prompt_callback=self._prompt_download_ref_data,
-            ):
-                print(_warn(tr("ref_data_download_skipped", "已跳过下载，无法生成网格")))
-                return
-            print(_info(tr("icli_start_grid", "▶ 开始生成网格...")))
-            run_generate_grid(self._config, log=self._log_callback, use_cache=True)
-            print(_success(tr("icli_done_grid", "✅ 网格生成完成")))
-        except Exception as exc:
-            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
-
     def do_run_workflow(self, arg: str) -> None:
         """run-workflow  — 完整预处理流程
 
@@ -937,9 +937,9 @@ class InteractiveCLI(cmd.Cmd):
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 
     def do_prepare_ww3(self, arg: str) -> None:
-        """prepare-ww3  — 仅生成 WW3 namelist（不重跑强迫场和网格）
+        """prepare-ww3  — 仅生成 WW3 namelist（不重跑网格和强迫场）
 
-        [EN] prepare-ww3  — Generate WW3 namelist only (without re-running forcing and grid)
+        [EN] prepare-ww3  — Generate WW3 namelist only (without re-running grid and forcing)
         """
         if not self._require_config():
             return

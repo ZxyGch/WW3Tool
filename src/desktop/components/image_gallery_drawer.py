@@ -1,12 +1,12 @@
 """右侧图片抽屉组件（网格可视化、绘图结果等共用）。
 
-在父窗口右侧悬浮展示 PNG 列表，点击遮罩关闭；样式与交互对齐 src 第二步
+在父窗口右侧悬浮展示 PNG 列表，点击遮罩关闭；样式与交互对齐 src 第一步
 网格可视化的侧边抽屉。
 
 [EN] Right-side image drawer component (shared by grid visualization, plotting results, etc.).
 
 Displays a floating PNG list on the right side of the parent window; clicking the mask
-closes it. Style and interaction are aligned with the src Step 2 grid visualization
+closes it. Style and interaction are aligned with the src Step 1 grid visualization
 side drawer.
 """
 

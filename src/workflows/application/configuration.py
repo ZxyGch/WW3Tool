@@ -1138,8 +1138,8 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
 
     各阶段校验范围：
     - ``"plot"``：跳过硬校验（后处理命令自行检查必要字段）
-    - ``"grid"``：仅校验网格后端兼容性
-    - ``"forcing"``：校验强迫场源文件存在且 wind 必填
+    - ``"grid"``：Step 1，仅校验网格后端兼容性
+    - ``"forcing"``：Step 2，校验强迫场源文件存在且 wind 必填
     - ``"full"``：在上述基础上校验 WW3 日期、SLURM 脚本、计算模式等
 
     Args:
@@ -1152,8 +1152,8 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
     [EN] Validate a constructed ``PipelineConfig`` by pipeline stage.
     Validation scope per stage:
     - ``"plot"``: Skip hard validation (post-processing commands check required fields themselves)
-    - ``"grid"``: Only validate grid backend compatibility
-    - ``"forcing"``: Validate forcing source files exist and wind is required
+    - ``"grid"``: Step 1, only validate grid backend compatibility
+    - ``"forcing"``: Step 2, validate forcing source files exist and wind is required
     - ``"full"``: Additionally validate WW3 dates, SLURM scripts, computation mode, etc.
 
     Args:

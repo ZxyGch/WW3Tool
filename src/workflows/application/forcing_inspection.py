@@ -1,26 +1,26 @@
-"""Step 1 强迫场文件只读检查用例。
+"""Step 2 强迫场文件只读检查用例。
 
 读取已选 NetCDF 强迫场文件，输出文件大小、经纬度范围、分辨率与时间轴等
 摘要信息，供 CLI 与桌面端在导入前预览数据质量。
 
-流水线步骤：Step 1（强迫场准备）— 只读检查，不写入工作目录。
+流水线步骤：Step 2（强迫场准备）— 只读检查，不写入工作目录。
 
 输入/输出
 ---------
-- 输入：``Step1Files``（各场类型的文件路径映射）
-- 输出：日志消息列表（``list[str]``），内容与桌面端 Step 1 概览面板一致
+- 输入：``Step2Files``（各场类型的文件路径映射）
+- 输出：日志消息列表（``list[str]``），内容与桌面端 Step 2 概览面板一致
 
-[EN] Step 1 forcing file read-only inspection use case.
+[EN] Step 2 forcing file read-only inspection use case.
 
 Reads selected NetCDF forcing files and outputs summaries including file size,
 lon/lat range, resolution, and time axis for CLI and desktop preview before import.
 
-Pipeline step: Step 1 (forcing preparation) -- read-only inspection, no writes to workdir.
+Pipeline step: Step 2 (forcing preparation) -- read-only inspection, no writes to workdir.
 
 Input/Output
 ------------
-- Input: ``Step1Files`` (file path mapping for each field type)
-- Output: Log message list (``list[str]``), content matches desktop Step 1 overview panel
+- Input: ``Step2Files`` (file path mapping for each field type)
+- Output: Log message list (``list[str]``), content matches desktop Step 2 overview panel
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from ..domain.forcing_fields import FORCING_FIELD_ORDER, ForcingField, Step1Files
+from ..domain.forcing_fields import FORCING_FIELD_ORDER, ForcingField, Step2Files
 
 from ..support.formatting import format_file_size
 from ..support.logging import CoreLogger, LogCallback
@@ -44,7 +44,7 @@ FIELD_TITLES = {
 
 
 def report_forcing_file_overviews(
-    files: Step1Files,
+    files: Step2Files,
     log: Optional[LogCallback] = None,
 ) -> list[str]:
     """为已选择的强迫场 NetCDF 文件生成概览报告。
@@ -92,6 +92,11 @@ def report_netcdf_file_overviews(
 
     供工具页合并强迫场前查看所有输入文件信息；不要求文件已经归类为
     wind/current/level/ice。
+
+    [EN] Generate overview reports for arbitrary lists of NetCDF files.
+
+    Used by the tools page to inspect all input files before merging forcings; files do not need to
+    be already classified as wind/current/level/ice.
     """
     logger = CoreLogger(callback=log)
     selected = [Path(path) for path in paths if path and Path(path).is_file()]
@@ -162,7 +167,10 @@ def _report_resolution(label: str, values, logger: CoreLogger, np) -> None:
 
 
 def _report_time_metadata_warnings(path: str, time_name: str, logger: CoreLogger) -> None:
-    """检查 time 元数据是否满足 WW3 ww3_prnc 要求。"""
+    """检查 time 元数据是否满足 WW3 ww3_prnc 要求。
+
+    [EN] Check whether the time metadata meets the WW3 ww3_prnc requirements.
+    """
     from ..infrastructure.forcing.forcing_time_metadata import (
         audit_time_metadata_for_ww3,
         format_time_metadata_issue_logs,

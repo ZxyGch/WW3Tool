@@ -41,31 +41,10 @@ FAIL_MARK="$SCRIPT_ROOT/fail"
 # Clean old markers only; keep earlier preparation/submission logs.
 rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
-# If login-shell MPICH libraries shadow Intel MPI, prepend Intel runtime libs after probe.
-# Edit _WW3_INTEL_LD when moving to another host; hosts without this issue skip the export.
-_WW3_INTEL_MPI_BIN="/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/bin"
-_WW3_INTEL_LD="/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib/release:/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/lib:/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/mpi/intel64/libfabric/lib:/public/home/weiyl001/bin/intel/compilers_and_libraries_2019.0.117/linux/compiler/lib/intel64_lin:/public/home/weiyl001/bin/deps/netcdf/lib"
-ensure_ww3_mpi_runtime() {
-    if [ -n "${WW3_MPI_RUNTIME_FIXED:-}" ]; then
-        return 0
-    fi
-    # Prefer Intel mpirun over login-shell MPICH; avoids Slurm pmi_args parse errors in ww3_prnc.
-    export PATH="${_WW3_INTEL_MPI_BIN}:${PATH}"
-    local probe
-    probe=$(ww3_grid 2>&1 | head -8 || true)
-    if echo "$probe" | grep -q "mpi_f08_compile_constants_mp_mpi_comm_world_\|symbol lookup error"; then
-        echo "WW3 MPI probe failed (MPICH/LD_LIBRARY_PATH conflict); prepending Intel runtime libs" >> "$LOG"
-        export LD_LIBRARY_PATH="${_WW3_INTEL_LD}:${LD_LIBRARY_PATH:-}"
-        probe=$(ww3_grid 2>&1 | head -8 || true)
-        if echo "$probe" | grep -q "mpi_f08_compile_constants_mp_mpi_comm_world_\|symbol lookup error"; then
-            echo "WW3 MPI probe still failed after LD_LIBRARY_PATH fix" >> "$LOG"
-            fail_exit 1
-        fi
-    fi
-    WW3_MPI_RUNTIME_FIXED=1
-}
+# MPI 启动器与库路径由服务器 ~/.bashrc 统一配置（6.07/7.14 共用 Intel MPI 2019）；
+# dispatch 脚本会 source ~/.bashrc，此处不再重复修补 PATH/LD_LIBRARY_PATH。
 
-# ww3_prnc: MPI build under Slurm may invoke MPICH mpiexec with unsupported pmi_args.
+# ww3_prnc: Slurm 下 mpirun 偶发失败时，清理 PMI 环境变量后直接运行。
 run_ww3_prnc_cmd() {
     echo -e "
 ============================== Running mpirun -n 1 ww3_prnc ==============================" >> "$LOG"
@@ -487,7 +466,6 @@ if [ -z "$GRID_TYPE" ]; then
     if ls -d level[0-9]* >/dev/null 2>&1; then GRID_TYPE="nested"; else GRID_TYPE="normal"; fi
 fi
 echo "Grid type (from params.yml): $GRID_TYPE" >> "$LOG"
-ensure_ww3_mpi_runtime
 
 if [ "$GRID_TYPE" = "nested" ]; then
     # Nested grid mode (N levels: level0=coarsest .. levelN=finest)

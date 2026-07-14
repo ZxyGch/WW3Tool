@@ -3,6 +3,14 @@
 迁移自 src 设置页的核心配置卡 + ST 版本管理 + 谱分区输出方案（输出变量方案）编辑器。
 持久化全部经 :class:`desktop.view_models.settings.SettingsViewModel`（转调 runtime_config）。
 不含服务器 SSH、参考数据在线下载。
+
+[EN] Settings sub-interface: edit the root ``params.yml`` (desktop section + pipeline parameters) and
+unstructured/SMC grid JSON.
+
+Migrated from the src settings page: core configuration cards + ST version management + spectral-partition
+output scheme (output variable scheme) editor. All persistence is handled by
+:class:`desktop.view_models.settings.SettingsViewModel` (delegating to runtime_config).
+Does not include server SSH or reference-data online downloads.
 """
 
 from __future__ import annotations
@@ -63,6 +71,7 @@ from workflows.infrastructure.remote.ssh_config import list_ssh_config_hosts
 from workflows.support.translations import tr
 
 # 谱分区输出方案的候选变量（WW3 可选场变量全集，见 parameter_catalog.OUTPUT_FIELD_OPTIONS）。
+# [EN] Candidate variables for the spectral-partition output scheme (full set of WW3 optional output fields; see parameter_catalog.OUTPUT_FIELD_OPTIONS).
 _OUTPUT_VAR_CODES = [
     "DPT", "CUR", "WND", "AST", "WLV", "ICE", "IBG", "D50", "IC1", "IC5",
     "HS", "LM", "T02", "T0M1", "T01", "FP", "DIR", "SPR", "DP", "HIG",
@@ -234,7 +243,10 @@ class _NoHScrollArea(QScrollArea):
 
 
 class SettingsInterface(QWidget):
-    """设置页主界面（作为 FluentWindow 子界面）。"""
+    """设置页主界面（作为 FluentWindow 子界面）。
+
+    [EN] Main settings page interface (as a FluentWindow sub-interface).
+    """
 
     def __init__(
         self,
@@ -293,7 +305,7 @@ class SettingsInterface(QWidget):
         self._wire_autosave()
 
     # ── 通用卡片/字段构建 ─────────────────────────────────────────────────────
-
+    # [EN] Common card / field builders
     def _card_layout(self, title: str, *, spacing: int = 5):
         group, layout = create_header_card(self._content, title)
         layout.setSpacing(spacing)
@@ -381,7 +393,10 @@ class SettingsInterface(QWidget):
         return RightAlignedSwitchButton()
 
     def _switch_row(self, grid: QGridLayout, row: int, label: str) -> SwitchButton:
-        """标签居左、开关靠右，占满整行。"""
+        """标签居左、开关靠右，占满整行。
+
+        [EN] Label on the left, switch on the right, filling the whole row.
+        """
         switch = self._make_switch()
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
@@ -467,7 +482,7 @@ class SettingsInterface(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     # ── 各卡片 ────────────────────────────────────────────────────────────────
-
+    # [EN] Individual setting cards
     def _build_interface_card(self) -> None:
         grid = self._card(tr("interface_settings", "界面设置"))
         self._combo(grid, 0, 0, tr("language_select", "语言:"), "LANGUAGE", ["zh_CN", "en_US"])
@@ -574,8 +589,8 @@ class SettingsInterface(QWidget):
             tr("set_forcing_process_mode", "默认导入方式："),
             "FORCING_PROCESS_MODE",
             [
-                (tr("step1_mode_copy_full", "复制"), "copy"),
-                (tr("step1_mode_move_full", "剪切"), "move"),
+                (tr("step2_mode_copy_full", "复制"), "copy"),
+                (tr("step2_mode_move_full", "剪切"), "move"),
             ],
         )
         auto_associate = self._switch_row(grid, 1, tr("auto_associate_fields", "自动关联场:"))
@@ -903,6 +918,7 @@ class SettingsInterface(QWidget):
         self._smc_fields[dotted] = switch
 
     # ── ST 版本管理 ───────────────────────────────────────────────────────────
+    # [EN] ST version management
 
     def _build_st_card(self) -> None:
         group, layout = create_header_card(self._content, tr("st_version_config", "ST 版本管理"))
@@ -998,6 +1014,7 @@ class SettingsInterface(QWidget):
         self._notify_config_changed("st_versions")
 
     # ── 本地 ST 版本管理 ─────────────────────────────────────────────────────────
+    # [EN] Local ST version management
 
     def _build_local_st_card(self) -> None:
         group, layout = create_header_card(self._content, tr("local_st_version_config", "本地 ST 版本管理"))
@@ -1093,6 +1110,7 @@ class SettingsInterface(QWidget):
         self._notify_config_changed("local_st_versions")
 
     # ── 谱分区输出方案 ────────────────────────────────────────────────────────
+    # [EN] Spectral-partition output scheme
 
     def _build_scheme_card(self) -> None:
         group, layout = create_header_card(self._content, tr("spectral_output_title", "谱分区输出方案配置"))
@@ -1218,6 +1236,7 @@ class SettingsInterface(QWidget):
             self._on_config_changed_callback(section)
 
     # ── 保存（config.json + 网格 JSON）─────────────────────────────────────────
+    # [EN] Save (config.json + grid JSON)
 
     def _collect_config(self) -> dict:
         updates: dict = {}
@@ -1269,6 +1288,13 @@ class SettingsInterface(QWidget):
 
         在所有卡片构建并填好初值之后调用，避免初始化期间的信号触发写盘。
         ST 版本、谱分区方案、CPU 列表已在各自操作中即时保存。
+
+        [EN] Connect change signals of all widgets so that modifications are persisted immediately
+        (no manual Save button needed).
+
+        Called after all cards are built and initialized to avoid write triggers during initialization.
+        ST versions, spectral-partition schemes, and CPU lists are saved immediately in their own
+        operations.
         """
         for widget in self._fields.values():
             self._connect_autosave(widget, self._save_config_now)
@@ -1331,10 +1357,14 @@ class SettingsInterface(QWidget):
 
 
 # ── 小对话框：名称(+路径) ─────────────────────────────────────────────────────
+# [EN] Small dialog: name (+ path)
 
 
 class _NamePathDialog(MessageBoxBase):
-    """录入名称（可选可执行路径或目录）。"""
+    """录入名称（可选可执行路径或目录）。
+
+    [EN] Enter a name (optionally with executable path or directory).
+    """
 
     def __init__(self, parent=None, *, initial: dict | None = None, name_only: bool = False, title: str = "", directory: bool = False) -> None:
         super().__init__(parent)
@@ -1439,7 +1469,10 @@ def _as_list(value) -> list[str]:
 
 
 def _coerce(text: str):
-    """文本转 int/float（可行时），否则原样字符串。"""
+    """文本转 int/float（可行时），否则原样字符串。
+
+    [EN] Convert text to int/float when feasible, otherwise return the original string.
+    """
     if text == "":
         return ""
     try:

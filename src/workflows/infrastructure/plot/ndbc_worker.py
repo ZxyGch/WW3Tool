@@ -3,6 +3,11 @@
 在独立子进程中读取 WW3 输出、解析/下载 NDBC stdmet 或 realtime 观测，
 按空间距离与时间窗口匹配有效波高，生成时间序列对比图与统计指标。
 纯 Python 实现，无 GUI 依赖。
+
+[EN] [EN] NDBC buoy observation comparison worker — match and download NOAA NDBC station data against WW3 model results.
+
+Reads WW3 output in a separate subprocess, parses/downloads NDBC stdmet or realtime observations, matches significant wave height by spatial distance and time window, and generates time-series comparison plots and statistics.
+Pure Python implementation, no GUI dependency.
 """
 
 import glob
@@ -33,6 +38,8 @@ NDBC_REALTIME_LOOKBACK_DAYS = 45
 
 
 def _ndbc_log(log_queue, message, update=False):
+    
+    # [EN] [EN] Send an NDBC worker message to the log queue; use an in-place update prefix when ``update=True``.
     """向日志队列发送 NDBC Worker 消息；``update=True`` 时使用原地更新前缀。"""
     try:
         if update:
@@ -44,6 +51,8 @@ def _ndbc_log(log_queue, message, update=False):
 
 
 def _configure_ndbc_map_fonts():
+    
+    # [EN] [EN] Prefer an available Chinese font for NDBC maps to reduce cartopy/matplotlib missing-glyph warnings.
     """为 NDBC 地图优先选择可用中文字体，减少 cartopy/matplotlib 缺字告警。"""
     try:
         system = platform.system()
@@ -66,6 +75,8 @@ def _configure_ndbc_map_fonts():
 
 
 def _ndbc_haversine_distance(lat1, lon1, lat2, lon2):
+    
+    # [EN] [EN] Compute the great-circle distance between two points and convert it to approximate degrees of longitude (used as spatial matching threshold).
     """计算两点间大圆距离并转换为近似经度度数（用于空间匹配阈值）。"""
     lat1_rad = np.radians(lat1)
     lon1_rad = np.radians(lon1)
@@ -79,6 +90,8 @@ def _ndbc_haversine_distance(lat1, lon1, lat2, lon2):
 
 
 def _parse_ndbc_time_range(time_range):
+    
+    # [EN] [EN] Parse a ``(YYYYMMDD, YYYYMMDD)`` tuple into start/end ``datetime`` objects.
     """将 ``(YYYYMMDD, YYYYMMDD)`` 元组解析为 ``datetime`` 起止对象。"""
     start_str, end_str = time_range
     start_dt = datetime.strptime(start_str, "%Y%m%d")
@@ -87,6 +100,8 @@ def _parse_ndbc_time_range(time_range):
 
 
 def _find_ndbc_metadata_file(local_folder, time_range):
+    
+    # [EN] [EN] Find NDBC station metadata JSON in the local folder (exact match or latest ``ndbc_stations_*.json``).
     """在本地目录查找 NDBC 站点元数据 JSON（精确匹配或最新 ``ndbc_stations_*.json``）。"""
     exact_path = os.path.join(local_folder, f"ndbc_stations_{time_range[0]}_{time_range[1]}.json")
     if os.path.exists(exact_path):
@@ -97,6 +112,8 @@ def _find_ndbc_metadata_file(local_folder, time_range):
 
 
 def _load_ndbc_stations_from_folder(local_folder, lon_lat, time_range):
+    
+    # [EN] [EN] Load the list of NDBC stations in the specified region (prefer local cache, otherwise request NOAA active-stations XML).
     """加载指定区域内的 NDBC 站点列表（优先本地缓存，否则请求 NOAA 活跃站点 XML）。"""
     if local_folder and os.path.isdir(local_folder):
         metadata_path = _find_ndbc_metadata_file(local_folder, time_range)
@@ -128,6 +145,8 @@ def _load_ndbc_stations_from_folder(local_folder, lon_lat, time_range):
 
 
 def _parse_ndbc_station_file(file_path, start_dt, end_dt):
+    
+    # [EN] [EN] Parse NDBC stdmet text/compressed file and extract WVHT (significant wave height) observations within the time window.
     """解析 NDBC stdmet 文本/压缩文件，提取时间窗内的 WVHT（有效波高）观测序列。"""
     import gzip
 
@@ -193,6 +212,10 @@ def _match_ww3_ndbc_worker(
 
     读取 WW3 输出 NetCDF，加载区域内 NDBC 站点观测，按距离与时间窗配对，
     计算 bias/RMSE/相关系数并保存时间序列对比图。
+    
+    [EN] [EN] Perform WW3 and NDBC buoy SWH space-time matching, statistics and comparison-plot generation in a subprocess.
+    
+    Reads WW3 output NetCDF, loads NDBC station observations in the region, pairs them by distance and time window, computes bias/RMSE/correlation, and saves time-series comparison plots.
     """
     try:
         from .workers_utils import ww3_hs_collocation_flat, ww3_resolve_lon_lat_names
@@ -416,6 +439,8 @@ def _match_ww3_ndbc_worker(
 
 
 def _parse_ndbc_station_elements(xml_bytes):
+    
+    # [EN] [EN] Parse NOAA ``activestations.xml`` byte content and return a list of station metadata dicts.
     """解析 NOAA ``activestations.xml`` 字节内容，返回站点元数据字典列表。"""
     root = ET.fromstring(xml_bytes)
     stations = []
@@ -453,6 +478,8 @@ def _parse_ndbc_station_elements(xml_bytes):
 
 
 def _filter_ndbc_stations(stations, lon_lat):
+    
+    # [EN] [EN] Filter NDBC stations by a ``(lon_min, lon_max, lat_min, lat_max)`` bounding box (supports crossing the date line).
     """按 ``(lon_min, lon_max, lat_min, lat_max)`` 边界框筛选 NDBC 站点（支持跨日期线）。"""
     lon_min, lon_max, lat_min, lat_max = lon_lat
     filtered = []
@@ -467,6 +494,8 @@ def _filter_ndbc_stations(stations, lon_lat):
 
 
 def _download_file(session, url, local_path, log_queue, label):
+    
+    # [EN] [EN] Stream-download a single NDBC data file locally and report progress percentage through the queue.
     """流式下载单个 NDBC 数据文件到本地，并通过队列报告进度百分比。"""
     temp_path = local_path + ".part"
     try:
@@ -506,6 +535,8 @@ def _download_file(session, url, local_path, log_queue, label):
 
 
 def _download_ndbc_worker(lon_lat, time_range, local_folder, log_queue, result_queue):
+    
+    # [EN] [EN] Batch-download NDBC observation data for the specified region and time range to a local directory in a subprocess.
     """在子进程中批量下载指定区域与时间范围内的 NDBC 观测数据到本地目录。"""
     try:
         start_dt, end_dt = _parse_ndbc_time_range(time_range)

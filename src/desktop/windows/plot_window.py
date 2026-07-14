@@ -553,10 +553,10 @@ class PlotInterface(QWidget):
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         for key, default, tkey, r, c in (
-            ("lon_west", "西经:", "step2_lon_west", 0, 0),
-            ("lon_east", "东经:", "step2_lon_east", 0, 2),
-            ("lat_south", "南纬:", "step2_lat_south", 1, 0),
-            ("lat_north", "北纬:", "step2_lat_north", 1, 2),
+            ("lon_west", "西经:", "step1_lon_west", 0, 0),
+            ("lon_east", "东经:", "step1_lon_east", 0, 2),
+            ("lat_south", "南纬:", "step1_lat_south", 1, 0),
+            ("lat_north", "北纬:", "step1_lat_north", 1, 2),
             ("start", "开始:", "plotting_start", 2, 0),
             ("end", "结束:", "plotting_end", 2, 2),
         ):
@@ -583,7 +583,7 @@ class PlotInterface(QWidget):
         wind_row = QHBoxLayout()
         wind_row.setSpacing(10)
         wind_row.addWidget(wind_btn, 1)
-        wind_row.addWidget(self._button(tr("step2_load_from_nc", "从 wind.nc 读取范围"), lambda: self._load_range_from_nc(fields, "wind.nc")), 1)
+        wind_row.addWidget(self._button(tr("step1_load_from_nc", "从 wind.nc 读取范围"), lambda: self._load_range_from_nc(fields, "wind.nc")), 1)
         layout.addLayout(wind_row)
 
         # [EN] 4) [Choose wave height file | Read range from simulation results]
@@ -594,7 +594,7 @@ class PlotInterface(QWidget):
         wave_row = QHBoxLayout()
         wave_row.setSpacing(10)
         wave_row.addWidget(wave_btn, 1)
-        wave_row.addWidget(self._button(tr("step2_load_from_ww3", "从模拟结果读取范围"), lambda: self._load_range_from_nc(fields, "ww3.*.nc")), 1)
+        wave_row.addWidget(self._button(tr("step1_load_from_ww3", "从模拟结果读取范围"), lambda: self._load_range_from_nc(fields, "ww3.*.nc")), 1)
         layout.addLayout(wave_row)
 
         # [EN] 5) Download / Generate+View

@@ -38,7 +38,7 @@ interfaces
 | 文件 | 说明 |
 |---|---|
 | config_models.py | 整个流水线的参数数据类（dataclass），涵盖 forcing / grid / ww3 / plot 等所有配置段 |
-| forcing_fields.py | ForcingField 枚举（WIND / CURRENT / LEVEL / ICE）及 Step1Files 路径容器 |
+| forcing_fields.py | ForcingField 枚举（WIND / CURRENT / LEVEL / ICE）及 Step2Files 路径容器 |
 | parameter_catalog.py | 参数的枚举选项常量，如地形分辨率、输出字段列表、文件分割方式等 |
 
 flowchart LR
@@ -70,7 +70,7 @@ flowchart LR
 封装所有"副作用"：文件读写、子进程调用、第三方库（matplotlib、netCDF4、paramiko）。
 **application 层只通过这里与外部世界交互。**
 
-#### infrastructure/forcing/ — 场文件处理（Step 1）
+#### infrastructure/forcing/ — 场文件处理（Step 2）
 
 | 文件 | 说明 |
 |---|---|
@@ -79,6 +79,8 @@ flowchart LR
 | variable_detector.py | 检测 NetCDF 文件中的变量类型（u/v 风场、SWH 等） |
 | forcing_normalize_service.py | 单遍归一化所有强迫场（坐标、变量名、时间单位）为 WW3 标准格式 |
 | use_cases.py | ImportForcingFileUseCase：统一入口，组合上面几个类完成任意场文件的导入 |
+
+
 
 > **注意**：use_cases.py 位于 infrastructure 层而非 application 层，因为它直接封装了文件 I/O 操作，不包含流程判断。
 
@@ -136,8 +138,8 @@ CLI 通过 queue.SimpleQueue 同步桥接，Desktop 通过多进程 Queue 异步
 | 文件 | 说明 |
 |---|---|
 | configuration.py | YAML 加载、路径解析、参数校验，输出 PipelineConfig；包含 EXAMPLE_YAML 模板 |
-| preprocessing_workflow.py | run_pipeline：forcing → grid → ww3 namelist 完整流水线；run_prepare_forcing：仅场文件 |
-| forcing_preparation.py | 单步：为所有配置的场字段调用 use_cases，输出 Step1Files |
+| preprocessing_workflow.py | run_pipeline：grid → forcing → ww3 namelist 完整流水线；run_prepare_forcing：仅场文件 |
+| forcing_preparation.py | 单步：为所有配置的场字段调用 use_cases，输出 Step2Files |
 | forcing_inspection.py | 只读：输出已选场文件的概览信息（变量范围、时间范围等） |
 | grid_preparation.py | 单步：run_generate_grid，调用 grid_generation_adapter |
 | grid_tools.py | 只读工具：从 workdir 读取网格边界，供 Desktop 预览使用 |

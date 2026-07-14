@@ -9,7 +9,7 @@
 
 命令分组：
 - 配置管理：``workdir``、``validate``、``config``、``print-params``
-- 预处理：``prepare-forcing``、``merge-forcing``、``generate-grid``、``prepare-ww3``、``recommend-cfl``、``recommend-grid``、``run-workflow``、``local-run``
+- 预处理：``generate-grid``、``prepare-forcing``、``merge-forcing``、``prepare-ww3``、``recommend-cfl``、``recommend-grid``、``run-workflow``、``local-run``
 - 后处理/绘图：``plot-wave-maps``、``plot-spectrum``、``plot-jason3``、``plot-jason3-swh``、``download-jason3``、``plot-ndbc``、``download-ndbc``
 - 远程运维：``connect-test``、``ssh``、``upload``、``submit``、``ntfy-watch``、``ntfy-watch-job`` 等 SLURM/SSH 操作
 - 辅助：``print-example`` 输出示例 YAML
@@ -30,7 +30,7 @@ Use ``workdir <path>`` to create or load a working directory from the template f
 
 Command groups:
 - Configuration: ``workdir``, ``validate``, ``config``, ``print-params``
-- Preprocessing: ``prepare-forcing``, ``merge-forcing``, ``generate-grid``, ``prepare-ww3``, ``recommend-cfl``, ``recommend-grid``, ``run-workflow``, ``local-run``
+- Preprocessing: ``generate-grid``, ``prepare-forcing``, ``merge-forcing``, ``prepare-ww3``, ``recommend-cfl``, ``recommend-grid``, ``run-workflow``, ``local-run``
 - Post-processing/plotting: ``plot-wave-maps``, ``plot-spectrum``, ``plot-jason3``, ``plot-jason3-swh``, ``download-jason3``, ``plot-ndbc``, ``download-ndbc``
 - Remote operations: ``connect-test``, ``ssh``, ``upload``, ``submit`` and other SLURM/SSH operations
 - Auxiliary: ``print-example`` outputs a sample YAML
@@ -160,6 +160,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_print_params.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     # ── preprocessing ──────────────────────────────────────────────────────
+    # Step 1: grid generation
+    p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "[workdir] Run only grid generation"))
+    p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_grid.add_argument(
+        "--download-ref-data",
+        action="store_true",
+        help=tr("cli_help_download_ref_data", "Automatically download missing reference_data (~6.5 GB)"),
+    )
+    p_grid.add_argument(
+        "--no-download-ref-data",
+        action="store_true",
+        help=tr("cli_help_no_download_ref_data", "Fail immediately if reference_data is missing"),
+    )
+
+    p_recgrid = sub.add_parser(
+        "recommend-grid",
+        help=tr("cli_help_recommend_grid", "[workdir] Recommend grid spacing/resolution from the domain extent and write to params.yml"),
+    )
+    p_recgrid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_recgrid.add_argument(
+        "--coarse", action="store_true",
+        help=tr("cli_help_recommend_grid_coarse", "Use one tier coarser than the auto-matched recommendation"),
+    )
+    p_recgrid.add_argument(
+        "--fine", action="store_true",
+        help=tr("cli_help_recommend_grid_fine", "Use one tier finer than the auto-matched recommendation"),
+    )
+
+    # Step 2: forcing preparation
     p_forcing = sub.add_parser("prepare-forcing", help=tr("cli_help_prepare_forcing", "[workdir] Run only forcing preparation"))
     p_forcing.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
@@ -205,36 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    p_grid = sub.add_parser("generate-grid", help=tr("cli_help_generate_grid", "[workdir] Run only grid generation"))
-    p_grid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_grid.add_argument(
-        "--download-ref-data",
-        action="store_true",
-        help=tr("cli_help_download_ref_data", "Automatically download missing reference_data (~6.5 GB)"),
-    )
-    p_grid.add_argument(
-        "--no-download-ref-data",
-        action="store_true",
-        help=tr("cli_help_no_download_ref_data", "Fail immediately if reference_data is missing"),
-    )
-
-    p_recgrid = sub.add_parser(
-        "recommend-grid",
-        help=tr("cli_help_recommend_grid", "[workdir] Recommend grid spacing/resolution from the domain extent and write to params.yml"),
-    )
-    p_recgrid.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
-    p_recgrid.add_argument(
-        "--coarse", action="store_true",
-        help=tr("cli_help_recommend_grid_coarse", "Use one tier coarser than the auto-matched recommendation"),
-    )
-    p_recgrid.add_argument(
-        "--fine", action="store_true",
-        help=tr("cli_help_recommend_grid_fine", "Use one tier finer than the auto-matched recommendation"),
-    )
-
     p_run = sub.add_parser(
         "run-workflow",
-        help=tr("cli_help_run_workflow", "[workdir] Run full preprocessing (forcing → grid → WW3 namelist)"),
+        help=tr("cli_help_run_workflow", "[workdir] Run full preprocessing (grid → forcing → WW3 namelist)"),
     )
     p_run.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_run.add_argument(
@@ -596,11 +598,6 @@ def main(argv: list[str] | None = None) -> int:
             print("".join(out), end="")
             return 0
 
-        if args.command == "prepare-forcing":
-            from ..application.preprocessing_workflow import run_prepare_forcing
-            run_prepare_forcing(config, log=print)
-            return 0
-
         if args.command == "generate-grid":
             from ..application.grid_preparation import run_generate_grid
 
@@ -612,6 +609,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "recommend-grid":
             offset = 1 if args.coarse else (-1 if args.fine else 0)
             return _run_recommend_grid(config, params_path, offset=offset)
+
+        if args.command == "prepare-forcing":
+            from ..application.preprocessing_workflow import run_prepare_forcing
+            run_prepare_forcing(config, log=print)
+            return 0
 
         if args.command == "run-workflow":
             from ..application.preprocessing_workflow import run_pipeline
@@ -760,8 +762,75 @@ def _run_prepare_ww3(config) -> int:
     logger = CoreLogger(callback=print)
     file_service = FileService(logger=logger)
     files = ScanWorkdirForcingUseCase(file_service).execute(str(config.workdir.path))
+    
+    # 检查 WW3 时间范围是否在强迫场时间范围内
+    _check_and_log_ww3_time_range(config, logger, files)
+    
     prepare_ww3_files(config, files, logger)
     return 0
+
+
+def _check_and_log_ww3_time_range(config, logger, files) -> None:
+    """检查 WW3 时间范围是否在强迫场时间范围内，并记录警告。
+    
+    [EN] Check WW3 time range against forcing time range and log warnings.
+    """
+    from ..application.forcing_coverage_checker import check_time_range_coverage
+    
+    # 获取 WW3 时间范围
+    ww3_start = config.ww3.time_start.strip() if hasattr(config.ww3, 'time_start') and config.ww3.time_start else None
+    ww3_end = config.ww3.time_end.strip() if hasattr(config.ww3, 'time_end') and config.ww3.time_end else None
+    
+    if not (ww3_start and ww3_end):
+        return  # 无 WW3 时间配置，跳过检查
+    
+    # 获取强迫场路径
+    forcing_paths = {}
+    field_names = {}
+    for key, field in [
+        ("wind", "wind"),
+        ("current", "current"),
+        ("level", "level"),
+        ("ice", "ice"),
+    ]:
+        path = getattr(files, key, None) if hasattr(files, key) else None
+        if path:
+            forcing_paths[key] = str(path)
+            field_names[key] = tr(
+                f"step2_field_{key}",
+                {"wind": "风场", "current": "流场", "level": "水位场", "ice": "海冰场"}[key],
+            )
+    
+    if not forcing_paths:
+        return  # 无强迫场，跳过检查
+    
+    issues = check_time_range_coverage(ww3_start, ww3_end, forcing_paths, field_names)
+    if not issues:
+        return
+    
+    # 构建警告消息
+    messages = []
+    for issue in issues:
+        messages.append(
+            tr(
+                "step4_time_range_warning_detail",
+                "• {name}：{path}\n  强迫场时间：{time_start} → {time_end}\n  WW3 请求时间：{req_start} → {req_end}",
+            ).format(
+                name=issue.field_name,
+                path=issue.path,
+                time_start=issue.time_start,
+                time_end=issue.time_end,
+                req_start=issue.requested_start,
+                req_end=issue.requested_end,
+            )
+        )
+    
+    logger.log(
+        tr(
+            "step4_time_range_warning_cli",
+            "⚠️ WW3 时间范围警告：以下强迫场时间范围不足（将继续生成 namelist）：\n{details}",
+        ).format(details="\n\n".join(messages))
+    )
 
 
 def _run_recommend_cfl(config, params_path: str, *, mode: str = "safe", factor: float | None = None) -> int:

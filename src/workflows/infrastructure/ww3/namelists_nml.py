@@ -62,8 +62,8 @@ class NamelistsNML(NMLPrimitives):
 
         # [EN] Check if nested grid mode
         # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:
@@ -149,7 +149,11 @@ class NamelistsNML(NMLPrimitives):
             return False
 
     def _normalize_smc_psmc_namelist_in_dir(self, target_dir: str) -> bool:
-        """按 ``ww3.version`` 将 ``&PSMC`` 字段名对齐到 6.07 或 7.14 约定。"""
+        """按 ``ww3.version`` 将 ``&PSMC`` 字段名对齐到 6.07 或 7.14 约定。
+
+        [EN] Align ``&PSMC`` field names to the 6.07 or 7.14 convention
+        according to ``ww3.version``.
+        """
         namelists_path = os.path.join(target_dir, "namelists.nml")
         if not os.path.isfile(namelists_path):
             return False
@@ -183,7 +187,7 @@ class NamelistsNML(NMLPrimitives):
 
     def _sync_smc_psmc_namelist_if_needed(self) -> None:
         """Regional SMC runs: sync ``&PSMC`` ``NBISMC`` / ``LvSMC`` from grid outputs."""
-        if not getattr(self, "_is_step2_smc_mesh", lambda: False)():
+        if not getattr(self, "_is_step1_smc_mesh", lambda: False)():
             return
         self._normalize_smc_psmc_namelist_in_dir(self.selected_folder)
         self._sync_smc_psmc_namelist_in_dir(self.selected_folder)

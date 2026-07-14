@@ -1,4 +1,8 @@
-"""将 ``ww3_grid`` 配置参数写回 ``ww3_grid.nml`` 的共享逻辑。"""
+"""将 ``ww3_grid`` 配置参数写回 ``ww3_grid.nml`` 的共享逻辑。
+
+[EN] Shared logic for writing ``ww3_grid`` configuration parameters back to
+``ww3_grid.nml``.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +37,11 @@ _FLAT_KEY_FALLBACK = {
 
 
 def parameters_from_config(cfg: Optional[Mapping[str, object]] = None) -> dict[str, str]:
-    """从 ``load_config()`` 或合并后的运行时配置字典提取 ww3_grid 参数。"""
+    """从 ``load_config()`` 或合并后的运行时配置字典提取 ww3_grid 参数。
+
+    [EN] Extract ww3_grid parameters from ``load_config()`` or a merged runtime
+    configuration dictionary.
+    """
     raw = dict(cfg or load_config())
     wg = raw.get("ww3_grid") or {}
     if not isinstance(wg, Mapping):
@@ -69,7 +77,10 @@ def _param_value_lines(parameters: Mapping[str, str]) -> dict[str, dict[str, str
 
 
 def _grid_param_log_assignments(parameters: Mapping[str, str]) -> list[Assignment]:
-    """按 nml 块顺序列出实际写入的谱/时间步字段。"""
+    """按 nml 块顺序列出实际写入的谱/时间步字段。
+
+    [EN] List the spectrum/timestep fields actually written, in namelist-block order.
+    """
     return [(key, parameters[key]) for key in _PARAM_KEYS if key in parameters]
 
 
@@ -80,7 +91,11 @@ def write_ww3_grid_parameters_to_nml(
     *,
     level_idx: Optional[int] = None,
 ) -> bool:
-    """写回单个 ``ww3_grid.nml``；``level_idx`` 用于嵌套网格分层日志。"""
+    """写回单个 ``ww3_grid.nml``；``level_idx`` 用于嵌套网格分层日志。
+
+    [EN] Write parameters back to a single ``ww3_grid.nml``; ``level_idx`` is
+    used for per-level logging in nested grids.
+    """
     path = Path(nml_path)
     if not path.is_file():
         if log is not None:

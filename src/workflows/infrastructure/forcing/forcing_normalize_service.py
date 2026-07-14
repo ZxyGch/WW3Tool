@@ -1,6 +1,6 @@
-"""WW3 Step 1 强迫场 NetCDF 归一化服务。
+"""WW3 Step 2 强迫场 NetCDF 归一化服务。
 
-[EN] WW3 Step 1 forcing field NetCDF normalization service.
+[EN] WW3 Step 2 forcing field NetCDF normalization service.
 
 将各类再分析/预报强迫场统一转换为 WW3 ``ww3_prnc`` 可读格式，主要处理：
 
@@ -128,7 +128,10 @@ def _get_available_memory_bytes() -> int:
 
 
 def _pick_var_name(src_variables, candidates):
-    """从 NetCDF 变量字典中按候选列表顺序匹配第一个存在的变量名。"""
+    """从 NetCDF 变量字典中按候选列表顺序匹配第一个存在的变量名。
+
+    [EN] Match the first variable name present in the NetCDF variable dictionary from the candidate list.
+    """
     for name in candidates:
         if name in src_variables:
             return name
@@ -202,6 +205,7 @@ class ForcingNormalizeService:
             os.makedirs(output_dir, exist_ok=True)
 
         # ── Phase 1: 读取元数据 ─────────────────────────────────────────
+        # [EN] Phase 1: read metadata
         try:
             with Dataset(source_file, "r") as src:
                 src.set_auto_mask(False)
@@ -226,6 +230,7 @@ class ForcingNormalizeService:
                 original_time_calendar = getattr(time_var_obj, "calendar", "gregorian")
 
                 # 检测强迫场变量
+                # [EN] Detect forcing variables
                 forcing_var_map = _detect_forcing_var_map(src.variables)
                 if not forcing_var_map:
                     raise KeyError(
@@ -236,6 +241,7 @@ class ForcingNormalizeService:
                     )
 
                 # 收集所有数据变量的信息
+                # [EN] Collect information for all data variables
                 data_var_infos = []
                 for std_name, (src_name, field_type) in forcing_var_map.items():
                     src_var = src.variables[src_name]
@@ -267,6 +273,7 @@ class ForcingNormalizeService:
                     })
 
                 # 以第一个数据变量为基准确定维度顺序
+                # [EN] Determine dimension order based on the first data variable
                 primary = data_var_infos[0]
                 primary_shape = primary["shape"]
                 primary_dims = primary["dims"]
@@ -277,6 +284,7 @@ class ForcingNormalizeService:
                     )
 
                 # 推断 time/lat/lon 在数据数组中的维度索引
+                # [EN] Infer the dimension indices of time/lat/lon in the data array
                 time_dim_idx = None
                 lat_dim_idx = None
                 lon_dim_idx = None
@@ -292,6 +300,7 @@ class ForcingNormalizeService:
 
                 if time_dim_idx is None or lat_dim_idx is None or lon_dim_idx is None:
                     # 按形状推断
+                    # [EN] Infer by shape
                     if len(primary_shape) >= 3:
                         if primary_shape[-2] == len(latitude) and primary_shape[-1] == len(longitude):
                             time_dim_idx, lat_dim_idx, lon_dim_idx = len(primary_shape) - 3, len(primary_shape) - 2, len(primary_shape) - 1
@@ -306,6 +315,7 @@ class ForcingNormalizeService:
                         )
 
                 # 输出维度顺序
+                # [EN] Output dimension order
                 _std_names_map = {time_dim_idx: "time", lat_dim_idx: "latitude", lon_dim_idx: "longitude"}
                 output_dim_order = [_std_names_map[i] for i in sorted(_std_names_map.keys())]
 
@@ -314,6 +324,7 @@ class ForcingNormalizeService:
                 time_dtype = time_var_obj.dtype
 
                 # 记录所有源变量名（用于后续全量复制）
+                # [EN] Record all source variable names (for subsequent full copy)
                 all_src_var_names = list(src.variables.keys())
 
         except Exception as exc:
@@ -321,6 +332,7 @@ class ForcingNormalizeService:
             return False
 
         # ── 经度递减检查：统一拒绝 ────────────────────────────────────
+        # [EN] Longitude descending check: always reject
         if len(longitude) > 1 and longitude[0] > longitude[-1]:
             self._emit(
                 log,
@@ -332,11 +344,13 @@ class ForcingNormalizeService:
             return False
 
         # ── 纬度递减：翻转 ──────────────────────────────────────────────
+        # [EN] Latitude descending: flip
         lat_needs_flip = len(latitude) > 1 and latitude[0] > latitude[-1]
         if lat_needs_flip:
             latitude = latitude[::-1]
 
         # ── 短路判断 ────────────────────────────────────────────────────
+        # [EN] Short-circuit check
         needs_rename = (
             lon_name.lower() != "longitude"
             or lat_name.lower() != "latitude"
@@ -372,12 +386,14 @@ class ForcingNormalizeService:
             return True
 
         # ── 分块策略 ────────────────────────────────────────────────────
+        # [EN] Chunking strategy
         n_time = len(time_data)
         n_lat = len(latitude)
         n_lon = len(longitude)
         points_per_step = max(1, n_lat * n_lon)
 
         # 估算总数据量（所有数据变量）
+        # [EN] Estimate total data volume (all data variables)
         total_bytes_per_step = sum(
             points_per_step * max(1, np.dtype(info["dtype"]).itemsize) for info in data_var_infos
         )
@@ -417,6 +433,7 @@ class ForcingNormalizeService:
             and file_size_bytes >= 2 * 1024 * 1024 * 1024
             and points_per_step <= 300000
             and n_data_vars <= 4  # 并行仅适用于少量数据变量
+            # [EN] Parallel processing is only suitable for a small number of data variables
         )
         total_chunks = max(1, (n_time + chunk_time - 1) // chunk_time)
         progress_log_interval = 1 if total_chunks <= 12 else max(1, total_chunks // 8)
@@ -430,11 +447,15 @@ class ForcingNormalizeService:
             return tuple(size_map[d] for d in output_dim_order)
 
         def _transform_chunk(chunk, ndim):
-            """本地翻转：对 time-lat-lon 3D 数据翻转 lat/lon 轴。"""
+            """本地翻转：对 time-lat-lon 3D 数据翻转 lat/lon 轴。
+
+            [EN] Local flip: flip the lat/lon axes of time-lat-lon 3D data.
+            """
             chunk = np.asarray(chunk)
             changed = False
             if lat_needs_flip and ndim >= 2:
                 # lat 轴在 3D 中通常是 -2
+                # [EN] The lat axis in 3D data is usually the second-to-last axis
                 lat_ax = ndim - 2 if ndim >= 2 else None
                 if lat_ax is not None:
                     chunk = np.flip(chunk, axis=lat_ax)
@@ -442,6 +463,7 @@ class ForcingNormalizeService:
             return np.ascontiguousarray(chunk) if changed else chunk
 
         # ── Phase 2: 写出标准化文件 ─────────────────────────────────────
+        # [EN] Phase 2: write normalized file
         try:
             temp_output_path = output_file + ".normalize_tmp"
             if os.path.exists(temp_output_path):
@@ -455,6 +477,7 @@ class ForcingNormalizeService:
                     pass
 
                 # 复制全局属性
+                # [EN] Copy global attributes
                 for attr_name in src.ncattrs():
                     try:
                         dst.setncattr(attr_name, src.getncattr(attr_name))
@@ -462,10 +485,12 @@ class ForcingNormalizeService:
                         pass
 
                 # 创建标准化维度
+                # [EN] Create standardized dimensions
                 dst.createDimension("longitude", n_lon)
                 dst.createDimension("latitude", n_lat)
                 dst.createDimension("time", n_time)
                 # 复制源文件中其他维度（如 depth 等）
+                # [EN] Copy other dimensions from source (e.g., depth)
                 for dim_name, dim_obj in src.dimensions.items():
                     std_dim = {"longitude": "longitude", "latitude": "latitude", "time": "time"}.get(
                         lon_name if dim_name == lon_name else (
@@ -481,11 +506,13 @@ class ForcingNormalizeService:
                         dst.createDimension(std_dim, len(dim_obj) if not dim_obj.isunlimited() else None)
 
                 # 创建坐标变量
+                # [EN] Create coordinate variables
                 lon_var = dst.createVariable("longitude", lon_dtype, ("longitude",))
                 lat_var = dst.createVariable("latitude", lat_dtype, ("latitude",))
                 time_var = dst.createVariable("time", time_dtype, ("time",))
 
                 # 创建数据变量
+                # [EN] Create data variables
                 def _build_var_kwargs(filters, chunksizes):
                     kwargs = {"fill_value": -32767.0}
                     if not isinstance(filters, dict):
@@ -522,6 +549,7 @@ class ForcingNormalizeService:
                     )
 
                 # 写入坐标
+                # [EN] Write coordinates
                 lon_var[:] = longitude
                 lat_var[:] = latitude
 
@@ -530,10 +558,13 @@ class ForcingNormalizeService:
                 time_var[:] = time_data
 
                 # ── 写入数据变量 ────────────────────────────────────────
+                # [EN] Write data variables
                 # 对每个数据变量构建读取切片
+                # [EN] Build read slices for each data variable
                 def _make_read_slices(src_var_shape, start, end):
                     slices = [slice(None)] * len(src_var_shape)
                     # 找到时间维度索引（在该变量的维度中）
+                    # [EN] Find the time dimension index (in this variable's dimensions)
                     if len(src_var_shape) >= 3:
                         slices[time_dim_idx] = slice(start, end)
                     return tuple(slices)
@@ -565,6 +596,7 @@ class ForcingNormalizeService:
                                     ),
                                 )
                             # 读取所有数据变量的当前块
+                            # [EN] Read the current chunk for all data variables
                             chunks = []
                             for info in data_var_infos:
                                 src_var = src.variables[info["src_name"]]
@@ -572,13 +604,16 @@ class ForcingNormalizeService:
                                 chunks.append(np.asarray(src_var[slices]))
 
                             # 计算该变量数组中 lat/lon 的轴位置
+                            # [EN] Compute the lat/lon axis positions in the variable array
                             ndim = len(data_var_infos[0]["shape"])
                             lat_ax = lat_dim_idx if lat_dim_idx is not None else (ndim - 2 if ndim >= 2 else None)
                             lon_ax = lon_dim_idx if lon_dim_idx is not None else (ndim - 1 if ndim >= 1 else None)
 
                             future = executor.submit(
                                 _transform_chunks_for_pool,
-                                chunks, lat_needs_flip, lat_ax, False, lon_ax,  # lon_needs_flip=False (已拒绝)
+                                # lon_needs_flip=False (已拒绝)
+                                # [EN] lon_needs_flip=False (descending longitude already rejected)
+                                chunks, lat_needs_flip, lat_ax, False, lon_ax,
                             )
                             if pending is not None:
                                 prev_start, prev_end, prev_future = pending
@@ -594,6 +629,7 @@ class ForcingNormalizeService:
                                 dst_data_vars[info["std_name"]][prev_start:prev_end, :, :] = prev_results[i]
                 else:
                     # 顺序分块
+                    # [EN] Sequential chunking
                     for start in range(0, n_time, chunk_time):
                         end = min(start + chunk_time, n_time)
                         chunk_index = start // chunk_time + 1
@@ -613,6 +649,7 @@ class ForcingNormalizeService:
                             )
 
                 # ── 复制非坐标非强迫场的变量（如 depth、crs 等）──────────
+                # [EN] Copy non-coordinate, non-forcing variables (e.g., depth, crs)
                 coord_names = {lon_name, lat_name, time_name}
                 forcing_src_names = {info["src_name"] for info in data_var_infos}
                 skip_names = coord_names | forcing_src_names
@@ -623,6 +660,7 @@ class ForcingNormalizeService:
                     src_var = src.variables[var_name]
                     try:
                         # 映射维度名
+                        # [EN] Map dimension names
                         mapped_dims = []
                         for d in src_var.dimensions:
                             if d == lon_name:
@@ -637,12 +675,14 @@ class ForcingNormalizeService:
 
                         dst_var = dst.createVariable(var_name, src_var.dtype, mapped_dims)
                         # 复制属性
+                        # [EN] Copy attributes
                         for attr in src_var.ncattrs():
                             try:
                                 dst_var.setncattr(attr, src_var.getncattr(attr))
                             except Exception:
                                 pass
                         # 复制数据
+                        # [EN] Copy data
                         try:
                             dst_var[:] = src_var[:]
                         except Exception:
@@ -651,6 +691,7 @@ class ForcingNormalizeService:
                         pass
 
                 # ── 设置标准属性 ────────────────────────────────────────
+                # [EN] Set standard attributes
                 lon_var.description = "LONGITUDE, WEST IS NEGATIVE"
                 lon_var.units = "degree_east"
 
@@ -668,6 +709,7 @@ class ForcingNormalizeService:
                 time_var.calendar = normalize_calendar_for_ww3(original_time_calendar)
 
                 # 设置强迫场变量属性
+                # [EN] Set forcing variable attributes
                 _VAR_ATTRS = {
                     "u10": {"description": "10 meters wind speed u", "units": "m/s", "level": "10m"},
                     "v10": {"description": "10 meters wind speed v", "units": "m/s", "level": "10m"},
@@ -702,10 +744,14 @@ class ForcingNormalizeService:
 
     @staticmethod
     def _emit(log: Optional[Callable[[str], None]], message: str) -> None:
-        """若提供 log 回调则输出一条消息。"""
+        """若提供 log 回调则输出一条消息。
+
+        [EN] Emit a message if a log callback is provided.
+        """
         if log is not None:
             log(message)
 
 
 # ── 向后兼容 ──────────────────────────────────────────────────────
+# [EN] Backward compatibility
 WindNormalizeService = ForcingNormalizeService

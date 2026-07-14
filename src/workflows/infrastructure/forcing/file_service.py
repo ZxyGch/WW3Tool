@@ -1,6 +1,6 @@
-"""WW3 Step 1 强迫场文件 I/O 与格式修复服务。
+"""WW3 Step 2 强迫场文件 I/O 与格式修复服务。
 
-[EN] WW3 Step 1 forcing field file I/O and format fixing service.
+[EN] WW3 Step 2 forcing field file I/O and format fixing service.
 
 用户选定 NetCDF 后，本模块负责将其复制或移动到工作目录，并执行必要的
 WW3 兼容性修正，包括：
@@ -14,7 +14,7 @@ on the copy, including:
 - 一维纬度坐标递减时翻转为递增，避免 ``ww3_prnc`` 在规则经纬网下报错；
 - 一维经度坐标递减时明确拒绝，不静默改写经度闭合关系；
 - 保留原始时间轴单位与日历属性；
-- 扫描工作目录，按文件名规则或变量检测恢复 Step 1 四类场路径。
+- 扫描工作目录，按文件名规则或变量检测恢复 Step 2 四类场路径。
 
 [EN] - Standardizing coordinate variable names (``lon`` → ``longitude``, ``lat`` → ``latitude``, etc.);
 - Renaming ``wndewd/wndnwd`` to ``u10/v10`` (some reanalysis products use legacy names);
@@ -23,7 +23,7 @@ on the copy, including:
 - Rejecting descending 1-D longitude coordinates instead of silently rewriting
   longitude closure;
 - Preserving original time axis units and calendar attributes;
-- Scanning the working directory to recover Step 1 field paths via filename rules or variable detection.
+- Scanning the working directory to recover Step 2 field paths via filename rules or variable detection.
 """
 import os
 import shutil
@@ -32,7 +32,7 @@ import numpy as np
 from datetime import datetime
 from netCDF4 import Dataset, num2date
 from typing import Optional
-from ...domain.forcing_fields import ForcingField, Step1Files
+from ...domain.forcing_fields import ForcingField, Step2Files
 from ...support.translations import tr
 from .file_path_manager import FilePathManager
 from .forcing_normalize_service import ForcingNormalizeService
@@ -162,7 +162,10 @@ class FileService:
 
     @staticmethod
     def _decreasing_1d_coord_dimension(coord_var, coordinate_label):
-        """返回递减一维坐标对应的维度名；递增返回 None。"""
+        """返回递减一维坐标对应的维度名；递增返回 None。
+
+        [EN] Return the dimension name for a decreasing 1-D coordinate; return None if increasing.
+        """
         if len(coord_var.dimensions) != 1:
             return None
 
@@ -217,7 +220,10 @@ class FileService:
         return var_attrs, kwargs
 
     def _flip_dimension_in_place(self, target_file: str, dimension_name: str) -> None:
-        """原地翻转 NetCDF 中所有包含指定维度的变量。"""
+        """原地翻转 NetCDF 中所有包含指定维度的变量。
+
+        [EN] Flip all variables containing the specified dimension in the NetCDF in place.
+        """
         temp_file = target_file + ".flip_tmp"
         try:
             if os.path.exists(temp_file):
@@ -523,19 +529,19 @@ class FileService:
             self.log(f"{tr('log_crop_fix_failed', '❌ 裁剪或修复文件失败')}: {e}")
             return None
 
-    def scan_forcing_files(self, selected_folder: str, *, auto_associate: bool = True) -> Step1Files:
+    def scan_forcing_files(self, selected_folder: str, *, auto_associate: bool = True) -> Step2Files:
         """扫描工作目录，推断 wind/current/level/ice 四类场对应的 NetCDF 路径。
 
         [EN] Scan the working directory and infer NetCDF paths for wind/current/level/ice fields.
 
         匹配顺序：单场标准名（``wind.nc`` 等）→（auto_associate 时）组合文件名解析
-        → 打开文件做变量检测。不修改 UI，返回 ``Step1Files`` 供 CLI 或 ViewModel 使用。
+        → 打开文件做变量检测。不修改 UI，返回 ``Step2Files`` 供 CLI 或 ViewModel 使用。
 
         [EN] Matching order: single-field standard names (``wind.nc``, etc.) ->
         (when auto_associate) combined filename parsing -> open file and detect variables.
-        Does not modify the UI; returns ``Step1Files`` for CLI or ViewModel use.
+        Does not modify the UI; returns ``Step2Files`` for CLI or ViewModel use.
         """
-        files = Step1Files()
+        files = Step2Files()
         try:
             if not selected_folder or not os.path.isdir(selected_folder):
                 return files
@@ -591,9 +597,9 @@ class FileService:
         return files
 
     def detect_and_fill_forcing_fields(self, instance, selected_folder: str):
-        """扫描工作目录并将检测结果同步到桌面端 Step 1 控件。
+        """扫描工作目录并将检测结果同步到桌面端 Step 2 控件。
 
-        [EN] Scan the working directory and sync detection results to the desktop Step 1 controls.
+        [EN] Scan the working directory and sync detection results to the desktop Step 2 controls.
 
         内部调用 ``scan_forcing_files``，再更新 ``selected_*_file`` 属性及
         风/流/水位/海冰选择按钮的显示文本。

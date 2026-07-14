@@ -1,4 +1,4 @@
-"""Desktop adapter for Step 1 forcing preparation.
+"""Desktop adapter for Step 2 forcing preparation.
 
 This module is intentionally toolkit agnostic. A desktop page can call this
 view model directly and bind ``on_log`` / ``on_state_change`` to signals or
@@ -14,7 +14,7 @@ from typing import Callable, Iterable, List, Optional
 
 from workflows.application.configuration import load_pipeline_config, parse_pipeline_config
 from workflows.domain.config_models import PipelineConfig
-from workflows.domain.forcing_fields import ForcingField, Step1Files
+from workflows.domain.forcing_fields import ForcingField, Step2Files
 from workflows.support.translations import tr
 
 
@@ -26,7 +26,7 @@ StateCallback = Callable[["ForcingStepState"], None]
 class ForcingStepState:
     is_running: bool = False
     workdir: str = ""
-    files: Step1Files = field(default_factory=Step1Files)
+    files: Step2Files = field(default_factory=Step2Files)
     messages: List[str] = field(default_factory=list)
     error: Optional[str] = None
 
@@ -81,7 +81,7 @@ class ForcingStepViewModel:
     def prepare_from_file(self, params_path: str | Path) -> ForcingStepState:
         return self.prepare(self.load_config(params_path))
 
-    def report_file_overviews(self, files: Step1Files) -> list[str]:
+    def report_file_overviews(self, files: Step2Files) -> list[str]:
         from workflows.application.forcing_inspection import report_forcing_file_overviews
 
         return report_forcing_file_overviews(files, log=self._handle_log)
@@ -112,7 +112,7 @@ class ForcingStepViewModel:
                 )
             )
         except Exception as exc:
-            self._handle_log(tr("step1_prepare_failed", "❌ 强迫场准备失败：{error}").format(error=exc))
+            self._handle_log(tr("step2_prepare_failed", "❌ 强迫场准备失败：{error}").format(error=exc))
             self._set_state(
                 ForcingStepState(
                     is_running=False,

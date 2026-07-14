@@ -1,4 +1,7 @@
-"""扫描工作目录中的 WW3 restart checkpoint（仅运行时使用）。"""
+"""扫描工作目录中的 WW3 restart checkpoint（仅运行时使用）。
+
+[EN] Scan WW3 restart checkpoints in a work directory (used only at runtime).
+"""
 
 from __future__ import annotations
 
@@ -18,7 +21,10 @@ _NML_RESTART_SCHEDULE = re.compile(
 
 
 def normalize_restart_time(value: str | None) -> str | None:
-    """将 ``YYYYMMDD`` 或 ``YYYYMMDD HHMMSS`` 规范为 ``YYYYMMDD HHMMSS``。"""
+    """将 ``YYYYMMDD`` 或 ``YYYYMMDD HHMMSS`` 规范为 ``YYYYMMDD HHMMSS``。
+
+    [EN] Normalize ``YYYYMMDD`` or ``YYYYMMDD HHMMSS`` to ``YYYYMMDD HHMMSS``.
+    """
     text = str(value or "").strip()
     if not text or text.lower() == "null":
         return None
@@ -29,7 +35,10 @@ def normalize_restart_time(value: str | None) -> str | None:
 
 
 def checkpoint_time_from_path(path: Path) -> str | None:
-    """从 ``YYYYMMDD.HHMMSS.restart.*`` 文件名解析 ``YYYYMMDD HHMMSS``。"""
+    """从 ``YYYYMMDD.HHMMSS.restart.*`` 文件名解析 ``YYYYMMDD HHMMSS``。
+
+    [EN] Parse ``YYYYMMDD HHMMSS`` from a ``YYYYMMDD.HHMMSS.restart.*`` file name.
+    """
     match = _CHECKPOINT_NAME.match(path.name)
     if not match:
         return None
@@ -44,7 +53,10 @@ def numbered_restart_index(path: Path) -> int | None:
 
 
 def latest_checkpoint(directory: Path, suffix: str = "ww3") -> Path | None:
-    """返回目录内最新的带时间戳 restart checkpoint。"""
+    """返回目录内最新的带时间戳 restart checkpoint。
+
+    [EN] Return the newest timestamped restart checkpoint in the directory.
+    """
     if not directory.is_dir():
         return None
     candidates = [p for p in directory.glob(f"*.restart.{suffix}") if checkpoint_time_from_path(p)]
@@ -54,7 +66,10 @@ def latest_checkpoint(directory: Path, suffix: str = "ww3") -> Path | None:
 
 
 def latest_numbered_restart(directory: Path) -> Path | None:
-    """返回目录内编号最大的 ``restartNNN.ww3``。"""
+    """返回目录内编号最大的 ``restartNNN.ww3``。
+
+    [EN] Return the highest-numbered ``restartNNN.ww3`` in the directory.
+    """
     if not directory.is_dir():
         return None
     best: tuple[int, Path] | None = None
@@ -68,7 +83,11 @@ def latest_numbered_restart(directory: Path) -> Path | None:
 
 
 def parse_restart_schedule_from_nml(nml_path: Path) -> tuple[str, int] | None:
-    """从 ``ww3_shel.nml`` / ``ww3_multi.nml`` 解析 ``DATE%RESTART`` 的 START 与 STRIDE（秒）。"""
+    """从 ``ww3_shel.nml`` / ``ww3_multi.nml`` 解析 ``DATE%RESTART`` 的 START 与 STRIDE（秒）。
+
+    [EN] Parse the ``DATE%RESTART`` START and STRIDE (seconds) from
+    ``ww3_shel.nml`` / ``ww3_multi.nml``.
+    """
     if not nml_path.is_file():
         return None
     for line in nml_path.read_text(encoding="utf-8").splitlines():
@@ -85,7 +104,11 @@ def parse_restart_schedule_from_nml(nml_path: Path) -> tuple[str, int] | None:
 
 
 def parse_restart_schedule(workdir: Path, nml_path: Path | None = None) -> tuple[str, int] | None:
-    """优先读 nml 的 ``DATE%RESTART``；失败时回退 ``params.yml`` 的 ``start_date`` + ``output_step``。"""
+    """优先读 nml 的 ``DATE%RESTART``；失败时回退 ``params.yml`` 的 ``start_date`` + ``output_step``。
+
+    [EN] Prefer reading ``DATE%RESTART`` from nml; fall back to ``start_date``
+    plus ``output_step`` in ``params.yml``.
+    """
     nml = nml_path or workdir / "ww3_shel.nml"
     schedule = parse_restart_schedule_from_nml(nml)
     if schedule is not None:
@@ -127,7 +150,11 @@ def numbered_restart_for_time(
     *,
     nml_path: Path | None = None,
 ) -> Path | None:
-    """按 ``restart_time`` 与 nml 中 RESTART 步长，匹配 ``restartNNN.ww3``。"""
+    """按 ``restart_time`` 与 nml 中 RESTART 步长，匹配 ``restartNNN.ww3``。
+
+    [EN] Match ``restartNNN.ww3`` according to ``restart_time`` and the RESTART
+    stride in nml.
+    """
     resolved = normalize_restart_time(restart_time)
     if not resolved:
         return None
@@ -151,7 +178,10 @@ def numbered_restart_for_time(
 
 
 def find_checkpoint(directory: Path, restart_time: str, suffix: str = "ww3") -> Path | None:
-    """按 ``YYYYMMDD HHMMSS`` 查找对应的 checkpoint 文件。"""
+    """按 ``YYYYMMDD HHMMSS`` 查找对应的 checkpoint 文件。
+
+    [EN] Find the checkpoint file matching ``YYYYMMDD HHMMSS``.
+    """
     resolved = normalize_restart_time(restart_time)
     if not resolved or not directory.is_dir():
         return None
@@ -164,7 +194,10 @@ def find_checkpoint(directory: Path, restart_time: str, suffix: str = "ww3") -> 
 
 
 def resolve_restart_file_name(restart_file: str | None) -> str | None:
-    """仅接受工作目录内的 restart 文件名（禁止路径穿越）。"""
+    """仅接受工作目录内的 restart 文件名（禁止路径穿越）。
+
+    [EN] Accept only a restart file name inside the work directory (forbid path traversal).
+    """
     name = str(restart_file or "").strip()
     if not name:
         return None
@@ -181,7 +214,11 @@ def resolve_regular_restart_source(
     restart_file: str | None,
     nml_path: Path | None = None,
 ) -> tuple[Path, str]:
-    """解析单层热启动应复制的 checkpoint 与积分起点时刻。"""
+    """解析单层热启动应复制的 checkpoint 与积分起点时刻。
+
+    [EN] Resolve the checkpoint and integration-start time to copy for a
+    single-level hot start.
+    """
     nml = nml_path or workdir / "ww3_shel.nml"
     if pick_latest:
         checkpoint = latest_checkpoint(workdir, "ww3")

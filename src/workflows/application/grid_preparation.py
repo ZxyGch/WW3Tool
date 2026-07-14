@@ -1,21 +1,21 @@
-"""Step 2 网格生成独立用例。
+"""Step 1 网格生成独立用例。
 
 仅执行网格生成步骤，不导入强迫场或写入 WW3 namelist，
 供桌面端「仅生成网格」按钮与 CLI 网格子命令调用。
 
-流水线步骤：Step 2（网格生成）。
+流水线步骤：Step 1（网格生成）。
 
 输入/输出
 ---------
 - 输入：``PipelineConfig``（含 ``grid.*`` 与 ``workdir``）
 - 输出：``GridGenerationResult``（工作目录路径与日志消息）
 
-[EN] Step 2 grid generation standalone use case.
+[EN] Step 1 grid generation standalone use case.
 
 Only executes the grid generation step without importing forcing fields or writing
 the WW3 namelist, for the desktop "generate grid only" button and CLI grid subcommands.
 
-Pipeline step: Step 2 (grid generation).
+Pipeline step: Step 1 (grid generation).
 
 Input/Output
 ------------

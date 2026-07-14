@@ -44,7 +44,7 @@ class _RotatingSpinner(QtWidgets.QWidget):
 
 
 class ForcingProgressDialog(MessageBoxBase):
-    """Legacy-aligned wait dialog for Step 1 file preparation."""
+    """Legacy-aligned wait dialog for Step 2 file preparation."""
 
     def __init__(self, parent, message: str | None = None) -> None:
         super().__init__(parent)

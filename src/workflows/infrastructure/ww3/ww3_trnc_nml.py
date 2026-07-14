@@ -42,8 +42,8 @@ class WW3TrncNML(NMLPrimitives):
         return calc_mode in (track_text, "轨迹计算", "航迹模式")
 
     def _is_nested_grid_mode(self) -> bool:
-        grid_type = getattr(self, "grid_type_var", tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, "grid_type_var", tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         return grid_type in (nested_text, "嵌套网格")
 
     def _track_datetimes_from_table(self) -> tuple[str, str] | None:
@@ -225,8 +225,8 @@ class WW3TrncNML(NMLPrimitives):
 
         # [EN] Check if nested grid mode
         # 检查是否是嵌套网格模式
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
         if is_nested_grid:

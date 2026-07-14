@@ -172,8 +172,8 @@ def run_download_jason3(
             messages=list(logger.messages),
         )
 
-    # [EN] Worker did not return a result dictionary
     # worker 没有返回结果字典
+    # [EN] Worker did not return a result dictionary.
     return Jason3DownloadResult(
         output_folder=download_folder,
         messages=list(logger.messages),

@@ -2,6 +2,12 @@
 
 作为 FluentWindow 左侧堆叠的一页，右侧共享日志常驻。删除逻辑为纯函数（无 Qt），
 界面按钮经构造注入的回调交由窗口执行（确认对话框 + 日志）。
+
+[EN] Tools sub-interface: clean working directories and merge forcing files.
+
+A page in the FluentWindow left stack, sharing the persistent log panel on the right. Deletion logic is
+implemented as pure functions (no Qt); UI buttons trigger injected callbacks executed by the main window
+(confirmation dialogs + logging).
 """
 
 from __future__ import annotations
@@ -41,7 +47,10 @@ from workflows.support.translations import tr
 
 
 class ToolsInterface(QWidget):
-    """常用工具页：清理工作目录 + 合并强迫场。"""
+    """常用工具页：清理工作目录 + 合并强迫场。
+
+    [EN] Common tools page: clean working directories + merge forcings.
+    """
 
     _merge_log_received = pyqtSignal(str)
     _merge_progress_received = pyqtSignal(int, str)
@@ -86,6 +95,7 @@ class ToolsInterface(QWidget):
         outer.addWidget(scroll)
 
         # ── 清理工作目录卡片 ──
+        # [EN] Clean working-directory card
         group, layout = create_header_card(content, tr("tools_clean_workdir_card_title", "清理工作目录"))
         layout.addWidget(self._button(tr("tools_clean_workdir_all", "清空所有文件"), clean_all))
         layout.addWidget(self._button(tr("tools_clean_workdir_run_files", "清空运行文件 (.ww3 .log .bin)"), clean_run))

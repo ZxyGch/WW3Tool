@@ -1,6 +1,10 @@
 """NML 修改日志格式化 — 多行列出实际字段，等号对齐。
 
 供 Step 4 各 nml 修改 Mixin 复用，与谱点 ww3_shel 日志风格一致。
+
+[EN] NML modification log formatter — list actual fields in multiple aligned
+lines with equal signs. Shared by Step 4 nml modification Mixins, consistent
+with the spectral-point ww3_shel log style.
 """
 from __future__ import annotations
 
@@ -16,7 +20,10 @@ def format_nml_assignments(
     *,
     blank_before_prefixes: Sequence[str] = (),
 ) -> str:
-    """将 (字段名, 值) 列表格式化为对齐的多行文本。"""
+    """将 (字段名, 值) 列表格式化为对齐的多行文本。
+
+    [EN] Format a list of (field name, value) pairs into aligned multi-line text.
+    """
     items = [(name.strip(), value.strip()) for name, value in assignments if name]
     if not items:
         return ""
@@ -44,7 +51,10 @@ def format_nml_log_message(
     blank_before_prefixes: Sequence[str] = (),
     **format_kwargs: object,
 ) -> str:
-    """生成带对齐字段明细的 NML 修改日志。"""
+    """生成带对齐字段明细的 NML 修改日志。
+
+    [EN] Generate an NML modification log with aligned field details.
+    """
     details = format_nml_assignments(
         assignments,
         blank_before_prefixes=blank_before_prefixes,

@@ -40,18 +40,29 @@ from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES
 from workflows.support.translations import tr
 
 RESTART_AUTO_LATEST = "auto_latest"
+RESTART_MANUAL = "manual"
 
 
 def restart_auto_latest_label() -> str:
     return tr("step4_restart_auto_latest", "自动最新")
 
 
+def restart_manual_label() -> str:
+    return tr("step4_restart_manual", "手动")
+
+
 def restart_date_combo_items() -> list[tuple[str, str]]:
-    return [(restart_auto_latest_label(), RESTART_AUTO_LATEST)]
+    return [
+        (restart_auto_latest_label(), RESTART_AUTO_LATEST),
+        (restart_manual_label(), RESTART_MANUAL),
+    ]
 
 
 def restart_mode_combo_items() -> list[tuple[str, str]]:
-    """``ww3.restart.mode`` 下拉项：展示文案 + 规范枚举值。"""
+    """``ww3.restart.mode`` 下拉项：展示文案 + 规范枚举值。
+
+    [EN] Dropdown items for ``ww3.restart.mode``: display text + canonical enum values.
+    """
     return [
         (tr("restart_mode_cold", "冷启动"), "cold"),
         (tr("restart_mode_hot", "热启动"), "restart"),
@@ -182,6 +193,7 @@ class WW3StepPanel:
         wave_grid.setColumnStretch(0, 0)
         wave_grid.setColumnStretch(1, 1)
         # NML 模板版本（与其它第四步字段一并写入工作目录 params.yml）
+        # [EN] NML template version (written to workdir params.yml along with other Step 4 fields).
         self.nml_version_combo = ComboBox()
         self.nml_version_combo.addItems(list(WW3_VERSION_VALUES))
         self.nml_version_combo.setStyleSheet(combo_style())
@@ -210,21 +222,29 @@ class WW3StepPanel:
         self._display_line(wave_grid, 4, 0, tr("step4_start_date", "起始日期:"), "ww3_start")
         self._display_line(wave_grid, 5, 0, tr("step4_end_date", "结束日期:"), "ww3_end")
         self._display_line(wave_grid, 6, 0, tr("step4_output_precision", "输出精度 (秒):"), "ww3_output")
+        # Restart Step 输入框（DATE%RESTART%STRIDE）- 始终显示，在 Output Step 下面
+        self.restart_step_label = self._field_label(tr("step4_restart_step", "Restart Step:"))
+        self.restart_step_edit = LineEdit()
+        self._style_line_edit(self.restart_step_edit, self._input_style())
+        self.restart_step_edit.setPlaceholderText(tr("step4_restart_step_placeholder", "重启步长（秒），默认 0"))
+        self._expand_field(self.restart_step_edit)
+        wave_grid.addWidget(self.restart_step_label, 7, 0)
+        wave_grid.addWidget(self.restart_step_edit, 7, 1)
         self.output_scheme_combo = ComboBox()
         self._output_scheme_fields_by_name: dict[str, list[str]] = {}
         self._server_st_versions: dict[str, str] = {}
         self.output_scheme_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.output_scheme_combo)
         self.output_scheme_label = self._field_label(tr("step4_output_scheme", "谱分区输出："))
-        wave_grid.addWidget(self.output_scheme_label, 7, 0)
-        wave_grid.addWidget(self.output_scheme_combo, 7, 1)
+        wave_grid.addWidget(self.output_scheme_label, 8, 0)
+        wave_grid.addWidget(self.output_scheme_combo, 8, 1)
         self.file_split_combo = ComboBox()
         self.file_split_combo.setStyleSheet(combo_style())
         left_align_combo_text(self.file_split_combo)
         add_labeled_combo_items(self.file_split_combo, file_split_combo_items())
         self.file_split_label = self._field_label(tr("file_split", "文件分割："))
-        wave_grid.addWidget(self.file_split_label, 8, 0)
-        wave_grid.addWidget(self.file_split_combo, 8, 1)
+        wave_grid.addWidget(self.file_split_label, 9, 0)
+        wave_grid.addWidget(self.file_split_combo, 9, 1)
         layout.addLayout(wave_grid)
 
         # [EN] Optional groups: same as wave_grid, directly addWidget/addLayout (do not wrap in another QWidget).
@@ -360,6 +380,8 @@ class WW3StepPanel:
         add_labeled_combo_items(combo, restart_date_combo_items())
         combo.setPlaceholderText(tr("step4_restart_date_placeholder", "自动最新 或 YYYYMMDD [HHMMSS]"))
         combo.activated.connect(self._on_restart_date_picked)
+        # 监听文本变化：当用户选择"手动"时自动清空输入框
+        combo.textChanged.connect(self._on_restart_date_text_changed)
         self._expand_field(combo)
         grid.addWidget(self.restart_date_label, row, 0)
         grid.addWidget(combo, row, 1)
@@ -370,9 +392,22 @@ class WW3StepPanel:
     def _on_restart_date_picked(self, index: int) -> None:
         if index < 0:
             return
-        text = self.restart_date_combo.itemText(index)
+        # activated 信号处理保留用于非"手动"选项的选中逻辑
+        # "手动"的清空操作由 _on_restart_date_text_changed 处理
+        pass
+
+    def _on_restart_date_text_changed(self, text: str) -> None:
+        """当文本变为"手动"/"Manual"时自动清空输入框。"""
+        manual_label = restart_manual_label()
+        if text == manual_label:
+            # 用 QTimer 延迟到事件循环末尾，确保在所有内部信号处理完成后清空
+            QTimer.singleShot(0, lambda: self.restart_date_combo.setText(""))
+
+    def _on_restart_date_picked(self, index: int) -> None:
+        if index < 0:
+            return
         self.restart_date_combo._currentIndex = index
-        self.restart_date_combo.setText(text)
+        self.restart_date_combo.setText(self.restart_date_combo.itemText(index))
 
     def _set_restart_date_value(self, *, pick_latest: bool, restart_time: str = "") -> None:
         combo = self.restart_date_combo
@@ -410,6 +445,8 @@ class WW3StepPanel:
         )
         self.restart_date_combo.blockSignals(False)
         self.restart_file_edit.setText(self._restart_value_text(restart.restart_file))
+        if restart.restart_step is not None:
+            self.restart_step_edit.setText(str(restart.restart_step))
         self._update_restart_enabled_state()
 
     def _restart_pick_latest_selected(self) -> bool:
@@ -525,15 +562,23 @@ class WW3StepPanel:
         pick_latest = True
         restart_time = None
         restart_file = None
+        restart_step = None
         if mode == "restart":
             pick_latest, restart_time = self._parse_restart_date_selection()
             if not pick_latest:
                 restart_file = self.restart_file_edit.text().strip() or None
+        restart_step_text = self.restart_step_edit.text().strip()
+        if restart_step_text:
+            try:
+                restart_step = int(restart_step_text)
+            except ValueError:
+                pass
         return {
             "mode": mode,
             "pick_latest_checkpoint": pick_latest,
             "restart_time": restart_time,
             "restart_file": restart_file,
+            "restart_step": restart_step,
             "output_step": self.fields["ww3_output"].text().strip(),
         }
 

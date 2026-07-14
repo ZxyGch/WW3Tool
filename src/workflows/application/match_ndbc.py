@@ -9,6 +9,18 @@
 ---------
 - 输入：``PipelineConfig``（``plot.ndbc.*`` 与结果目录）
 - 输出：``NDBCResult``（输出目录、PNG 列表、成功标志与错误信息）
+
+[EN] NDBC buoy observation matching and data download use case.
+
+Compares WW3 model output with NDBC buoy observations, or downloads NDBC data by region and
+time range, for the CLI ``plot-ndbc`` command and the desktop post-processing panel.
+
+Pipeline step: Post-processing (Step 4 result validation) -- buoy observation comparison.
+
+Input/Output
+------------
+- Input: ``PipelineConfig`` (``plot.ndbc.*`` and result directory)
+- Output: ``NDBCResult`` (output directory, PNG list, success flag and error info)
 """
 
 from __future__ import annotations
@@ -36,6 +48,15 @@ class NDBCResult:
         messages: 执行过程中的日志消息。
         success: 操作是否成功完成。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Return result of NDBC matching or download operation.
+
+    Attributes:
+        output_folder: Result or data output directory.
+        image_files: List of generated PNG image paths (may be empty for downloads).
+        messages: Log messages during execution.
+        success: Whether the operation completed successfully.
+        error: Error description on failure; ``None`` on success.
     """
 
     output_folder: str
@@ -46,7 +67,10 @@ class NDBCResult:
 
 
 def _resolve_result_folder(config: PipelineConfig) -> Path:
-    """解析 WW3 结果目录：使用 ``workdir``。"""
+    """解析 WW3 结果目录：使用 ``workdir``。
+
+    [EN] Resolve the WW3 result directory: use ``workdir``.
+    """
     return config.workdir.path
 
 
@@ -55,14 +79,21 @@ def load_ndbc_station_points(
     time_range: List[str],
     local_folder: str = "",
 ) -> List[dict]:
-    """加载指定经纬度范围内的 NDBC 浮标站点（本地元数据或 NOAA 活跃站点 API）。"""
+    """加载指定经纬度范围内的 NDBC 浮标站点（本地元数据或 NOAA 活跃站点 API）。
+
+    [EN] Load NDBC buoy stations within the specified lon/lat range
+    (local metadata or NOAA active station API).
+    """
     from ..infrastructure.plot.ndbc_worker import _load_ndbc_stations_from_folder
 
     return _load_ndbc_stations_from_folder(local_folder or "", lon_lat, time_range)
 
 
 def _find_ww3_nc(result_folder: str) -> Optional[str]:
-    """在结果目录中查找主 WW3 输出 nc 文件（排除谱文件）。"""
+    """在结果目录中查找主 WW3 输出 nc 文件（排除谱文件）。
+
+    [EN] Find the main WW3 output NetCDF file in the result directory (excluding spectral files).
+    """
     candidates = glob.glob(os.path.join(result_folder, "ww3.*.nc"))
     candidates = [f for f in candidates if "spec" not in os.path.basename(f).lower()]
     if not candidates:
@@ -88,6 +119,17 @@ def run_match_ndbc(
 
     Returns:
         ``NDBCResult``；配置缺失或未找到 WW3 nc 时 ``success=False``。
+
+    [EN] Spatiotemporally match WW3 output with NDBC buoy observations and generate comparison plots.
+
+    Args:
+        config: Pipeline config; ``plot.ndbc.data_folder`` must be set.
+        log: Optional log callback.
+        lon_lat: Optional, restricts the matching region ``[lon_min, lon_max, lat_min, lat_max]``.
+        time_range: Optional, overrides ``plot.ndbc.time_range`` in the config.
+
+    Returns:
+        ``NDBCResult``; ``success=False`` when config is missing or no WW3 nc is found.
     """
     from ..infrastructure.plot.ndbc_worker import _match_ww3_ndbc_worker
 
@@ -170,6 +212,17 @@ def run_download_ndbc(
 
     Returns:
         ``NDBCResult``；时间范围不完整时 ``success=False``。
+
+    [EN] Download NDBC buoy observation data by region and time range.
+
+    Args:
+        config: Pipeline config; downloads to ``workdir/ndbc_data`` when ``plot.ndbc.data_folder`` is empty.
+        log: Optional log callback.
+        lon_lat: Optional, restricts the download region.
+        time_range: Optional, overrides ``plot.ndbc.time_range`` in the config; must contain start and end dates.
+
+    Returns:
+        ``NDBCResult``; ``success=False`` when the time range is incomplete.
     """
     from ..infrastructure.plot.ndbc_worker import _download_ndbc_worker
 

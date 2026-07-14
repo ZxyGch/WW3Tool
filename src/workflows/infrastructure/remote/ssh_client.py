@@ -34,6 +34,7 @@ _noop: LogFn = lambda _: None
 # failure worth retrying (SSH banner not received, socket timeout, EOF during
 # handshake, connection reset).
 # 瞬态网络错误关键词，匹配时自动重试。
+# [EN] Keywords for transient network errors; matched automatically for retry.
 _TRANSIENT_ERROR_MARKERS = (
     "error reading ssh protocol banner",
     "banner",
@@ -191,6 +192,8 @@ class SshClient:
             kwargs["password"] = conn.password
             kwargs["look_for_keys"] = False
             kwargs["allow_agent"] = False
+        if conn.proxy_command:
+            kwargs["sock"] = paramiko.ProxyCommand(conn.proxy_command)
         last_exc: Optional[Exception] = None
         for attempt in range(1, retries + 1):
             ssh = paramiko.SSHClient()
@@ -199,6 +202,7 @@ class SshClient:
                 # [EN] Suppress paramiko's raw traceback printed directly to
                 # stderr by Transport (not via the logging module).
                 # 屏蔽 paramiko Transport 直接写入 stderr 的原始 traceback。
+                # [EN] Suppress the raw traceback written to stderr by paramiko Transport.
                 with open(os.devnull, "w") as _devnull, \
                      contextlib.redirect_stderr(_devnull):
                     ssh.connect(**kwargs)
@@ -222,6 +226,7 @@ class SshClient:
                 break
         # [EN] Build a helpful error message with common cause suggestions.
         # 构建包含常见原因提示的错误信息。
+        # [EN] Build an error message that includes common-cause hints.
         hint = _connect_error_hint(last_exc, cfg.ssh_config_host)
         if cfg.ssh_config_host:
             raise ConnectionError(
@@ -476,6 +481,10 @@ class SshClient:
         """下载 ``remote_dir`` 中满足 ``pattern_fn`` 的文件到 ``local_dir``。
 
         返回已成功下载的本地绝对路径列表。
+
+        [EN] Download files in ``remote_dir`` matching ``pattern_fn`` to ``local_dir``.
+
+        Returns a list of local absolute paths that were successfully downloaded.
         """
         self.ensure_connected(log=log)
         sftp = self._sftp()
@@ -521,6 +530,11 @@ class SshClient:
         """根据远程目录中的 ``success`` / ``fail`` 标记文件判断任务状态。
 
         返回 ``success``、``failed`` 或 ``running``。
+
+        [EN] Determine task status from ``success`` / ``fail`` marker files in the
+        remote directory.
+
+        Returns ``success``, ``failed``, or ``running``.
         """
         self.ensure_connected(log=log)
         sftp = self._sftp()
@@ -537,14 +551,20 @@ class SshClient:
         return "running"
 
     def queue_status(self, *, log: LogFn = _noop) -> str:
-        """执行 ``squeue -l`` 并返回标准输出文本。"""
+        """执行 ``squeue -l`` 并返回标准输出文本。
+
+        [EN] Execute ``squeue -l`` and return the standard output text.
+        """
         out, err, _ = self.exec_command("squeue -l", log=log, timeout=10)
         if err:
             log(tr("ssh_squeue_error", "⚠️ squeue 错误: {error}").format(error=err))
         return out
 
     def cancel_job(self, job_id: str, *, log: LogFn = _noop) -> None:
-        """通过 ``scancel`` 取消指定 SLURM 任务。"""
+        """通过 ``scancel`` 取消指定 SLURM 任务。
+
+        [EN] Cancel the specified SLURM job via ``scancel``.
+        """
         quoted_job_id = shlex.quote(str(job_id))
         out, err, code = self.exec_command(f"scancel {quoted_job_id}", log=log)
         if code == 0:
@@ -553,7 +573,11 @@ class SshClient:
             log(tr("cancel_job_failed_detail", "❌ 取消任务 {job_id} 失败: {error}").format(job_id=job_id, error=err or out))
 
     def clear_remote_dir(self, remote_dir: str, *, log: LogFn = _noop) -> None:
-        """清空 ``remote_dir`` 内所有文件与子目录（保留目录本身）。"""
+        """清空 ``remote_dir`` 内所有文件与子目录（保留目录本身）。
+
+        [EN] Remove all files and subdirectories inside ``remote_dir`` (keeping
+        the directory itself).
+        """
         quoted_remote_dir = shlex.quote(remote_dir)
         cmd = f"cd {quoted_remote_dir} && find . -mindepth 1 -maxdepth 1 -exec rm -rf -- {{}} +"
         log(tr("clear_remote_dir_start", "🗑 清空远程目录: {path}").format(path=remote_dir))

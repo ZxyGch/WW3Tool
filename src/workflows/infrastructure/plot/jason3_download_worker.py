@@ -37,6 +37,7 @@ from ...support.translations import tr
 
 # ---------------------------------------------------------------------------
 # 常量 / Constants
+# [EN] Constants
 # ---------------------------------------------------------------------------
 
 _JASON3_TIME_PATTERN = re.compile(r"(\d{8}_\d{6})_(\d{8}_\d{6})")
@@ -57,6 +58,7 @@ _JASON3_SOURCE_SPECS = (
 
 # ---------------------------------------------------------------------------
 # 辅助函数 / Helper functions
+# [EN] Helper functions
 # ---------------------------------------------------------------------------
 
 def _queue_log(log_queue, message, update=False):
@@ -144,6 +146,8 @@ def _extract_links(html_text):
 
 
 def _fetch_text(session, url):
+    
+    # [EN] [EN] Send a GET request and return the response text.
     """GET 请求并返回响应文本。"""
     response = session.get(url, timeout=_CATALOG_TIMEOUT)
     response.raise_for_status()
@@ -151,6 +155,8 @@ def _fetch_text(session, url):
 
 
 def _build_retry_session():
+    
+    # [EN] [EN] Build a requests.Session with automatic retries.
     """构建带自动重试的 requests.Session。"""
     session = requests.Session()
     session.headers.update({"User-Agent": "WW3Tool Jason3 Downloader"})
@@ -178,15 +184,20 @@ def _build_retry_session():
 
 # ---------------------------------------------------------------------------
 # 目录缓存
+# [EN] Catalog cache
 # ---------------------------------------------------------------------------
 
 def _catalog_cache_path(cache_key):
+    
+    # [EN] [EN] Return the local JSON cache file path.
     """返回本地 JSON 缓存文件路径。"""
     digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
     return os.path.join(tempfile.gettempdir(), f"ww3tool_jason3_catalog_cache_{digest}.json")
 
 
 def _load_catalog_cache(cache_key):
+    
+    # [EN] [EN] Try to load a non-expired local catalog cache; return ``None`` on failure.
     """尝试加载未过期的本地目录缓存；失败返回 ``None``。"""
     cache_path = _catalog_cache_path(cache_key)
     if not os.path.exists(cache_path):
@@ -217,6 +228,8 @@ def _load_catalog_cache(cache_key):
 
 
 def _save_catalog_cache(cache_key, files):
+    
+    # [EN] [EN] Write the catalog index to a local JSON cache.
     """将目录索引写入本地 JSON 缓存。"""
     cache_path = _catalog_cache_path(cache_key)
     payload = {
@@ -233,20 +246,27 @@ def _save_catalog_cache(cache_key, files):
 
 # ---------------------------------------------------------------------------
 # 远程目录扫描
+# [EN] Remote catalog scanning
 # ---------------------------------------------------------------------------
 
 def _build_source_url(base_root_url, relative_path):
+    
+    # [EN] [EN] Join ``base_root_url`` and ``relative_path``.
     """拼接 ``base_root_url`` 与 ``relative_path``。"""
     root = base_root_url.rstrip("/") + "/"
     return urljoin(root, relative_path)
 
 
 def _source_cache_key(source_name, source_url):
+    
+    # [EN] [EN] Generate a cache key.
     """生成缓存键。"""
     return f"{source_name}:{source_url}"
 
 
 def _collect_cycle_directories(session, source_url):
+    
+    # [EN] [EN] Collect all cycle directory URLs from the product source page.
     """从产品源页面收集所有 cycle 目录 URL。"""
     html_text = _fetch_text(session, source_url)
     cycle_urls = []
@@ -260,6 +280,8 @@ def _collect_cycle_directories(session, source_url):
 
 
 def _scan_cycle_directory(cycle_url, prefixes):
+    
+    # [EN] [EN] Scan a single cycle directory and return a ``{filename: url}`` mapping.
     """扫描单个 cycle 目录，返回 ``{filename: url}`` 映射。"""
     session = _build_retry_session()
     try:
@@ -280,6 +302,8 @@ def _scan_cycle_directory(cycle_url, prefixes):
 
 
 def _scan_cycle_directory_with_retry(cycle_url, prefixes):
+    
+    # [EN] [EN] Scan a cycle directory with one retry.
     """带一次重试的 cycle 目录扫描。"""
     last_exc = None
     for attempt in range(2):
@@ -293,6 +317,8 @@ def _scan_cycle_directory_with_retry(cycle_url, prefixes):
 
 
 def _filter_remote_candidates(files, start_dt, end_dt):
+    
+    # [EN] [EN] Filter remote files whose time ranges overlap and sort by filename.
     """筛选时间范围重叠的远程文件并按文件名排序。"""
     matched = []
     for filename, file_url in files.items():
@@ -306,6 +332,8 @@ def _filter_remote_candidates(files, start_dt, end_dt):
 
 
 def _source_priority(start_dt, end_dt):
+    
+    # [EN] [EN] Determine product priority based on days from the end date to today.
     """根据结束日期距今的天数决定产品优先级。"""
     today = datetime.now().date()
     days_from_end = (today - end_dt.date()).days
@@ -317,6 +345,8 @@ def _source_priority(start_dt, end_dt):
 
 
 def _collect_source_files(session, base_root_url, source_name, relative_path, prefixes, log_queue):
+    
+    # [EN] [EN] Collect all remote file indices for a given product source (GDR/IGDR/OGDR).
     """收集某个产品源（GDR/IGDR/OGDR）的所有远程文件索引。"""
     source_url = _build_source_url(base_root_url, relative_path)
     cache_key = _source_cache_key(source_name, source_url)
@@ -398,6 +428,8 @@ def _collect_source_files(session, base_root_url, source_name, relative_path, pr
 
 
 def _collect_remote_candidates(session, base_root_url, start_dt, end_dt, log_queue):
+    
+    # [EN] [EN] Traverse product sources by priority and collect remote files covering the requested time range.
     """按优先级遍历产品源，收集覆盖请求时间范围的远程文件。"""
     source_map = {name: (relative_path, prefixes) for name, relative_path, prefixes in _JASON3_SOURCE_SPECS}
     requested_days = set(_iter_days(start_dt, end_dt))
@@ -459,6 +491,7 @@ def _collect_remote_candidates(session, base_root_url, start_dt, end_dt, log_que
 
 # ---------------------------------------------------------------------------
 # 主 Worker
+# [EN] Main worker
 # ---------------------------------------------------------------------------
 
 def _download_jason3_worker(time_range, local_folder, base_catalog_url, log_queue, result_queue):
@@ -480,6 +513,25 @@ def _download_jason3_worker(time_range, local_folder, base_catalog_url, log_queu
     Notes
     -----
     完成后向 ``log_queue`` 发送 ``"__DONE__"`` 信号。
+    
+    [EN] [EN] Download Jason-3 L2 NetCDF products for the specified time range to a local directory.
+    
+    Parameters
+    ----------
+    time_range : list[str]
+        ``[start_YYYYMMDD, end_YYYYMMDD]``.
+    local_folder : str
+        Local destination directory.
+    base_catalog_url : str
+        NCEI Jason-3 product root URL (e.g. ``https://www.ncei.noaa.gov/data/oceans/jason3/``).
+    log_queue : queue-like
+        Log back-channel queue (compatible with ``multiprocessing.Queue`` / ``ImmediateQueue``).
+    result_queue : queue-like
+        Result back-channel queue; sends a ``dict`` with ``ok / downloaded / skipped / failed / total``.
+    
+    Notes
+    -----
+    Sends ``"__DONE__"`` to ``log_queue`` when finished.
     """
     session = None
     try:

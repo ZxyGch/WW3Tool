@@ -4,6 +4,13 @@
 ``CFLTM`` / ``DTIME`` / ``LATMIN``（实数纬度）。
 
 7.14+ 使用 ``GRID%TYPE='SMCG'``，``&PSMC`` 字段为 ``CFLSM`` / ``DTIMS`` / ``Arctic``（逻辑）。
+
+[EN] Mapping between SMC grid namelist fields and ``ww3.version`` (6.07 / 7.14).
+
+WW3 6.07 SMC uses ``GRID%TYPE='RECT'`` + ``&SMC_NML``; ``&PSMC`` fields are
+``CFLTM`` / ``DTIME`` / ``LATMIN`` (real latitude).
+
+WW3 7.14+ uses ``GRID%TYPE='SMCG'``; ``&PSMC`` fields are ``CFLSM`` / ``DTIMS`` / ``Arctic`` (logical).
 """
 from __future__ import annotations
 
@@ -17,7 +24,10 @@ DEFAULT_WW3_VERSION = "6.07"
 
 
 def normalize_ww3_version(version: str | None) -> str:
-    """规范为 ``6.07`` 或 ``7.14``。"""
+    """规范为 ``6.07`` 或 ``7.14``。
+
+    [EN] Normalize the version string to ``6.07`` or ``7.14``.
+    """
     v = (version or DEFAULT_WW3_VERSION).strip()
     if v.startswith("6"):
         return "6.07"
@@ -31,7 +41,10 @@ def is_ww3_version_6(version: str | None) -> bool:
 
 
 def smc_grid_type_for_version(version: str | None) -> str:
-    """6.07 → ``RECT``；7.14 → ``SMCG``。"""
+    """6.07 → ``RECT``；7.14 → ``SMCG``。
+
+    [EN] Map WW3 version to SMC grid type: 6.07 → ``RECT``; 7.14 → ``SMCG``.
+    """
     return "RECT" if is_ww3_version_6(version) else "SMCG"
 
 
@@ -40,7 +53,11 @@ def resolve_ww3_version(
     work_dir: str | Path | None = None,
     config: dict | None = None,
 ) -> str:
-    """从运行时 config、工作目录 ``params.yml`` 或仓库默认读取版本。"""
+    """从运行时 config、工作目录 ``params.yml`` 或仓库默认读取版本。
+
+    [EN] Resolve the WW3 version from runtime config, ``params.yml`` in the working directory,
+    or the repository default.
+    """
     if config and config.get("WW3_VERSION"):
         return normalize_ww3_version(str(config["WW3_VERSION"]))
     if work_dir:
@@ -66,7 +83,10 @@ def _latmin_to_arctic(value: str) -> str:
 
 
 def _psmc_key_for_version(key: str, value: str, *, ww3_version: str) -> tuple[str, str]:
-    """将单行 PSMC 键名/值映射到目标 WW3 版本。"""
+    """将单行 PSMC 键名/值映射到目标 WW3 版本。
+
+    [EN] Map a single PSMC key/value pair to the target WW3 version.
+    """
     key_u = key.upper()
     if is_ww3_version_6(ww3_version):
         if key_u == "CFLSM":
@@ -87,7 +107,10 @@ def _psmc_key_for_version(key: str, value: str, *, ww3_version: str) -> tuple[st
 
 
 def normalize_psmc_assignment_line(line: str, *, ww3_version: str) -> str:
-    """按目标版本改写 ``&PSMC`` 块内单行赋值。"""
+    """按目标版本改写 ``&PSMC`` 块内单行赋值。
+
+    [EN] Rewrite a single assignment line inside ``&PSMC`` for the target WW3 version.
+    """
     body = line.rstrip("\n")
     nl = "\n" if line.endswith("\n") else ""
     m = re.match(r"^(\s*)([A-Za-z][A-Za-z0-9]*)\s*=\s*(.+)$", body)
@@ -105,7 +128,10 @@ def normalize_psmc_namelist_lines(
     *,
     ww3_version: str,
 ) -> tuple[list[str], bool]:
-    """规范化 ``namelists.nml`` 中 ``&PSMC`` 块的字段名（6.07 ↔ 7.14）。"""
+    """规范化 ``namelists.nml`` 中 ``&PSMC`` 块的字段名（6.07 ↔ 7.14）。
+
+    [EN] Normalize ``&PSMC`` block field names in ``namelists.nml`` between WW3 6.07 and 7.14.
+    """
     out: list[str] = []
     modified = False
     in_psmc = False

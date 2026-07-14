@@ -367,6 +367,7 @@ class RestartConfig:
     mode: str = "cold"
     restart_time: Optional[str] = None
     restart_file: Optional[str] = None
+    restart_step: Optional[int] = None
     output_step: Optional[str] = None
     pick_latest_checkpoint: bool = True
 
@@ -406,6 +407,7 @@ class SlurmConfig:
     server_st: Optional[str] = None
     server_st_versions: Dict[str, str] = field(default_factory=dict)
     # 已废弃：仅兼容旧代码 ``SlurmConfig(cpu=...)`` / 旧实例 ``.cpu``；请使用 ``partition``。
+    # [EN] Deprecated: kept only for compatibility with old ``SlurmConfig(cpu=...)`` / old instances' ``.cpu``; use ``partition`` instead.
     cpu: Optional[str] = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:

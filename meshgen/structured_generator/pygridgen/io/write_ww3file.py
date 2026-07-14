@@ -45,6 +45,7 @@ def write_ww3file(fname, d):
                 line = ' '.join(f' {int(val)} ' for val in a) + '\n'
                 fid.write(line)
             # 确保所有数据都写入磁盘（在文件关闭前刷新缓冲区）
+            # [EN] Ensure all data is flushed to disk before the file is closed.
             fid.flush()
         
     except Exception as e:

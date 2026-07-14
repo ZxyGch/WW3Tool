@@ -290,7 +290,7 @@ class MapPointPickerDialog(MessageBoxBase):
     def _reject(self) -> None:
         QDialog.done(self, int(QDialog.DialogCode.Rejected))
 
-    # ── card sizing (mirror Step 2 map view) ─────────────────────────────────
+    # ── card sizing (mirror Step 1 map view) ─────────────────────────────────
 
     def showEvent(self, event):
         super().showEvent(event)

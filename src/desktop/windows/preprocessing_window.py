@@ -41,7 +41,7 @@ from qfluentwidgets import (
 
 from workflows.application.configuration import ConfigError, EXAMPLE_YAML
 from workflows.domain.config_models import GridRegion, PipelineConfig
-from workflows.domain.forcing_fields import ForcingField, Step1Files
+from workflows.domain.forcing_fields import ForcingField, Step2Files
 from workflows.infrastructure.runtime_config import (
     add_recent_workdir,
     get_forcing_field_default_dir,
@@ -578,6 +578,32 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._ww3_panel.set_slurm_visible(False)
 
     def _build_step_panels(self, parent: QWidget, layout: QVBoxLayout) -> None:
+        # Step 1: grid generation
+        self._grid_panel = GridStepPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            combo_style=self._combo_style,
+            section_title=self._section_title,
+            nested_factor=self._nested_factor,
+            view_map=self._view_region_map,
+            generate_grid=self._generate_grid,
+            visualize_grid=self._visualize_grid,
+            recommend_params=self._recommend_grid_params,
+        )
+        self._display_fields.update(self._grid_panel.fields)
+        self._outer_grid_title = self._grid_panel.outer_grid_title
+        self._grid_type_combo = self._grid_panel.grid_type_combo
+        self._mesh_type_combo = self._grid_panel.mesh_type_combo
+        self._grid_type_label = self._grid_panel.grid_type_label
+        self._skip_grid = self._grid_panel.skip_grid
+        self._map_button = self._grid_panel.map_button
+        self._grid_button = self._grid_panel.grid_button
+        self._visualize_button = self._grid_panel.visualize_button
+        self._step1_action_buttons = self._grid_panel.action_buttons
+        layout.addWidget(self._grid_panel.widget)
+
+        # Step 2: forcing preparation
         self._forcing_panel = ForcingStepPanel(
             parent,
             create_button=self._primary_button,
@@ -599,32 +625,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._forcing_status = self._forcing_panel.status
         self._sync_forcing_options_from_runtime()
         layout.addWidget(self._forcing_panel.widget)
-
-        self._grid_panel = GridStepPanel(
-            parent,
-            create_button=self._primary_button,
-            input_style=self._input_style,
-            combo_style=self._combo_style,
-            section_title=self._section_title,
-            nested_factor=self._nested_factor,
-            load_bounds=self._load_wind_bounds,
-            view_map=self._view_region_map,
-            generate_grid=self._generate_grid,
-            visualize_grid=self._visualize_grid,
-            recommend_params=self._recommend_grid_params,
-        )
-        self._display_fields.update(self._grid_panel.fields)
-        self._outer_grid_title = self._grid_panel.outer_grid_title
-        self._grid_type_combo = self._grid_panel.grid_type_combo
-        self._mesh_type_combo = self._grid_panel.mesh_type_combo
-        self._grid_type_label = self._grid_panel.grid_type_label
-        self._skip_grid = self._grid_panel.skip_grid
-        self._load_bounds_button = self._grid_panel.load_bounds_button
-        self._map_button = self._grid_panel.map_button
-        self._grid_button = self._grid_panel.grid_button
-        self._visualize_button = self._grid_panel.visualize_button
-        self._step2_action_buttons = self._grid_panel.action_buttons
-        layout.addWidget(self._grid_panel.widget)
 
         self._calculation_panel = CalculationStepPanel(
             parent,
@@ -656,7 +656,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._pipeline_status = self._ww3_panel.status
         self._ww3_panel.set_slurm_visible(False)
         self._action_buttons = [
-            *self._step2_action_buttons,
+            *self._step1_action_buttons,
             self._ww3_panel.load_time_button,
             self._ww3_panel.run_button,
         ]
@@ -760,18 +760,18 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _forcing_field_button_labels(self) -> dict[str, str]:
         return {
-            "wind": tr("step1_choose_wind", "选择风场"),
-            "current": tr("step1_choose_current", "选择流场"),
-            "level": tr("step1_choose_level", "选择水位场"),
-            "ice": tr("step1_choose_ice", "选择海冰场"),
+            "wind": tr("step2_choose_wind", "选择风场"),
+            "current": tr("step2_choose_current", "选择流场"),
+            "level": tr("step2_choose_level", "选择水位场"),
+            "ice": tr("step2_choose_ice", "选择海冰场"),
         }
 
     def _forcing_field_names(self) -> dict[str, str]:
         return {
-            "wind": tr("step1_field_wind", "风场"),
-            "current": tr("step1_field_current", "流场"),
-            "level": tr("step1_field_level", "水位场"),
-            "ice": tr("step1_field_ice", "海冰场"),
+            "wind": tr("step2_field_wind", "风场"),
+            "current": tr("step2_field_current", "流场"),
+            "level": tr("step2_field_level", "水位场"),
+            "ice": tr("step2_field_ice", "海冰场"),
         }
 
     def _resolve_auto_associate_from_config(self, config: PipelineConfig, defaults: dict) -> bool:
@@ -781,7 +781,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         return bool(aa) if aa is not None else True
 
     def _sync_forcing_options_from_runtime(self) -> None:
-        """从根 params.yml / 设置页同步 Step 1 默认导入方式与自动关联开关。"""
+        """从根 params.yml / 设置页同步 Step 2 默认导入方式与自动关联开关。"""
         try:
             from workflows.infrastructure.runtime_config import load_full_config
 
@@ -1094,20 +1094,21 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             if key in {"wind", "current", "level", "ice"}:
                 self._prune_stale_forcing_paths()
                 self._fill_auto_associated_forcing_slots(selected, trigger_key=key)
-                self._show_selected_forcing_file_info(key, selected)
                 if not self._paths["workdir"].text().strip():
                     self._show_error(tr("tools_clean_no_workdir", "请先选择工作目录"))
                     return
+                # 先同步刷新公共范围，再异步获取文件信息，避免并发访问同一文件
                 self._refresh_forcing_common_ranges(clear_if_empty=False)
+                self._show_selected_forcing_file_info(key, selected)
                 self._append_log(
                     tr(
-                        "step1_wait_confirm_import",
+                        "step2_wait_confirm_import",
                         "已选择强迫场文件。请确认导入方式后点击导入按钮。",
                     )
                 )
 
     def _show_selected_forcing_file_info(self, key: str, path: str) -> None:
-        files = Step1Files()
+        files = Step2Files()
         files.set(ForcingField(key), path)
 
         def task():
@@ -1118,7 +1119,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _show_forcing_files_info(self) -> None:
         if self._busy:
             return
-        files = Step1Files(
+        files = Step2Files(
             wind=self._paths["wind"].text().strip() or None,
             current=self._paths["current"].text().strip() or None,
             level=self._paths["level"].text().strip() or None,
@@ -1344,9 +1345,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             if n == 1:
                 labels.append(tr("step3_map_grid_range", "网格范围"))
             elif i == n - 1:
-                labels.append(tr("step2_level_finest", "level{i}（最细）").format(i=i))
+                labels.append(tr("step1_level_finest", "level{i}（最细）").format(i=i))
             else:
-                labels.append(tr("step2_level_n", "level{i}").format(i=i))
+                labels.append(tr("step1_level_n", "level{i}").format(i=i))
         return bounds_from_level_regions(levels, level_labels=labels)
 
     def _persist_step3_points_to_params(self) -> None:
@@ -1473,9 +1474,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         delete_file = self._is_workdir_converted_forcing_file(path)
         if delete_file:
             box = MessageBox(
-                tr("step1_delete_forcing_title", "删除已转换强迫场文件"),
+                tr("step2_delete_forcing_title", "删除已转换强迫场文件"),
                 tr(
-                    "step1_delete_forcing_content",
+                    "step2_delete_forcing_content",
                     "将删除当前工作目录中的已转换强迫场文件，并清除引用它的选择。此操作不可恢复。\n\n{path}",
                 ).format(path=str(path)),
                 self,
@@ -1486,16 +1487,16 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self.titleBar.raise_()
             try:
                 path.expanduser().resolve().unlink()
-                self._append_log(tr("step1_forcing_file_deleted", "🗑️ 已删除工作目录强迫场文件：{path}").format(path=value))
+                self._append_log(tr("step2_forcing_file_deleted", "🗑️ 已删除工作目录强迫场文件：{path}").format(path=value))
             except FileNotFoundError:
                 self._append_log(
                     tr(
-                        "step1_forcing_file_already_missing",
+                        "step2_forcing_file_already_missing",
                         "ℹ️ 强迫场文件已不存在，仅清除引用：{path}",
                     ).format(path=value)
                 )
             except OSError as exc:
-                self._show_error(tr("step1_forcing_file_delete_failed", "删除强迫场文件失败：{error}").format(error=exc))
+                self._show_error(tr("step2_forcing_file_delete_failed", "删除强迫场文件失败：{error}").format(error=exc))
                 return
             cleared_keys = [
                 field_key
@@ -1510,7 +1511,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._set_path_value(field_key, "", labels[field_key])
         if not delete_file:
             self._append_log(
-                tr("step1_forcing_selection_cleared", "已清除{field}选择").format(
+                tr("step2_forcing_selection_cleared", "已清除{field}选择").format(
                     field=field_names.get(key, key)
                 )
             )
@@ -1522,7 +1523,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if len(values) == 2 and all(values) and all(re.fullmatch(r"\d{8}", value) for value in values):
             return values
         if not silent:
-            self._show_error(tr("step1_crop_time_required", "范围裁剪需要填写 YYYYMMDD 格式的开始日期和结束日期"))
+            self._show_error(tr("step2_crop_time_required", "范围裁剪需要填写 YYYYMMDD 格式的开始日期和结束日期"))
         return None
 
     def _forcing_crop_bbox(self, *, silent: bool = False) -> list[float] | None:
@@ -1530,7 +1531,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return self._forcing_panel.crop_bbox()
         except ValueError:
             if not silent:
-                self._show_error(tr("step1_crop_bbox_required", "范围裁剪需要填写有效的西/东/南/北边界"))
+                self._show_error(tr("step2_crop_bbox_required", "范围裁剪需要填写有效的西/东/南/北边界"))
             return None
 
     def _on_forcing_mode_changed(self) -> None:
@@ -1545,12 +1546,142 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         fields = self._selected_forcing_fields()
         if not fields:
-            self._show_error(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
+            self._show_error(tr("step2_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
         if apply_crop and (self._forcing_crop_time_range() is None or self._forcing_crop_bbox() is None):
             return
+        # 检查强迫场范围是否覆盖网格范围
+        if not self._check_forcing_coverage():
+            return
         self._forcing_apply_crop = apply_crop
         self._prepare_forcing(fields=fields)
+
+    @staticmethod
+    def _normalize_lon(lon: float) -> float:
+        """将经度统一标准化到 [-180, 180) 口径。"""
+        return ((lon + 180.0) % 360.0) - 180.0
+
+    def _check_forcing_coverage(self) -> bool:
+        """检查所有强迫场文件的范围是否大于等于网格范围。
+
+        经度统一标准化到 [-180, 180) 后比较，并正确处理跨日界线的网格。
+        任何文件读取失败或范围不足均会弹窗警告。
+
+        Returns:
+            True 表示通过检查或用户选择继续；False 表示用户选择取消。
+        """
+        # 获取网格范围
+        try:
+            grid_lon_west = float(self._grid_panel.fields["grid_lon_west"].text().strip())
+            grid_lon_east = float(self._grid_panel.fields["grid_lon_east"].text().strip())
+            grid_lat_south = float(self._grid_panel.fields["grid_lat_south"].text().strip())
+            grid_lat_north = float(self._grid_panel.fields["grid_lat_north"].text().strip())
+        except (ValueError, KeyError):
+            return True
+
+        from workflows.application.grid_tools import read_wind_bounds
+
+        field_names = self._forcing_field_names()
+        insufficient_fields = []
+        read_failed_fields = []
+
+        # 网格经度标准化到 [-180, 180)
+        g_west = self._normalize_lon(grid_lon_west)
+        g_east = self._normalize_lon(grid_lon_east)
+        # 检测网格是否跨日界线：标准化后西界 > 东界 表示跨日界线
+        grid_crosses_date_line = g_west > g_east
+
+        for key in ("wind", "current", "level", "ice"):
+            path = self._paths[key].text().strip()
+            if not path:
+                continue
+            try:
+                bounds = read_wind_bounds(path)
+                # 强迫场经度标准化到 [-180, 180)
+                f_lon_min = self._normalize_lon(bounds.lon_min)
+                f_lon_max = self._normalize_lon(bounds.lon_max)
+                # 若标准化后 min > max（跨日界线文件），交换使之连续
+                if f_lon_min > f_lon_max:
+                    f_lon_min, f_lon_max = f_lon_max, f_lon_min
+
+                # 纬度不做标准化（始终 -90~90）
+                lat_ok = bounds.lat_min <= grid_lat_south and bounds.lat_max >= grid_lat_north
+
+                # 经度覆盖检查
+                if grid_crosses_date_line:
+                    # 网格跨日界线 => 分 [g_west, 180) 和 [-180, g_east) 两段
+                    lon_ok = (f_lon_min <= g_west) and (f_lon_max >= g_east)
+                else:
+                    lon_ok = f_lon_min <= g_west and f_lon_max >= g_east
+
+                if not (lon_ok and lat_ok):
+                    insufficient_fields.append({
+                        "name": field_names[key],
+                        "path": path,
+                        "bounds": bounds,
+                        "grid_lon": (grid_lon_west, grid_lon_east),
+                        "grid_lat": (grid_lat_south, grid_lat_north),
+                    })
+            except Exception as exc:
+                read_failed_fields.append({
+                    "name": field_names[key],
+                    "path": path,
+                    "error": str(exc),
+                })
+
+        if not insufficient_fields and not read_failed_fields:
+            return True
+
+        # 构建警告消息
+        messages = []
+        for info in insufficient_fields:
+            bounds = info["bounds"]
+            messages.append(
+                tr(
+                    "step2_forcing_coverage_warning_detail",
+                    "• {name}：经度 [{lon_min:.2f}, {lon_max:.2f}]，纬度 [{lat_min:.2f}, {lat_max:.2f}]\n"
+                    "  网格范围：经度 [{grid_lon_west:.2f}, {grid_lon_east:.2f}]，纬度 [{grid_lat_south:.2f}, {grid_lat_north:.2f}]",
+                ).format(
+                    name=info["name"],
+                    lon_min=bounds.lon_min,
+                    lon_max=bounds.lon_max,
+                    lat_min=bounds.lat_min,
+                    lat_max=bounds.lat_max,
+                    grid_lon_west=info["grid_lon"][0],
+                    grid_lon_east=info["grid_lon"][1],
+                    grid_lat_south=info["grid_lat"][0],
+                    grid_lat_north=info["grid_lat"][1],
+                )
+            )
+        for info in read_failed_fields:
+            messages.append(
+                tr(
+                    "step2_forcing_coverage_read_failed_detail",
+                    "• {name}：{path}（读取失败：{error}）",
+                ).format(
+                    name=info["name"],
+                    path=info["path"],
+                    error=info["error"],
+                )
+            )
+
+        box = MessageBox(
+            tr("step2_forcing_coverage_warning_title", "强迫场范围警告"),
+            tr(
+                "step2_forcing_coverage_warning_content",
+                "以下强迫场文件存在范围覆盖或读取问题，可能导致模拟区域数据不足：\n\n{details}\n\n是否仍然继续导入？",
+            ).format(details="\n\n".join(messages)),
+            self,
+        )
+        if getattr(box, "yesButton", None):
+            box.yesButton.setText(tr("step2_forcing_coverage_continue", "继续导入"))
+        if getattr(box, "cancelButton", None):
+            box.cancelButton.setText(tr("step2_forcing_coverage_cancel", "返回修改"))
+        if not box.exec():
+            self.titleBar.raise_()
+            return False
+        self.titleBar.raise_()
+        return True
 
     def _crop_forcing_import(self) -> None:
         self._prepare_selected_forcing(apply_crop=True)
@@ -1595,10 +1726,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         try:
             regions_and_labels = self._forcing_map_regions()
         except Exception as exc:
-            self._show_error(tr("step1_forcing_range_read_failed", "⚠️ 读取强迫场公共范围失败：{error}").format(error=exc))
+            self._show_error(tr("step2_forcing_range_read_failed", "⚠️ 读取强迫场公共范围失败：{error}").format(error=exc))
             return
         if regions_and_labels is None:
-            self._show_error(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
+            self._show_error(tr("step2_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
         regions, labels = regions_and_labels
         handle, output = tempfile.mkstemp(suffix="_forcing_map.png", prefix="ww3tool_")
@@ -1636,7 +1767,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _load_forcing_intersection(self) -> None:
         if not self._selected_forcing_paths():
-            self._show_error(tr("step1_select_forcing_first", "请先选择至少一个强迫场文件"))
+            self._show_error(tr("step2_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
         self._refresh_forcing_common_ranges(clear_if_empty=False)
 
@@ -1667,7 +1798,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             bbox = common_lonlat_box(paths)
         except Exception as exc:
             self._append_log(
-                tr("step1_forcing_range_read_failed", "⚠️ 读取强迫场公共范围失败：{error}").format(error=exc)
+                tr("step2_forcing_range_read_failed", "⚠️ 读取强迫场公共范围失败：{error}").format(error=exc)
             )
             return
         self._forcing_panel.set_range_values(
@@ -1759,20 +1890,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
         self._runner.run(task, self._on_pipeline_done)
 
-    def _load_wind_bounds(self) -> None:
-        if self._busy:
-            return
-        wind_path = self._resolve_wind_nc()
-        if wind_path is None or not wind_path.is_file():
-            self._show_error(tr("wind_nc_not_found_select_first", "未找到 wind.nc，请先选择并处理风场文件"))
-            return
-        self._load_bounds_button.setEnabled(False)
-        self._load_bounds_button.setText(tr("status_reading", "读取中..."))
 
-        def task():
-            return self._pipeline_vm.load_wind_bounds(wind_path)
-
-        self._runner.run(task, self._on_bounds_done)
 
     def _current_workdir_path(self) -> Path | None:
         """当前工作目录：selected_folder → 隐藏 workdir 框 → 已载入 config。"""
@@ -1815,14 +1933,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                         if Path(selected).expanduser().resolve() != resolved:
                             self._append_log(
                                 tr(
-                                    "step2_using_workdir_wind",
+                                    "step1_using_workdir_wind",
                                     "ℹ️ 从风场读取范围：使用工作目录内已转换文件 {path}",
                                 ).format(path=resolved)
                             )
                     except OSError:
                         self._append_log(
                             tr(
-                                "step2_using_workdir_wind",
+                                "step1_using_workdir_wind",
                                 "ℹ️ 从风场读取范围：使用工作目录内已转换文件 {path}",
                             ).format(path=resolved)
                         )
@@ -1830,27 +1948,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         selected = self._paths["wind"].text().strip()
         return Path(selected).expanduser().resolve() if selected else None
 
-    def _on_bounds_done(self, result: object) -> None:
-        self._load_bounds_button.setText(tr("step2_load_from_nc", "从 wind.nc 读取范围"))
-        self._load_bounds_button.setEnabled(True)
-        if not isinstance(result, PipelineStepState):
-            return
-        if result.error:
-            self._show_error(result.error)
-            return
-        bounds = result.result
-        if bounds is None:
-            return
-        if getattr(bounds, "source_path", None):
-            labels = self._forcing_field_button_labels()
-            self._set_path_value("wind", bounds.source_path, labels["wind"])
-        # wind.nc 的范围即整个计算域 = level0（最外层）；内层由用户在层卡中自定义
-        self._grid_panel.set_bounds(
-            "grid",
-            (bounds.lon_min, bounds.lon_max),
-            (bounds.lat_min, bounds.lat_max),
-        )
-        self._prompt_global_grid_alignment()
+
 
     def _load_wind_time_range(self) -> None:
         if self._busy:
@@ -1893,11 +1991,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if dxy_m is None:
             if reason == "need_hmin":
                 self._show_error(
-                    tr("step4_auto_timesteps_need_hmin", "请先在第二步填写有效的非结构网格最小尺度 hmin（km）")
+                    tr("step4_auto_timesteps_need_hmin", "请先在第一步填写有效的非结构网格最小尺度 hmin（km）")
                 )
             else:
                 self._show_error(
-                    tr("step4_auto_timesteps_need_grid", "请先在第二步填写有效的 DX、DY 与纬度范围")
+                    tr("step4_auto_timesteps_need_grid", "请先在第一步填写有效的 DX、DY 与纬度范围")
                 )
             return
 
@@ -1946,15 +2044,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         ok, summary = self._grid_panel.apply_recommendations()
         if not ok:
             InfoBar.warning(
-                title=tr("step2_recommend_params", "推荐参数"),
-                content=tr("step2_recommend_need_bounds", "请先设置有效的经纬度范围"),
+                title=tr("step1_recommend_params", "推荐参数"),
+                content=tr("step1_recommend_need_bounds", "请先设置有效的经纬度范围"),
                 duration=3000,
                 parent=self,
             )
             self.titleBar.raise_()
             return
         InfoBar.success(
-            title=tr("step2_recommend_done", "已根据范围推荐参数"),
+            title=tr("step1_recommend_done", "已根据范围推荐参数"),
             content=summary,
             duration=4000,
             parent=self,
@@ -1987,7 +2085,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return self._pipeline_vm.render_region_map(config, output)
 
         def on_done(result: object) -> None:
-            self._map_button.setText(tr("step2_view_map", "查看地图"))
+            self._map_button.setText(tr("step1_view_map", "查看地图"))
             self._set_busy(False)
             dlg = getattr(self, "_map_dialog", None)
             if dlg is None:
@@ -1997,7 +2095,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             elif isinstance(result, PipelineStepState) and result.result is not None and result.result.images:
                 dlg.show_image(result.result.images[0])
             else:
-                dlg.show_error(tr("step2_map_image_not_generated", "未生成地图图片"))
+                dlg.show_error(tr("step1_map_image_not_generated", "未生成地图图片"))
 
         def on_cancel() -> None:
             # BackgroundRunner doesn't support cancellation, but we mark the dialog gone
@@ -2022,17 +2120,17 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._grid_panel.needs_global_alignment_prompt():
             return
         box = MessageBox(
-            tr("step2_global_grid_title", "确认全球范围网格"),
+            tr("step1_global_grid_title", "确认全球范围网格"),
             tr(
-                "step2_global_grid_prompt",
+                "step1_global_grid_prompt",
                 "检测到网格范围非常接近全球范围。\n是否按全球范围生成（经度 -180~180，纬度 -90~90）？",
             ),
             self,
         )
         if getattr(box, "yesButton", None):
-            box.yesButton.setText(tr("step2_global_grid_confirm_button", "按全球生成"))
+            box.yesButton.setText(tr("step1_global_grid_confirm_button", "按全球生成"))
         if getattr(box, "cancelButton", None):
-            box.cancelButton.setText(tr("step2_global_grid_cancel_button", "保持当前范围"))
+            box.cancelButton.setText(tr("step1_global_grid_cancel_button", "保持当前范围"))
         if not box.exec():
             self.titleBar.raise_()
             return
@@ -2041,9 +2139,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._grid_panel.apply_global_bounds(outer_only=outer_only)
         self._persist_current_form_to_workdir_params(validation_stage="grid", log=False)
         self._append_log(
-            tr("step2_global_grid_outer_only", "✅ 已将外网格范围调整为全球范围")
+            tr("step1_global_grid_outer_only", "✅ 已将外网格范围调整为全球范围")
             if outer_only
-            else tr("step2_global_grid_applied", "✅ 已将网格范围调整为全球范围")
+            else tr("step1_global_grid_applied", "✅ 已将网格范围调整为全球范围")
         )
 
     def _generate_grid(self) -> None:
@@ -2062,7 +2160,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         # Only disable the grid button — other buttons remain usable
         self._grid_button.setEnabled(False)
-        self._grid_button.setText(tr("step2_create_grid_ing", "生成网格中..."))
+        self._grid_button.setText(tr("step1_create_grid_ing", "生成网格中..."))
         self._pipeline_updates.post_state(
             PipelineStepState(
                 is_running=True,
@@ -2077,7 +2175,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._runner.run(task, self._on_grid_done)
 
     def _run_grid_cli_subprocess(self, config: PipelineConfig) -> PipelineStepState:
-        """Run Step 2 in a separate Python process so geometry clipping cannot freeze Qt."""
+        """Run Step 1 in a separate Python process so geometry clipping cannot freeze Qt."""
         root = Path(__file__).resolve().parents[3]
         cmd = [
             sys.executable,
@@ -2090,7 +2188,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         env["PYTHONUNBUFFERED"] = "1"
         env.setdefault("PYTHONIOENCODING", "utf-8")
         self._pipeline_updates.post_log(
-            tr("step2_grid_subprocess_start", "▶ 已在独立进程中启动网格生成，界面可继续响应")
+            tr("step1_grid_subprocess_start", "▶ 已在独立进程中启动网格生成，界面可继续响应")
         )
         try:
             proc = subprocess.Popen(
@@ -2122,7 +2220,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 action="grid",
                 workdir=str(config.workdir.path),
                 error=tr(
-                    "step2_grid_subprocess_failed",
+                    "step1_grid_subprocess_failed",
                     "网格生成子进程失败，退出码：{code}",
                 ).format(code=return_code),
             )
@@ -2183,7 +2281,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._runner.run(task, self._on_ref_data_download_done)
 
     def _on_ref_data_download_done(self, result: object) -> None:
-        self._grid_button.setText(tr("step2_create_grid", "生成网格"))
+        self._grid_button.setText(tr("step1_create_grid", "生成网格"))
         self._grid_button.setEnabled(True)
         if result is True:
             self._append_log(tr("ref_data_download_complete", "✅ reference_data 下载完成！现在可以点击「生成网格」继续。"))
@@ -2209,7 +2307,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._runner.run(task, self._on_visualize_done)
 
     def _on_visualize_done(self, result: object) -> None:
-        self._visualize_button.setText(tr("step2_visualize_grid", "网格可视化"))
+        self._visualize_button.setText(tr("step1_visualize_grid", "网格可视化"))
         self._visualize_button.setEnabled(True)
         if not isinstance(result, PipelineStepState):
             return
@@ -3128,7 +3226,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._show_error(result.error)
         elif isinstance(result, dict) and result.get("error"):
             self._show_error(str(result["error"]))
-        # [EN] Refresh Step 4 panel forcing enabled state after forcing processing completes
+        # [EN] Refresh Step 4 panel forcing enabled state after Step 2 forcing processing completes
         # 强迫场处理完毕后刷新 Step 4 面板的启用状态显示
         if self._loaded_config is not None:
             self._render_summary(self._loaded_config)
@@ -3139,7 +3237,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._show_error(str(result["error"]))
 
     def _on_grid_done(self, result: object) -> None:
-        self._grid_button.setText(tr("step2_create_grid", "生成网格"))
+        self._grid_button.setText(tr("step1_create_grid", "生成网格"))
         self._grid_button.setEnabled(True)
         if isinstance(result, PipelineStepState):
             self._pipeline_updates.post_state(result)

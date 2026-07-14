@@ -3,6 +3,10 @@ Create Custom Grid Script
 
 生成一个宽10度、长50度的网格，水深统一无限深，
 全部为水域，无任何陆地。
+
+[EN] Generate a grid 10 degrees wide (latitude) and 50 degrees long
+(longitude), with uniform infinite depth (-10000 m), entirely water and no
+land.
 """
 
 import os
@@ -18,6 +22,7 @@ if script_dir not in sys.path:
 import importlib.util
 
 # 全局输出目录（可在外部修改），为 None 时使用默认 result 目录
+# [EN] Global output directory (can be overridden externally); if None, use the default result directory.
 OUT_DIR = "/Users/zxy/ocean/WW3Tool/workSpace/momo"
 
 # Load grid.create_obstr
@@ -74,31 +79,48 @@ def create_custom_grid():
     - 宽10度（纬度方向），长50度（经度方向）
     - 水深统一无限深（-10000米）
     - 全部为水域，无任何陆地
+
+    [EN] Create a custom grid:
+    - 10 degrees wide in latitude, 50 degrees long in longitude.
+    - Uniform infinite depth (-10000 m).
+    - Entirely water cells, no land.
     """
     
     # 网格参数设置
+    # [EN] Grid parameter settings.
     # 假设网格从经度0到50度，纬度0到10度
+    # [EN] Assume the grid spans longitude 0 to 50 deg and latitude 0 to 10 deg.
     # 宽10度（纬度），长50度（经度）
+    # [EN] 10 deg wide (latitude), 50 deg long (longitude).
     lon_range = [-140, -132]  # 经度范围：长50度
+    # [EN] Longitude range: 50 deg long.
     lat_range = [-40, -39.5]  # 纬度范围：宽10度
-    
+    # [EN] Latitude range: 10 deg wide.
+
     # 网格分辨率（可以根据需要调整）
+    # [EN] Grid resolution (adjustable as needed).
     dx = 0.05  # 经度分辨率
+    # [EN] Longitude resolution.
     dy = 0.05  # 纬度分辨率
-    
+    # [EN] Latitude resolution.
+
     # 自动处理范围顺序（确保从小到大）
+    # [EN] Auto-sort range limits (ensure ascending order).
     lon_min, lon_max = min(lon_range), max(lon_range)
     lat_min, lat_max = min(lat_range), max(lat_range)
     
     # 创建输出目录
+    # [EN] Create the output directory.
     script_path = os.path.abspath(__file__)
     base_dir = os.path.dirname(script_path)
     project_root = os.path.dirname(base_dir) if os.path.basename(base_dir) == 'python' else base_dir
     # 如果全局 OUT_DIR 已设置，则使用该目录；否则使用默认 result 目录
+    # [EN] Use the global OUT_DIR if set; otherwise fall back to the default result directory.
     out_dir = OUT_DIR if OUT_DIR else os.path.join(project_root, 'result')
     os.makedirs(out_dir, exist_ok=True)
-    
+
     # 创建网格坐标
+    # [EN] Create grid coordinates.
     print("=" * 70)
     print("创建自定义网格")
     print("=" * 70)
@@ -106,8 +128,9 @@ def create_custom_grid():
     print(f"实际范围: 经度 [{lon_min}, {lon_max}], 纬度 [{lat_min}, {lat_max}]")
     print(f"分辨率: {dx} x {dy} 度")
     print("=" * 70)
-    
+
     # 计算网格点数（使用绝对值确保为正数）
+    # [EN] Compute the number of grid points (use absolute values to ensure positivity).
     nx = int(round(abs(lon_max - lon_min) / dx)) + 1
     ny = int(round(abs(lat_max - lat_min) / dy)) + 1
     
@@ -118,44 +141,54 @@ def create_custom_grid():
     print(f"网格大小: {nx} x {ny} 点")
     
     # 创建无限深的水深数据（所有水域都是-10000米）
+    # [EN] Create bathymetry with infinite depth (all water cells are -10000 m).
     depth = np.full_like(lon, -10000.0, dtype=np.float64)
-    
+
     # 创建初始陆地-海洋掩膜（全部为水域，无陆地）
+    # [EN] Create the initial land-sea mask (all water, no land).
     # WAVEWATCH III约定：0=陆地，1=水域，2=边界点，3=排除点
+    # [EN] WW3 convention: 0 = land, 1 = water, 2 = boundary point, 3 = excluded point.
     mask = np.ones_like(depth, dtype=np.int32)
-    
+
     # 验证：确保所有点都是水域（值为1），没有任何陆地（值为0）
+    # [EN] Verify that all points are water (value 1) and no land (value 0) exists.
     assert np.all(mask == 1), "错误：掩膜中不应包含非水域点！"
     assert np.sum(mask == 0) == 0, "错误：掩膜中不应包含陆地点！"
-    
+
     print(f"水域点数: {np.sum(mask == 1)}")
     print(f"陆地点数: {np.sum(mask == 0)}")
     print(f"✓ 验证通过：所有 {mask.size} 个网格点都是水域（无陆地）")
-    
+
     # 创建obstruction grids（无陆地边界，全部为零）
+    # [EN] Create obstruction grids (no land boundaries, all zeros).
     print("\n创建obstruction grids...")
     print("无陆地边界，创建全零obstruction grids...")
     sx1 = np.zeros_like(mask, dtype=np.float64)
     sy1 = np.zeros_like(mask, dtype=np.float64)
     
     # 写入输出文件
+    # [EN] Write output files.
     print("\n写入输出文件...")
     depth_scale = 1000
     obstr_scale = 100
-    
+
     # 写入水深文件
+    # [EN] Write bathymetry file.
     d = np.round(depth * depth_scale).astype(int)
     fname = 'grid'
     write_ww3file(os.path.join(out_dir, f"{fname}.bot"), d)
     print(f"  已写入: {fname}.bot")
-    
+
     # 写入掩膜文件
+    # [EN] Write mask file.
     # 在写入前再次验证：确保mask全为1（水域）
+    # [EN] Re-verify before writing: ensure the mask is all 1 (water).
     assert np.all(mask == 1), "错误：写入前验证失败，掩膜包含非水域点！"
     write_ww3file(os.path.join(out_dir, f"{fname}.nobound_mask"), mask)
     print(f"  已写入: {fname}.nobound_mask (全部为水域，无陆地)")
-    
+
     # 写入obstruction文件
+    # [EN] Write obstruction file.
     d1 = np.round(sx1 * obstr_scale).astype(int)
     d2 = np.round(sy1 * obstr_scale).astype(int)
     write_ww3obstr(os.path.join(out_dir, f"{fname}.obst"), d1, d2)
@@ -176,13 +209,14 @@ def create_custom_grid():
     print("  已写入: grid.nml")
     
     # 最终验证
+    # [EN] Final verification.
     print("\n" + "=" * 70)
     print("最终验证")
     print("=" * 70)
     total_points = nx * ny
     water_points = np.sum(mask == 1)
     land_points = np.sum(mask == 0)
-    
+
     if land_points == 0 and water_points == total_points:
         print(f"✓ 验证通过：网格完全由水域组成，无任何陆地")
         print(f"  - 总网格点数: {total_points}")
@@ -193,8 +227,9 @@ def create_custom_grid():
         print(f"  - 总网格点数: {total_points}")
         print(f"  - 水域点数: {water_points}")
         print(f"  - 陆地点数: {land_points}")
-    
+
     # 统计信息
+    # [EN] Summary statistics.
     print("\n" + "=" * 70)
     print("网格生成完成！")
     print("=" * 70)

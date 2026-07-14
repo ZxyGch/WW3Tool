@@ -20,6 +20,7 @@ from typing import Optional
 # [EN] Tiers are matched top-down; the first tier whose threshold the span meets is used.
 
 # (min_span_km, hmax, hshr, hmin, dhdx) — 非结构网格间距，单位 km
+# [EN] (min_span_km, hmax, hshr, hmin, dhdx) — unstructured mesh spacing, in km
 _UNST_TIERS: list[tuple[float, float, float, float, float]] = [
     (4000.0, 100.0, 25.0, 5.0, 0.08),
     (1500.0, 60.0, 15.0, 3.0, 0.07),
@@ -29,6 +30,7 @@ _UNST_TIERS: list[tuple[float, float, float, float, float]] = [
 ]
 
 # (min_span_km, dx=dy 度) — 结构化网格分辨率
+# [EN] (min_span_km, dx=dy in degrees) — structured grid resolution
 _STRUCT_TIERS: list[tuple[float, float]] = [
     (4000.0, 0.5),
     (1500.0, 0.25),
@@ -38,6 +40,7 @@ _STRUCT_TIERS: list[tuple[float, float]] = [
 ]
 
 # (min_span_km, n_levels) — SMC 细化层数
+# [EN] (min_span_km, n_levels) — SMC refinement levels
 _SMC_TIERS: list[tuple[float, int]] = [
     (2000.0, 4),
     (800.0, 3),
@@ -80,7 +83,10 @@ class GridParamRecommendation:
     values: dict[str, str]
 
     def values_text(self) -> str:
-        """如 ``hmax=15, hmin=1, hshr=4, dhdx=0.05``。"""
+        """如 ``hmax=15, hmin=1, hshr=4, dhdx=0.05``。
+
+        [EN] e.g. ``hmax=15, hmin=1, hshr=4, dhdx=0.05``.
+        """
         return ", ".join(f"{k}={v}" for k, v in self.values.items())
 
 

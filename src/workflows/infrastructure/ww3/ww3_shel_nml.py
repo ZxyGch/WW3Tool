@@ -453,8 +453,8 @@ class WW3ShelNML(NMLPrimitives):
             return
 
         # 嵌套网格模式下使用 ww3_multi.nml，普通网格模式下使用 ww3_shel.nml
-        grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-        nested_text = tr("step2_grid_type_nested", "嵌套网格")
+        grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+        nested_text = tr("step1_grid_type_nested", "嵌套网格")
         if grid_type == nested_text or grid_type == "嵌套网格":
             ww3_shel_path = os.path.join(target_dir, "ww3_multi.nml")
         else:

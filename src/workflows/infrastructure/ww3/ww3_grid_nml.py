@@ -1,7 +1,13 @@
 """ww3_grid.nml 修改 Mixin — 结构化 / SMC / 非结构网格 namelist 转换。
 
-负责将 ``grid.meta`` 几何参数同步到 ``ww3_grid.nml``，以及按第二步所选网格类型
+负责将 ``grid.meta`` 几何参数同步到 ``ww3_grid.nml``，以及按第一步所选网格类型
 在 RECT、UNST（非结构）、SMCG（SMC）三种 namelist 形态间切换对应 namelist 块。
+
+[EN] ww3_grid.nml modification Mixin — structured / SMC / unstructured mesh namelist conversion.
+
+Synchronizes geometric parameters from ``grid.meta`` into ``ww3_grid.nml`` and switches
+among RECT, UNST (unstructured), and SMCG (SMC) namelist blocks according to the mesh type
+selected in Step 1.
 """
 from __future__ import annotations
 
@@ -25,7 +31,10 @@ from .smc_ww3_version import resolve_ww3_version, smc_grid_type_for_version
 
 
 def grid_meta_sync_assignments(sync: dict) -> list[Assignment]:
-    """从 parse_ww3_grid_meta_for_sync 结果构建日志字段列表。"""
+    """从 parse_ww3_grid_meta_for_sync 结果构建日志字段列表。
+
+    [EN] Build the list of log assignments from the output of parse_ww3_grid_meta_for_sync.
+    """
     assignments: list[Assignment] = []
     if "grid_type" in sync:
         assignments.append(("GRID%TYPE", f"'{sync['grid_type']}'"))
@@ -53,7 +62,10 @@ def grid_meta_sync_assignments(sync: dict) -> list[Assignment]:
 
 
 def unstructured_mesh_assignments() -> list[Assignment]:
-    """非结构网格实际写入的 nml 字段（被注释的块见日志标题说明）。"""
+    """非结构网格实际写入的 nml 字段（被注释的块见日志标题说明）。
+
+    [EN] NML fields actually written for unstructured mesh (commented blocks are described in the log title).
+    """
     return [
         ("GRID%TYPE", "'UNST'"),
         ("UNST%FILENAME", "'grid.ww3'"),
@@ -83,7 +95,10 @@ def smc_mesh_assignments(
     has_mbarc: bool,
     ww3_version: str | None = None,
 ) -> list[Assignment]:
-    """SMC 网格 ww3_grid.nml 实际写入的 nml 字段。"""
+    """SMC 网格 ww3_grid.nml 实际写入的 nml 字段。
+
+    [EN] NML fields actually written to ww3_grid.nml for SMC mesh.
+    """
     grid_type = smc_grid_type_for_version(ww3_version)
     assignments: list[Assignment] = [(f"GRID%TYPE", f"'{grid_type}'")]
     assignments.extend(smc_rect_assignments(wr_rect))
@@ -112,24 +127,43 @@ class WW3GridNML(NMLPrimitives):
     - SMC 网格：注释 RECT 块，启用 ``&SMC_NML``，写入边界/北极附属面路径。
     - 结构化网格：从 ``grid.meta`` 同步 NX/NY、分辨率、原点及 GRID%CLOS。
     - ``sync_grid_meta_to_grid_nml`` — 公开入口，触发 meta → nml 同步。
+
+    [EN] Mixin class for operations related to ``ww3_grid.nml``.
+
+    Main capabilities
+    -----------------
+    - Unstructured mesh: comment out RECT/DEPTH/MASK/OBST blocks and enable ``&UNST_NML``.
+    - SMC mesh: comment out RECT block, enable ``&SMC_NML``, write boundary/arctic-face file paths.
+    - Structured mesh: sync NX/NY, resolution, origin, and GRID%CLOS from ``grid.meta``.
+    - ``sync_grid_meta_to_grid_nml`` — Public entry point that triggers meta → nml synchronization.
     """
 
-    def _is_step2_unstructured_mesh(self):
-        """第二步当前是否为「非结构网格」（与 step2 一致）。"""
+    def _is_step1_unstructured_mesh(self):
+        """第一步当前是否为「非结构网格」（与 step1 一致）。
+
+        [EN] Check whether Step 1 currently selects "unstructured mesh" (consistent with step1).
+        """
         if getattr(self, "_raw_mesh_type", None) == "unstructured":
             return True
-        ut = tr("step2_mesh_type_unstructured", "非结构网格")
+        ut = tr("step1_mesh_type_unstructured", "非结构网格")
         return getattr(self, "mesh_type_var", "") == ut
 
-    def _is_step2_smc_mesh(self):
-        """第二步当前是否为「SMC 网格」（与 step2_mesh_type_smc 一致）。"""
+    def _is_step1_smc_mesh(self):
+        """第一步当前是否为「SMC 网格」（与 step1_mesh_type_smc 一致）。
+
+        [EN] Check whether Step 1 currently selects "SMC mesh" (consistent with step1_mesh_type_smc).
+        """
         if getattr(self, "_raw_mesh_type", None) == "smc":
             return True
-        st = tr("step2_mesh_type_smc", "SMC 网格")
+        st = tr("step1_mesh_type_smc", "SMC 网格")
         return getattr(self, "mesh_type_var", "") == st
 
     def _transform_ww3_grid_nml_for_unstructured(self, nml_path):
-        """RECT/DEPTH/MASK/OBST 块整段注释；启用 &UNST_NML；GRID%TYPE → UNST；UNST%FILENAME → grid.ww3"""
+        """RECT/DEPTH/MASK/OBST 块整段注释；启用 &UNST_NML；GRID%TYPE → UNST；UNST%FILENAME → grid.ww3
+
+        [EN] Comment out the whole RECT/DEPTH/MASK/OBST blocks; enable &UNST_NML;
+        set GRID%TYPE to UNST; set UNST%FILENAME to grid.ww3.
+        """
         if not nml_path or not os.path.isfile(nml_path):
             return
         blocks_comment = ("RECT_NML", "DEPTH_NML", "MASK_NML", "OBST_NML")
@@ -215,7 +249,11 @@ class WW3GridNML(NMLPrimitives):
             )
 
     def _read_smc_ww3_rect_meta(self, work_dir: str) -> dict | None:
-        """smc_generator 写入工作目录 grid.json 的 ww3_rect（与 bathy 上规则网格一致）。"""
+        """smc_generator 写入工作目录 grid.json 的 ww3_rect（与 bathy 上规则网格一致）。
+
+        [EN] Read ww3_rect written by smc_generator into grid.json in the working directory
+        (consistent with the regular grid on bathymetry).
+        """
         if not work_dir:
             return None
         p = os.path.join(work_dir, "grid.json")
@@ -251,8 +289,11 @@ class WW3GridNML(NMLPrimitives):
         return lon_w, lon_e, lat_s, lat_n
 
     def _smc_warn_forcing_covers_ww3_rect(self, work_dir: str, *, grid_label: str = "") -> None:
-        """SMC: ww3_prnc uses the full RECT; regional wind often only covers regional_bounds."""
-        if not self._is_step2_smc_mesh() or not work_dir:
+        """SMC: ww3_prnc uses the full RECT; regional wind often only covers regional_bounds.
+
+        [EN] SMC: ww3_prnc uses the full RECT; regional wind often only covers regional_bounds.
+        """
+        if not self._is_step1_smc_mesh() or not work_dir:
             return
         wr = self._read_smc_ww3_rect_meta(work_dir)
         if not wr:
@@ -302,7 +343,7 @@ class WW3GridNML(NMLPrimitives):
                 "{prefix}⚠️ SMC / ww3_prnc：风场范围 lon [{wl:.4f},{wh:.4f}] lat [{wb:.4f},{wn:.4f}] "
                 "未完全覆盖 SMC 底网格 RECT 范围 lon [{rlw:.4f},{rle:.4f}] lat [{rls:.4f},{rln:.4f}] "
                 "（见 grid.json 的 ww3_rect / ww3_rect_geo；该范围已按实际 MCELS 活动底网格收紧，仍可能因 SMC 对齐略大于 regional_bounds）。"
-                " 请在第一步扩大风场或裁切到至少上述 RECT，否则 ww3_prnc 会对大量格点报 NOT COVERED BY INPUT GRID。",
+                " 请在第二步扩大风场或裁切到至少上述 RECT，否则 ww3_prnc 会对大量格点报 NOT COVERED BY INPUT GRID。",
             ).format(
                 prefix=prefix,
                 wl=wlo,
@@ -317,7 +358,11 @@ class WW3GridNML(NMLPrimitives):
         )
 
     def _infer_smc_ww3_rect_from_bathy(self, work_dir: str) -> dict | None:
-        """若 grid.json 无 ww3_rect，从 input.bathymetry_file 推断底网格（与 smc_generator 翻转约定一致）。"""
+        """若 grid.json 无 ww3_rect，从 input.bathymetry_file 推断底网格（与 smc_generator 翻转约定一致）。
+
+        [EN] If grid.json has no ww3_rect, infer the base mesh from input.bathymetry_file
+        (consistent with smc_generator's flip convention).
+        """
         if not work_dir:
             return None
         p = os.path.join(work_dir, "grid.json")
@@ -382,6 +427,11 @@ class WW3GridNML(NMLPrimitives):
 
         优先从 ``grid.json`` 的 ``ww3_rect`` 字段读取；若缺失则尝试从
         ``bathymetry_file`` 推断。均失败时记录警告并返回 ``None``。
+
+        [EN] Resolve the base-mesh RECT parameters under an SMC working directory (for SMCG namelist writing).
+
+        Prefer reading the ``ww3_rect`` field from ``grid.json``; if missing, try to infer from
+        ``bathymetry_file``. Log a warning and return ``None`` if both fail.
         """
         wr = self._read_smc_ww3_rect_meta(work_dir)
         if wr:
@@ -402,7 +452,10 @@ class WW3GridNML(NMLPrimitives):
         return wr2
 
     def _smc_patch_rect_content_line(self, line: str, wr: dict) -> str:
-        """Replace RECT%NX..Y0 inside an active &RECT_NML block."""
+        """Replace RECT%NX..Y0 inside an active &RECT_NML block.
+
+        [EN] Replace RECT%NX..Y0 inside an active &RECT_NML block.
+        """
         lns = line.rstrip("\n")
         if "=" not in lns or not lns.strip():
             return line
@@ -439,7 +492,23 @@ class WW3GridNML(NMLPrimitives):
         ``unset``，会导致 IOSTAT=2。此处为 ISIDE/JSIDE/SUBTR 写入约定文件名；MCELS、SUBTR
         由 smc_generator 生成，ISIDE/JSIDE 需由 SMCGTools SMCGSideMP 等另行生成。
 
-        ``&RECT_NML`` 从工作目录 ``grid.json`` 的 ``ww3_rect`` 写回（若存在）。"""
+        ``&RECT_NML`` 从工作目录 ``grid.json`` 的 ``ww3_rect`` 写回（若存在）。
+
+        [EN] Comment out DEPTH/MASK/OBST; set GRID%TYPE to RECT (6.07) or SMCG (7.14);
+        enable &SMC_NML; keep and correct &RECT_NML.
+
+        The SMC base mesh shares scales with RECT (NOAA WW3 w3gridmd.F90: when NML_RECT%NX/NY
+        are 0, NX=MAX(3,NX) yields NX=3 and cell i may trigger LONGITUDE RANGE OUTSIDE).
+
+        After reading MCELS, WW3 w3gridmd.F90 unconditionally OPENs ISIDE, JSIDE, SUBTR
+        (see develop model/src/w3gridmd.F90 around lines 4263–4343). If the namelist items
+        are commented out, the default FILENAME remains ``unset`` and causes IOSTAT=2.
+        Therefore write the conventional filenames for ISIDE/JSIDE/SUBTR here; MCELS and SUBTR
+        are produced by smc_generator, while ISIDE/JSIDE must be generated separately with
+        SMCGTools such as SMCGSideMP.
+
+        ``&RECT_NML`` is written back from ``ww3_rect`` in the working directory ``grid.json`` if present.
+        """
         if not nml_path or not os.path.isfile(nml_path):
             return
         work_dir = getattr(self, "selected_folder", None) or os.path.dirname(
@@ -682,7 +751,11 @@ class WW3GridNML(NMLPrimitives):
             )
 
     def _set_namelists_misc_flagtr_zero(self, namelists_path):
-        """namelists.nml 中 &MISC 的 FLAGTR 改为 0（非结构网格无障碍子网格）。"""
+        """将 MISC/FLAGTR 设为 0，避免单网格在 FLAGTR=1 时 ww3_shel 要求 track.* 输入。
+
+        [EN] Set MISC/FLAGTR to 0 so that single-grid runs do not require track.* input
+        when FLAGTR=1.
+        """
         if not namelists_path or not os.path.isfile(namelists_path):
             return
         try:
@@ -711,7 +784,10 @@ class WW3GridNML(NMLPrimitives):
             )
 
     def sync_grid_meta_to_grid_nml(self, target_dir=None):
-        """从 grid.meta 提取参数并同步到 ww3_grid.nml（普通网格模式）"""
+        """公开入口：将当前工作目录的 grid.meta 同步到 ww3_grid.nml。
+
+        [EN] Public entry point: sync grid.meta in the current working directory into ww3_grid.nml.
+        """
         if target_dir is None:
             target_dir = self.selected_folder
         if not target_dir or not isinstance(target_dir, str):
@@ -720,7 +796,11 @@ class WW3GridNML(NMLPrimitives):
         self._sync_grid_meta_to_grid_nml_in_dir(target_dir)
 
     def _apply_config_parameters_to_grid_nml_in_dir(self, target_dir, level_idx=None):
-        """将 params.yml 中 ww3_grid 段写入该层 ww3_grid.nml（嵌套时带 level 日志）。"""
+        """将 params.yml 中 ww3_grid 段写入该层 ww3_grid.nml（嵌套时带 level 日志）。
+
+        [EN] Write the ww3_grid section from params.yml into this level's ww3_grid.nml
+        (with level logging for nested runs).
+        """
         from .grid_param_write import parameters_from_config, write_ww3_grid_parameters_to_nml
 
         parameters = parameters_from_config()
@@ -738,6 +818,15 @@ class WW3GridNML(NMLPrimitives):
         会违反 CFL 而数值不稳定。从已写好的 ww3_grid.nml 读 RECT%SX/SY/Y0/NY 与
         SPECTRUM%FREQ1，调用 recommend_timesteps 重算后替换 TIMESTEPS%DT*（只改活动
         行，跳过模板注释里的占位）。
+
+        [EN] Recalculate CFL time steps based on this grid's own dx/dy and (global) FREQ1
+        and write them back to ww3_grid.nml.
+
+        In nested runs the propagation time step DTXY must differ per level (CFL: DTXY ∝ Δx),
+        otherwise fine grids will violate CFL and become numerically unstable. Reads
+        RECT%SX/SY/Y0/NY and SPECTRUM%FREQ1 from the already-written ww3_grid.nml, calls
+        recommend_timesteps, and replaces TIMESTEPS%DT* (only active lines, skipping
+        placeholders in commented template lines).
         """
         import os
         import re
@@ -803,6 +892,15 @@ class WW3GridNML(NMLPrimitives):
         ww3_grid.nml 的 DEPTH%FILENAME 为海底高程数组、按 DEPTH%SF 缩放；WW3 约定
         水域高程为负（GRID%ZLIM 为负阈值），故水深 = -高程。排除陆地（高程≥0）与
         填充值（水深 > 11000 m）。仅适用于此约定的深度文件，否则返回 None 回退深水。
+
+        [EN] Read the water-depth range (h_min, h_max) in meters from the grid depth file;
+        return None if unavailable.
+
+        In ww3_grid.nml, DEPTH%FILENAME is a seabed-elevation array scaled by DEPTH%SF.
+        WW3 convention treats water-surface elevation as negative (GRID%ZLIM is a negative
+        threshold), so water depth = -elevation. Exclude land (elevation ≥ 0) and fill values
+        (depth > 11000 m). Only valid for depth files following this convention; otherwise
+        return None and fall back to deep-water approximation.
         """
         import os
         import re
@@ -844,7 +942,11 @@ class WW3GridNML(NMLPrimitives):
         return h_min, h_max
 
     def _sync_grid_meta_to_grid_nml_in_dir(self, target_dir, grid_label=""):
-        """从 grid.meta 仅同步 GRID%TYPE/COORD/CLOS、RECT%*、DEPTH%SF、OBST%SF 到 ww3_grid.nml（与扁平 meta 一致）。"""
+        """从 grid.meta 仅同步 GRID%TYPE/COORD/CLOS、RECT%*、DEPTH%SF、OBST%SF 到 ww3_grid.nml（与扁平 meta 一致）。
+
+        [EN] Sync only GRID%TYPE/COORD/CLOS, RECT%*, DEPTH%SF, and OBST%SF from grid.meta
+        into ww3_grid.nml (consistent with the flattened meta).
+        """
         if not target_dir or not isinstance(target_dir, str):
             return
 

@@ -12,10 +12,12 @@ from typing import Literal
 GLOBAL_LON = (-180.0, 180.0)
 GLOBAL_LAT = (-90.0, 90.0)
 # reference_data 中 ETOPO/GEBCO 通常达不到精确的 ±180/±90（例如 etopo2 为 179.995/89.9973）。
+# [EN] ETOPO/GEBCO in reference_data usually does not reach exact ±180/±90 (e.g. etopo2 ends at 179.995/89.9973).
 BATHY_SAFE_LON = (-180.0, 179.995)
 BATHY_SAFE_LAT = (-90.0, 89.9973)
 NEAR_GLOBAL_TOLERANCE_DEG = 5.0
 # Mercator 在极高纬度会产生 Inf；cartopy 预览图在纬度接近 ±90° 时改用 PlateCarree。
+# [EN] Mercator produces Inf near the poles; cartopy previews switch to PlateCarree when latitudes approach ±90°.
 MERCATOR_MAX_ABS_LAT = 85.0
 
 MapProjectionName = Literal["mercator", "plate_carree"]
@@ -115,7 +117,10 @@ def point_in_lon_lat_bounds(
 
 
 def map_aspect_wh_from_extent(extent: list[float] | tuple[float, float, float, float]) -> float:
-    """根据 ``[west, east, south, north]`` 估算地图宽高比（用于对话框尺寸）。"""
+    """根据 ``[west, east, south, north]`` 估算地图宽高比（用于对话框尺寸）。
+
+    [EN] Estimate map width/height ratio from ``[west, east, south, north]`` (used for dialog sizing).
+    """
     west, east, south, north = (float(extent[0]), float(extent[1]), float(extent[2]), float(extent[3]))
     lat_center = 0.5 * (south + north)
     lon_span = max(east - west, 1e-6)
@@ -136,6 +141,12 @@ def regional_map_extent(
 
     近全球域返回 PlateCarree + 全球范围；区域域在 Mercator 安全纬度内优先 Mercator，
     否则退回 PlateCarree。避免 ``set_extent`` 纬度超出 Mercator 极限导致 NaN/Inf。
+
+    [EN] Compute a safe display extent and projection for cartopy preview/point-selection maps.
+
+    Near-global domains return PlateCarree + global extent; regional domains prefer Mercator
+    when within safe Mercator latitudes, otherwise fall back to PlateCarree. Prevents NaN/Inf
+    from ``set_extent`` latitudes beyond the Mercator limit.
     """
     west = float(min(lon[0], lon[1]))
     east = float(max(lon[0], lon[1]))
@@ -200,7 +211,10 @@ def regional_map_extent_from_boxes(
     padding_frac: float = 0.1,
     min_padding_deg: float = 2.0,
 ) -> dict[str, object] | None:
-    """由多个 ``lon_min/lon_max/lat_min/lat_max`` 框的并集计算地图显示参数。"""
+    """由多个 ``lon_min/lon_max/lat_min/lat_max`` 框的并集计算地图显示参数。
+
+    [EN] Compute map display parameters from the union of multiple ``lon_min/lon_max/lat_min/lat_max`` boxes.
+    """
     if not boxes:
         return None
     west = min(box["lon_min"] for box in boxes)

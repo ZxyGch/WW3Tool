@@ -2,6 +2,10 @@
 
 在独立子进程中读取 ``ww3*spec*nc`` 文件，支持首帧预览、全站点批量生成及
 按站点名/时间步筛选生成；可选 wavespectra 库增强谱分析。
+
+[EN] [EN] 2D directional spectrum plot worker — draw polar spectrum plots from WW3 spectral output NetCDF.
+
+Reads ``ww3*spec*nc`` files in a separate subprocess, supports first-frame preview, batch generation for all stations, and filtered generation by station name/time step; optionally uses the wavespectra library for enhanced spectral analysis.
 """
 
 import os
@@ -107,9 +111,13 @@ def _prepare_spectrum_plot_values(E_interp, threshold, plot_mode):
     return data, min(threshold_value, 1.0), "Normalized Energy Density"
 
 def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, plot_mode="最大值归一化"):
+    
+    # [EN] [EN] Generate the first 2D directional spectrum plot in a subprocess (quick preview, following plot_matlab.py logic).
     """在子进程中生成第一张二维方向谱图（快速预览，参考 plot_matlab.py 逻辑）。"""
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)
@@ -404,6 +412,8 @@ def _generate_first_spectrum_worker(selected_folder, log_queue, result_queue, en
 
 
 def _sanitize_filename(name):
+    
+    # [EN] [EN] Sanitize the station name to make it a valid filename.
     """清理站点名称，使其成为有效的文件名"""
     if not name:
         return ""
@@ -421,10 +431,14 @@ def _sanitize_filename(name):
     return name
 
 def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, time_step_hours=24, plot_mode="最大值归一化", station_names=None):
+    
+    # [EN] [EN] In a subprocess, generate a sequence of 2D directional spectrum plots for all stations filtered by time-step interval.
     """在子进程中为所有站点、按时间步长筛选生成二维方向谱图序列。"""
     station_name_var = None
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)
@@ -578,6 +592,16 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
                 返回:
                     cbar_ticks: 归一化后的刻度值数组（0到1之间）
+                
+                [EN] [EN] Compute normalized colorbar tick values (refer to plot_directional_spectrum.py).
+                
+                Parameters:
+                    data_min: data minimum value
+                    data_max: data maximum value
+                    generate_ticks_func: function that generates raw tick values
+                
+                Returns:
+                    cbar_ticks: array of normalized tick values (between 0 and 1)
                 """
                 # 生成原始数据的刻度值
                 raw_ticks = generate_ticks_func(data_min, data_max)
@@ -657,6 +681,8 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
             # 方向维标准化 + 周期插值（辅助函数）
             def process_spectrum_data(E, dir_orig, freq):
+                
+                # [EN] [EN] Process spectrum data for a single station.
                 """处理单个站点的谱数据"""
                 dir0 = dir_orig.copy()
                 dir0 = np.mod(dir0, 360)
@@ -704,6 +730,20 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
                     E_original: 原始能量密度数据 (frequency, direction)，用于归一化模式（wavespectra）
                     freq_orig: 原始频率数组，用于归一化模式
                     dir_orig: 原始方向数组，用于归一化模式
+                
+                [EN] [EN] Plot a single 2D spectrum.
+                
+                Parameters:
+                    X, Y: Cartesian coordinates (used in actual-value mode)
+                    E_interp: interpolated energy density data (used in actual-value mode)
+                    threshold: energy threshold
+                    lon_val, lat_val: station longitude/latitude
+                    time_str: time string
+                    output_file: output file path
+                    plot_mode: plot mode ("max normalized" or "actual value")
+                    E_original: original energy density data (frequency, direction), used in normalized mode (wavespectra)
+                    freq_orig: original frequency array, used in normalized mode
+                    dir_orig: original direction array, used in normalized mode
                 """
                 nonlocal logged_wavespectra
                 # 检查是否为归一化模式（支持中英文翻译）
@@ -1037,10 +1077,14 @@ def _generate_all_spectrum_worker(selected_folder, log_queue, result_queue, ener
 
 
 def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue, energy_threshold=0.01, spec_file=None, time_step_hours=24, station_index=0, plot_mode="最大值归一化", station_name=None):
+    
+    # [EN] [EN] In a subprocess, generate a sequence of 2D directional spectrum plots for a single specified station filtered by time-step interval.
     """在子进程中为单个指定站点、按时间步长筛选生成二维方向谱图序列。"""
     station_name_var = None
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)
@@ -1202,6 +1246,16 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
                 返回:
                     cbar_ticks: 归一化后的刻度值数组（0到1之间）
+                
+                [EN] [EN] Compute normalized colorbar tick values (refer to plot_directional_spectrum.py).
+                
+                Parameters:
+                    data_min: data minimum value (should be 0 in normalized mode)
+                    data_max: data maximum value (should be 1 in normalized mode)
+                    generate_ticks_func: function that generates raw tick values
+                
+                Returns:
+                    cbar_ticks: array of normalized tick values (between 0 and 1)
                 """
                 # 生成原始数据的刻度值
                 raw_ticks = generate_ticks_func(data_min, data_max)
@@ -1282,6 +1336,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
             # 方向维标准化 + 周期插值（辅助函数）
             def process_spectrum_data(E, dir_orig, freq):
+                
+                # [EN] [EN] Process spectrum data for a single station.
                 """处理单个站点的谱数据"""
                 dir0 = dir_orig.copy()
                 dir0 = np.mod(dir0, 360)
@@ -1324,6 +1380,16 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
                 返回:
                     cbar_ticks: 归一化后的刻度值数组（0到1之间）
+                
+                [EN] [EN] Compute normalized colorbar tick values (refer to plot_directional_spectrum.py).
+                
+                Parameters:
+                    data_min: data minimum value
+                    data_max: data maximum value
+                    generate_ticks_func: function that generates raw tick values
+                
+                Returns:
+                    cbar_ticks: array of normalized tick values (between 0 and 1)
                 """
                 # 生成原始数据的刻度值
                 raw_ticks = generate_ticks_func(data_min, data_max)
@@ -1402,6 +1468,8 @@ def _generate_selected_spectrum_worker(selected_folder, log_queue, result_queue,
 
             # 绘制单个二维谱图（辅助函数）
             def plot_single_spectrum(X, Y, E_interp, threshold, lon_val, lat_val, time_str, output_file, plot_mode="最大值归一化", E_original=None, freq_orig=None, dir_orig=None):
+                
+                # [EN] [EN] Plot a single 2D spectrum (normalized mode uses the wavespectra framework).
                 """绘制单个二维谱图（归一化模式使用 wavespectra 框架）"""
                 nonlocal logged_wavespectra
                 # 复用 _generate_all_spectrum_worker 中的相同实现

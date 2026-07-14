@@ -36,6 +36,11 @@ def run_merge_forcing(
     ``time_range``（START, END）与 ``bbox``（west, east, south, north）为可选裁剪：
     默认时间取所有输入的并集（最大时间范围）、空间取公共网格（最小经纬度范围）；
     给定后把输出裁剪到指定时间/经纬度范围。
+
+    [EN] ``time_range`` (START, END) and ``bbox`` (west, east, south, north) are optional crop
+    parameters. By default the time range is the union of all inputs (maximum time span) and the
+    spatial range is the common grid (minimum longitude/latitude range). When provided, the output
+    is cropped to the specified time and longitude/latitude range.
     """
     logger = CoreLogger(callback=log)
     analysis = analyze_merge_inputs(input_paths)

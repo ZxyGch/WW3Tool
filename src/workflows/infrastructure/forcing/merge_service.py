@@ -673,8 +673,13 @@ def _write_plan(
 def _parse_epoch(token: str, *, end: bool = False) -> float:
     """把日期/时间字符串解析为 epoch 秒（UTC）。
 
+    [EN] Parse a date/time string into epoch seconds (UTC).
+
     接受 ``YYYYMMDD``、``YYYY-MM-DD`` 或 ISO 日期时间；当作为范围**终点**且只给
     到日期时，返回当日 23:59:59（终点含当天）。
+
+    [EN] Accepts ``YYYYMMDD``, ``YYYY-MM-DD``, or ISO date-time; when used as the **end**
+    of a range and only a date is given, returns 23:59:59 of that day (end inclusive).
     """
     s = str(token).strip().replace("/", "-")
     date_only = False
@@ -695,7 +700,11 @@ def _parse_epoch(token: str, *, end: bool = False) -> float:
 
 
 def _coord_slice(values, lo: float, hi: float):
-    """返回坐标数组中落在 ``[lo, hi]`` 的连续切片（坐标单调，升降序均可）。"""
+    """返回坐标数组中落在 ``[lo, hi]`` 的连续切片（坐标单调，升降序均可）。
+
+    [EN] Return a contiguous slice of coordinate values falling within ``[lo, hi]``
+    (coordinates may be monotonically increasing or decreasing).
+    """
     _, np = _imports()
     arr = np.asarray(values, dtype="float64")
     idx = np.where((arr >= lo) & (arr <= hi))[0]
@@ -707,7 +716,10 @@ def _coord_slice(values, lo: float, hi: float):
 
 
 def _spatial_dim_slices(first_path: str, bbox: Sequence[float]) -> dict[str, slice]:
-    """由 bbox=(west, east, south, north) 算出经/纬维度名 → 裁剪切片。"""
+    """由 bbox=(west, east, south, north) 算出经/纬维度名 → 裁剪切片。
+
+    [EN] Compute lon/lat dimension name → crop slice from bbox=(west, east, south, north).
+    """
     nc, _ = _imports()
     west, east, south, north = (float(v) for v in bbox)
     slices: dict[str, slice] = {}
@@ -724,7 +736,10 @@ def _spatial_dim_slices(first_path: str, bbox: Sequence[float]) -> dict[str, sli
 
 
 def _apply_time_range(plan: _MergePlan, t0: float, t1: float) -> _MergePlan:
-    """把合并计划的时间轴裁剪到 epoch 秒区间 ``[t0, t1]``（含端点）。"""
+    """把合并计划的时间轴裁剪到 epoch 秒区间 ``[t0, t1]``（含端点）。
+
+    [EN] Crop the merge plan's time axis to the epoch-second interval ``[t0, t1]`` (inclusive).
+    """
     _, np = _imports()
     new_groups: list[_GroupPlan] = []
     for group in plan.groups:
@@ -746,12 +761,18 @@ def _apply_time_range(plan: _MergePlan, t0: float, t1: float) -> _MergePlan:
 
 
 def _crop_indexer(var, dim_slices: dict[str, slice]) -> tuple:
-    """按维度名取裁剪切片，未裁剪的维度取整段。"""
+    """按维度名取裁剪切片，未裁剪的维度取整段。
+
+    [EN] Return crop slices by dimension name; use the full range for uncropped dimensions.
+    """
     return tuple(dim_slices.get(name, slice(None)) for name in var.dimensions)
 
 
 def union_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
-    """所有输入文件时间轴的**并集**（最早, 最晚），返回 ``"%Y-%m-%d %H:%M"`` 字符串对。"""
+    """所有输入文件时间轴的**并集**（最早, 最晚），返回 ``"%Y-%m-%d %H:%M"`` 字符串对。
+
+    [EN] Union (earliest, latest) of all input file time axes, returned as a ``"%Y-%m-%d %H:%M"`` string pair.
+    """
     nc, _ = _imports()
     lo: float | None = None
     hi: float | None = None
@@ -773,7 +794,10 @@ def union_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
 
 
 def common_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
-    """所有输入文件时间轴的**交集**（最晚开始, 最早结束）。"""
+    """所有输入文件时间轴的**交集**（最晚开始, 最早结束）。
+
+    [EN] Intersection (latest start, earliest end) of all input file time axes.
+    """
     nc, _ = _imports()
     lo: float | None = None
     hi: float | None = None
@@ -797,7 +821,10 @@ def common_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
 
 
 def common_lonlat_box(input_paths: Sequence[str]) -> tuple[float, float, float, float]:
-    """所有输入文件经纬度范围的**交集**（最小公共范围），返回 (west, east, south, north)。"""
+    """所有输入文件经纬度范围的**交集**（最小公共范围），返回 (west, east, south, north)。
+
+    [EN] Intersection (smallest common extent) of all input file lon/lat ranges, returned as (west, east, south, north).
+    """
     nc, np = _imports()
     west = east = south = north = None
     for path in input_paths:

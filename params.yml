@@ -10,28 +10,6 @@ workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
   default_workspace: /Users/zxy/ocean/Paper/WW3Tool/workSpace
 # ────────────────────────────────────────────────────────────────────
-# Forcing fields: NetCDF file paths for external driving fields.
-#   wind    – 10-m wind speed / direction (U10, V10).
-#   current – ocean surface current (UCUR, VCUR).
-#   level   – sea-surface elevation anomaly (LEV).
-#   ice     – sea-ice concentration (IC1 / IC5).
-#   process_mode     – 'copy' duplicates complete files into workdir;
-#                      'move' relocates complete originals.
-#   crop_time_range  – optional crop action default, [start_YYYYMMDD, end_YYYYMMDD].
-#   crop_bbox        – optional crop action default, [west, east, south, north].
-#   auto_associate   – when true, automatically match dropped / selected
-#                      files to forcing variables by filename keyword.
-# ────────────────────────────────────────────────────────────────────
-forcing:
-  wind: null
-  current: null
-  level: null
-  ice: null
-  process_mode: copy
-  crop_time_range: []
-  crop_bbox: []
-  auto_associate: true
-# ────────────────────────────────────────────────────────────────────
 # Grid generation settings (structured / SMC / unstructured).
 #   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
 #   grid_type – 'normal' (single domain) or 'nested' (two-level
@@ -163,6 +141,28 @@ grid:
       regional:
         stereo_lon: 120.0
         stereo_lat: 20.0
+# ────────────────────────────────────────────────────────────────────
+# Forcing fields: NetCDF file paths for external driving fields.
+#   wind    – 10-m wind speed / direction (U10, V10).
+#   current – ocean surface current (UCUR, VCUR).
+#   level   – sea-surface elevation anomaly (LEV).
+#   ice     – sea-ice concentration (IC1 / IC5).
+#   process_mode     – 'copy' duplicates complete files into workdir;
+#                      'move' relocates complete originals.
+#   crop_time_range  – optional crop action default, [start_YYYYMMDD, end_YYYYMMDD].
+#   crop_bbox        – optional crop action default, [west, east, south, north].
+#   auto_associate   – when true, automatically match dropped / selected
+#                      files to forcing variables by filename keyword.
+# ────────────────────────────────────────────────────────────────────
+forcing:
+  wind: null
+  current: null
+  level: null
+  ice: null
+  process_mode: copy
+  crop_time_range: []
+  crop_bbox: []
+  auto_associate: true
 # ────────────────────────────────────────────────────────────────────
 # Calculation mode:
 #   mode – 'region' (gridded output over the full domain) or
@@ -343,9 +343,9 @@ server:
   user: null
   password: null
   key_file: null
-  default_remote_dir: /public/home/weiyl001/user/gongchuheng/oldWorkSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
-  ssh_config_host: SHOU
+  ssh_config_host: SHOU-TS
 # ────────────────────────────────────────────────────────────────────
 # External tool and data directory paths.
 #   matlab_path       – MATLAB executable for grid generators that require it.

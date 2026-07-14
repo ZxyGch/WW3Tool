@@ -37,7 +37,7 @@ from .config_models import (
     WW3Config,
     WorkdirConfig,
 )
-from .forcing_fields import FORCING_FIELD_ORDER, ForcingField, Step1Files, Step1State
+from .forcing_fields import FORCING_FIELD_ORDER, ForcingField, Step2Files, Step2State
 from .parameter_catalog import (
     COASTLINE_PRECISION_OPTIONS,
     DEFAULT_OUTPUT_FIELDS,
@@ -65,8 +65,8 @@ __all__ = [
     "WorkdirConfig",
     "FORCING_FIELD_ORDER",
     "ForcingField",
-    "Step1Files",
-    "Step1State",
+    "Step2Files",
+    "Step2State",
     "COASTLINE_PRECISION_OPTIONS",
     "DEFAULT_OUTPUT_FIELDS",
     "FILE_SPLIT_OPTIONS",

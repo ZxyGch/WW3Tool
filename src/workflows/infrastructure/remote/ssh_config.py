@@ -22,13 +22,17 @@ from ...domain.config_models import ServerConfig
 
 @dataclass(frozen=True)
 class ResolvedSshConnection:
-    """解析后的 SSH 连接参数。"""
+    """解析后的 SSH 连接参数。
+
+    [EN] Resolved SSH connection parameters.
+    """
 
     host: str
     port: int
     user: str
     key_file: Optional[Path] = None
     password: str = ""
+    proxy_command: str = ""
 
 
 def default_ssh_config_path() -> Path:
@@ -36,7 +40,10 @@ def default_ssh_config_path() -> Path:
 
 
 def list_ssh_config_hosts(config_path: Path | None = None) -> list[str]:
-    """列出 ``~/.ssh/config`` 中的 Host 别名（跳过 ``*`` 通配）。"""
+    """列出 ``~/.ssh/config`` 中的 Host 别名（跳过 ``*`` 通配）。
+
+    [EN] List Host aliases in ``~/.ssh/config`` (skipping ``*`` wildcards).
+    """
     path = config_path or default_ssh_config_path()
     if not path.is_file():
         return []
@@ -59,7 +66,10 @@ def list_ssh_config_hosts(config_path: Path | None = None) -> list[str]:
 
 
 def resolve_ssh_config_host(alias: str, config_path: Path | None = None) -> ResolvedSshConnection:
-    """按 Host 别名解析 ``~/.ssh/config``。"""
+    """按 Host 别名解析 ``~/.ssh/config``。
+
+    [EN] Resolve ``~/.ssh/config`` by Host alias.
+    """
     alias = str(alias or "").strip()
     if not alias:
         raise ValueError("SSH config Host 别名不能为空")
@@ -93,11 +103,23 @@ def resolve_ssh_config_host(alias: str, config_path: Path | None = None) -> Reso
         if identity:
             key_file = Path(os.path.expanduser(str(identity)))
 
-    return ResolvedSshConnection(host=host, port=port, user=user, key_file=key_file)
+    proxy_command = str(data.get("proxycommand") or "").strip()
+
+    return ResolvedSshConnection(
+        host=host,
+        port=port,
+        user=user,
+        key_file=key_file,
+        proxy_command=proxy_command,
+    )
 
 
 def resolve_server_connection(config: ServerConfig) -> ResolvedSshConnection:
-    """将 ``ServerConfig`` 解析为实际连接参数（含 SSH 配置模式）。"""
+    """将 ``ServerConfig`` 解析为实际连接参数（含 SSH 配置模式）。
+
+    [EN] Resolve ``ServerConfig`` into actual connection parameters (including
+    SSH-config mode).
+    """
     if config.ssh_config_host:
         resolved = resolve_ssh_config_host(config.ssh_config_host)
         return ResolvedSshConnection(
@@ -106,6 +128,7 @@ def resolve_server_connection(config: ServerConfig) -> ResolvedSshConnection:
             user=resolved.user or config.user,
             key_file=resolved.key_file or config.key_file,
             password=config.password,
+            proxy_command=resolved.proxy_command,
         )
     return ResolvedSshConnection(
         host=str(config.host or "").strip(),

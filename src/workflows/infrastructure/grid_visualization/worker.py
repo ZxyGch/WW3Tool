@@ -676,7 +676,7 @@ def run_smc(grid_dir: str) -> dict:
     if not os.path.isfile(cell_path):
         return {"ok": False, "error": "missing grid_cell.dat", "images": [], "photo_dir": photo_dir}
 
-    emit_log(_viz_tr("step2_grid_viz_worker_read", "🔄 正在读取网格数据…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_read", "🔄 正在读取网格数据…"))
     try:
         cel, depth_file = _load_smc_cell_array(cell_path)
         zlon, zlat, dlon, dlat = _smc_zlonlat_dgrid(ri)
@@ -700,13 +700,13 @@ def run_smc(grid_dir: str) -> dict:
         depth_b = depth_b[::stride]
         emit_log(
             _viz_tr(
-                "step2_grid_viz_smc_bathy_subsample",
+                "step1_grid_viz_smc_bathy_subsample",
                 "   SMC 格块过多（>{max}），水深图已按步长 {stride} 抽样填色。",
             ).format(max=SMC_VIZ_BATHY_MAX_CELLS, stride=stride)
         )
 
     out_bathy = os.path.join(photo_dir, outs[0])
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         fig = plt.figure(figsize=fig_wh)
         ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (extent[0] + extent[1])))
@@ -738,10 +738,10 @@ def run_smc(grid_dir: str) -> dict:
         )
         ax.add_collection(pc)
         plt.colorbar(pc, ax=ax, shrink=0.7).set_label(
-            _viz_tr("step2_grid_viz_smc_colorbar", "地形高程（m）"),
+            _viz_tr("step1_grid_viz_smc_colorbar", "地形高程（m）"),
             fontsize=10,
         )
-        ax.set_title(_viz_tr("step2_grid_viz_smc_bathy_title", "SMC 网格 — 水深（格块填色）"), fontsize=13)
+        ax.set_title(_viz_tr("step1_grid_viz_smc_bathy_title", "SMC 网格 — 水深（格块填色）"), fontsize=13)
         plt.tight_layout()
         plt.savefig(out_bathy, dpi=OUTPUT_DPI, bbox_inches="tight")
         plt.close(fig)
@@ -749,7 +749,7 @@ def run_smc(grid_dir: str) -> dict:
         plt.close("all")
         return {"ok": False, "error": f"SMC bathy plot: {e}", "images": [], "photo_dir": photo_dir}
 
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     out_struct = os.path.join(photo_dir, outs[1])
     try:
         nrect = int(cel.shape[0])
@@ -759,7 +759,7 @@ def run_smc(grid_dir: str) -> dict:
             cel_plot = cel[::stride]
             emit_log(
                 _viz_tr(
-                    "step2_grid_viz_smc_struct_subsample",
+                    "step1_grid_viz_smc_struct_subsample",
                     "   SMC 格块过多（>{max}），已按步长 {stride} 抽样后再画边界（仅超大网格）。",
                 ).format(max=SMC_VIZ_STRUCT_MAX_CELLS, stride=stride)
             )
@@ -781,7 +781,7 @@ def run_smc(grid_dir: str) -> dict:
                 transform=ccrs.PlateCarree(),
             )
             ax.add_collection(lc)
-        ax.set_title(_viz_tr("step2_grid_viz_smc_struct_title", "SMC 网格 — 结构（格块边界）"), fontsize=13)
+        ax.set_title(_viz_tr("step1_grid_viz_smc_struct_title", "SMC 网格 — 结构（格块边界）"), fontsize=13)
         plt.tight_layout()
         plt.savefig(out_struct, dpi=OUTPUT_DPI, bbox_inches="tight")
         plt.close(fig)
@@ -1154,7 +1154,7 @@ def run_unst(grid_dir: str) -> dict:
     if fp_now and cache_is_current(grid_dir, "unst"):
         imgs = cached_image_paths(grid_dir, "unst")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
-    emit_log(_viz_tr("step2_grid_viz_worker_read", "🔄 正在读取网格数据…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_read", "🔄 正在读取网格数据…"))
     try:
         xy, depth, ect = read_gmsh_ww3(ww3_path)
     except Exception as e:
@@ -1167,7 +1167,7 @@ def run_unst(grid_dir: str) -> dict:
     fig_wh = unst_figsize_for_extent(extent)
 
     out_bathy = os.path.join(photo_dir, outs[0])
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         fig = plt.figure(figsize=fig_wh)
         ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=0.5 * (extent[0] + extent[1])))
@@ -1183,6 +1183,9 @@ def run_unst(grid_dir: str) -> dict:
             vmin = vmin if np.isfinite(vmin) else 0.0
         # gouraud 着色的 TriMesh 不会被 cartopy 按 transform 重投影（中央经线≠0 时会整体错位到画面外、
         # 导致水深图空白）。先把三角网节点投影到该轴的投影坐标，再以默认 transData 绘制。
+        # [EN] Gouraud-shaded TriMesh is not reprojected by cartopy according to transform
+        # (when central_longitude ≠ 0 it shifts completely out of the canvas, leaving a blank bathy plot).
+        # Project triangulation nodes to the axis projection coordinates first, then draw with default transData.
         _pts = ax.projection.transform_points(ccrs.PlateCarree(), xy[:, 0], xy[:, 1])
         triang_proj = mtri.Triangulation(_pts[:, 0], _pts[:, 1], triangles=ect, mask=tri_mask)
         tpc = ax.tripcolor(
@@ -1203,7 +1206,7 @@ def run_unst(grid_dir: str) -> dict:
         return {"ok": False, "error": f"bathy plot: {e}", "images": [], "photo_dir": photo_dir}
 
     out_struct = os.path.join(photo_dir, outs[1])
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     try:
         segs, _ = unst_wireframe_segments(xy, ect, tri_mask, STRUCTURE_MAX_EDGES)
         fig = plt.figure(figsize=fig_wh)
@@ -1251,7 +1254,7 @@ def run_structured(grid_dir: str) -> dict:
     if fp_now and cache_is_current(grid_dir, "structured"):
         imgs = cached_image_paths(grid_dir, "structured")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
-    emit_log(_viz_tr("step2_grid_viz_worker_read", "🔄 正在读取网格数据…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_read", "🔄 正在读取网格数据…"))
     mask_p = _structured_mask_path(grid_dir)
     desc_p = _structured_grid_desc_path(grid_dir)
     gf = {
@@ -1277,14 +1280,14 @@ def run_structured(grid_dir: str) -> dict:
         depth = depth.copy()
         depth[loc] = np.nan
     written: list[str] = []
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         p_bathy = os.path.join(photo_dir, "grid_bathymetry.png")
         _plot_pcolormesh_file(lon, lat, depth, "Bathymetry", p_bathy, shading="gouraud")
         written.append("grid_bathymetry.png")
     except Exception as e:
         return {"ok": False, "error": f"bathy: {e}", "images": [], "photo_dir": photo_dir}
-    emit_log(_viz_tr("step2_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
+    emit_log(_viz_tr("step1_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     try:
         p_struct = os.path.join(photo_dir, "grid_structure.png")
         plot_structured_grid_structure(lon, lat, p_struct)

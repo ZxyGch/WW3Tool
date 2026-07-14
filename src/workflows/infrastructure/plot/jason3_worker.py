@@ -2,6 +2,10 @@
 
 在独立子进程中读取 WW3 输出 NetCDF 与本地 Jason-3 L2 产品，按时空窗口进行
 最近邻匹配，计算偏差/RMSE/相关系数，并生成 SWH 对比散点图与空间分布图。
+
+[EN] [EN] JASON-3 satellite significant wave height validation worker — match and plot WW3 model results against Jason-3 along-track data.
+
+Reads WW3 output NetCDF and local Jason-3 L2 products in a separate subprocess, performs nearest-neighbor matching by space-time window, computes bias/RMSE/correlation, and generates SWH comparison scatter plots and spatial distribution maps.
 """
 
 import os
@@ -25,6 +29,8 @@ JASON3_MAX_REASONABLE_SWH = 12.0
 
 
 def jason3_swh_output_path(result_folder: str, start_str: str, end_str: str, lon_lat) -> str:
+    
+    # [EN] [EN] Output path for Jason-3 SWH plots (including time range and lon/lat).
     """Jason-3 SWH 图输出路径（含时间范围与经纬度）。"""
     lon_min, lon_max, lat_min, lat_max = [float(v) for v in lon_lat[:4]]
     from .photo_output import photo_subdir
@@ -38,6 +44,8 @@ def jason3_swh_output_path(result_folder: str, start_str: str, end_str: str, lon
 
 
 def _read_jason3_track_arrays(path: str):
+    
+    # [EN] [EN] Read Jason-3 along-track latitude, longitude and SWH; raise an exception if the file is corrupted/truncated.
     """读取 Jason-3 沿轨经纬度与 SWH；文件损坏/截断时抛出异常。"""
     with Dataset(path) as ds:
         lat_tmp = ds["data_01/latitude"][:].astype(float)
@@ -61,6 +69,8 @@ def _jason3_open_error_message(path: str, error: Exception) -> str:
 
 
 def _read_jason3_wind_array(data_group, ku_group):
+    
+    # [EN] [EN] Read Jason-3 wind-speed variables, compatible with field names from different product versions.
     """读取 Jason-3 风速变量，兼容不同产品版本的字段命名。"""
     if 'wind_speed_alt_mle3' in ku_group.variables:
         return ku_group.variables['wind_speed_alt_mle3'][:].astype(float)
@@ -98,9 +108,32 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
     返回
     ----
     经 ``result_queue`` 发送 ``{'bias', 'rmse', 'corr', 'count'}`` 字典。
+    
+    [EN] [EN] Perform WW3 and Jason-3 along-track SWH space-time matching and statistics in a subprocess.
+    
+    Parameters
+    ----------
+    ww3_file : str
+        Path to WW3 field output NetCDF.
+    jason3_path : str
+        Jason-3 product file or directory.
+    out_folder : str
+        Output directory for comparison plots and statistics.
+    log_queue / result_queue : multiprocessing.Queue
+        Log and result back-channel queues.
+    max_dist_deg : float
+        Maximum spatial matching distance (degrees).
+    time_window_hours : float
+        Half-width of the time matching window (hours).
+    
+    Returns
+    -------
+    Sends a ``{'bias', 'rmse', 'corr', 'count'}`` dict via ``result_queue``.
     """
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)
@@ -215,6 +248,8 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
         from pathlib import Path
 
         def haversine_distance(lat1, lon1, lat2, lon2):
+            
+            # [EN] [EN] Compute the distance (degrees) between two points.
             """计算两点间的距离（度）"""
             lat1_rad = np.radians(lat1)
             lon1_rad = np.radians(lon1)
@@ -230,6 +265,8 @@ def _match_ww3_jason3_worker(ww3_file, jason3_path, out_folder, log_queue, resul
             return distance_deg
 
         def read_jason3_chen(lon_lat, timeinput, jasonpath):
+            
+            # [EN] [EN] Read Jason-3 data (Chen method) - subprocess version.
             """读取 Jason-3 数据（Chen 方法）- 子进程版本"""
             jasonpath = Path(jasonpath)
             timeinput = np.array(timeinput)
@@ -520,9 +557,15 @@ def _run_jason3_swh_worker(lon_lat, time_range, jason_folder, out_folder, log_qu
 
     根据给定经纬度范围与时间窗筛选本地 Jason-3 文件，生成填色/散点对比图并
     通过 ``result_queue`` 回传输出路径列表。
+    
+    [EN] [EN] Plot Jason-3 along-track SWH spatial distribution in a subprocess (does not depend on WW3 matching).
+    
+    Filters local Jason-3 files by the given lon/lat range and time window, generates filled/scatter comparison maps, and returns the output path list via ``result_queue``.
     """
     try:
         def log(msg):
+            
+            # [EN] [EN] Send a log message to the queue.
             """发送日志到队列"""
             try:
                 log_queue.put(msg)

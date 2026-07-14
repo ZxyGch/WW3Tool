@@ -174,8 +174,8 @@ class WW3MultiNML(NMLPrimitives):
             modified_flghg2 = False
 
             # 检查是否为嵌套网格模式
-            grid_type = getattr(self, 'grid_type_var', tr("step2_grid_type_normal", "普通网格"))
-            nested_text = tr("step2_grid_type_nested", "嵌套网格")
+            grid_type = getattr(self, 'grid_type_var', tr("step1_grid_type_normal", "普通网格"))
+            nested_text = tr("step1_grid_type_nested", "嵌套网格")
             is_nested_grid = (grid_type == nested_text or grid_type == "嵌套网格")
 
             # 如果通过 grid_type_var 无法确定，检查 level* 目录结构

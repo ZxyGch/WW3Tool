@@ -6,6 +6,12 @@
 
 结果 PNG 序列输出至 ``{selected_folder}/photo/wind_field/wind_{timestamp}.png``，
 路径列表经 ``result_queue`` 回传。
+
+[EN] [EN] Wind-field filled-contour and arrow/barb visualization worker — generate 10 m wind-field spatial distribution maps from wind-field NetCDF.
+
+Reads wind-field NetCDF in a separate subprocess (supports u10/v10, wndewd/wndnwd, uwnd/vwnd and similar names), draws RdYlBu_r discrete graded filled-contour maps with cartopy projection (uniform color scale across frames), optionally overlays arrows or barbs, and supports cv2 upsampling for higher background resolution.
+
+Result PNG sequence is output to ``{selected_folder}/photo/wind_field/wind_{timestamp}.png``, and the path list is returned via ``result_queue``.
 """
 
 import os
@@ -52,6 +58,25 @@ def _make_wind_field_worker(
         日志队列，``put(msg)`` 发送进度，完成后 ``put("__DONE__")``。
     result_queue : queue-like
         结果队列，``put(saved_paths)`` 回传生成的 PNG 路径列表。
+    
+    [EN] [EN] Generate a sequence of 10 m wind-field filled-contour maps by time step in a subprocess.
+    
+    Parameters
+    ----------
+    data_nc_path : str
+        Path to the wind-field NetCDF file.
+    selected_folder : str
+        Root output directory (images are saved under its ``photo/wind_field/`` subdirectory).
+    time_step_hours : float
+        Output time interval (hours).
+    flag_type : str
+        Overlay marker type: ``"arrow"`` / ``"barb"`` / ``"none"`` (or corresponding translated text).
+    density_step : int
+        Arrow/barb sparsification step; auto-estimated when ``None``.
+    log_queue : queue-like
+        Log queue; use ``put(msg)`` to send progress and ``put("__DONE__")`` when finished.
+    result_queue : queue-like
+        Result queue; use ``put(saved_paths)`` to return the list of generated PNG paths.
     """
     try:
         def log(msg):

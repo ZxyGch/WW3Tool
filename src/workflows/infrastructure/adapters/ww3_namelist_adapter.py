@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from ...domain.config_models import PipelineConfig, PointConfig, TrackPointConfig
-from ...domain.forcing_fields import ForcingField, Step1Files
+from ...domain.forcing_fields import ForcingField, Step2Files
 from ...support.logging import CoreLogger
 from ...support.translations import tr
 from .. import runtime_config
@@ -50,12 +50,12 @@ from ..ww3.widget_stubs import _Checkbox, _ComboValue, _Table, _TextValue
 
 
 class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
-    """将 ``PipelineConfig`` 与 Step 1 强迫场路径映射为 Mixin 所需的桩控件属性。
+    """将 ``PipelineConfig`` 与 Step 2 强迫场路径映射为 Mixin 所需的桩控件属性。
 
-    [EN] Map ``PipelineConfig`` and Step 1 forcing field paths to stub widget properties expected by the Mixin.
+    [EN] Map ``PipelineConfig`` and Step 2 forcing field paths to stub widget properties expected by the Mixin.
     """
 
-    def __init__(self, config: PipelineConfig, files: Step1Files, logger: CoreLogger, app_config: Dict[str, Any]) -> None:
+    def __init__(self, config: PipelineConfig, files: Step2Files, logger: CoreLogger, app_config: Dict[str, Any]) -> None:
         self._logger = logger
         self._app_config = app_config
         self._loaded_config = config
@@ -92,6 +92,7 @@ class _WW3Adapter(ModifyWW3NML, StepFourServiceMixin):
             and config.restart.restart_time
             else f"{config.ww3.start_date} 000000"
         )
+        self._restart_step = config.restart.restart_step or 0
         try:
             self._supports_restart2 = float(str(config.ww3.version).split()[0]) >= 7.0
         except ValueError:
@@ -179,7 +180,10 @@ def _resolve_st_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
 
 
 def _resolve_output_scheme_name(config: PipelineConfig, app_config: Dict[str, Any]) -> str:
-    """输出变量方案名；无界面时与 ``ww3.output_scheme`` 一致。"""
+    """输出变量方案名；无界面时与 ``ww3.output_scheme`` 一致。
+
+    [EN] Output variable scheme name; in headless mode it matches ``ww3.output_scheme``.
+    """
     if config.ww3.output_scheme:
         return str(config.ww3.output_scheme)
     return "__params__"
@@ -306,16 +310,16 @@ def _patched_load_config(config: Dict[str, Any]):
 
 def prepare_ww3_files(
     config: PipelineConfig,
-    files: Step1Files,
+    files: Step2Files,
     logger: CoreLogger,
     *,
     update_server_script: bool = True,
 ) -> None:
-    """根据流水线配置与 Step 1 强迫场路径生成 WW3 namelist 与辅助脚本。
+    """根据流水线配置与 Step 2 强迫场路径生成 WW3 namelist 与辅助脚本。
 
     参数:
         config: 完整流水线配置（网格、计算模式、SLURM、WW3 时间范围等）
-        files: Step 1 已选 wind/current/level/ice 文件路径
+        files: Step 2 已选 wind/current/level/ice 文件路径
         logger: 进度与诊断日志
 
     流程:
@@ -323,11 +327,11 @@ def prepare_ww3_files(
         2. 调用 ``modify_ww3_file()`` 写出 namelist（嵌套网格在逐层循环内写回 ``ww3_grid`` 参数）；
         3. 普通网格再将 ``ww3_grid.parameters`` 数值写回 ``ww3_grid.nml``。
 
-    [EN] Generate WW3 namelist and auxiliary scripts based on the pipeline configuration and Step 1 forcing field paths.
+    [EN] Generate WW3 namelist and auxiliary scripts based on the pipeline configuration and Step 2 forcing field paths.
 
     Args:
         config: Complete pipeline configuration (grid, computation mode, SLURM, WW3 time range, etc.)
-        files: Step 1 selected wind/current/level/ice file paths
+        files: Step 2 selected wind/current/level/ice file paths
         logger: Progress and diagnostic logging
 
     Workflow:
@@ -347,8 +351,11 @@ def prepare_ww3_files(
 
 
 def update_server_script(config: PipelineConfig, logger: CoreLogger) -> None:
-    """只按当前 Slurm/ST 表单参数更新工作目录中的 ``server.sh``。"""
+    """只按当前 Slurm/ST 表单参数更新工作目录中的 ``server.sh``。
+
+    [EN] Update only ``server.sh`` in the working directory according to the current Slurm/ST form parameters.
+    """
     app_config = _merged_runtime_config(config)
-    adapter = _WW3Adapter(config, Step1Files(), logger, app_config)
+    adapter = _WW3Adapter(config, Step2Files(), logger, app_config)
     with runtime_config.use_params_path(config.source_path), _patched_load_config(app_config):
         adapter.modify_server_sh_file()

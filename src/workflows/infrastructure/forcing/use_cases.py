@@ -1,12 +1,12 @@
-"""WW3 Step 1 强迫场导入用例（基础设施层）。
+"""WW3 Step 2 强迫场导入用例（基础设施层）。
 
-[EN] WW3 Step 1 forcing field import use cases (infrastructure layer).
+[EN] WW3 Step 2 forcing field import use cases (infrastructure layer).
 
-本模块封装 Step 1「选择并导入强迫场 NetCDF」的 I/O 编排：变量检测、目标路径
+本模块封装 Step 2「选择并导入强迫场 NetCDF」的 I/O 编排：变量检测、目标路径
 生成、复制/移动、风场归一化及多场合并文件的自动关联。类名保留 ``UseCase`` 后缀
 为历史兼容；底部类型别名提供更符合基础设施命名的新名称。
 
-[EN] This module encapsulates the I/O orchestration for Step 1 "select and import forcing
+[EN] This module encapsulates the I/O orchestration for Step 2 "select and import forcing
 NetCDF": variable detection, target path generation, copy/move, wind normalization, and
 auto-association of multi-field merged files. Class names retain the ``UseCase`` suffix for
 historical compatibility; type aliases at the bottom provide names more consistent with
@@ -27,7 +27,7 @@ from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 from typing import Callable, Optional
 
-from ...domain.forcing_fields import ForcingField, Step1Files
+from ...domain.forcing_fields import ForcingField, Step2Files
 from ...support.translations import tr
 
 from .file_path_manager import FilePathManager
@@ -35,7 +35,7 @@ from .file_service import FileService
 from .variable_detector import VariableDetector
 
 
-def _merge_forcing_files(target: Step1Files, patch: Step1Files) -> None:
+def _merge_forcing_files(target: Step2Files, patch: Step2Files) -> None:
     """将 ``patch`` 中非空路径合并进 ``target``。
 
     [EN] Merge non-empty paths from ``patch`` into ``target``.
@@ -61,7 +61,7 @@ class ForcingImportResult:
         actual_file_path: 实际使用的源/目标绝对路径
         display_log_path: 日志中展示给用户的路径
         detected_fields: 文件中检测到的场字典
-        files_patch: 需合并进 Step 1 状态的路径补丁
+        files_patch: 需合并进 Step 2 状态的路径补丁
 
     [EN] Attributes:
         success: Whether the import completed successfully
@@ -72,7 +72,7 @@ class ForcingImportResult:
         actual_file_path: Actual source/target absolute path used
         display_log_path: Path displayed to the user in logs
         detected_fields: Dictionary of fields detected in the file
-        files_patch: Path patch to merge into Step 1 state
+        files_patch: Path patch to merge into Step 2 state
     """
     success: bool
     field: Optional[ForcingField] = None
@@ -82,25 +82,25 @@ class ForcingImportResult:
     actual_file_path: Optional[str] = None
     display_log_path: Optional[str] = None
     detected_fields: dict[str, bool] = dataclass_field(default_factory=dict)
-    files_patch: Step1Files = dataclass_field(default_factory=Step1Files)
+    files_patch: Step2Files = dataclass_field(default_factory=Step2Files)
 
 
 class AutoAssociateUseCase:
-    """将多场合并 NetCDF 自动映射到 Step 1 各场选择。
+    """将多场合并 NetCDF 自动映射到 Step 2 各场选择。
 
-    [EN] Automatically map multi-field merged NetCDF files to Step 1 field selections.
+    [EN] Automatically map multi-field merged NetCDF files to Step 2 field selections.
 
     当用户开启「自动关联」且单个文件同时含 wind/current/level/ice 变量时，
-    同一文件路径会写入 ``Step1Files`` 的多个槽位。
+    同一文件路径会写入 ``Step2Files`` 的多个槽位。
 
     [EN] When the user enables "auto-associate" and a single file contains wind/current/level/ice
-    variables simultaneously, the same file path is written to multiple slots in ``Step1Files``.
+    variables simultaneously, the same file path is written to multiple slots in ``Step2Files``.
     """
 
-    def execute(self, detected_fields: dict[str, bool], actual_file_path: str) -> Step1Files:
-        """根据检测结果填充 ``Step1Files``。
+    def execute(self, detected_fields: dict[str, bool], actual_file_path: str) -> Step2Files:
+        """根据检测结果填充 ``Step2Files``。
 
-        [EN] Populate ``Step1Files`` based on detection results.
+        [EN] Populate ``Step2Files`` based on detection results.
 
         参数:
             detected_fields: 各场是否存在的布尔字典
@@ -111,12 +111,12 @@ class AutoAssociateUseCase:
             actual_file_path: File path already copied to the working directory
 
         返回:
-            仅包含检测为 True 的场及其路径的 ``Step1Files``
+            仅包含检测为 True 的场及其路径的 ``Step2Files``
 
         [EN] Returns:
-            A ``Step1Files`` containing only detected-True fields and their paths.
+            A ``Step2Files`` containing only detected-True fields and their paths.
         """
-        files = Step1Files()
+        files = Step2Files()
         if not actual_file_path:
             return files
         for field_name, detected in (detected_fields or {}).items():
@@ -126,9 +126,9 @@ class AutoAssociateUseCase:
 
 
 class ImportForcingFileUseCase:
-    """导入强迫场 NetCDF 到工作目录（Step 1 统一入口，支持所有场类型）。
+    """导入强迫场 NetCDF 到工作目录（Step 2 统一入口，支持所有场类型）。
 
-    [EN] Import forcing NetCDF to the working directory (Step 1 unified entry,
+    [EN] Import forcing NetCDF to the working directory (Step 2 unified entry,
     supports all field types: wind, current, level, ice).
 
     所有场类型统一走 ``FileService.copy_and_fix_forcing_file()``，
@@ -239,7 +239,7 @@ class ImportForcingFileUseCase:
                 )
 
         actual_file_path = target_file if need_process or os.path.exists(target_file) else file_path
-        files_patch = Step1Files()
+        files_patch = Step2Files()
         files_patch.set(field, actual_file_path)
         if auto_associate:
             _merge_forcing_files(files_patch, self._auto_associate_use_case.execute(detected_fields, actual_file_path))
@@ -294,21 +294,21 @@ class ImportForcingFileUseCase:
 
 
 class ScanWorkdirForcingUseCase:
-    """从已有工作目录恢复 Step 1 强迫场文件列表。
+    """从已有工作目录恢复 Step 2 强迫场文件列表。
 
-    [EN] Restore the Step 1 forcing file list from an existing working directory.
+    [EN] Restore the Step 2 forcing file list from an existing working directory.
     """
 
     def __init__(self, file_service: FileService) -> None:
         self._file_service = file_service
 
-    def execute(self, selected_folder: Optional[str], *, auto_associate: bool = True) -> Step1Files:
-        """扫描目录并返回 ``Step1Files``；目录为空或无效时返回空结构。
+    def execute(self, selected_folder: Optional[str], *, auto_associate: bool = True) -> Step2Files:
+        """扫描目录并返回 ``Step2Files``；目录为空或无效时返回空结构。
 
-        [EN] Scan the directory and return ``Step1Files``; returns empty structure if directory is empty or invalid.
+        [EN] Scan the directory and return ``Step2Files``; returns empty structure if directory is empty or invalid.
         """
         if not selected_folder:
-            return Step1Files()
+            return Step2Files()
         return self._file_service.scan_forcing_files(selected_folder, auto_associate=auto_associate)
 
 

@@ -70,9 +70,9 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 |      | validate [workdir]                                            | 校验 params.yml        |
 |      | config [workdir]                                              | 打印配置摘要               |
 |      | print-params [workdir]                                        | 输出 params.yml 原文     |
-| 预处理  | prepare-forcing [workdir]                                     | 准备强迫场（Step 1）        |
+| 预处理  | generate-grid [workdir]                                       | 生成网格（Step 1）        |
 |      | merge-forcing <in1.nc> [...] -o <out.nc>                      | 独立工具：校验并合并强迫场 NetCDF |
-|      | generate-grid [workdir]                                       | 生成网格（Step 2）         |
+|      | prepare-forcing [workdir]                                     | 准备强迫场（Step 2）        |
 |      | recommend-grid [workdir] [--coarse\|--fine]                   | 按区域范围推荐网格间距          |
 |      | recommend-cfl [workdir] [--mode safe\|fast\|faster] [--factor X] | 按 CFL 公式推荐时间步长       |
 |      | prepare-ww3 [workdir]                                         | 仅生成 WW3 namelist     |
@@ -121,12 +121,12 @@ work_dir_name/
 ├── server.sh                          # 服务器 Slurm 运行脚本，由 public/scripts/server.sh 复制并按算例修正
 ├── success / fail                     # 空标记文件，表示最近一次运行成功或失败
 │
-├── wind.nc                            # 标准化后的风场强迫，通常来自 Step 1
+├── wind.nc                            # 标准化后的风场强迫，通常来自 Step 2
 ├── current.nc                         # 标准化后的流场强迫，可选
 ├── level.nc                           # 标准化后的水位强迫，可选
 ├── ice.nc                             # 标准化后的海冰强迫，可选
 │
-├── grid.bot                           # 水深网格，Step 2 生成或导入
+├── grid.bot                           # 水深网格，Step 1 生成或导入
 ├── grid.obst                          # 阻塞网格，结构化网格常见
 ├── grid.meta                          # WW3Tool 记录的网格元信息
 ├── mod_def.ww3                        # ww3_grid 生成的 WW3 网格定义文件
@@ -269,8 +269,8 @@ paths:
 
 ```
 → [创建或加载工作目录]  自动复制根 params.yml 到工作目录
-→ [Step 1 强迫场准备] 校验、修复、复制/移动强迫场数据到工作目录
-→ [Step 2 网格生成] 调用 meshgen 生成网格文件
+→ [Step 1 网格生成] 调用 meshgen 生成网格文件
+→ [Step 2 强迫场准备] 校验、修复、复制/移动强迫场数据到工作目录
 → [Step 3 计算模式] 选择 区域计算 / 二维谱点计算 / 轨迹计算
 → [Step 4 WW3 配置] 配置 nml 文件参数
 → [Step 5 连接服务器] SSH 连接、配置 Slurm 参数、选择服务器 WW3 版本
@@ -280,8 +280,8 @@ paths:
 
 ```mermaid
 flowchart LR
-  A[强迫场 NetCDF] --> B[Step 1 强迫场准备]
-  B --> C[Step 2 网格生成]
+  A[网格参数 / 水深 / 海岸线] --> B[Step 1 网格生成]
+  B --> C[Step 2 强迫场准备]
   C --> D[Step 3 计算模式
   区域 / 谱点 / 航迹]
   D --> E[Step 4 WW3 配置
@@ -322,7 +322,7 @@ flowchart LR
 ```swift
 workdir:
 	path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
-	default_workspace: /Volumes/Zxy's Disk/WW3Tool_workSpace/
+	default_workspace: /public/home/weiyl001/user/gongchuheng/WorkSpace/ShangHai/
 ```
 
 path 是工作目录的路径
@@ -366,127 +366,20 @@ ww3> queue-status
 
 
 
-### 5.2 Step 1 — 强迫场准备
+### 5.2 Step 1 — 网格生成
 
-第一步负责把外部 NetCDF 强迫场导入工作目录，并统一成 WW3Tool 后续步骤能够直接识别的标准文件。支持四类场：风场、流场、水位场、海冰场。
+第一步负责根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责“把经纬度范围、水深、海岸线、网格类型变成 WW3 可读取的网格输入”，不运行 `ww3_grid`；真正把网格编译成 `mod_def.ww3` 是 Step 4 / 运行脚本中的 `ww3_grid` 完成的。
 
 ![](public/resource/README-media/截屏2026-06-28%2010.50.13.png)
 
 
 #### GUI 操作逻辑
 
-主页 Step 1 当前是“先选择、再确认导入”：
-
-1. 点击风场、流场、水位场、海冰场按钮选择 NetCDF 文件。
-
-2. 选择某个文件后，右侧日志会立即显示该文件信息，包括变量、时间范围、经纬度范围等；这一步只读取信息，不会复制、剪切或裁剪文件。
-
-![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
-
-
-3. 选择一个或多个强迫场后，程序会读取这些文件的公共时间范围和公共空间范围，并填入 Step 1 的时间、纬度、经度输入框。打开已有工作目录时，也会扫描 `wind.nc`、`current.nc`、`level.nc`、`ice.nc` 等标准文件并尽量填充公共范围。
-4. 如果要按范围裁剪，先编辑时间、纬度、经度范围，然后点击“确认裁剪并导入”。时间格式为 `YYYYMMDD`，空间范围为经纬度数值。
-5. 如果不裁剪，点击“直接导入，不进行裁剪”。此时会完整复制或剪切原文件到工作目录，再做标准化。
-
-导入模式：
-
-- `复制`：保留原始文件，把处理后的文件写入工作目录。
-- `剪切`：导入完成后移走或删除原始文件。裁剪导入时，源文件不会被原样移动到工作目录，而是先生成裁剪后的工作目录文件；成功后再删除源文件。
-
-几个辅助按钮的含义：
-
-- `读取公共范围`：重新读取已选择强迫场的公共时间、纬度、经度范围，并覆盖 Step 1 范围输入框。
-- `查看地图`：显示最多四个强迫场的空间范围，用于检查风、流、水位、海冰覆盖区是否一致。
-- `查看所有场文件信息`：把当前已选择的所有强迫场文件信息一次性写入日志。
-- 每个强迫场选择按钮右侧的 `×`：清除当前选择；如果指向的是工作目录中已转换的标准强迫场文件，会提示是否删除该文件，并同步清除引用它的场。
-
-
-#### params.yml 参数
-
-Step 1 相关配置位于 `forcing` 段：
-
-对应 params.yml 与 CLI：
-
-```sh
-python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
-```
-
-```yaml
-forcing:
-  wind: null
-  current: null
-  level: null
-  ice: null
-  process_mode: copy        # copy 或 move
-  crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]，为空表示不裁剪
-  crop_bbox: []             # [west, east, south, north]，为空表示不裁剪
-  auto_associate: true      # 一个文件含多个场时，是否自动关联到多个槽位
-```
-
-设置页面里的“强迫场配置”提供默认导入方式和自动关联开关。主页打开工作目录时会读取这些默认值；实际导入时仍以主页当前选择和按钮操作为准。
-
-
-#### 判断强迫场类型
-
-程序检测 NetCDF 内部变量名来判断强迫场类型：
-
-- **风场**：存在 u10/v10、wndewd/wndnwd、uwnd/vwnd 任一对（大小写均匹配）
-- **流场**：存在 uo/vo
-- **水位场**：存在 zos
-- **冰场**：存在 siconc
-
-
-#### 强迫场标准化处理
-
-```swift
-🔄 Rewriting time metadata to WW3-readable char attributes (units + calendar)
-
-✅ Forcing field normalized and saved to: /User/WW3Tool/workSpace/2026-06-29_16-57-02/wind.nc
-```
-
-确认导入后，程序会对目标文件执行标准化：
-
-1. 自动识别各类命名变体，例如 `wndewd/wndnwd`、`uwnd/vwnd` 转为风场标准变量，`uo/vo`、`zos`、`siconc` 转为对应强迫场变量。
-2. 坐标变量统一命名为 `longitude`、`latitude`、`time`，同时同步维度名和引用这些维度的变量。
-3. 输出文件按场类型命名。单场通常为 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`；一个文件包含多种场且开启自动关联时，可能输出 `current_level.nc`、`wind_current_level_ice.nc` 等组合文件。
-4. 纬度从大到小时会自动翻转为从小到大，避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`。
-5. 标准化后的文件供 Step 4 自动生成 `ww3_prnc.nml` 使用，因此后续不需要再根据原始变量名手动改 namelist。
-
-
-#### 多场文件自动关联
-
-如果一个 NetCDF 文件同时包含多种强迫场，例如流场和水位场在同一个文件里，且 `forcing.auto_associate: true`，程序会检测文件中所有存在的场类型，并把同一个标准化后的文件路径关联到多个 GUI 槽位。
-
-例如：
-
-- 文件同时含 `uo/vo` 和 `zos`，导入后可保存为 `current_level.nc`，GUI 的流场和水位场都指向这个文件。
-- 文件同时含风、流、水位、海冰，导入后可保存为 `wind_current_level_ice.nc`，四个槽位都指向同一个文件。
-
-如果关闭自动关联，用户在哪个槽位选择文件，就只按该槽位导入。
-
-#### 工作目录扫描
-
-打开工作目录时，会自动检测是否存在已经标准化处理过的强迫场文件，并在 GUI 中回填对应按钮。扫描主要依据标准文件名和组合文件名，例如 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`、`current_level.nc`、`wind_current_level_ice.nc`。
-
-扫描只负责恢复 Step 1 的强迫场选择显示；真正导入仍然需要用户点击“确认裁剪并导入”或“直接导入，不进行裁剪”。
-
-
-
-
-
-
-
-### 5.3 Step 2 — 网格生成
-
-![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
-
-Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责“把经纬度范围、水深、海岸线、网格类型变成 WW3 可读取的网格输入”，不运行 `ww3_grid`；真正把网格编译成 `mod_def.ww3` 是 Step 4 / 运行脚本中的 `ww3_grid` 完成的。
+主页 Step 1 当前是“设置网格参数、预览范围、然后生成网格”：
 
 关于底层网格生成器 `WW3Tool/meshgen`，详细说明见 `meshgen/README.md`。这里只写 GUI / CLI 使用时最常改、最容易误解的部分。
 
-#### GUI 操作逻辑
 
-主页 Step 2 的推荐操作顺序：
 
 
 ![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
@@ -505,7 +398,7 @@ Step 2 根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责�
 
 reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它们是网格生成的必要数据，如果没有 reference_data，将无法生成网格文件。
 
-如果 WW3Tool/meshgen/reference_data 没有找到这些数据文件，那么在第二步生成网格时会弹出一个下载窗口
+如果 WW3Tool/meshgen/reference_data 没有找到这些数据文件，那么在第一步生成网格时会弹出一个下载窗口
 
 ![](public/resource/README-media/截屏2026-06-29%2017.01.09.png)
 
@@ -840,6 +733,114 @@ smc:
 
 
 
+### 5.3 Step 2 — 强迫场准备
+
+![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
+
+Step 2 负责把外部 NetCDF 强迫场导入工作目录，并统一成 WW3Tool 后续步骤能够直接识别的标准文件。支持四类场：风场、流场、水位场、海冰场。
+
+#### GUI 操作逻辑
+
+主页 Step 2 的推荐操作顺序：
+
+1. 点击风场、流场、水位场、海冰场按钮选择 NetCDF 文件。
+
+2. 选择某个文件后，右侧日志会立即显示该文件信息，包括变量、时间范围、经纬度范围等；这一步只读取信息，不会复制、剪切或裁剪文件。
+
+![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
+
+
+3. 如果要按范围裁剪，先编辑时间、纬度、经度范围，然后点击"确认裁剪并导入"。时间格式为 `YYYYMMDD`，空间范围为经纬度数值。
+4. 如果不裁剪，点击"直接导入，不进行裁剪"。此时会完整复制或剪切原文件到工作目录，再做标准化。
+
+导入模式：
+
+- `复制`：保留原始文件，把处理后的文件写入工作目录。
+- `剪切`：导入完成后移走或删除原始文件。裁剪导入时，源文件不会被原样移动到工作目录，而是先生成裁剪后的工作目录文件；成功后再删除源文件。
+
+几个辅助按钮的含义：
+
+- `查看地图`：根据当前 Step 2 的经纬度范围生成区域预览图。
+- `查看地图`：显示最多四个强迫场的空间范围，用于检查风、流、水位、海冰覆盖区是否一致。
+- `查看所有场文件信息`：把当前已选择的所有强迫场文件信息一次性写入日志。
+- 每个强迫场选择按钮右侧的 `×`：清除当前选择；如果指向的是工作目录中已转换的标准强迫场文件，会提示是否删除该文件，并同步清除引用它的场。
+
+
+#### params.yml 参数
+
+Step 2 相关配置位于 `forcing` 段：
+
+对应 params.yml 与 CLI：
+
+```sh
+python3 run.py prepare-forcing [work_dir_name]    # 准备强迫场
+```
+
+```yaml
+forcing:
+  wind: null
+  current: null
+  level: null
+  ice: null
+  process_mode: copy        # copy 或 move
+  crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]，为空表示不裁剪
+  crop_bbox: []             # [west, east, south, north]，为空表示不裁剪
+  auto_associate: true      # 一个文件含多个场时，是否自动关联到多个槽位
+```
+
+设置页面里的“强迫场配置”提供默认导入方式和自动关联开关。主页打开工作目录时会读取这些默认值；实际导入时仍以主页当前选择和按钮操作为准。
+
+
+#### 判断强迫场类型
+
+程序检测 NetCDF 内部变量名来判断强迫场类型：
+
+- **风场**：存在 u10/v10、wndewd/wndnwd、uwnd/vwnd 任一对（大小写均匹配）
+- **流场**：存在 uo/vo
+- **水位场**：存在 zos
+- **冰场**：存在 siconc
+
+
+#### 强迫场标准化处理
+
+```swift
+🔄 Rewriting time metadata to WW3-readable char attributes (units + calendar)
+
+✅ Forcing field normalized and saved to: /User/WW3Tool/workSpace/2026-06-29_16-57-02/wind.nc
+```
+
+确认导入后，程序会对目标文件执行标准化：
+
+1. 自动识别各类命名变体，例如 `wndewd/wndnwd`、`uwnd/vwnd` 转为风场标准变量，`uo/vo`、`zos`、`siconc` 转为对应强迫场变量。
+2. 坐标变量统一命名为 `longitude`、`latitude`、`time`，同时同步维度名和引用这些维度的变量。
+3. 输出文件按场类型命名。单场通常为 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`；一个文件包含多种场且开启自动关联时，可能输出 `current_level.nc`、`wind_current_level_ice.nc` 等组合文件。
+4. 纬度从大到小时会自动翻转为从小到大，避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`。
+5. 标准化后的文件供 Step 4 自动生成 `ww3_prnc.nml` 使用，因此后续不需要再根据原始变量名手动改 namelist。
+
+
+#### 多场文件自动关联
+
+如果一个 NetCDF 文件同时包含多种强迫场，例如流场和水位场在同一个文件里，且 `forcing.auto_associate: true`，程序会检测文件中所有存在的场类型，并把同一个标准化后的文件路径关联到多个 GUI 槽位。
+
+例如：
+
+- 文件同时含 `uo/vo` 和 `zos`，导入后可保存为 `current_level.nc`，GUI 的流场和水位场都指向这个文件。
+- 文件同时含风、流、水位、海冰，导入后可保存为 `wind_current_level_ice.nc`，四个槽位都指向同一个文件。
+
+如果关闭自动关联，用户在哪个槽位选择文件，就只按该槽位导入。
+
+#### 工作目录扫描
+
+打开工作目录时，会自动检测是否存在已经标准化处理过的强迫场文件，并在 GUI 中回填对应按钮。扫描主要依据标准文件名和组合文件名，例如 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`、`current_level.nc`、`wind_current_level_ice.nc`。
+
+扫描只负责恢复 Step 1 的网格参数显示；真正生成网格仍然需要用户点击“生成网格”。
+
+
+
+
+
+
+
 ### 5.4 Step 3 — 计算模式
 
 计算模式决定 WW3 算一整片海域、只算若干固定点位，还是沿一条移动轨迹算。在 params.yml 的 calc.mode 里设置，GUI 上第三步选择；没有单独的 CLI 子命令，会在 prepare-ww3 或 run-workflow 时自动读取。
@@ -1002,7 +1003,7 @@ WW3Tool 在此基础上取整数秒，并级联得到：
 
 #### 5.5.2 把网格写进 ww3_grid.nml
 
-Step 2 生成的网格文件需要 Step 4  配置 `ww3_grid.nml` 的网格相关的参数才能让 WW3 能正确读取。不同网格类型写法不一样：
+Step 1 生成的网格文件需要 Step 4  配置 `ww3_grid.nml` 的网格相关的参数才能让 WW3 能正确读取。不同网格类型写法不一样：
 
 ```log
 ✅ Successfully synced grid.meta parameters to ww3_grid.nml:
@@ -1222,7 +1223,7 @@ ww3:
 
 ![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
 
-当第一步导入了多个强迫场，那么在第四步会显示可选的强迫场多选，其中风场是必选的，其他强迫场可以选择是否使用。
+当第二步导入了多个强迫场，那么在第四步会显示可选的强迫场多选，其中风场是必选的，其他强迫场可以选择是否使用。
 
 在确认参数时，会根据强迫场生成不同的 ww3_prnc.nml
 
@@ -1398,10 +1399,10 @@ Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处
 若第四步选了热启动，脚本在一切之前先：在工作目录找最新 checkpoint → 复制为 `restart.ww3` → 把 `ww3_shel.nml` 里积分/输出的起始时刻改成 checkpoint 时刻（详见 §5.5.5）。冷启动跳过此步。
 
 **1. `ww3_grid`**  
-读 `ww3_grid.nml`（第四步根据 Step 2 网格写入）和 `grid.bot` 等，生成 `mod_def.ww3`。后面所有步骤都依赖它。
+读 `ww3_grid.nml`（第四步根据 Step 1 网格写入）和 `grid.bot` 等，生成 `mod_def.ww3`。后面所有步骤都依赖它。
 
 **2. `ww3_prnc`（可能有多次）**  
-读 `ww3_prnc.nml` 及第一步导入的 NetCDF 强迫场，生成 `wind.ww3` 等二进制强迫。WW3 一次只处理一种强迫，所以若第四步勾了流场、水位等，脚本会临时改名 nml，按 **风 → 流 → 水位 → 海冰** 顺序逐个跑（见 §5.5.7 日志）。
+读 `ww3_prnc.nml` 及第二步导入的 NetCDF 强迫场，生成 `wind.ww3` 等二进制强迫。WW3 一次只处理一种强迫，所以若第四步勾了流场、水位等，脚本会临时改名 nml，按 **风 → 流 → 水位 → 海冰** 顺序逐个跑（见 §5.5.7 日志）。
 
 **3. `ww3_strt`（仅冷启动）**  
 生成初始海浪谱，写出 `restart.ww3`。热启动时目录里已有上一步复制好的 `restart.ww3`，日志里会出现 `skip ww3_strt`。
@@ -1499,7 +1500,7 @@ server:
   user: null
   password: null
   key_file: null
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 
@@ -1513,7 +1514,7 @@ server:
   user: <server-user>
   password: <server-password>
   key_file: null
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 
@@ -1530,7 +1531,7 @@ server:
   user: <server-user>
   password: null
   key_file: /Users/<name>/.ssh/id_rsa
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 
@@ -1633,7 +1634,7 @@ server:
   key_file: null
 
   # 上传时使用的远程工作根目录；remote_dir 通常由程序按工作目录名自动生成
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 
 slurm:
@@ -1777,7 +1778,7 @@ server:
   user: <server-user>
   password: null
   key_file: /Users/<name>/.ssh/id_rsa
-  default_remote_dir: /public/home/weiyl001/workSpace/
+  default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
 ```
 

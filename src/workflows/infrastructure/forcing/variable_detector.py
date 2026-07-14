@@ -1,10 +1,10 @@
-"""WW3 Step 1 强迫场 NetCDF 变量检测服务。
+"""WW3 Step 2 强迫场 NetCDF 变量检测服务。
 
-[EN] WW3 Step 1 forcing field NetCDF variable detection service.
+[EN] WW3 Step 2 forcing field NetCDF variable detection service.
 
-WW3 第一步要求识别四类强迫场对应的标准变量名：
+WW3 第二步要求识别四类强迫场对应的标准变量名：
 
-[EN] The first step of WW3 requires identifying standard variable names for four forcing field types:
+[EN] The second step of WW3 requires identifying standard variable names for four forcing field types:
 
 - 风场：``u10/v10``，或 ``wndewd/wndnwd``、``uwnd/vwnd``；
 - 流场：``uo`` 与 ``vo``；

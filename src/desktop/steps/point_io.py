@@ -2,7 +2,7 @@
 
 - ``parse_spectral_points_file`` / ``parse_track_points_file``：复刻 src ``step3_service``
   的文本格式解析，返回点位列表与跳过告警。
-- ``grid_bounds``：按第二步网格类型读取经纬度包围盒，供导入/录入时的范围校验。
+- ``grid_bounds``: 按第一步网格类型读取经纬度包围盒，供导入/录入时的范围校验。
   结构化/嵌套读 ``grid.meta``（RECT），非结构读 ``grid.ww3``；与 src
   ``_read_grid_meta_bounds`` 一致，不跨类型回退。
 
@@ -10,7 +10,7 @@
 
 - ``parse_spectral_points_file`` / ``parse_track_points_file``: replicate src ``step3_service``
   text format parsing, returning point lists and skip warnings.
-- ``grid_bounds``: read lon/lat bounding box by step 2 grid type for range validation during
+- ``grid_bounds``: read lon/lat bounding box by step 1 grid type for range validation during
   import/entry. Structured/nested reads ``grid.meta`` (RECT), unstructured reads ``grid.ww3``;
   consistent with src ``_read_grid_meta_bounds``, no cross-type fallback.
 """
@@ -57,6 +57,13 @@ def bounds_from_level_regions(
 
     返回 ``lon_min/lon_max/lat_min/lat_max`` 为各层并集，``levels`` 为逐层框列表。
     ``regions`` 元素需有 ``lon``、``lat`` 属性（各为 [west, east] / [south, north]）。
+
+    [EN] Generate the lon/lat bounding box (including per-level rectangles) for map point selection
+    and validation from nested level regions.
+
+    Returns ``lon_min/lon_max/lat_min/lat_max`` as the union of all levels, and ``levels`` as a list of
+    per-level boxes. Each element in ``regions`` must have ``lon`` and ``lat`` attributes
+    (as [west, east] / [south, north] respectively).
     """
     if not regions:
         return None

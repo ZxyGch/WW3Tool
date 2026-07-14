@@ -6,6 +6,15 @@
       use: ST2
       ST2: /path/to/exe
       ST4: /path/to/exe2
+
+[EN] Parse and serialize named-path presets (slurm.server_st, local_run.local_st, etc.).
+
+Only the multi-scheme format (must contain ``use``) is supported::
+
+    server_st:
+      use: ST2
+      ST2: /path/to/exe
+      ST4: /path/to/exe2
 """
 
 from __future__ import annotations
@@ -20,7 +29,10 @@ def parse_named_path_preset_block(
     *,
     path: str,
 ) -> tuple[str, dict[str, str]]:
-    """解析命名路径预设块，返回 (当前 use, 方案名→路径)。"""
+    """解析命名路径预设块，返回 (当前 use, 方案名→路径)。
+
+    [EN] Parse a named-path preset block and return (current use, scheme-name → path).
+    """
     if value is None:
         raise ValueError(f"{path} 不能为空")
     if not isinstance(value, dict):
@@ -54,7 +66,10 @@ def serialize_named_path_preset_block(
     active: str,
     schemes: Mapping[str, str],
 ) -> dict[str, str]:
-    """将方案映射写回 YAML（始终含 use）。"""
+    """将方案映射写回 YAML（始终含 use）。
+
+    [EN] Serialize the scheme mapping back to YAML (always includes use).
+    """
     active_name = str(active).strip()
     body: dict[str, str] = {}
     for name, executable_dir in schemes.items():

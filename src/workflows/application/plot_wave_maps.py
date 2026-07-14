@@ -42,6 +42,15 @@ class WaveMapsResult:
         messages: 执行过程中的日志消息。
         success: 操作是否成功完成。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Return result of wave-height map or contour map plotting operation.
+
+    Attributes:
+        output_folder: Result output root directory (images are placed under the ``photo/`` subdirectory).
+        image_files: List of generated PNG image paths.
+        messages: Log messages during execution.
+        success: Whether the operation completed successfully.
+        error: Error description on failure; ``None`` on success.
     """
 
     output_folder: str
@@ -52,17 +61,26 @@ class WaveMapsResult:
 
 
 def _resolve_result_folder(config: PipelineConfig) -> Path:
-    """解析 WW3 结果目录：使用 ``workdir``。"""
+    """解析 WW3 结果目录：使用 ``workdir``。
+
+    [EN] Resolve the WW3 result directory: use ``workdir``.
+    """
     return config.workdir.path
 
 
 def _collect_images(output_folder: str, pattern: str, subdir: str) -> List[str]:
-    """在 ``output_folder/photo/<subdir>/`` 下按 glob 模式收集文件路径。"""
+    """在 ``output_folder/photo/<subdir>/`` 下按 glob 模式收集文件路径。
+
+    [EN] Collect file paths by glob pattern under ``output_folder/photo/<subdir>/``.
+    """
     return collect_photo_files(output_folder, subdir, pattern)
 
 
 def _resolve_time_step_hours(cfg: WaveMapsConfig, time_step_hours: Optional[float]) -> float:
-    """桌面 UI 传入的时间步长优先，否则使用 ``plot.wave_maps.time_step_hours``。"""
+    """桌面 UI 传入的时间步长优先，否则使用 ``plot.wave_maps.time_step_hours``。
+
+    [EN] Prefer the time step passed from the desktop UI; otherwise use ``plot.wave_maps.time_step_hours``.
+    """
     if time_step_hours is not None:
         return float(time_step_hours)
     return float(cfg.time_step_hours)
@@ -103,6 +121,15 @@ def run_wave_maps(
 
     Returns:
         ``WaveMapsResult``，图片匹配 ``hs_*.png``；worker 报错时 ``success=False``。
+
+    [EN] Generate significant wave height (HS) filled contour map sequence from WW3 output nc file.
+
+    Args:
+        config: Pipeline config (``plot.wave_maps`` section controls time step, DPI, etc.).
+        log: Optional log callback.
+
+    Returns:
+        ``WaveMapsResult`` with images matching ``hs_*.png``; ``success=False`` when the worker reports an error.
     """
     from ..infrastructure.plot.wave_map_worker import _make_wave_maps_worker
 
@@ -166,6 +193,15 @@ def run_contour_maps(
 
     Returns:
         ``WaveMapsResult``，图片匹配 ``contour_hs_*.png``；worker 报错时 ``success=False``。
+
+    [EN] Generate significant wave height (HS) contour line map sequence from WW3 output nc file.
+
+    Args:
+        config: Pipeline config (``plot.wave_maps`` section controls time step, DPI, etc.).
+        log: Optional log callback.
+
+    Returns:
+        ``WaveMapsResult`` with images matching ``contour_hs_*.png``; ``success=False`` when the worker reports an error.
     """
     from ..infrastructure.plot.wave_map_worker import _make_contour_maps_worker
 
@@ -231,6 +267,18 @@ def run_wind_swell_maps(
 
     Returns:
         ``WaveMapsResult``，图片包含风浪与涌浪两组 PNG；任一 worker 报错时 ``success=False``。
+
+    [EN] Generate separate wind-sea and swell filled contour map sequences from WW3 output nc file.
+
+    Internally calls the worker twice: ``v=2`` (phs0 wind-sea field) and ``v=3`` (phs1 swell field),
+    collecting ``phs0_*.png`` and ``phs1_*.png`` images.
+
+    Args:
+        config: Pipeline config (``plot.wave_maps`` section controls time step, DPI, etc.).
+        log: Optional log callback.
+
+    Returns:
+        ``WaveMapsResult`` containing both wind-sea and swell PNG groups; ``success=False`` if either worker fails.
     """
     from ..infrastructure.plot.wave_map_worker import _make_wave_maps_worker
 
@@ -318,6 +366,19 @@ def run_wave_video(
     Returns:
         ``WaveMapsResult``，图片匹配 ``hs_*.png``，``image_files`` 同时包含 ``.mp4`` 视频路径；
         worker 报错时 ``success=False``。
+
+    [EN] Generate significant wave height filled contour map sequence from WW3 output nc file and composite an MP4 animation.
+
+    Similar to ``run_wave_maps`` but enables ``generate_video=True``; the worker composites the
+    ``hs_anim.mp4`` animation after generating each frame image.
+
+    Args:
+        config: Pipeline config (``plot.wave_maps`` section controls time step, DPI, etc.).
+        log: Optional log callback.
+
+    Returns:
+        ``WaveMapsResult`` with images matching ``hs_*.png`` and ``image_files`` also containing ``.mp4`` video paths;
+        ``success=False`` when the worker reports an error.
     """
     from ..infrastructure.plot.wave_map_worker import _make_wave_maps_worker
 

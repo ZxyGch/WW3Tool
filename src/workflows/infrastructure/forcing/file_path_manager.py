@@ -1,11 +1,11 @@
-"""WW3 Step 1 强迫场文件路径与命名管理。
+"""WW3 Step 2 强迫场文件路径与命名管理。
 
-[EN] WW3 Step 1 forcing field file path and naming management.
+[EN] WW3 Step 2 forcing field file path and naming management.
 
-WW3 工作流第一步要求将风/流/水位/海冰 NetCDF 放入工作目录，并按照约定命名
+WW3 工作流第二步要求将风/流/水位/海冰 NetCDF 放入工作目录，并按照约定命名
 （如 ``wind.nc``、``wind_current_level_ice.nc``）。本模块负责：
 
-[EN] The first step of the WW3 workflow requires placing wind/current/level/ice NetCDF
+[EN] The second step of the WW3 workflow requires placing wind/current/level/ice NetCDF
 files into the working directory with conventional naming (e.g. ``wind.nc``,
 ``wind_current_level_ice.nc``). This module is responsible for:
 
@@ -28,10 +28,10 @@ class FilePathManager:
     [EN] Static utility class for forcing file naming and UI path binding.
 
     所有方法均为 ``@staticmethod``，不持有状态；供 ``FileService`` 与
-    ``ImportForcingFileUseCase`` 等在 Step 1 导入流程中调用。
+    ``ImportForcingFileUseCase`` 等在 Step 2 导入流程中调用。
 
     [EN] All methods are ``@staticmethod`` and stateless; intended for use by
-    ``FileService`` and ``ImportForcingFileUseCase`` during the Step 1 import workflow.
+    ``FileService`` and ``ImportForcingFileUseCase`` during the Step 2 import workflow.
     """
     
     @staticmethod

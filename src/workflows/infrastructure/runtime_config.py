@@ -1,7 +1,7 @@
 """WW3Tool 运行时配置与路径常量。
 
 本模块管理根目录 ``params.yml`` 中 ``desktop:`` 段的加载/保存，以及桌面端与 CLI
-共用的路径解析（项目根、网格生成器、默认工作目录、Step 1 强迫场目录等）。
+共用的路径解析（项目根、网格生成器、默认工作目录、Step 1 网格目录与 Step 2 强迫场目录等）。
 
 ``desktop:`` 段仅保留应用级 UI 设置（语言、主题、最近工作目录等）。
 项目参数（网格、WW3、SLURM、服务器等）由 ``params.yml`` 的其它顶层段管理。
@@ -1399,7 +1399,7 @@ def ensure_project_data_dir(config_key, folder_name):
 
 
 def get_forcing_field_default_dir():
-    """获取默认的强迫场文件目录（供第一步选场等使用）。"""
+    """获取默认的强迫场文件目录（供第二步选场等使用）。"""
     try:
         config = load_config()
         forcing_dir = config.get("FORCING_FIELD_DIR_PATH", "").strip()

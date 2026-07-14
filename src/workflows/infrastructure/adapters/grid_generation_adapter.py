@@ -389,6 +389,7 @@ def _generate_structured(config: PipelineConfig, logger: CoreLogger, *, use_cach
 
     if config.grid.grid_type == "nested":
         # 逐层生成 level0(最粗) … levelN(最细)
+        # [EN] Generate level by level from level0 (coarsest) to levelN (finest)
         targets = [
             (config.workdir.path / f"level{i}", region)
             for i, region in enumerate(config.grid.nested_levels)

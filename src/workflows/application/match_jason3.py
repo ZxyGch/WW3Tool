@@ -86,7 +86,8 @@ def _resolve_jason3_data_folder(
 ) -> Optional[str]:
     """解析 Jason-3 本地数据目录：UI/CLI 覆盖 > params > paths.jason_path > 项目 jason3/。
 
-    [EN] Resolve Jason-3 local data directory: UI/CLI override > params > paths.jason_path > project jason3/.
+    [EN] Resolve the Jason-3 local data directory:
+    UI/CLI override > params > paths.jason_path > project jason3/.
     """
     if override and os.path.isdir(override):
         return os.path.abspath(override)
@@ -94,10 +95,12 @@ def _resolve_jason3_data_folder(
     if cfg.data_folder and cfg.data_folder.is_dir():
         return str(cfg.data_folder)
     # 回退到 params.yml 的 paths.jason_path
+    # [EN] Fall back to paths.jason_path in params.yml
     jason_path = config.paths.jason_path
     if jason_path and os.path.isdir(jason_path):
         return os.path.abspath(jason_path)
     # 最终回退到项目根目录下的 jason3/
+    # [EN] Final fallback to jason3/ under the project root
     default_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "jason3")
     os.makedirs(default_dir, exist_ok=True)
     return default_dir
@@ -107,7 +110,11 @@ def _resolve_jason3_lon_lat(
     config: PipelineConfig,
     override: Optional[List[float]] = None,
 ) -> Optional[List[float]]:
-    """解析 Jason-3 绘图/下载区域：UI/CLI 覆盖 > plot.jason3.lon_lat > grid.outer。"""
+    """解析 Jason-3 绘图/下载区域：UI/CLI 覆盖 > plot.jason3.lon_lat > grid.outer。
+
+    [EN] Resolve the Jason-3 plotting/download region:
+    UI/CLI override > plot.jason3.lon_lat > grid.outer.
+    """
     if override and len(override) >= 4:
         return [float(v) for v in override[:4]]
     cfg = config.plot.jason3
@@ -123,7 +130,11 @@ def _resolve_jason3_time_range(
     config: PipelineConfig,
     override: Optional[List[str]] = None,
 ) -> Optional[List[str]]:
-    """解析 Jason-3 时间范围：UI/CLI 覆盖 > plot.jason3.time_range > ww3 起止日期。"""
+    """解析 Jason-3 时间范围：UI/CLI 覆盖 > plot.jason3.time_range > ww3 起止日期。
+
+    [EN] Resolve the Jason-3 time range:
+    UI/CLI override > plot.jason3.time_range > WW3 start/end dates.
+    """
     if override and len(override) >= 2:
         return [str(override[0]), str(override[1])]
     cfg = config.plot.jason3
@@ -135,12 +146,18 @@ def _resolve_jason3_time_range(
 
 
 def _collect_png_images(result_folder: str, subdir: str) -> List[str]:
-    """收集 ``photo/<subdir>`` 下的 PNG 文件。"""
+    """收集 ``photo/<subdir>`` 下的 PNG 文件。
+
+    [EN] Collect PNG files under ``photo/<subdir>``.
+    """
     return collect_photo_files(result_folder, subdir, "*.png")
 
 
 def _find_ww3_nc(result_folder: str) -> Optional[str]:
-    """在结果目录中查找主 WW3 输出 nc 文件（排除谱文件）。"""
+    """在结果目录中查找主 WW3 输出 nc 文件（排除谱文件）。
+
+    [EN] Find the main WW3 output NetCDF file in the result directory (excluding spectral files).
+    """
     candidates = glob.glob(os.path.join(result_folder, "ww3.*.nc"))
     candidates = [f for f in candidates if "spec" not in os.path.basename(f).lower()]
     if not candidates:
@@ -163,6 +180,15 @@ def run_match_jason3(
 
     Returns:
         ``Jason3Result``；配置缺失或未找到 WW3 nc 时 ``success=False``。
+
+    [EN] Spatiotemporally match WW3 output with Jason-3 satellite SWH observations and generate comparison plots.
+
+    Args:
+        config: Pipeline config; ``plot.jason3.data_folder`` must be set.
+        log: Optional log callback.
+
+    Returns:
+        ``Jason3Result``; ``success=False`` when config is missing or no WW3 nc is found.
     """
     from ..infrastructure.plot.jason3_worker import _match_ww3_jason3_worker
 
@@ -237,6 +263,17 @@ def run_jason3_swh(
 
     Returns:
         ``Jason3Result``；配置缺失时 ``success=False``。
+
+    [EN] Plot Jason-3 SWH along-track or regional distribution (not compared with WW3).
+
+    Args:
+        config: Pipeline config; ``plot.jason3.data_folder`` must be set.
+        log: Optional log callback.
+        lon_lat: Optional, restricts the lon/lat range ``[lon_min, lon_max, lat_min, lat_max]``.
+        time_range: Optional, restricts the time range.
+
+    Returns:
+        ``Jason3Result``; ``success=False`` when config is missing.
     """
     from ..infrastructure.plot.jason3_worker import _run_jason3_swh_worker
 

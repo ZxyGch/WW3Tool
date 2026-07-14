@@ -15,6 +15,25 @@
 ---------
 - 输入：``PipelineConfig``（``server.*`` 与 ``workdir``）
 - 输出：``RemoteResult``（成功标志、日志消息、可选附加数据）
+
+[EN] Remote server SSH operation use cases.
+
+Connects to a remote HPC/cluster via ``config.server`` to perform upload, job submission,
+result download, status checks, queue queries, and remote directory cleanup, for CLI remote
+subcommands and desktop Step 3.
+
+Pipeline step: Step 3 (remote computation) -- upload, submit, monitor, and retrieve results.
+
+Safety Notes
+------------
+* ``run_upload`` and ``run_clear_remote`` are **destructive** operations and only execute when
+  ``confirmed=True`` is passed; the CLI enforces confirmation via ``--confirm``.
+* Other commands are read-only or incremental and can be called freely.
+
+Input/Output
+------------
+- Input: ``PipelineConfig`` (``server.*`` and ``workdir``)
+- Output: ``RemoteResult`` (success flag, log messages, optional extra data)
 """
 
 from __future__ import annotations
@@ -46,6 +65,14 @@ class RemoteResult:
         messages: 执行过程中的日志消息列表。
         data: 可选附加数据（如任务状态字符串、下载文件列表、队列输出）。
         error: 失败时的错误描述；成功时为 ``None``。
+
+    [EN] Unified return structure for remote SSH operations.
+
+    Attributes:
+        success: Whether the operation completed successfully.
+        messages: List of log messages during execution.
+        data: Optional extra data (e.g., job status string, downloaded file list, queue output).
+        error: Error description on failure; ``None`` on success.
     """
 
     success: bool = True
@@ -55,12 +82,18 @@ class RemoteResult:
 
 
 def _make_client(config: PipelineConfig) -> SshClient:
-    """根据 ``config.server`` 构造 SSH 客户端实例。"""
+    """根据 ``config.server`` 构造 SSH 客户端实例。
+
+    [EN] Construct an SSH client instance from ``config.server``.
+    """
     return SshClient(config.server)
 
 
 def _acquire(config: PipelineConfig, existing: Optional[SshClient] = None):
-    """返回 ``(client, owns)`` —— 若传入已连接的 client 则复用，否则新建。"""
+    """返回 ``(client, owns)`` —— 若传入已连接的 client 则复用，否则新建。
+
+    [EN] Return ``(client, owns)`` -- reuse an already-connected client if provided, otherwise create a new one.
+    """
     if existing is not None:
         return existing, False
     return _make_client(config), True
@@ -71,6 +104,11 @@ def _resolve_remote_dir(config: PipelineConfig) -> str:
 
     优先使用 ``server.remote_dir``（第六步输入框写入的实际路径，按字面量使用）；
     为空时回退到 ``server.default_remote_dir`` + 工作目录名。
+
+    [EN] Resolve and validate the remote working directory path.
+
+    Prefer ``server.remote_dir`` (the actual path written into the Step 6 input box, used literally);
+    fall back to ``server.default_remote_dir`` + workdir name when empty.
     """
     remote_dir = config.server.remote_dir.strip()
     workdir_name = config.workdir.path.name if config.workdir.path else ""
@@ -93,11 +131,15 @@ def _resolve_remote_dir(config: PipelineConfig) -> str:
 
 
 def _resolve_local_dir(config: PipelineConfig) -> str:
-    """返回本地工作目录的字符串形式。"""
+    """返回本地工作目录的字符串形式。
+
+    [EN] Return the local working directory as a string.
+    """
     return str(config.workdir.path)
 
 
 # ── 连接测试 ────────────────────────────────────────────────────────────
+# [EN] Connection test
 
 def run_connect_test(
     config: PipelineConfig,
@@ -113,6 +155,15 @@ def run_connect_test(
 
     Returns:
         连接成功时 ``success=True``；异常时 ``success=False`` 并填充 ``error``。
+
+    [EN] Test SSH connectivity and print basic server information (hostname, kernel, uptime).
+
+    Args:
+        config: Pipeline config (``server.*`` connection parameters).
+        log: Optional log callback.
+
+    Returns:
+        ``success=True`` on successful connection; ``success=False`` with ``error`` filled on exception.
     """
     logger = CoreLogger(callback=log)
     c, owns = _acquire(config, client)
@@ -131,6 +182,7 @@ def run_connect_test(
 
 
 # ── 上传（破坏性 — 需 confirmed=True）──────────────────────────────────
+# [EN] Upload (destructive -- requires confirmed=True)
 
 def run_upload(
     config: PipelineConfig,
@@ -150,6 +202,18 @@ def run_upload(
 
     Returns:
         上传成功或失败对应的 ``RemoteResult``。
+
+    [EN] Upload the local workdir completely to the remote server.
+
+    **Must pass ``confirmed=True``**; otherwise returns an error immediately to prevent accidental upload.
+
+    Args:
+        config: Pipeline config.
+        log: Optional log callback.
+        confirmed: Explicit confirmation flag; CLI equivalent is ``--confirm``.
+
+    Returns:
+        ``RemoteResult`` corresponding to upload success or failure.
     """
     logger = CoreLogger(callback=log)
     if not confirmed:
@@ -275,6 +339,10 @@ def _parse_slurm_memory_mb(value: str | None) -> int | None:
     """将 Slurm/sinfo 内存字符串解析为 MB（整数）。
 
     支持 ``515471``、``190G``、``515471+``（分区级 ``%m`` 的最小值标记）等写法。
+
+    [EN] Parse a Slurm/sinfo memory string into MB (integer).
+
+    Supports forms such as ``515471``, ``190G``, ``515471+`` (partition-level ``%m`` minimum marker).
     """
     text = str(value or "").strip().upper().replace(" ", "")
     if not text or text in {"N/A", "NA", "*", "NONE"}:

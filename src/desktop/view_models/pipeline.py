@@ -15,7 +15,7 @@ from workflows.application.configuration import (
     validate_pipeline_config,
 )
 from workflows.domain.config_models import GridRegion, PipelineConfig
-from workflows.domain.forcing_fields import Step1Files
+from workflows.domain.forcing_fields import Step2Files
 from workflows.infrastructure.runtime_config import _dump_yaml_with_comments
 from workflows.support.translations import tr
 
@@ -224,24 +224,6 @@ class PipelineViewModel:
             )
         except Exception as exc:
             self._fail("grid", str(exc))
-        return self.state
-
-    def load_wind_bounds(self, wind_path: str | Path) -> PipelineStepState:
-        self._set_state(PipelineStepState(is_running=True, action="bounds"))
-        try:
-            from workflows.application.grid_tools import read_wind_bounds
-
-            result = read_wind_bounds(wind_path, log=self._handle_log)
-            self._set_state(
-                PipelineStepState(
-                    is_running=False,
-                    action="bounds",
-                    messages=list(self.state.messages),
-                    result=result,
-                )
-            )
-        except Exception as exc:
-            self._fail("bounds", str(exc))
         return self.state
 
     def load_wind_time_range(self, wind_path: str | Path) -> PipelineStepState:
@@ -595,8 +577,10 @@ class PipelineViewModel:
             if levels:
                 nested_raw["levels"] = levels
                 nested_raw.pop("outer", None)  # 清掉旧键，避免与 levels 并存
+                # [EN] Remove old keys to avoid coexisting with levels.
                 nested_raw.pop("inner", None)
                 # level0 边界同步为主域 grid.lon / grid.lat
+                # [EN] Sync level0 boundaries to the main-domain grid.lon / grid.lat.
                 if levels[0].get("lon") is not None:
                     grid_raw["lon"] = levels[0]["lon"]
                 if levels[0].get("lat") is not None:
@@ -723,6 +707,8 @@ class PipelineViewModel:
         self.state = state
         # 应用操作日志追加到工作目录的 run.log；成败标记 success / fail（空文件）
         # 只由 local.sh / server.sh 创建，应用层不碰。
+        # [EN] Append application operation logs to the workdir run.log; success/fail markers are empty
+        # files created only by local.sh / server.sh, not touched by the application layer.
         if state.is_running and state.workdir:
             self._begin_run_log(state.workdir)
         if self._on_state_change is not None:
@@ -730,7 +716,12 @@ class PipelineViewModel:
 
     def _begin_run_log(self, workdir: str) -> None:
         """应用操作日志追加到工作目录的 run.log（不存在则创建，不截断）。
-        成败标记文件 success / fail 只由 local.sh / server.sh 创建，应用层不碰。"""
+        成败标记文件 success / fail 只由 local.sh / server.sh 创建，应用层不碰。
+
+        [EN] Append application operation logs to the workdir run.log (create if absent, do not
+        truncate). The success/fail marker files are created only by local.sh / server.sh; the
+        application layer does not touch them.
+        """
         self._run_log_path = None
         try:
             d = Path(workdir)
@@ -796,8 +787,10 @@ def _normalize_params_scalar_types(raw: dict) -> None:
     grid = _as_dict(raw.get("grid"))
     nested = _as_dict(_as_dict(grid.get("structured")).get("nested"))
     for region in (nested.get("levels") or []):  # 嵌套各层
+        # [EN] For each nested level.
         _coerce_region(_as_dict(region))
     for key in ("lon", "lat"):  # 主域 grid.lon / grid.lat
+        # [EN] Main-domain grid.lon / grid.lat.
         seq = grid.get(key)
         if isinstance(seq, list):
             grid[key] = [_coerce_number(item) for item in seq]
