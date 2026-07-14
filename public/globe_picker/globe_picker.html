@@ -74,7 +74,7 @@
 
 <div id="toolbar">
   <select id="style-select">
-    <option value="street">🌐 街道图</option>
+    <option value="land">🌐 海陆范围图</option>
     <option value="satellite">🛰️ 卫星图</option>
     <option value="dark">🌙 暗色图</option>
     <option value="light">☀️ 亮色图</option>
@@ -128,7 +128,7 @@
   var startPoint = null;
   var currentRect = null;
   var hasRect = false;
-  var currentStyle = 'street';
+  var currentStyle = 'land';
   var drawingSourceReady = false;
   var eventsBound = false;
   var lastPoint = null;
@@ -157,14 +157,12 @@
     return;
   }
 
-  // -- MapLibre: 使用高清街道栅格瓦片和 globe 投影 --
+  var LAND_STYLE = 'https://demotiles.maplibre.org/style.json';
+
+  // -- MapLibre: 使用矢量海陆样式和 globe 投影 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: {
-      version: 8,
-      sources: { 'base-tiles': RASTER_STYLES.street },
-      layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
-    },
+    style: LAND_STYLE,
     projection: 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -182,6 +180,44 @@
   //  绘制层管理
   // ----------------------------------------------------------------
 
+  function addGraticuleLayer() {
+    try { map.removeLayer('globe-graticule'); } catch(_) {}
+    try { map.removeSource('globe-graticule'); } catch(_) {}
+
+    var lines = [];
+    for (var lon = -180; lon <= 180; lon += 30) {
+      var meridian = [];
+      for (var lat = -85; lat <= 85; lat += 5) meridian.push([lon, lat]);
+      lines.push(meridian);
+    }
+    for (var lat = -60; lat <= 60; lat += 30) {
+      var parallel = [];
+      for (var lon = -180; lon <= 180; lon += 5) parallel.push([lon, lat]);
+      lines.push(parallel);
+    }
+    map.addSource('globe-graticule', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: lines } }
+    });
+    map.addLayer({
+      id: 'globe-graticule', type: 'line', source: 'globe-graticule',
+      paint: {
+        'line-color': '#65727d', 'line-width': 0.8,
+        'line-opacity': 0.55, 'line-dasharray': [2, 2]
+      }
+    });
+  }
+
+  function simplifyLandStyle() {
+    var layers = map.getStyle().layers || [];
+    layers.forEach(function(layer) {
+      var id = String(layer.id || '').toLowerCase();
+      if (/(road|street|highway|transport|poi)/.test(id)) {
+        try { map.setLayoutProperty(layer.id, 'visibility', 'none'); } catch(_) {}
+      }
+    });
+  }
+
   function addDrawingLayers() {
     drawingSourceReady = false;
     // 先移除旧的绘制层（切换样式后 style.load 时会重建）
@@ -195,11 +231,11 @@
     });
     map.addLayer({
       id: 'draw-rect-fill', type: 'fill', source: 'draw-rect',
-      paint: { 'fill-color': '#ffcc00', 'fill-opacity': 0.22 }
+      paint: { 'fill-color': '#6bbcff', 'fill-opacity': 0.16 }
     });
     map.addLayer({
       id: 'draw-rect-outline', type: 'line', source: 'draw-rect',
-      paint: { 'line-color': '#ff3b30', 'line-width': 4, 'line-opacity': 1, 'line-blur': 0 }
+      paint: { 'line-color': '#1677d2', 'line-width': 1.5, 'line-opacity': 0.95, 'line-blur': 0 }
     });
     drawingSourceReady = true;
     setStatus('地图已就绪，可拖动地球或点击矩形按钮选择范围。', false);
@@ -274,13 +310,21 @@
     // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
     rectBtn.disabled = false;
 
-    map.setStyle({
-      version: 8,
-      sources: { 'base-tiles': RASTER_STYLES[styleId] },
-      layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
-    });
+    if (styleId === 'land') {
+      map.setStyle(LAND_STYLE);
+    } else {
+      map.setStyle({
+        version: 8,
+        sources: { 'base-tiles': RASTER_STYLES[styleId] },
+        layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
+      });
+    }
     // 样式切换完成后重建绘制层
     map.once('style.load', function() {
+      if (styleId === 'land') {
+        simplifyLandStyle();
+        addGraticuleLayer();
+      }
       addDrawingLayers();
       rectBtn.disabled = false;
     });
@@ -289,6 +333,10 @@
     function waitForStyleReady(attempt) {
       if (drawingSourceReady) return;
       if (map.isStyleLoaded && map.isStyleLoaded()) {
+        if (styleId === 'land') {
+          simplifyLandStyle();
+          addGraticuleLayer();
+        }
         addDrawingLayers();
         rectBtn.disabled = false;
         return;
@@ -307,6 +355,8 @@
   // ----------------------------------------------------------------
 
   map.on('load', function() {
+    simplifyLandStyle();
+    addGraticuleLayer();
     addDrawingLayers();
     rectBtn.disabled = false;
     if (eventsBound) return;
