@@ -291,9 +291,12 @@ class GlobePickerDialog(QWidget):
         host = self.parentWidget()
         if host is None:
             return
-        self.setGeometry(host.rect())
-        card_width = max(320, min(1800, int(host.width() * 0.90)))
-        card_height = max(240, min(1080, int(host.height() * 0.86)))
+        title_bar = getattr(host, "titleBar", None)
+        title_height = title_bar.height() if title_bar is not None and title_bar.isVisible() else 0
+        available_height = max(1, host.height() - title_height)
+        self.setGeometry(0, title_height, host.width(), available_height)
+        card_width = max(320, min(1800, int(self.width() * 0.90)))
+        card_height = max(240, min(1080, int(available_height * 0.86)))
         self._card.setFixedSize(card_width, card_height)
 
     def eventFilter(self, watched, event) -> bool:

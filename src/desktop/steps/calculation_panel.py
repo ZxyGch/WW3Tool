@@ -147,9 +147,6 @@ class CalculationStepPanel:
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._set_header_row(table, kind)
-        block_layout.addWidget(
-            create_button(tr("step3_select_on_map", "在地图上选点"), lambda: self._select_on_map(kind))
-        )
         block_layout.addWidget(table)
         self._resize_table_to_content(table)
 
@@ -159,6 +156,9 @@ class CalculationStepPanel:
         crud_row.addWidget(create_button(tr("edit", "修改"), lambda: self._edit(kind)), 1)
         crud_row.addWidget(create_button(tr("delete", "删除"), lambda: self._delete(kind)), 1)
         block_layout.addLayout(crud_row)
+        block_layout.addWidget(
+            create_button(tr("step3_select_on_map", "在地图上选点"), lambda: self._select_on_map(kind))
+        )
         import_key, import_default = _IMPORT_KEYS[kind]
         block_layout.addWidget(create_button(tr(import_key, import_default), lambda: self._import(kind)))
         return block, table

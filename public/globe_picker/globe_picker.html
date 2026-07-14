@@ -91,13 +91,12 @@
   .point-marker {
     position: absolute; width: 12px; height: 12px; pointer-events: none;
     border: 2px solid #fff; border-radius: 50%;
-    background: #1687d9; box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+    background: #26a269; box-shadow: 0 1px 5px rgba(0,0,0,0.65);
   }
-  .point-marker.new { background: #e25555; }
   .point-marker-label {
     position: absolute; left: 14px; top: -6px; max-width: 150px;
     padding: 2px 5px; border-radius: 3px;
-    background: rgba(32,32,32,0.82); color: #fff;
+    background: rgba(38,162,105,0.92); color: #fff;
     font-size: 11px; line-height: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none;
   }
@@ -288,7 +287,6 @@
 
   var pointBounds = readJsonObject(queryParams, 'pointBounds');
   var selectedPoints = readPoints(queryParams);
-  var initialPointCount = selectedPoints.length;
   var pointMarkers = [];
 
   // -- 状态 --
@@ -717,7 +715,7 @@
     pointMarkers = [];
     selectedPoints.forEach(function(point, index) {
       var markerElement = document.createElement('div');
-      markerElement.className = 'point-marker' + (index >= initialPointCount ? ' new' : '');
+      markerElement.className = 'point-marker';
       var label = document.createElement('span');
       label.className = 'point-marker-label';
       label.textContent = String(point.name || index);
@@ -1032,7 +1030,6 @@
   deletePointBtn.addEventListener('click', function() {
     if (!pointSelectionEnabled || selectedPoints.length === 0) return;
     selectedPoints.pop();
-    initialPointCount = Math.min(initialPointCount, selectedPoints.length);
     renderPointMarkers();
     setStatus(text.pointReady, false);
   });
