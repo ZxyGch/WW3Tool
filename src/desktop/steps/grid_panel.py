@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBox
 from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
+from ..components.globe_picker_dialog import GlobePickerDialog
 from ..components.header_card import create_header_card
 from ..components.validators import double_validator, int_validator
 from workflows.domain.config_models import GridConfig, GridRegion
@@ -167,7 +168,6 @@ class GridStepPanel:
         combo_style: Callable[[], str],
         section_title: Callable[[str], QWidget],
         nested_factor: Callable[[], float],
-        view_map: Callable[[], None],
         generate_grid: Callable[[], None],
         visualize_grid: Callable[[], None],
         recommend_params: Callable[[], None],
@@ -285,10 +285,10 @@ class GridStepPanel:
         self.delete_level_button.hide()
         self.telescope_button = create_button(tr("step1_auto_telescope", "按收缩系数自动套娃"), self._auto_telescope)
         self.telescope_button.hide()
-        self.map_button = create_button(tr("step1_view_map", "查看地图"), view_map)
         self.recommend_button = create_button(tr("step1_recommend_params", "推荐参数"), recommend_params)
         self.grid_button = create_button(tr("step1_create_grid", "生成网格"), generate_grid)
         self.visualize_button = create_button(tr("step1_visualize_grid", "网格可视化"), visualize_grid)
+        self.globe_button = create_button(tr("step1_globe_picker", "选择地图区域"), self._open_globe_picker)
         # 添加/删除层并排一行（嵌套模式）
         # [EN] Add/delete level buttons in one row (nested mode).
         level_btn_row = QHBoxLayout()
@@ -299,20 +299,20 @@ class GridStepPanel:
         layout.addLayout(level_btn_row)
         layout.addWidget(self.telescope_button)
         for button in (
-            self.map_button,
             self.recommend_button,
             self.grid_button,
             self.visualize_button,
+            self.globe_button,
         ):
             layout.addWidget(button)
         self.action_buttons = [
             self.add_level_button,
             self.delete_level_button,
             self.telescope_button,
-            self.map_button,
             self.recommend_button,
             self.grid_button,
             self.visualize_button,
+            self.globe_button,
         ]
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)
@@ -498,6 +498,24 @@ class GridStepPanel:
         self.set_value(f"{prefix}_lon_east", f"{lon[1]:.4f}")
         self.set_value(f"{prefix}_lat_south", f"{lat[0]:.4f}")
         self.set_value(f"{prefix}_lat_north", f"{lat[1]:.4f}")
+
+    def _open_globe_picker(self) -> None:
+        """打开 3D 地球选择器，用户选取矩形范围后自动填入经纬度。"""
+        dialog = GlobePickerDialog(self.widget.window())
+        if dialog.exec() != GlobePickerDialog.DialogCode.Accepted:
+            return
+        bounds = dialog.get_bounds()
+        if bounds is None:
+            return
+        west, east, south, north = bounds
+        self.set_bounds("grid", (west, east), (south, north))
+        from qfluentwidgets import InfoBar
+        InfoBar.success(
+            title=tr("step1_globe_picker", "选择地图区域"),
+            content=f"已选择区域：经度 {west:.2f} ~ {east:.2f}°，纬度 {south:.2f} ~ {north:.2f}°",
+            duration=4000,
+            parent=self.widget.window(),
+        )
 
     def outer_lon_lat(self) -> tuple[list[float], list[float]] | None:
         """Return level0 lon/lat as float lists, or None when invalid."""

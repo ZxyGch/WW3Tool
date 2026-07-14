@@ -68,6 +68,17 @@
     font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,0.25);
   }
   #status-panel.error { background: rgba(125, 35, 35, 0.92); color: #fff; }
+  #region-legend {
+    position: absolute; left: 16px; bottom: 18px; z-index: 10;
+    display: none; min-width: 140px; max-width: min(300px, calc(100% - 32px));
+    padding: 10px 12px; border-radius: 7px;
+    background: rgba(32, 32, 32, 0.86); color: #eee;
+    font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,0.25);
+  }
+  #region-legend.visible { display: block; }
+  .legend-item { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+  .legend-color { width: 18px; height: 3px; flex: 0 0 18px; border-radius: 1px; }
+  .legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #confirm-btn {
     padding: 7px 20px; border: none; border-radius: 6px; font-size: 13px;
     cursor: pointer; font-weight: 500; background: #27ae60; color: white;
@@ -90,6 +101,7 @@
 <div id="map"></div>
 <div id="status-panel">正在加载高清地图...</div>
 <div id="map-attribution">OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap</div>
+<div id="region-legend"></div>
 
 <div id="toolbar">
   <div class="style-select-wrap">
@@ -142,6 +154,7 @@
   };
   var queryParams = new URLSearchParams(window.location.search);
   var appLanguage = queryParams.get('lang') === 'en' ? 'en' : 'zh';
+  var selectionEnabled = queryParams.get('mode') !== 'display';
   var UI_TEXT = {
     zh: {
       administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
@@ -153,6 +166,7 @@
       styleLoading: '底图正在加载，请稍候再选择矩形。',
       styleTimeout: '底图仍在加载，请稍候再选择矩形。',
       initialBounds: '已显示当前网格范围，可点击矩形按钮重新选择。',
+      displayingRegions: '已显示 {count} 个强迫场范围。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
     },
@@ -166,6 +180,7 @@
       styleLoading: 'The map style is loading. Please wait before drawing.',
       styleTimeout: 'The map style is still loading. Please try again shortly.',
       initialBounds: 'Current grid bounds are displayed. Click the rectangle button to redraw.',
+      displayingRegions: 'Displaying {count} forcing-field region(s).',
       selected: 'Region selected. Click the rectangle button to redraw.',
       drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
     }
@@ -190,6 +205,30 @@
 
   var initialBounds = readInitialBounds(queryParams);
   var initialBoundsApplied = false;
+
+  function readDisplayRegions(params) {
+    var raw = params.get('regions');
+    if (!raw) return [];
+    var parsed;
+    try { parsed = JSON.parse(raw); } catch (_) { return []; }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(function(region) {
+      if (!region || typeof region !== 'object') return false;
+      ['west', 'east', 'south', 'north'].forEach(function(key) {
+        region[key] = Number(region[key]);
+      });
+      if (!['west', 'east', 'south', 'north'].every(function(key) {
+        return Number.isFinite(region[key]);
+      })) return false;
+      while (region.east <= region.west) region.east += 360;
+      return region.south < region.north
+        && region.south >= -90
+        && region.north <= 90
+        && region.east - region.west <= 360;
+    });
+  }
+
+  var displayRegions = readDisplayRegions(queryParams);
 
   // -- 状态 --
   var tool = 'pan';          // 'pan' | 'rect'
@@ -218,6 +257,7 @@
   var styleSelect = document.getElementById('style-select');
   var statusPanel = document.getElementById('status-panel');
   var attributionEl = document.getElementById('map-attribution');
+  var regionLegend = document.getElementById('region-legend');
 
   function setStatus(message, isError) {
     statusPanel.textContent = message;
@@ -235,6 +275,10 @@
       document.getElementById('label-' + key).textContent = text[key];
     });
     setStatus(text.loading, false);
+    if (!selectionEnabled) {
+      rectBtn.style.display = 'none';
+      confirmBtn.style.display = 'none';
+    }
   }
 
   applyUiLanguage();
@@ -385,15 +429,24 @@
     });
     map.addLayer({
       id: 'draw-rect-fill', type: 'fill', source: 'draw-rect',
-      paint: { 'fill-color': '#6bbcff', 'fill-opacity': 0.16 }
+      paint: {
+        'fill-color': ['coalesce', ['get', 'color'], '#6bbcff'],
+        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.16]
+      }
     });
     map.addLayer({
       id: 'draw-rect-outline', type: 'line', source: 'draw-rect-outline-source',
-      paint: { 'line-color': '#1677d2', 'line-width': 1.5, 'line-opacity': 0.95, 'line-blur': 0 }
+      paint: {
+        'line-color': ['coalesce', ['get', 'color'], '#1677d2'],
+        'line-width': ['coalesce', ['get', 'width'], 1.5],
+        'line-opacity': 0.95,
+        'line-blur': 0
+      }
     });
     drawingSourceReady = true;
     setStatus(text.ready, false);
-    applyInitialBounds();
+    if (selectionEnabled) applyInitialBounds();
+    else applyDisplayRegions();
   }
 
   // ----------------------------------------------------------------
@@ -546,6 +599,90 @@
     );
   }
 
+  function applyDisplayRegions() {
+    if (selectionEnabled || !drawingSourceReady || displayRegions.length === 0) return;
+    var fillFeatures = [];
+    var outlineFeatures = [];
+    displayRegions.forEach(function(region) {
+      var properties = {
+        color: region.color || '#1687d9',
+        opacity: 0.12,
+        width: 2
+      };
+      fillFeatures.push({
+        type: 'Feature',
+        properties: properties,
+        geometry: rectangleGeometry(region.north, region.south, region.east, region.west)
+      });
+      outlineFeatures.push({
+        type: 'Feature',
+        properties: properties,
+        geometry: rectangleOutlineGeometry(region.north, region.south, region.east, region.west)
+      });
+    });
+    map.getSource('draw-rect').setData({ type: 'FeatureCollection', features: fillFeatures });
+    map.getSource('draw-rect-outline-source').setData({
+      type: 'FeatureCollection', features: outlineFeatures
+    });
+    renderRegionLegend();
+    fitDisplayRegions();
+    setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
+  }
+
+  function renderRegionLegend() {
+    regionLegend.textContent = '';
+    displayRegions.forEach(function(region) {
+      var item = document.createElement('div');
+      item.className = 'legend-item';
+      var color = document.createElement('span');
+      color.className = 'legend-color';
+      color.style.backgroundColor = region.color || '#1687d9';
+      var label = document.createElement('span');
+      label.className = 'legend-label';
+      label.textContent = String(region.label || '');
+      item.appendChild(color);
+      item.appendChild(label);
+      regionLegend.appendChild(item);
+    });
+    regionLegend.classList.toggle('visible', displayRegions.length > 0);
+  }
+
+  function fitDisplayRegions() {
+    var reference = (displayRegions[0].west + displayRegions[0].east) / 2;
+    var west = Infinity;
+    var east = -Infinity;
+    var south = Infinity;
+    var north = -Infinity;
+    displayRegions.forEach(function(region) {
+      var drawWest = region.west;
+      var drawEast = region.east;
+      var center = (drawWest + drawEast) / 2;
+      while (center - reference > 180) {
+        drawWest -= 360;
+        drawEast -= 360;
+        center -= 360;
+      }
+      while (center - reference < -180) {
+        drawWest += 360;
+        drawEast += 360;
+        center += 360;
+      }
+      west = Math.min(west, drawWest);
+      east = Math.max(east, drawEast);
+      south = Math.min(south, region.south);
+      north = Math.max(north, region.north);
+    });
+    if (east - west > 360) {
+      west = -180;
+      east = 180;
+    }
+    map.fitBounds([[west, south], [east, north]], {
+      padding: { top: 90, right: 90, bottom: 90, left: 90 },
+      duration: 0,
+      maxZoom: 8
+    });
+  }
+
   function clearRectangle() {
     try {
       map.getSource('draw-rect').setData({
@@ -589,7 +726,7 @@
       navigationOverlayTimer = null;
     }
     attributionEl.textContent = RASTER_STYLES[styleId].attribution;
-    clearRectangle();
+    if (selectionEnabled) clearRectangle();
     drawingSourceReady = false;
     // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
     rectBtn.disabled = false;
@@ -716,7 +853,7 @@
   });
 
   rectBtn.addEventListener('click', function() {
-    if (rectBtn.disabled) return;
+    if (!selectionEnabled || rectBtn.disabled) return;
     if (!drawingSourceReady) {
       setStatus(text.styleLoading, false);
       return;

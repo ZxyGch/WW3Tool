@@ -6,7 +6,9 @@ This avoids native title-bar and compositor conflicts between macOS and QWebEngi
 
 from __future__ import annotations
 
+import json
 import math
+from collections.abc import Sequence
 from pathlib import Path
 
 from PyQt6.QtCore import QEvent, QEventLoop, Qt, QTimer, QUrl, QUrlQuery
@@ -28,8 +30,15 @@ class GlobePickerDialog(QWidget):
     """Display the globe as a modal-looking card embedded in the main window."""
 
     DialogCode = QDialog.DialogCode
+    _REGION_COLORS = ("#1687d9", "#e25555", "#26a269", "#a66dd4")
 
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        parent=None,
+        *,
+        display_regions: Sequence[dict[str, object]] | None = None,
+        selection_enabled: bool = True,
+    ):
         host = parent or QApplication.activeWindow()
         if host is None:
             raise RuntimeError("3D 地球选择器需要主窗口作为父组件")
@@ -38,6 +47,7 @@ class GlobePickerDialog(QWidget):
         self._bounds: tuple[float, float, float, float] | None = None
         self._result = self.DialogCode.Rejected
         self._event_loop: QEventLoop | None = None
+        self._selection_enabled = selection_enabled
 
         self.setObjectName("globePickerOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -81,10 +91,18 @@ class GlobePickerDialog(QWidget):
         html_url = QUrl.fromLocalFile(str(html_path.resolve()))
         query = QUrlQuery()
         query.addQueryItem("lang", self._map_language())
-        initial_bounds = self._initial_bounds(host)
-        if initial_bounds is not None:
-            for key, value in zip(("west", "east", "south", "north"), initial_bounds):
-                query.addQueryItem(key, f"{value:.10g}")
+        query.addQueryItem("mode", "select" if selection_enabled else "display")
+        if selection_enabled:
+            initial_bounds = self._initial_bounds(host)
+            if initial_bounds is not None:
+                for key, value in zip(("west", "east", "south", "north"), initial_bounds):
+                    query.addQueryItem(key, f"{value:.10g}")
+        encoded_regions = self._display_regions(display_regions or ())
+        if encoded_regions:
+            query.addQueryItem(
+                "regions",
+                json.dumps(encoded_regions, ensure_ascii=False, separators=(",", ":")),
+            )
         html_url.setQuery(query)
         self._webview.load(html_url)
 
@@ -127,6 +145,40 @@ class GlobePickerDialog(QWidget):
         if east - west > 360:
             return None
         return west, east, south, north
+
+    @classmethod
+    def _display_regions(
+        cls,
+        regions: Sequence[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        result: list[dict[str, object]] = []
+        for index, region in enumerate(regions):
+            try:
+                west = float(region["west"])
+                east = float(region["east"])
+                south = float(region["south"])
+                north = float(region["north"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not all(math.isfinite(value) for value in (west, east, south, north)):
+                continue
+            if south >= north or south < -90 or north > 90:
+                continue
+            while east <= west:
+                east += 360
+            if east - west > 360:
+                continue
+            result.append(
+                {
+                    "label": str(region.get("label") or index + 1),
+                    "color": str(region.get("color") or cls._REGION_COLORS[index % len(cls._REGION_COLORS)]),
+                    "west": west,
+                    "east": east,
+                    "south": south,
+                    "north": north,
+                }
+            )
+        return result
 
     def exec(self) -> QDialog.DialogCode:
         """Run a local event loop while keeping the picker inside the main window."""
@@ -219,7 +271,8 @@ class GlobePickerDialog(QWidget):
         if ok:
             self._restore_host_frameless()
             QTimer.singleShot(0, self._restore_host_frameless)
-            self._check_timer.start()
+            if self._selection_enabled:
+                self._check_timer.start()
 
     def _poll_result(self) -> None:
         self._webview.page().runJavaScript(

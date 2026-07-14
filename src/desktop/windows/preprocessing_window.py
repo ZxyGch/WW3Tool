@@ -7,7 +7,6 @@ import posixpath
 import re
 import subprocess
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -63,7 +62,6 @@ from ..components.section_title import apply_section_title_style, create_section
 from .settings_window import SettingsInterface
 from .plot_window import PlotInterface
 from .tools_window import ToolsInterface, delete_all_under, delete_run_artifacts_under
-from ..components.region_map_dialog import RegionMapDialog
 from ..qt_callback_dispatcher import QtCallbackDispatcher
 from ..steps import CalculationStepPanel, ForcingStepPanel, GridStepPanel, WW3StepPanel
 from ..view_models.forcing_step import ForcingStepState, ForcingStepViewModel
@@ -106,7 +104,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._loaded_config: PipelineConfig | None = None
         self._busy = False
         self._forcing_progress: ForcingProgressDialog | None = None
-        self._map_preview_path: Path | None = None
         self._runner = BackgroundRunner(self)
         self._forcing_updates = QtCallbackDispatcher(
             on_log=self._append_log,
@@ -586,7 +583,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             combo_style=self._combo_style,
             section_title=self._section_title,
             nested_factor=self._nested_factor,
-            view_map=self._view_region_map,
             generate_grid=self._generate_grid,
             visualize_grid=self._visualize_grid,
             recommend_params=self._recommend_grid_params,
@@ -597,7 +593,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._mesh_type_combo = self._grid_panel.mesh_type_combo
         self._grid_type_label = self._grid_panel.grid_type_label
         self._skip_grid = self._grid_panel.skip_grid
-        self._map_button = self._grid_panel.map_button
         self._grid_button = self._grid_panel.grid_button
         self._visualize_button = self._grid_panel.visualize_button
         self._step1_action_buttons = self._grid_panel.action_buttons
@@ -1709,16 +1704,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             region_labels.append(labels[key])
         return (regions, region_labels) if regions else None
 
-    def _forcing_map_aspect(self, regions: list[GridRegion]) -> float:
-        from workflows.domain.grid_bounds import regional_map_extent
-
-        all_lon = [value for region in regions for value in (region.lon or [])]
-        all_lat = [value for region in regions for value in (region.lat or [])]
-        if not all_lon or not all_lat:
-            return 4.0 / 3.0
-        map_meta = regional_map_extent([min(all_lon), max(all_lon)], [min(all_lat), max(all_lat)])
-        return float(map_meta["aspect_wh"])
-
     def _view_forcing_region_map(self) -> None:
         if self._busy:
             return
@@ -1732,38 +1717,23 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._show_error(tr("step2_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
         regions, labels = regions_and_labels
-        handle, output = tempfile.mkstemp(suffix="_forcing_map.png", prefix="ww3tool_")
-        os.close(handle)
-        self._map_preview_path = Path(output)
-        self._map_dialog = RegionMapDialog(self, map_aspect_wh=self._forcing_map_aspect(regions))
-        self._forcing_panel.map_button.setText(tr("status_reading", "读取中..."))
-        self._set_busy(True)
+        from ..components.globe_picker_dialog import GlobePickerDialog
 
-        def task():
-            return self._pipeline_vm.render_forcing_region_map(regions, labels, output)
-
-        def on_done(result: object) -> None:
-            self._forcing_panel.map_button.setText(tr("step2_view_map", "查看地图"))
-            self._set_busy(False)
-            dlg = getattr(self, "_map_dialog", None)
-            if dlg is None:
-                return
-            if isinstance(result, PipelineStepState) and result.error:
-                dlg.show_error(result.error)
-            elif isinstance(result, PipelineStepState) and result.result is not None and result.result.images:
-                dlg.show_image(result.result.images[0])
-            else:
-                dlg.show_error(tr("step2_map_image_not_generated", "未生成地图图片"))
-
-        def on_cancel() -> None:
-            self._map_dialog = None
-
-        self._map_dialog.set_cancel_callback(on_cancel)
-        self._runner.run(task, on_done)
-        try:
-            self._map_dialog.exec()
-        finally:
-            self._map_dialog = None
+        display_regions = [
+            {
+                "label": label,
+                "west": region.lon[0],
+                "east": region.lon[1],
+                "south": region.lat[0],
+                "north": region.lat[1],
+            }
+            for region, label in zip(regions, labels)
+        ]
+        GlobePickerDialog(
+            self,
+            display_regions=display_regions,
+            selection_enabled=False,
+        ).exec()
 
     def _load_forcing_intersection(self) -> None:
         if not self._selected_forcing_paths():
@@ -2058,62 +2028,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             parent=self,
         )
         self.titleBar.raise_()
-
-    def _view_region_map(self) -> None:
-        config = self._config_from_current_workdir_params(validation_stage="grid", log=False)
-        if config is None or self._busy:
-            return
-
-        # Calculate map aspect ratio from grid extent so the dialog sizes correctly
-        from workflows.domain.grid_bounds import regional_map_extent
-
-        levels = config.grid.nested_levels or [config.grid.outer]
-        all_lon = [v for lv in levels for v in lv.lon]
-        all_lat = [v for lv in levels for v in lv.lat]
-        map_meta = regional_map_extent([min(all_lon), max(all_lon)], [min(all_lat), max(all_lat)])
-        map_aspect_wh = float(map_meta["aspect_wh"])
-
-        handle, output = tempfile.mkstemp(suffix="_region_map.png", prefix="ww3tool_")
-        os.close(handle)
-        self._map_preview_path = Path(output)
-
-        # Show the dialog immediately (with loading state), then render in background
-        self._map_dialog = RegionMapDialog(self, map_aspect_wh=map_aspect_wh)
-        self._set_busy(True)
-
-        def task():
-            return self._pipeline_vm.render_region_map(config, output)
-
-        def on_done(result: object) -> None:
-            self._map_button.setText(tr("step1_view_map", "查看地图"))
-            self._set_busy(False)
-            dlg = getattr(self, "_map_dialog", None)
-            if dlg is None:
-                return
-            if isinstance(result, PipelineStepState) and result.error:
-                dlg.show_error(result.error)
-            elif isinstance(result, PipelineStepState) and result.result is not None and result.result.images:
-                dlg.show_image(result.result.images[0])
-            else:
-                dlg.show_error(tr("step1_map_image_not_generated", "未生成地图图片"))
-
-        def on_cancel() -> None:
-            # BackgroundRunner doesn't support cancellation, but we mark the dialog gone
-            self._map_dialog = None
-
-        self._map_dialog.set_cancel_callback(on_cancel)
-        self._runner.run(task, on_done)
-        try:
-            self._map_dialog.exec()
-        finally:
-            self._map_dialog = None
-            self.titleBar.raise_()
-            if self._map_preview_path is not None:
-                try:
-                    self._map_preview_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                self._map_preview_path = None
 
     def _prompt_global_grid_alignment(self) -> None:
         """Ask whether to snap near-global level0 bounds to the canonical global domain."""
