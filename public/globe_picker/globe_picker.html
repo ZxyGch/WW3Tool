@@ -106,15 +106,15 @@
 </div>
 
 <div id="info-panel">
-  <div class="coord-box"><div class="label">西</div><div class="value" id="west">--</div></div>
-  <div class="coord-box"><div class="label">东</div><div class="value" id="east">--</div></div>
-  <div class="coord-box"><div class="label">南</div><div class="value" id="south">--</div></div>
-  <div class="coord-box"><div class="label">北</div><div class="value" id="north">--</div></div>
+  <div class="coord-box"><div class="label" id="label-west">西</div><div class="value" id="west">--</div></div>
+  <div class="coord-box"><div class="label" id="label-east">东</div><div class="value" id="east">--</div></div>
+  <div class="coord-box"><div class="label" id="label-south">南</div><div class="value" id="south">--</div></div>
+  <div class="coord-box"><div class="label" id="label-north">北</div><div class="value" id="north">--</div></div>
   <button id="confirm-btn" disabled>✓ 确认</button>
 </div>
 
 <script>
-(function() {
+(async function() {
   // -- 底图瓦片源 --
   var RASTER_STYLES = {
     street: {
@@ -140,6 +140,34 @@
       attribution: '© CARTO'
     }
   };
+  var appLanguage = new URLSearchParams(window.location.search).get('lang') === 'en' ? 'en' : 'zh';
+  var UI_TEXT = {
+    zh: {
+      street: '街道图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
+      pan: '平移', rectangle: '绘制矩形', confirm: '确认',
+      west: '西', east: '东', south: '南', north: '北',
+      loading: '正在加载高清地图...', engineError: '地图引擎加载失败，请检查网络连接后重试。',
+      ready: '地图已就绪，可拖动地球或点击矩形按钮选择范围。',
+      layerError: '矩形图层更新失败，请重新选择底图后重试。',
+      styleLoading: '底图正在加载，请稍候再选择矩形。',
+      styleTimeout: '底图仍在加载，请稍候再选择矩形。',
+      selected: '已选择区域，再次点击矩形按钮可重新选择。',
+      drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
+    },
+    en: {
+      street: 'Street', satellite: 'Satellite', dark: 'Dark', light: 'Light',
+      pan: 'Pan', rectangle: 'Draw rectangle', confirm: 'Confirm',
+      west: 'W', east: 'E', south: 'S', north: 'N',
+      loading: 'Loading high-resolution map...', engineError: 'Map engine failed to load. Check the network and retry.',
+      ready: 'Map ready. Pan the globe or draw a rectangular region.',
+      layerError: 'Rectangle layer failed to update. Switch the map style and retry.',
+      styleLoading: 'The map style is loading. Please wait before drawing.',
+      styleTimeout: 'The map style is still loading. Please try again shortly.',
+      selected: 'Region selected. Click the rectangle button to redraw.',
+      drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
+    }
+  };
+  var text = UI_TEXT[appLanguage];
 
   // -- 状态 --
   var tool = 'pan';          // 'pan' | 'rect'
@@ -174,15 +202,58 @@
     statusPanel.classList.toggle('error', Boolean(isError));
   }
 
+  function applyUiLanguage() {
+    ['street', 'satellite', 'dark', 'light'].forEach(function(key) {
+      styleSelect.querySelector('option[value="' + key + '"]').textContent = text[key];
+    });
+    panBtn.title = text.pan;
+    rectBtn.title = text.rectangle;
+    confirmBtn.textContent = '✓ ' + text.confirm;
+    ['west', 'east', 'south', 'north'].forEach(function(key) {
+      document.getElementById('label-' + key).textContent = text[key];
+    });
+    setStatus(text.loading, false);
+  }
+
+  applyUiLanguage();
+
   if (typeof maplibregl === 'undefined') {
-    setStatus('地图引擎加载失败，请检查网络连接后重试。', true);
+    setStatus(text.engineError, true);
     return;
   }
+
+  function optimizeStreetStyle(style) {
+    var optimized = JSON.parse(JSON.stringify(style));
+    optimized.layers = (optimized.layers || []).filter(function(layer) {
+      return !/(poi|housenumber|building|aeroway|airport|transit)/i.test(String(layer.id || ''));
+    });
+    var labelExpression = appLanguage === 'en'
+      ? ['get', 'name:en']
+      : ['coalesce', ['get', 'name:zh-Hans'], ['get', 'name:zh'], ['get', 'name:en']];
+    optimized.layers.forEach(function(layer) {
+      if (layer.type !== 'symbol' || !layer.layout || layer.layout['text-field'] == null) return;
+      if (JSON.stringify(layer.layout['text-field']).toLowerCase().indexOf('name') === -1) return;
+      layer.layout['text-field'] = labelExpression;
+    });
+    return optimized;
+  }
+
+  async function loadStreetStyle() {
+    try {
+      var response = await fetch(RASTER_STYLES.street.style, { cache: 'force-cache' });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return optimizeStreetStyle(await response.json());
+    } catch (_) {
+      return RASTER_STYLES.street.style;
+    }
+  }
+
+  var streetStyle = await loadStreetStyle();
 
   // -- MapLibre: 使用 OSM 矢量街道样式和 globe 投影 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: RASTER_STYLES.street.style,
+    style: streetStyle,
     projection: 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -267,7 +338,7 @@
       paint: { 'line-color': '#1677d2', 'line-width': 1.5, 'line-opacity': 0.95, 'line-blur': 0 }
     });
     drawingSourceReady = true;
-    setStatus('地图已就绪，可拖动地球或点击矩形按钮选择范围。', false);
+    setStatus(text.ready, false);
   }
 
   // ----------------------------------------------------------------
@@ -362,7 +433,7 @@
         geometry: rectangleOutlineGeometry(north, south, east, west)
       });
     } catch(e) {
-      setStatus('矩形图层更新失败，请重新选择底图后重试。', true);
+      setStatus(text.layerError, true);
       return false;
     }
     currentRect = { west: west, east: east, south: south, north: north };
@@ -436,7 +507,9 @@
     rectBtn.disabled = false;
 
     if (styleId === 'street') {
-      map.setStyle(RASTER_STYLES.street.style);
+      map.setStyle(
+        typeof streetStyle === 'string' ? streetStyle : JSON.parse(JSON.stringify(streetStyle))
+      );
     } else {
       map.setStyle({
         version: 8,
@@ -461,7 +534,7 @@
       if (attempt < 120) {
         window.setTimeout(function() { waitForStyleReady(attempt + 1); }, 50);
       } else {
-        setStatus('底图仍在加载，请稍候再选择矩形。', true);
+        setStatus(text.styleTimeout, true);
       }
     }
     waitForStyleReady(0);
@@ -519,7 +592,7 @@
       var north = Math.max(start.lat, end.lat);
       if (updateRectangle(north, south, east, west)) {
         showCoords(west, east, south, north);
-        setStatus('已选择区域，再次点击矩形按钮可重新选择。', false);
+        setStatus(text.selected, false);
       }
       startPoint = null;
       lastPoint = null;
@@ -533,8 +606,8 @@
   });
 
   map.on('error', function(e) {
-    var message = e && e.error && e.error.message ? e.error.message : '底图资源加载失败';
-    setStatus('地图资源加载异常：' + message, true);
+    var message = e && e.error && e.error.message ? e.error.message : '';
+    setStatus(text.resourceError + message, true);
   });
 
   // ----------------------------------------------------------------
@@ -552,12 +625,12 @@
   rectBtn.addEventListener('click', function() {
     if (rectBtn.disabled) return;
     if (!drawingSourceReady) {
-      setStatus('底图正在加载，请稍候再选择矩形。', false);
+      setStatus(text.styleLoading, false);
       return;
     }
     clearRectangle();
     setTool('rect');
-    setStatus('请在地图上拖动鼠标绘制矩形。', false);
+    setStatus(text.drawing, false);
   });
 
   confirmBtn.addEventListener('click', function() {

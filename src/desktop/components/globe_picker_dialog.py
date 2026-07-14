@@ -77,7 +77,9 @@ class GlobePickerDialog(QWidget):
         page.loadFinished.connect(self._on_page_loaded)
 
         html_path = Path(__file__).parent.parent.parent.parent / "public" / "globe_picker" / "globe_picker.html"
-        self._webview.load(QUrl.fromLocalFile(str(html_path.resolve())))
+        html_url = QUrl.fromLocalFile(str(html_path.resolve()))
+        html_url.setQuery(f"lang={self._map_language()}")
+        self._webview.load(html_url)
 
         self._check_timer = QTimer(self)
         self._check_timer.timeout.connect(self._poll_result)
@@ -85,6 +87,16 @@ class GlobePickerDialog(QWidget):
 
         host.installEventFilter(self)
         self.hide()
+
+    @staticmethod
+    def _map_language() -> str:
+        try:
+            from workflows.infrastructure.runtime_config import load_config
+
+            language = str(load_config().get("LANGUAGE", "zh_CN") or "zh_CN")
+        except Exception:
+            language = "zh_CN"
+        return "en" if language.lower().startswith("en") else "zh"
 
     def exec(self) -> QDialog.DialogCode:
         """Run a local event loop while keeping the picker inside the main window."""
