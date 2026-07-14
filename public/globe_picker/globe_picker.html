@@ -140,7 +140,8 @@
       attribution: '© CARTO'
     }
   };
-  var appLanguage = new URLSearchParams(window.location.search).get('lang') === 'en' ? 'en' : 'zh';
+  var queryParams = new URLSearchParams(window.location.search);
+  var appLanguage = queryParams.get('lang') === 'en' ? 'en' : 'zh';
   var UI_TEXT = {
     zh: {
       administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
@@ -151,6 +152,7 @@
       layerError: '矩形图层更新失败，请重新选择底图后重试。',
       styleLoading: '底图正在加载，请稍候再选择矩形。',
       styleTimeout: '底图仍在加载，请稍候再选择矩形。',
+      initialBounds: '已显示当前网格范围，可点击矩形按钮重新选择。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
     },
@@ -163,11 +165,31 @@
       layerError: 'Rectangle layer failed to update. Switch the map style and retry.',
       styleLoading: 'The map style is loading. Please wait before drawing.',
       styleTimeout: 'The map style is still loading. Please try again shortly.',
+      initialBounds: 'Current grid bounds are displayed. Click the rectangle button to redraw.',
       selected: 'Region selected. Click the rectangle button to redraw.',
       drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
     }
   };
   var text = UI_TEXT[appLanguage];
+
+  function readInitialBounds(params) {
+    var bounds = {
+      west: Number(params.get('west')),
+      east: Number(params.get('east')),
+      south: Number(params.get('south')),
+      north: Number(params.get('north'))
+    };
+    if (!['west', 'east', 'south', 'north'].every(function(key) {
+      return params.has(key) && Number.isFinite(bounds[key]);
+    })) return null;
+    if (bounds.south >= bounds.north || bounds.south < -90 || bounds.north > 90) return null;
+    while (bounds.east <= bounds.west) bounds.east += 360;
+    if (bounds.east - bounds.west > 360) return null;
+    return bounds;
+  }
+
+  var initialBounds = readInitialBounds(queryParams);
+  var initialBoundsApplied = false;
 
   // -- 状态 --
   var tool = 'pan';          // 'pan' | 'rect'
@@ -371,6 +393,7 @@
     });
     drawingSourceReady = true;
     setStatus(text.ready, false);
+    applyInitialBounds();
   }
 
   // ----------------------------------------------------------------
@@ -492,6 +515,35 @@
     coordEls.north.textContent = north.toFixed(3);
     infoPanel.classList.add('visible');
     confirmBtn.disabled = false;
+  }
+
+  function applyInitialBounds() {
+    if (initialBoundsApplied || !initialBounds || !drawingSourceReady) return;
+    if (!updateRectangle(
+      initialBounds.north,
+      initialBounds.south,
+      initialBounds.east,
+      initialBounds.west
+    )) return;
+
+    initialBoundsApplied = true;
+    showCoords(
+      initialBounds.west,
+      initialBounds.east,
+      initialBounds.south,
+      initialBounds.north
+    );
+    setStatus(text.initialBounds, false);
+
+    var draw = normalizedDrawLongitudes(initialBounds.east, initialBounds.west);
+    map.fitBounds(
+      [[draw.west, initialBounds.south], [draw.east, initialBounds.north]],
+      {
+        padding: { top: 80, right: 80, bottom: 100, left: 80 },
+        duration: 0,
+        maxZoom: 8
+      }
+    );
   }
 
   function clearRectangle() {

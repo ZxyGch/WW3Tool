@@ -6,9 +6,10 @@ This avoids native title-bar and compositor conflicts between macOS and QWebEngi
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QEventLoop, Qt, QTimer, QUrl
+from PyQt6.QtCore import QEvent, QEventLoop, Qt, QTimer, QUrl, QUrlQuery
 from PyQt6.QtGui import QColor
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import (
@@ -78,7 +79,13 @@ class GlobePickerDialog(QWidget):
 
         html_path = Path(__file__).parent.parent.parent.parent / "public" / "globe_picker" / "globe_picker.html"
         html_url = QUrl.fromLocalFile(str(html_path.resolve()))
-        html_url.setQuery(f"lang={self._map_language()}")
+        query = QUrlQuery()
+        query.addQueryItem("lang", self._map_language())
+        initial_bounds = self._initial_bounds(host)
+        if initial_bounds is not None:
+            for key, value in zip(("west", "east", "south", "north"), initial_bounds):
+                query.addQueryItem(key, f"{value:.10g}")
+        html_url.setQuery(query)
         self._webview.load(html_url)
 
         self._check_timer = QTimer(self)
@@ -97,6 +104,29 @@ class GlobePickerDialog(QWidget):
         except Exception:
             language = "zh_CN"
         return "en" if language.lower().startswith("en") else "zh"
+
+    @staticmethod
+    def _initial_bounds(host) -> tuple[float, float, float, float] | None:
+        panel = getattr(host, "_grid_panel", None)
+        fields = getattr(panel, "fields", None)
+        if not isinstance(fields, dict):
+            return None
+        try:
+            west = float(fields["grid_lon_west"].text().strip())
+            east = float(fields["grid_lon_east"].text().strip())
+            south = float(fields["grid_lat_south"].text().strip())
+            north = float(fields["grid_lat_north"].text().strip())
+        except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+        if not all(math.isfinite(value) for value in (west, east, south, north)):
+            return None
+        if south >= north or south < -90 or north > 90:
+            return None
+        while east <= west:
+            east += 360
+        if east - west > 360:
+            return None
+        return west, east, south, north
 
     def exec(self) -> QDialog.DialogCode:
         """Run a local event loop while keeping the picker inside the main window."""
