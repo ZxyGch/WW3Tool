@@ -132,6 +132,8 @@
   var drawingSourceReady = false;
   var eventsBound = false;
   var lastPoint = null;
+  var previewBounds = null;
+  var previewFrame = null;
 
   // -- DOM 引用 --
   var coordEls = {
@@ -171,6 +173,9 @@
     minZoom: 2,
     maxZoom: 22,
     renderWorldCopies: false,
+    fadeDuration: 0,
+    refreshExpiredTiles: false,
+    maxTileCacheSize: 64,
     dragRotate: false,
     touchPitch: false
   });
@@ -263,6 +268,18 @@
     currentRect = { west: west, east: east, south: south, north: north };
     hasRect = true;
     return true;
+  }
+
+  function scheduleRectanglePreview(north, south, east, west) {
+    previewBounds = { north: north, south: south, east: east, west: west };
+    if (previewFrame !== null) return;
+    previewFrame = window.requestAnimationFrame(function() {
+      previewFrame = null;
+      if (!previewBounds) return;
+      var bounds = previewBounds;
+      previewBounds = null;
+      updateRectangle(bounds.north, bounds.south, bounds.east, bounds.west);
+    });
   }
 
   function showCoords(west, east, south, north) {
@@ -375,7 +392,7 @@
       lastPoint = e.point;
       var p = map.unproject(e.point);
       var start = map.unproject(startPoint);
-      updateRectangle(
+      scheduleRectanglePreview(
         Math.max(start.lat, p.lat), Math.min(start.lat, p.lat),
         Math.max(start.lng, p.lng), Math.min(start.lng, p.lng)
       );
@@ -386,6 +403,11 @@
       var endPoint = point || lastPoint;
       if (!endPoint) return;
       isDrawing = false;
+      if (previewFrame !== null) {
+        window.cancelAnimationFrame(previewFrame);
+        previewFrame = null;
+      }
+      previewBounds = null;
       var start = map.unproject(startPoint);
       var end = map.unproject(endPoint);
       var west = Math.min(start.lng, end.lng);

@@ -12,6 +12,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QSizePolicy
 from qfluentwidgets import MessageBoxBase
 
@@ -35,6 +36,8 @@ class GlobePickerDialog(MessageBoxBase):
         self._webview = QWebEngineView()
         self._webview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._webview.setMinimumSize(800, 560)
+        self._webview.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self._webview.page().setBackgroundColor(QColor("#d7e9f5"))
         self.viewLayout.setContentsMargins(8, 8, 8, 8)
         self.viewLayout.setSpacing(0)
         self.viewLayout.addWidget(self._webview, 1)
