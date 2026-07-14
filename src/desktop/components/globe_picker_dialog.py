@@ -1,48 +1,70 @@
-"""3D 地球矩形区域选择对话框。
+"""Embedded 3D globe rectangle picker.
 
-使用 MapLibre GL JS 在 QWebEngineView 中渲染 3D 地球，
-用户拖拽绘制矩形选框，确认后通过 JavaScript 回调回传经纬度坐标。
+The picker is a child overlay of the main window instead of a top-level dialog.
+This avoids native title-bar and compositor conflicts between macOS and QWebEngineView.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6 import QtCore
-from PyQt6.QtCore import QTimer, QUrl
+from PyQt6.QtCore import QEvent, QEventLoop, Qt, QTimer, QUrl
+from PyQt6.QtGui import QColor
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QApplication, QSizePolicy
-from qfluentwidgets import MessageBoxBase
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
-from workflows.support.translations import tr
 
+class GlobePickerDialog(QWidget):
+    """Display the globe as a modal-looking card embedded in the main window."""
 
-class GlobePickerDialog(MessageBoxBase):
-    """在 3D 地球上手绘矩形、取回经纬度范围的对话框。"""
+    DialogCode = QDialog.DialogCode
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        host = parent or QApplication.activeWindow()
+        if host is None:
+            raise RuntimeError("3D 地球选择器需要主窗口作为父组件")
+        super().__init__(host)
+
         self._bounds: tuple[float, float, float, float] | None = None
+        self._result = self.DialogCode.Rejected
+        self._event_loop: QEventLoop | None = None
 
-        self.setWindowTitle("")
-        self.hideYesButton()
-        self.hideCancelButton()
-        self.buttonLayout.parent().setVisible(False)
-        if hasattr(self, "setClosableOnMaskClicked"):
-            self.setClosableOnMaskClicked(False)
+        self.setObjectName("globePickerOverlay")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        self._webview = QWebEngineView()
+        dark = host.palette().color(host.palette().ColorRole.Window).lightness() < 128
+        card_color = "#202020" if dark else "#ffffff"
+        self.setStyleSheet(
+            "QWidget#globePickerOverlay { background-color: rgba(0, 0, 0, 76); }"
+            f"QFrame#globePickerCard {{ background-color: {card_color}; border-radius: 8px; }}"
+        )
+
+        overlay_layout = QHBoxLayout(self)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        self._card = QFrame(self, objectName="globePickerCard")
+        overlay_layout.addWidget(self._card, 0, Qt.AlignmentFlag.AlignCenter)
+
+        card_layout = QVBoxLayout(self._card)
+        card_layout.setContentsMargins(8, 8, 8, 8)
+        card_layout.setSpacing(0)
+
+        self._webview = QWebEngineView(self._card)
         self._webview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._webview.setMinimumSize(800, 560)
-        self._webview.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self._webview.setMinimumSize(320, 240)
+        self._webview.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._webview.page().setBackgroundColor(QColor("#d7e9f5"))
-        self.viewLayout.setContentsMargins(8, 8, 8, 8)
-        self.viewLayout.setSpacing(0)
-        self.viewLayout.addWidget(self._webview, 1)
+        card_layout.addWidget(self._webview, 1)
 
-        # WebEngine 设置
         page = self._webview.page()
         settings = page.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
@@ -51,50 +73,79 @@ class GlobePickerDialog(MessageBoxBase):
             attribute = getattr(QWebEngineSettings.WebAttribute, attribute_name, None)
             if attribute is not None:
                 settings.setAttribute(attribute, True)
-
-        # 页面加载完成后注入确认按钮的监听
         page.loadFinished.connect(self._on_page_loaded)
 
-        # 加载 HTML
         html_path = Path(__file__).parent.parent.parent.parent / "public" / "globe_picker" / "globe_picker.html"
         self._webview.load(QUrl.fromLocalFile(str(html_path.resolve())))
 
-        # 定时检查 JS 端是否有确认结果
         self._check_timer = QTimer(self)
         self._check_timer.timeout.connect(self._poll_result)
         self._check_timer.setInterval(200)
 
+        host.installEventFilter(self)
+        self.hide()
+
+    def exec(self) -> QDialog.DialogCode:
+        """Run a local event loop while keeping the picker inside the main window."""
+        self._result = self.DialogCode.Rejected
+        self._sync_to_host()
+        self.show()
+        self.raise_()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+
+        self._event_loop = QEventLoop(self)
+        self._event_loop.exec()
+        self._event_loop = None
+        result = self._result
+        QTimer.singleShot(0, self.deleteLater)
+        return result
+
+    def accept(self) -> None:
+        self._finish(self.DialogCode.Accepted)
+
+    def reject(self) -> None:
+        self._finish(self.DialogCode.Rejected)
+
+    def _finish(self, result: QDialog.DialogCode) -> None:
+        self._result = result
+        self._check_timer.stop()
+        self.hide()
+        if self._event_loop is not None and self._event_loop.isRunning():
+            self._event_loop.quit()
+
+    def _sync_to_host(self) -> None:
+        host = self.parentWidget()
+        if host is None:
+            return
+        self.setGeometry(host.rect())
+        card_width = max(320, min(1800, int(host.width() * 0.90)))
+        card_height = max(240, min(1080, int(host.height() * 0.86)))
+        self._card.setFixedSize(card_width, card_height)
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.parentWidget() and event.type() in {
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+        }:
+            self._sync_to_host()
+            if self.isVisible():
+                QTimer.singleShot(0, self.raise_)
+        return super().eventFilter(watched, event)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        QTimer.singleShot(0, self._fit_to_parent_window)
+        self._sync_to_host()
+        QTimer.singleShot(0, self.raise_)
 
-    def _fit_to_parent_window(self) -> None:
-        """让卡片尺寸跟随主窗口，保持与其他地图弹窗一致。"""
-        parent = self.parentWidget()
-        if parent is not None and parent.isVisible():
-            available_width = int(parent.width() * 0.90)
-            available_height = int(parent.height() * 0.86)
-        else:
-            screen = self.screen() or QApplication.primaryScreen()
-            geometry = screen.availableGeometry() if screen is not None else None
-            available_width = int(geometry.width() * 0.86) if geometry else 1200
-            available_height = int(geometry.height() * 0.82) if geometry else 800
-
-        card = getattr(self, "widget", None)
-        if card is None:
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
             return
-        card.setFixedSize(
-            max(1000, min(1800, available_width)),
-            max(700, min(1080, available_height)),
-        )
+        super().keyPressEvent(event)
 
     def _on_page_loaded(self, ok: bool) -> None:
-        if not ok:
-            self.setWindowTitle(
-                tr("globe_picker_title", "3D 地球 - 选择矩形区域") + " - 地图加载失败"
-            )
-            return
-        self._check_timer.start()
+        if ok:
+            self._check_timer.start()
 
     def _poll_result(self) -> None:
         self._webview.page().runJavaScript(
@@ -103,8 +154,6 @@ class GlobePickerDialog(MessageBoxBase):
         )
 
     def _on_js_result(self, result: object) -> None:
-        if result is None:
-            return
         if not isinstance(result, dict):
             return
         try:
@@ -114,10 +163,9 @@ class GlobePickerDialog(MessageBoxBase):
             north = float(result["north"])
         except (KeyError, TypeError, ValueError):
             return
-        self._check_timer.stop()
         self._bounds = (west, east, south, north)
         self.accept()
 
     def get_bounds(self) -> tuple[float, float, float, float] | None:
-        """返回用户选择的矩形范围 (west, east, south, north)，取消返回 None。"""
+        """Return selected bounds as ``(west, east, south, north)``."""
         return self._bounds
