@@ -74,7 +74,7 @@
 
 <div id="toolbar">
   <select id="style-select">
-    <option value="osm">🌐 街道图</option>
+    <option value="street">🌐 街道图</option>
     <option value="satellite">🛰️ 卫星图</option>
     <option value="dark">🌙 暗色图</option>
     <option value="light">☀️ 亮色图</option>
@@ -94,8 +94,14 @@
 
 <script>
 (function() {
-  // -- 栅格瓦片源（卫星 / 暗色 / 亮色） --
+  // -- 底图瓦片源 --
   var RASTER_STYLES = {
+    street: {
+      type: 'raster',
+      tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '© CARTO © OpenStreetMap contributors'
+    },
     satellite: {
       type: 'raster',
       tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
@@ -122,7 +128,7 @@
   var startPoint = null;
   var currentRect = null;
   var hasRect = false;
-  var currentStyle = 'osm';
+  var currentStyle = 'street';
   var drawingSourceReady = false;
   var eventsBound = false;
   var lastPoint = null;
@@ -151,10 +157,14 @@
     return;
   }
 
-  // -- MapLibre: 使用矢量瓦片样式（清晰度高），globe 投影 --
+  // -- MapLibre: 使用高清街道栅格瓦片和 globe 投影 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: 'https://demotiles.maplibre.org/style.json',
+    style: {
+      version: 8,
+      sources: { 'base-tiles': RASTER_STYLES.street },
+      layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
+    },
     projection: 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -250,6 +260,8 @@
       map.dragPan.disable();
       map.getCanvas().style.cursor = 'crosshair';
     }
+    // 完成一次选择后仍然允许再次进入矩形模式。
+    rectBtn.disabled = !drawingSourceReady;
   }
 
   // ----------------------------------------------------------------
@@ -263,15 +275,11 @@
     drawingSourceReady = false;
     rectBtn.disabled = true;
 
-    if (styleId === 'osm') {
-      map.setStyle('https://demotiles.maplibre.org/style.json');
-    } else {
-      map.setStyle({
-        version: 8,
-        sources: { 'base-tiles': RASTER_STYLES[styleId] },
-        layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
-      });
-    }
+    map.setStyle({
+      version: 8,
+      sources: { 'base-tiles': RASTER_STYLES[styleId] },
+      layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
+    });
     // 样式切换完成后重建绘制层
     map.once('style.load', function() {
       addDrawingLayers();
@@ -324,6 +332,7 @@
       var north = Math.max(start.lat, end.lat);
       if (updateRectangle(north, south, east, west)) {
         showCoords(west, east, south, north);
+        setStatus('已选择区域，再次点击矩形按钮可重新选择。', false);
       }
       startPoint = null;
       lastPoint = null;
@@ -357,6 +366,7 @@
     if (rectBtn.disabled) return;
     clearRectangle();
     setTool('rect');
+    setStatus('请在地图上拖动鼠标绘制矩形。', false);
   });
 
   confirmBtn.addEventListener('click', function() {
