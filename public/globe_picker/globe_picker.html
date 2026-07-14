@@ -260,8 +260,6 @@
       map.dragPan.disable();
       map.getCanvas().style.cursor = 'crosshair';
     }
-    // 完成一次选择后仍然允许再次进入矩形模式。
-    rectBtn.disabled = !drawingSourceReady;
   }
 
   // ----------------------------------------------------------------
@@ -273,7 +271,8 @@
     currentStyle = styleId;
     clearRectangle();
     drawingSourceReady = false;
-    rectBtn.disabled = true;
+    // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
+    rectBtn.disabled = false;
 
     map.setStyle({
       version: 8,
@@ -285,6 +284,22 @@
       addDrawingLayers();
       rectBtn.disabled = false;
     });
+
+    // 某些 QWebEngine / MapLibre 组合下 style.load 可能丢失，轮询样式状态兜底。
+    function waitForStyleReady(attempt) {
+      if (drawingSourceReady) return;
+      if (map.isStyleLoaded && map.isStyleLoaded()) {
+        addDrawingLayers();
+        rectBtn.disabled = false;
+        return;
+      }
+      if (attempt < 120) {
+        window.setTimeout(function() { waitForStyleReady(attempt + 1); }, 50);
+      } else {
+        setStatus('底图仍在加载，请稍候再选择矩形。', true);
+      }
+    }
+    waitForStyleReady(0);
   }
 
   // ----------------------------------------------------------------
@@ -364,6 +379,10 @@
 
   rectBtn.addEventListener('click', function() {
     if (rectBtn.disabled) return;
+    if (!drawingSourceReady) {
+      setStatus('底图正在加载，请稍候再选择矩形。', false);
+      return;
+    }
     clearRectangle();
     setTool('rect');
     setStatus('请在地图上拖动鼠标绘制矩形。', false);
