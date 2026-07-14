@@ -216,6 +216,7 @@
   var interactionMode = queryParams.get('mode') || 'select';
   var selectionEnabled = interactionMode === 'select';
   var pointSelectionEnabled = interactionMode === 'points';
+  var pointDisplayEnabled = interactionMode === 'points-display';
   var UI_TEXT = {
     zh: {
       administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
@@ -229,6 +230,7 @@
       initialBounds: '已显示当前网格范围，可点击矩形按钮重新选择。',
       displayingRegions: '已显示 {count} 个强迫场范围。',
       pointReady: '点击地图添加点位，拖动地图可平移。',
+      displayingPoints: '已显示 {count} 个二维谱点位。',
       pointCount: '{count} 个点', undoPoint: '撤销', deletePoint: '删除上一个点', confirmPoints: '确认点位',
       pointOutside: '该位置不在网格范围内。', duplicatePoint: '该位置已有点位。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
@@ -246,6 +248,7 @@
       initialBounds: 'Current grid bounds are displayed. Click the rectangle button to redraw.',
       displayingRegions: 'Displaying {count} forcing-field region(s).',
       pointReady: 'Click the map to add points. Drag to pan.',
+      displayingPoints: 'Displaying {count} spectral point(s).',
       pointCount: '{count} point(s)', undoPoint: 'Undo', deletePoint: 'Delete last point', confirmPoints: 'Confirm points',
       pointOutside: 'This location is outside the grid region.', duplicatePoint: 'A point already exists here.',
       selected: 'Region selected. Click the rectangle button to redraw.',
@@ -709,7 +712,7 @@
   }
 
   function applyDisplayRegions() {
-    if (selectionEnabled || !drawingSourceReady || displayRegions.length === 0) return;
+    if (selectionEnabled || !drawingSourceReady) return;
     var fillFeatures = [];
     var outlineFeatures = [];
     displayRegions.forEach(function(region) {
@@ -734,10 +737,14 @@
       type: 'FeatureCollection', features: outlineFeatures
     });
     renderRegionLegend();
-    fitDisplayRegions();
+    if (displayRegions.length > 0) fitDisplayRegions();
     if (pointSelectionEnabled) {
       renderPointMarkers();
       setStatus(text.pointReady, false);
+    } else if (pointDisplayEnabled) {
+      renderPointMarkers();
+      if (displayRegions.length === 0) fitDisplayPoints();
+      setStatus(text.displayingPoints.replace('{count}', String(selectedPoints.length)), false);
     } else {
       setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
     }
@@ -870,6 +877,29 @@
       duration: 0,
       maxZoom: 8
     });
+  }
+
+  function fitDisplayPoints() {
+    if (selectedPoints.length === 0) return;
+    var reference = selectedPoints[0].lon;
+    var longitudes = selectedPoints.map(function(point) {
+      return unwrapLongitude(point.lon, reference);
+    });
+    var west = Math.min.apply(null, longitudes);
+    var east = Math.max.apply(null, longitudes);
+    var south = Math.min.apply(null, selectedPoints.map(function(point) { return point.lat; }));
+    var north = Math.max.apply(null, selectedPoints.map(function(point) { return point.lat; }));
+    var lonPadding = Math.max((east - west) * 0.12, 1.5);
+    var latPadding = Math.max((north - south) * 0.12, 1.5);
+    map.fitBounds(
+      [[west - lonPadding, Math.max(-90, south - latPadding)],
+       [east + lonPadding, Math.min(90, north + latPadding)]],
+      {
+        padding: { top: 90, right: 90, bottom: 90, left: 90 },
+        duration: 0,
+        maxZoom: 8
+      }
+    );
   }
 
   function clearRectangle() {

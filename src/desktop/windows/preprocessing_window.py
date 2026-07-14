@@ -2559,23 +2559,36 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
 
     def _plot_spectrum_map(self) -> None:
-        # [EN] Show spectrum station map in dialog.
-        """在对话框中展示谱站点地图。"""
+        """在只读 3D 地图中展示谱站点。"""
         spec_file = self._plot_interface.spectrum_file_path()
         if not spec_file or not os.path.exists(spec_file):
             self._show_error(tr("plotting_spectrum_file_not_selected", "请先选择二维谱文件"))
             return
-        try:
-            from ..components.spectrum_station_map_dialog import SpectrumStationMapDialog
-            dialog = SpectrumStationMapDialog(parent=self, spec_file=spec_file)
-            dialog.exec()
-        except ImportError as exc:
-            self._append_log(
-                tr("plotting_cartopy_not_available", "缺少 cartopy 库，无法显示站点地图：{error}").format(
-                    error=exc
-                )
-            )
+        points = self._plot_interface.spectrum_points()
+        if not points:
+            self._show_error(tr("plotting_no_spectrum_stations", "未找到有效的谱站点数据"))
             return
+        try:
+            from ..components.globe_picker_dialog import GlobePickerDialog
+
+            bounds = self._calc_grid_bounds()
+            levels = bounds.get("levels", []) if bounds else []
+            display_regions = [
+                {
+                    "label": level.get("label") or f"level{index}",
+                    "west": level["lon_min"],
+                    "east": level["lon_max"],
+                    "south": level["lat_min"],
+                    "north": level["lat_max"],
+                }
+                for index, level in enumerate(levels)
+            ]
+            GlobePickerDialog(
+                self,
+                display_regions=display_regions,
+                selection_enabled=False,
+                display_points=points,
+            ).exec()
         except Exception as exc:
             self._append_log(
                 tr("plotting_display_failed_with_error", "显示失败：{error}").format(error=exc)

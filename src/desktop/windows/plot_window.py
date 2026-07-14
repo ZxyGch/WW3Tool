@@ -922,6 +922,29 @@ class PlotInterface(QWidget):
         row = self._spectrum_table.currentRow()
         return row - 1 if row >= 1 else 0
 
+    def spectrum_points(self) -> list[dict[str, object]]:
+        """Return the stations currently shown in the spectrum table."""
+        points: list[dict[str, object]] = []
+        for row in range(1, self._spectrum_table.rowCount()):
+            name_item = self._spectrum_table.item(row, 0)
+            lon_item = self._spectrum_table.item(row, 1)
+            lat_item = self._spectrum_table.item(row, 2)
+            if lon_item is None or lat_item is None:
+                continue
+            try:
+                lon = float(lon_item.text().strip())
+                lat = float(lat_item.text().strip())
+            except ValueError:
+                continue
+            points.append(
+                {
+                    "name": name_item.text().strip() if name_item is not None else str(row - 1),
+                    "lon": lon,
+                    "lat": lat,
+                }
+            )
+        return points
+
     def _spectrum_plot_mode(self) -> str:
         data = self._spectrum_mode.currentData()
         text = self._spectrum_mode.currentText().strip()

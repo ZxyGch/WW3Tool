@@ -40,6 +40,7 @@ class GlobePickerDialog(QWidget):
         selection_enabled: bool = True,
         point_selection_bounds: dict[str, object] | None = None,
         existing_points: Sequence[dict[str, object]] | None = None,
+        display_points: Sequence[dict[str, object]] | None = None,
     ):
         host = parent or QApplication.activeWindow()
         if host is None:
@@ -51,7 +52,12 @@ class GlobePickerDialog(QWidget):
         self._result = self.DialogCode.Rejected
         self._event_loop: QEventLoop | None = None
         self._point_selection_enabled = point_selection_bounds is not None
-        self._selection_enabled = selection_enabled and not self._point_selection_enabled
+        self._point_display_enabled = display_points is not None
+        self._selection_enabled = (
+            selection_enabled
+            and not self._point_selection_enabled
+            and not self._point_display_enabled
+        )
 
         self.setObjectName("globePickerOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -97,6 +103,8 @@ class GlobePickerDialog(QWidget):
         query.addQueryItem("lang", self._map_language())
         if self._point_selection_enabled:
             query.addQueryItem("mode", "points")
+        elif self._point_display_enabled:
+            query.addQueryItem("mode", "points-display")
         else:
             query.addQueryItem("mode", "select" if self._selection_enabled else "display")
         if self._selection_enabled:
@@ -117,7 +125,10 @@ class GlobePickerDialog(QWidget):
                     "pointBounds",
                     json.dumps(encoded_bounds, separators=(",", ":")),
                 )
-            encoded_points = self._points(existing_points or ())
+        encoded_points = self._points(
+            (display_points or ()) if self._point_display_enabled else (existing_points or ())
+        )
+        if self._point_selection_enabled or self._point_display_enabled:
             query.addQueryItem(
                 "points",
                 json.dumps(encoded_points, ensure_ascii=False, separators=(",", ":")),
