@@ -37,6 +37,7 @@
     min-width: 54px; padding: 0 8px; color: #ddd; font-size: 12px;
     text-align: center; white-space: nowrap;
   }
+  #point-tools #delete-point-btn { min-width: 56px; }
   #point-tools #confirm-points-btn { min-width: 76px; background: #237a4b; color: #fff; }
   #point-tools #confirm-points-btn:hover { background: #2b8f59; }
   .style-select-wrap { position: relative; display: flex; align-items: center; }
@@ -88,7 +89,7 @@
   .legend-color { width: 18px; height: 3px; flex: 0 0 18px; border-radius: 1px; }
   .legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .point-marker {
-    position: relative; width: 12px; height: 12px;
+    position: absolute; width: 12px; height: 12px; pointer-events: none;
     border: 2px solid #fff; border-radius: 50%;
     background: #1687d9; box-shadow: 0 1px 5px rgba(0,0,0,0.65);
   }
@@ -139,7 +140,7 @@
   <div id="point-tools">
     <div class="separator"></div>
     <span id="point-count">0</span>
-    <button id="delete-point-btn" title="删除上一个点">↶</button>
+    <button id="delete-point-btn" title="删除上一个点">撤销</button>
     <button id="confirm-points-btn">✓ 确认点位</button>
   </div>
 </div>
@@ -197,7 +198,7 @@
       initialBounds: '已显示当前网格范围，可点击矩形按钮重新选择。',
       displayingRegions: '已显示 {count} 个强迫场范围。',
       pointReady: '点击地图添加点位，拖动地图可平移。',
-      pointCount: '{count} 个点', deletePoint: '删除上一个点', confirmPoints: '确认点位',
+      pointCount: '{count} 个点', undoPoint: '撤销', deletePoint: '删除上一个点', confirmPoints: '确认点位',
       pointOutside: '该位置不在网格范围内。', duplicatePoint: '该位置已有点位。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
@@ -214,7 +215,7 @@
       initialBounds: 'Current grid bounds are displayed. Click the rectangle button to redraw.',
       displayingRegions: 'Displaying {count} forcing-field region(s).',
       pointReady: 'Click the map to add points. Drag to pan.',
-      pointCount: '{count} point(s)', deletePoint: 'Delete last point', confirmPoints: 'Confirm points',
+      pointCount: '{count} point(s)', undoPoint: 'Undo', deletePoint: 'Delete last point', confirmPoints: 'Confirm points',
       pointOutside: 'This location is outside the grid region.', duplicatePoint: 'A point already exists here.',
       selected: 'Region selected. Click the rectangle button to redraw.',
       drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
@@ -346,6 +347,7 @@
     if (pointSelectionEnabled) {
       pointTools.classList.add('visible');
       deletePointBtn.title = text.deletePoint;
+      deletePointBtn.textContent = text.undoPoint;
       confirmPointsBtn.textContent = '✓ ' + text.confirmPoints;
       updatePointTools();
     }
@@ -984,7 +986,7 @@
 
     map.getCanvas().addEventListener('contextmenu', function(e) { e.preventDefault(); });
     if (pointSelectionEnabled) {
-      map.getCanvas().style.cursor = 'crosshair';
+      map.getCanvas().style.cursor = '';
       map.on('click', function(e) { addSelectedPoint(e.lngLat); });
     }
   });
