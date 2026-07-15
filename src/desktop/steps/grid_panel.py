@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import CheckBox, ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
 from ..components.globe_picker_dialog import GlobePickerDialog
+from ..components.grid_bounds_preview import GridBoundsPreview
 from ..components.header_card import create_header_card
 from ..components.validators import double_validator, int_validator
 from workflows.domain.config_models import GridConfig, GridRegion
@@ -213,6 +215,8 @@ class GridStepPanel:
         self.outer_grid_title = section_title(tr("step1_level0_params", "level0（最粗）网格参数"))
         self.outer_grid_title.hide()
         layout.addWidget(self.outer_grid_title)
+        self.bounds_preview = GridBoundsPreview(parent)
+        layout.addWidget(self.bounds_preview)
         outer_grid = QGridLayout()
         outer_grid.setSpacing(10)
         outer_grid.setColumnStretch(1, 1)
@@ -222,6 +226,12 @@ class GridStepPanel:
         self._display_pair(outer_grid, 1, tr("step1_lat_south", "纬度："), "grid_lat_south", "grid_lat_north")
         self._display_pair(outer_grid, 2, tr("step1_lon_west", "经度："), "grid_lon_west", "grid_lon_east")
         layout.addLayout(outer_grid)
+        self._preview_timer = QTimer(self.bounds_preview)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(180)
+        self._preview_timer.timeout.connect(self._update_bounds_preview)
+        for key in ("grid_lon_west", "grid_lon_east", "grid_lat_south", "grid_lat_north"):
+            self.fields[key].textChanged.connect(self._schedule_bounds_preview)
 
         # level1…levelN：可增删层卡片列表
         # [EN] level1…levelN: list of addable/removable level cards.
@@ -516,6 +526,28 @@ class GridStepPanel:
             duration=4000,
             parent=self.widget.window(),
         )
+
+    def _schedule_bounds_preview(self) -> None:
+        self._preview_timer.start()
+
+    def _update_bounds_preview(self) -> None:
+        try:
+            west = float(self.fields["grid_lon_west"].text().strip())
+            east = float(self.fields["grid_lon_east"].text().strip())
+            south = float(self.fields["grid_lat_south"].text().strip())
+            north = float(self.fields["grid_lat_north"].text().strip())
+        except ValueError:
+            self.bounds_preview.clear_bounds()
+            return
+        if not all(math.isfinite(value) for value in (west, east, south, north)):
+            self.bounds_preview.clear_bounds()
+            return
+        while east <= west:
+            east += 360
+        if south >= north or south < -90 or north > 90 or east - west > 360:
+            self.bounds_preview.clear_bounds()
+            return
+        self.bounds_preview.set_bounds(west, east, south, north)
 
     def outer_lon_lat(self) -> tuple[list[float], list[float]] | None:
         """Return level0 lon/lat as float lists, or None when invalid."""

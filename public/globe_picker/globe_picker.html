@@ -10,6 +10,12 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
+  body.embedded-preview #toolbar,
+  body.embedded-preview #info-panel,
+  body.embedded-preview #status-panel,
+  body.embedded-preview #map-attribution,
+  body.embedded-preview #region-legend,
+  body.embedded-preview #polar-nav { display: none !important; }
   #map { width: 100%; height: 100%; }
   #polar-map {
     position: absolute; inset: 0; z-index: 1; display: none;
@@ -290,9 +296,15 @@
   var queryParams = new URLSearchParams(window.location.search);
   var appLanguage = queryParams.get('lang') === 'en' ? 'en' : 'zh';
   var interactionMode = queryParams.get('mode') || 'select';
+  var embeddedPreview = interactionMode === 'preview';
   var selectionEnabled = interactionMode === 'select';
   var pointSelectionEnabled = interactionMode === 'points';
   var pointDisplayEnabled = interactionMode === 'points-display';
+  if (embeddedPreview) document.body.classList.add('embedded-preview');
+  var pendingPreviewBounds = null;
+  window.__setPreviewBounds = function(bounds) {
+    pendingPreviewBounds = bounds;
+  };
   var UI_TEXT = {
     zh: {
       administrative: '行政区划海图', satellite: '卫星图', dark: '暗色图', light: '亮色图',
@@ -621,7 +633,7 @@
   });
 
   // -- 地图控件 --
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  if (!embeddedPreview) map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
   var navigationOverlayTimer = null;
 
@@ -1209,8 +1221,8 @@
     displayRegions.forEach(function(region) {
       var properties = {
         color: region.color || '#1687d9',
-        opacity: 0.12,
-        width: 2
+        opacity: embeddedPreview ? 0.05 : 0.12,
+        width: region.width || 2
       };
       fillFeatures.push({
         type: 'Feature',
@@ -1240,6 +1252,31 @@
       setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
     }
   }
+
+  function setPreviewBounds(bounds) {
+    if (!embeddedPreview) return false;
+    if (bounds == null) {
+      displayRegions = [];
+    } else {
+      var region = {
+        west: Number(bounds.west), east: Number(bounds.east),
+        south: Number(bounds.south), north: Number(bounds.north),
+        color: '#1677d2', width: 1.5
+      };
+      if (!['west', 'east', 'south', 'north'].every(function(key) {
+        return Number.isFinite(region[key]);
+      })) return false;
+      while (region.east <= region.west) region.east += 360;
+      if (region.south >= region.north || region.south < -90 || region.north > 90
+          || region.east - region.west > 360) return false;
+      displayRegions = [region];
+    }
+    if (drawingSourceReady) applyDisplayRegions();
+    return true;
+  }
+
+  window.__setPreviewBounds = setPreviewBounds;
+  if (pendingPreviewBounds !== null) setPreviewBounds(pendingPreviewBounds);
 
   function updatePointTools() {
     pointCount.textContent = text.pointCount.replace('{count}', String(selectedPoints.length));
@@ -1365,7 +1402,9 @@
       east = 180;
     }
     map.fitBounds([[west, south], [east, north]], {
-      padding: { top: 90, right: 90, bottom: 90, left: 90 },
+      padding: embeddedPreview
+        ? { top: 18, right: 18, bottom: 18, left: 18 }
+        : { top: 90, right: 90, bottom: 90, left: 90 },
       duration: 0,
       maxZoom: 8
     });
