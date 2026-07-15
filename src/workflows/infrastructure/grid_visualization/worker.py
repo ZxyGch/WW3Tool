@@ -330,7 +330,11 @@ def smc_run_metadata_path(grid_dir: str) -> str | None:
     return None
 
 
-def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
+def input_fingerprint(
+    grid_dir: str,
+    mode: str,
+    extent: list[float] | None = None,
+) -> dict | None:
     """根据网格类型收集输入文件 mtime/size，用于可视化缓存失效判断。
 
     [EN] Collect input file mtime/size based on grid type for visualization cache invalidation.
@@ -340,7 +344,8 @@ def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
         fp = _stat_fp(p)
         if fp is None:
             return None
-        return {"grid.ww3": fp}
+        result = {"grid.ww3": fp}
+        return _fingerprint_with_extent(result, extent)
     if mode == "smc":
         cell_p = os.path.join(grid_dir, "grid_cell.dat")
         fp_cell = _stat_fp(cell_p)
@@ -348,7 +353,8 @@ def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
         fp_meta = _stat_fp(meta_p) if meta_p else None
         if fp_cell is None or fp_meta is None:
             return None
-        return {"grid_cell.dat": fp_cell, os.path.basename(meta_p): fp_meta}
+        result = {"grid_cell.dat": fp_cell, os.path.basename(meta_p): fp_meta}
+        return _fingerprint_with_extent(result, extent)
     if mode == "structured":
         out = {}
         desc = _structured_grid_desc_path(grid_dir)
@@ -365,8 +371,14 @@ def input_fingerprint(grid_dir: str, mode: str) -> dict | None:
         if mask_p is None:
             return None
         out["grid.mask"] = _stat_fp(mask_p)
-        return out
+        return _fingerprint_with_extent(out, extent)
     return None
+
+
+def _fingerprint_with_extent(fingerprint: dict, extent: list[float] | None) -> dict:
+    if extent is not None:
+        fingerprint["viewport"] = [float(value) for value in extent]
+    return fingerprint
 
 
 def expected_outputs_unst() -> list[str]:
@@ -527,7 +539,12 @@ def _smc_regional_bounds_from_run_info(run_info: dict) -> tuple[float, float, fl
     return w, e, s, n
 
 
-def _smc_extent_for_plot(run_info: dict, lon_c: np.ndarray, lat_c: np.ndarray) -> list[float]:
+def _smc_extent_for_plot(
+    run_info: dict,
+    lon_c: np.ndarray,
+    lat_c: np.ndarray,
+    requested_extent: list[float] | None = None,
+) -> list[float]:
     """
     区域 SMC 使用用户指定的 ``regional_bounds`` 作为精确视口。生成器可以向外对齐
     单元以完整覆盖计算域，但可视化不应因此额外显示一圈区域。缺少区域范围元数据时，
@@ -537,6 +554,8 @@ def _smc_extent_for_plot(run_info: dict, lon_c: np.ndarray, lat_c: np.ndarray) -
     Generated cells may align outward to cover the computational domain, but that alignment
     must not enlarge the plotted map. Fall back to cell-derived bounds only when metadata is absent.
     """
+    if requested_extent is not None:
+        return list(requested_extent)
     rb = _smc_regional_bounds_from_run_info(run_info)
     if rb is not None:
         return list(rb)
@@ -629,7 +648,7 @@ def _smc_cell_rect_vertices(cel: np.ndarray, zlon: float, zlat: float, dlon: flo
     return out
 
 
-def run_smc(grid_dir: str) -> dict:
+def run_smc(grid_dir: str, requested_extent: list[float] | None = None) -> dict:
     """读取 SMC ``grid_cell.dat`` 与 ``grid.json`` 元数据，生成格块水深与边界结构图。
 
     [EN] Read SMC ``grid_cell.dat`` and ``grid.json`` metadata, and generate cell bathymetry and boundary structure plots.
@@ -646,9 +665,9 @@ def run_smc(grid_dir: str) -> dict:
 
     photo_dir = os.path.join(grid_dir, "photo", "grid")
     os.makedirs(photo_dir, exist_ok=True)
-    fp_now = input_fingerprint(grid_dir, "smc")
+    fp_now = input_fingerprint(grid_dir, "smc", requested_extent)
     outs = expected_outputs_smc()
-    if fp_now and cache_is_current(grid_dir, "smc"):
+    if fp_now and cache_is_current(grid_dir, "smc", requested_extent):
         imgs = cached_image_paths(grid_dir, "smc")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
 
@@ -671,7 +690,7 @@ def run_smc(grid_dir: str) -> dict:
     except Exception as e:
         return {"ok": False, "error": f"SMC read: {e}", "images": [], "photo_dir": photo_dir}
 
-    extent = _smc_extent_for_plot(ri, lon_c, lat_c)
+    extent = _smc_extent_for_plot(ri, lon_c, lat_c, requested_extent)
     fig_wh = unst_figsize_for_extent(extent)
 
     nc = int(cel.shape[0])
@@ -781,13 +800,17 @@ def run_smc(grid_dir: str) -> dict:
     }
 
 
-def cache_is_current(grid_dir: str, mode: str) -> bool:
+def cache_is_current(
+    grid_dir: str,
+    mode: str,
+    extent: list[float] | None = None,
+) -> bool:
     """检查 ``.grid_viz_cache.json`` 是否与当前输入指纹一致且输出 PNG 均存在。
 
     [EN] Check whether ``.grid_viz_cache.json`` matches the current input fingerprint and all output PNGs exist.
     """
     photo_dir = os.path.join(grid_dir, "photo", "grid")
-    fp_now = input_fingerprint(grid_dir, mode)
+    fp_now = input_fingerprint(grid_dir, mode, extent)
     if fp_now is None:
         return False
     cpath = os.path.join(photo_dir, CACHE_FILE)
@@ -1019,7 +1042,17 @@ def read_ww3obstr(fname: str, Nx: int, Ny: int):
         return None, None
 
 
-def _plot_pcolormesh_file(lon, lat, data, title, output_path, cmap="jet", shading="flat", figsize=None):
+def _plot_pcolormesh_file(
+    lon,
+    lat,
+    data,
+    title,
+    output_path,
+    cmap="jet",
+    shading="flat",
+    figsize=None,
+    extent: list[float] | None = None,
+):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -1028,7 +1061,7 @@ def _plot_pcolormesh_file(lon, lat, data, title, output_path, cmap="jet", shadin
     import cartopy.feature as cfeature
 
     xy_flat = np.column_stack([np.asarray(lon, dtype=float).ravel(), np.asarray(lat, dtype=float).ravel()])
-    ext = unst_extent_from_xy(xy_flat)
+    ext = list(extent) if extent is not None else unst_extent_from_xy(xy_flat)
     if figsize is None:
         figsize = unst_figsize_for_extent(ext)
     fig = plt.figure(figsize=figsize)
@@ -1083,7 +1116,12 @@ def _plot_pcolormesh_file(lon, lat, data, title, output_path, cmap="jet", shadin
     plt.close(fig)
 
 
-def plot_structured_grid_structure(lon: np.ndarray, lat: np.ndarray, output_path: str) -> None:
+def plot_structured_grid_structure(
+    lon: np.ndarray,
+    lat: np.ndarray,
+    output_path: str,
+    extent: list[float] | None = None,
+) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -1093,7 +1131,7 @@ def plot_structured_grid_structure(lon: np.ndarray, lat: np.ndarray, output_path
 
     Ny, Nx = lon.shape
     xy_flat = np.column_stack([lon.ravel(), lat.ravel()])
-    ext = unst_extent_from_xy(xy_flat)
+    ext = list(extent) if extent is not None else unst_extent_from_xy(xy_flat)
     figsize = unst_figsize_for_extent(ext)
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
@@ -1115,7 +1153,7 @@ def plot_structured_grid_structure(lon: np.ndarray, lat: np.ndarray, output_path
     plt.close(fig)
 
 
-def run_unst(grid_dir: str) -> dict:
+def run_unst(grid_dir: str, requested_extent: list[float] | None = None) -> dict:
     """读取 ``grid.ww3``（Gmsh 格式）并生成非结构网格水深图与结构线图。
 
     [EN] Read ``grid.ww3`` (Gmsh format) and generate unstructured grid bathymetry and structure wireframe plots.
@@ -1132,9 +1170,9 @@ def run_unst(grid_dir: str) -> dict:
     ww3_path = os.path.join(grid_dir, "grid.ww3")
     photo_dir = os.path.join(grid_dir, "photo", "grid")
     os.makedirs(photo_dir, exist_ok=True)
-    fp_now = input_fingerprint(grid_dir, "unst")
+    fp_now = input_fingerprint(grid_dir, "unst", requested_extent)
     outs = expected_outputs_unst()
-    if fp_now and cache_is_current(grid_dir, "unst"):
+    if fp_now and cache_is_current(grid_dir, "unst", requested_extent):
         imgs = cached_image_paths(grid_dir, "unst")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
     emit_log(_viz_tr("step1_grid_viz_worker_read", "🔄 正在读取网格数据…"))
@@ -1146,7 +1184,7 @@ def run_unst(grid_dir: str) -> dict:
         return {"ok": False, "error": "no triangles in grid.ww3", "images": [], "photo_dir": photo_dir}
     tri_mask = unst_triangulation_mask(xy, ect)
     triang = mtri.Triangulation(xy[:, 0], xy[:, 1], triangles=ect, mask=tri_mask)
-    extent = unst_extent_from_xy(xy)
+    extent = list(requested_extent) if requested_extent is not None else unst_extent_from_xy(xy)
     fig_wh = unst_figsize_for_extent(extent)
 
     out_bathy = os.path.join(photo_dir, outs[0])
@@ -1226,15 +1264,15 @@ def run_unst(grid_dir: str) -> dict:
     }
 
 
-def run_structured(grid_dir: str) -> dict:
+def run_structured(grid_dir: str, requested_extent: list[float] | None = None) -> dict:
     """读取 structured 网格 bot/mask/obst 与描述文件，生成水深/结构/掩膜/阻障图。
 
     [EN] Read structured grid bot/mask/obst and description files, and generate bathymetry/structure/mask/obstruction plots.
     """
     photo_dir = os.path.join(grid_dir, "photo", "grid")
     os.makedirs(photo_dir, exist_ok=True)
-    fp_now = input_fingerprint(grid_dir, "structured")
-    if fp_now and cache_is_current(grid_dir, "structured"):
+    fp_now = input_fingerprint(grid_dir, "structured", requested_extent)
+    if fp_now and cache_is_current(grid_dir, "structured", requested_extent):
         imgs = cached_image_paths(grid_dir, "structured")
         return {"ok": True, "skipped": True, "images": imgs, "photo_dir": photo_dir}
     emit_log(_viz_tr("step1_grid_viz_worker_read", "🔄 正在读取网格数据…"))
@@ -1266,21 +1304,37 @@ def run_structured(grid_dir: str) -> dict:
     emit_log(_viz_tr("step1_grid_viz_worker_plot_bathy", "🔄 正在绘制水深图…"))
     try:
         p_bathy = os.path.join(photo_dir, "grid_bathymetry.png")
-        _plot_pcolormesh_file(lon, lat, depth, "Bathymetry", p_bathy, shading="gouraud")
+        _plot_pcolormesh_file(
+            lon,
+            lat,
+            depth,
+            "Bathymetry",
+            p_bathy,
+            shading="gouraud",
+            extent=requested_extent,
+        )
         written.append("grid_bathymetry.png")
     except Exception as e:
         return {"ok": False, "error": f"bathy: {e}", "images": [], "photo_dir": photo_dir}
     emit_log(_viz_tr("step1_grid_viz_worker_plot_struct", "🔄 正在绘制网格结构图…"))
     try:
         p_struct = os.path.join(photo_dir, "grid_structure.png")
-        plot_structured_grid_structure(lon, lat, p_struct)
+        plot_structured_grid_structure(lon, lat, p_struct, extent=requested_extent)
         written.append("grid_structure.png")
     except Exception as e:
         return {"ok": False, "error": f"structure: {e}", "images": [], "photo_dir": photo_dir}
     if mask is not None:
         try:
             p_mask = os.path.join(photo_dir, "grid_mask.png")
-            _plot_pcolormesh_file(lon, lat, mask, "Land–sea mask", p_mask, shading="flat")
+            _plot_pcolormesh_file(
+                lon,
+                lat,
+                mask,
+                "Land–sea mask",
+                p_mask,
+                shading="flat",
+                extent=requested_extent,
+            )
             written.append("grid_mask.png")
         except Exception as e:
             return {"ok": False, "error": f"mask: {e}", "images": [], "photo_dir": photo_dir}
@@ -1295,10 +1349,22 @@ def run_structured(grid_dir: str) -> dict:
             sy[loc] = np.nan
         try:
             _plot_pcolormesh_file(
-                lon, lat, sx, "Sx obstruction", os.path.join(photo_dir, "grid_obstruction_x.png"), shading="flat"
+                lon,
+                lat,
+                sx,
+                "Sx obstruction",
+                os.path.join(photo_dir, "grid_obstruction_x.png"),
+                shading="flat",
+                extent=requested_extent,
             )
             _plot_pcolormesh_file(
-                lon, lat, sy, "Sy obstruction", os.path.join(photo_dir, "grid_obstruction_y.png"), shading="flat"
+                lon,
+                lat,
+                sy,
+                "Sy obstruction",
+                os.path.join(photo_dir, "grid_obstruction_y.png"),
+                shading="flat",
+                extent=requested_extent,
             )
             written.extend(["grid_obstruction_x.png", "grid_obstruction_y.png"])
         except Exception as e:
@@ -1321,14 +1387,15 @@ def main():
     p = argparse.ArgumentParser(description="WW3Tool grid visualization worker")
     p.add_argument("--mode", choices=("unst", "structured", "smc"), required=True)
     p.add_argument("--grid-dir", required=True)
+    p.add_argument("--extent", nargs=4, type=float, metavar=("WEST", "EAST", "SOUTH", "NORTH"))
     args = p.parse_args()
     grid_dir = os.path.abspath(os.path.normpath(args.grid_dir))
     if args.mode == "unst":
-        res = run_unst(grid_dir)
+        res = run_unst(grid_dir, args.extent)
     elif args.mode == "smc":
-        res = run_smc(grid_dir)
+        res = run_smc(grid_dir, args.extent)
     else:
-        res = run_structured(grid_dir)
+        res = run_structured(grid_dir, args.extent)
     if not res.get("ok"):
         emit_log(res.get("error", "failed"))
     emit_result(res)

@@ -32,7 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ...domain.config_models import PipelineConfig
+from ...domain.config_models import GridRegion, PipelineConfig
 from ...support.logging import CoreLogger
 
 
@@ -75,23 +75,43 @@ def generate_grid_images(config: PipelineConfig, logger: CoreLogger) -> list[str
     if config.grid.grid_type == "nested":
         from workflows.infrastructure.ww3.nested_level_dirs import list_nested_level_paths
 
-        requests = [(path, "structured") for path in list_nested_level_paths(workdir)]
+        paths = list_nested_level_paths(workdir)
+        regions = list(
+            config.grid.nested_levels
+            or [region for region in (config.grid.outer, config.grid.inner) if region is not None]
+        )
+        requests = [
+            (path, "structured", _region_extent(regions[index]) if index < len(regions) else None)
+            for index, path in enumerate(paths)
+        ]
         if not requests:
             raise RuntimeError("未找到 level* 网格目录，请先生成嵌套网格")
     else:
         mode = {"structured": "structured", "smc": "smc", "unstructured": "unst"}[config.grid.mesh_type]
-        requests = [(workdir, mode)]
+        requests = [(workdir, mode, _region_extent(config.grid.outer))]
 
     images: list[str] = []
-    for directory, mode in requests:
-        result = _run_worker(directory, mode, logger)
+    for directory, mode, extent in requests:
+        result = _run_worker(directory, mode, logger, extent=extent)
         images.extend(str(path) for path in result.get("images", []))
     if not images:
         raise RuntimeError("未找到可视化图片，请先生成网格")
     return images
 
 
-def _run_worker(directory: Path, mode: str, logger: CoreLogger) -> dict:
+def _region_extent(region: GridRegion | None) -> list[float] | None:
+    if region is None or not region.lon or not region.lat:
+        return None
+    return [float(region.lon[0]), float(region.lon[1]), float(region.lat[0]), float(region.lat[1])]
+
+
+def _run_worker(
+    directory: Path,
+    mode: str,
+    logger: CoreLogger,
+    *,
+    extent: list[float] | None = None,
+) -> dict:
     """启动 ``grid_visualization.worker`` 子进程并解析 ``WW3TOOL_VIZ`` 协议输出。
 
     [EN] Launch the ``grid_visualization.worker`` subprocess and parse its ``WW3TOOL_VIZ`` protocol output.
@@ -110,6 +130,8 @@ def _run_worker(directory: Path, mode: str, logger: CoreLogger) -> dict:
         "--grid-dir",
         str(directory),
     ]
+    if extent is not None:
+        command.extend(["--extent", *(str(value) for value in extent)])
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
