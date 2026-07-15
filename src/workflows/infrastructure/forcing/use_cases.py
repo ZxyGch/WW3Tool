@@ -220,8 +220,21 @@ class ImportForcingFileUseCase:
             )
 
         need_process = self._log_existing_target(file_path, target_file, target_filename)
+        crop_requested = bool(crop_time_range and crop_bbox)
+        try:
+            source_is_target = os.path.samefile(file_path, target_file)
+        except OSError:
+            source_is_target = os.path.realpath(file_path) == os.path.realpath(target_file)
+        if crop_requested and source_is_target:
+            need_process = True
+            self._emit(
+                tr(
+                    "log_recrop_workdir_forcing",
+                    "✂️ 将重新裁剪工作目录中的强迫场文件: {filename}",
+                ).format(filename=target_filename)
+            )
         if need_process:
-            if crop_time_range and crop_bbox:
+            if crop_requested:
                 copied_file = self._file_service.crop_and_fix_forcing_file(
                     file_path,
                     target_file,

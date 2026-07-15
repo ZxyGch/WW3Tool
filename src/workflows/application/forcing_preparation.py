@@ -128,12 +128,6 @@ def prepare_forcing(
             continue
         source_path = str(Path(path).expanduser().resolve())
         if config.forcing.auto_associate and source_path in processed_sources:
-            logger.log(
-                tr(
-                    "step2_skip_duplicate_forcing_source",
-                    "ℹ️ 源文件已在本次导入中处理，跳过重复裁剪：{path}",
-                ).format(path=source_path)
-            )
             continue
         result = importer.execute(
             field,

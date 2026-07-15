@@ -485,12 +485,22 @@ class FileService:
 
         [EN] Crop a forcing NetCDF into the workdir and then normalize it for WW3.
         """
+        processing_target = target_file
+        replace_target = False
         try:
             from .merge_service import merge_forcing_netcdf
 
             target_dir = os.path.dirname(target_file)
             if target_dir:
                 os.makedirs(target_dir, exist_ok=True)
+            try:
+                replace_target = os.path.samefile(source_file, target_file)
+            except OSError:
+                replace_target = os.path.realpath(source_file) == os.path.realpath(target_file)
+            if replace_target:
+                processing_target = target_file + ".crop_tmp.nc"
+                if os.path.exists(processing_target):
+                    os.remove(processing_target)
             self.log(
                 tr("log_crop_forcing_start", "✂️ 正在按范围裁剪强迫场：{src} → {dst}").format(
                     src=os.path.basename(source_file),
@@ -499,14 +509,18 @@ class FileService:
             )
             merge_forcing_netcdf(
                 [source_file],
-                target_file,
+                processing_target,
                 log=self.log,
                 time_range=time_range,
                 bbox=bbox,
             )
-            ok = self._normalizer.normalize(target_file, target_file, log=self.log)
+            ok = self._normalizer.normalize(processing_target, processing_target, log=self.log)
             if not ok:
+                if replace_target and os.path.exists(processing_target):
+                    os.remove(processing_target)
                 return None
+            if replace_target:
+                os.replace(processing_target, target_file)
             if remove_source:
                 try:
                     same_file = os.path.samefile(source_file, target_file)
@@ -526,6 +540,11 @@ class FileService:
             )
             return target_file
         except Exception as e:
+            if replace_target and os.path.exists(processing_target):
+                try:
+                    os.remove(processing_target)
+                except OSError:
+                    pass
             self.log(f"{tr('log_crop_fix_failed', '❌ 裁剪或修复文件失败')}: {e}")
             return None
 
