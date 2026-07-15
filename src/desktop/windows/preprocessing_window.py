@@ -1072,7 +1072,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _browse_path(self, key: str, directory: bool) -> None:
         current = self._paths[key].text().strip()
         if current:
-            start = current
+            candidate = Path(current).expanduser()
+            if candidate.exists():
+                start = str(candidate)
+            elif candidate.parent.is_dir():
+                start = str(candidate.parent)
+            elif key in {"wind", "current", "level", "ice"}:
+                start = get_forcing_field_default_dir()
+            else:
+                start = str(Path.home())
         elif key in {"wind", "current", "level", "ice"}:
             start = get_forcing_field_default_dir()
         else:
@@ -1087,8 +1095,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 tr("file_filter_netcdf_all", "NetCDF 文件 (*.nc *.nc4 *.cdf);;所有文件 (*)"),
             )
         if selected:
-            self._set_path_value(key, selected)
             if key in {"wind", "current", "level", "ice"}:
+                # Remove missing results from an earlier import before installing
+                # the new source path. Otherwise stale ViewModel state can clear
+                # the file that the user has just selected.
                 self._prune_stale_forcing_paths()
                 self._fill_auto_associated_forcing_slots(selected, trigger_key=key)
                 if not self._paths["workdir"].text().strip():
@@ -1103,6 +1113,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                         "已选择强迫场文件。请确认导入方式后点击导入按钮。",
                     )
                 )
+            else:
+                self._set_path_value(key, selected)
 
     def _show_selected_forcing_file_info(self, key: str, path: str) -> None:
         files = Step2Files()
@@ -1130,7 +1142,19 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._runner.run(task, self._on_forcing_info_done)
 
     def _on_forcing_info_done(self, result: object) -> None:
-        self._set_busy(False)
+        # File inspection does not change prepared forcing state. Re-rendering the
+        # previous ViewModel result here can replace a newly selected source with
+        # an old workdir path that has already been deleted.
+        prepared_files = self._forcing_vm.state.files
+        has_prepared_file = any(
+            self._forcing_path_is_readable(str(getattr(prepared_files, key, "") or ""))
+            for key in ("wind", "current", "level", "ice")
+        )
+        self._forcing_status.setText(
+            tr("forcing_prepared", "强迫场已准备")
+            if has_prepared_file
+            else tr("status_waiting", "等待执行")
+        )
         if isinstance(result, dict) and result.get("error"):
             self._show_error(str(result["error"]))
 
