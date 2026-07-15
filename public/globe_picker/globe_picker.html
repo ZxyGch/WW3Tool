@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>3D 地球选择区域</title>
 <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js">
 </script>
@@ -450,6 +450,42 @@
   var pointCount = document.getElementById('point-count');
   var deletePointBtn = document.getElementById('delete-point-btn');
   var confirmPointsBtn = document.getElementById('confirm-points-btn');
+
+  var gestureZoomDelta = 0;
+  var gestureZoomFrame = null;
+
+  function applyGestureZoom() {
+    gestureZoomFrame = null;
+    var delta = gestureZoomDelta;
+    gestureZoomDelta = 0;
+    if (!delta) return;
+    if (isPolarActive() && polarTileMap) {
+      polarTileMap.zoomBy(delta);
+      return;
+    }
+    if (map && map.isStyleLoaded()) {
+      map.easeTo({ zoom: map.getZoom() + delta, duration: 80 });
+    }
+  }
+
+  function scheduleGestureZoom(delta) {
+    gestureZoomDelta += Math.max(-0.5, Math.min(0.5, delta));
+    if (gestureZoomFrame === null) gestureZoomFrame = window.requestAnimationFrame(applyGestureZoom);
+  }
+
+  window.__zoomMapFromHost = scheduleGestureZoom;
+
+  document.addEventListener('wheel', function(event) {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    scheduleGestureZoom(-event.deltaY / 100);
+  }, { capture: true, passive: false });
+
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(eventName) {
+    document.addEventListener(eventName, function(event) { event.preventDefault(); }, {
+      capture: true, passive: false
+    });
+  });
 
   function setStatus(message, isError) {
     statusPanel.textContent = message;

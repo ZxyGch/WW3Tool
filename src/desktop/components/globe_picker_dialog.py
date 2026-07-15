@@ -26,6 +26,20 @@ from PyQt6.QtWidgets import (
 from qframelesswindow.webengine import FramelessWebEngineView
 
 
+class MapWebEngineView(FramelessWebEngineView):
+    """Send trackpad pinch gestures to the map without scaling the web page."""
+
+    def wheelEvent(self, event) -> None:
+        modifiers = event.modifiers()
+        zoom_modifiers = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier
+        if modifiers & zoom_modifiers:
+            delta = event.angleDelta().y() or event.pixelDelta().y()
+            self.page().runJavaScript(f"window.__zoomMapFromHost?.({delta / 240.0})")
+            event.accept()
+            return
+        super().wheelEvent(event)
+
+
 class GlobePickerDialog(QWidget):
     """Display the globe as a modal-looking card embedded in the main window."""
 
@@ -80,10 +94,11 @@ class GlobePickerDialog(QWidget):
         card_layout.setSpacing(0)
 
         # qframelesswindow 会在 WebEngine 创建原生视图后重新应用 macOS 无边框状态。
-        self._webview = FramelessWebEngineView(self._card)
+        self._webview = MapWebEngineView(self._card)
         self._webview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._webview.setMinimumSize(320, 240)
         self._webview.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self._webview.setZoomFactor(1.0)
         self._webview.page().setBackgroundColor(QColor("#d7e9f5"))
         card_layout.addWidget(self._webview, 1)
 
@@ -342,10 +357,16 @@ class GlobePickerDialog(QWidget):
 
     def _on_page_loaded(self, ok: bool) -> None:
         if ok:
+            self._lock_web_zoom()
             self._restore_host_frameless()
             QTimer.singleShot(0, self._restore_host_frameless)
             if self._selection_enabled or self._point_selection_enabled:
                 self._check_timer.start()
+
+    def _lock_web_zoom(self, _factor: float | None = None) -> None:
+        """Keep trackpad gestures from scaling the picker controls."""
+        if not math.isclose(self._webview.zoomFactor(), 1.0):
+            self._webview.setZoomFactor(1.0)
 
     def _poll_result(self) -> None:
         result_name = "__globePointResult" if self._point_selection_enabled else "__globeResult"
