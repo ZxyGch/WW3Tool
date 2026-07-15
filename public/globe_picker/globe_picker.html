@@ -10,6 +10,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
+  body.picker-window { border-radius: 8px; }
   body.embedded-preview #toolbar,
   body.embedded-preview #info-panel,
   body.embedded-preview #status-panel,
@@ -300,7 +301,7 @@
   var selectionEnabled = interactionMode === 'select';
   var pointSelectionEnabled = interactionMode === 'points';
   var pointDisplayEnabled = interactionMode === 'points-display';
-  if (embeddedPreview) document.body.classList.add('embedded-preview');
+  document.body.classList.add(embeddedPreview ? 'embedded-preview' : 'picker-window');
   var pendingPreviewBounds = null;
   window.__setPreviewBounds = function(bounds) {
     pendingPreviewBounds = bounds;

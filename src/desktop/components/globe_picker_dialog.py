@@ -11,8 +11,8 @@ import math
 from collections.abc import Sequence
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QEventLoop, QObject, Qt, QTimer, QUrl, QUrlQuery
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QEvent, QEventLoop, QObject, QRectF, Qt, QTimer, QUrl, QUrlQuery
+from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import (
     QApplication,
@@ -72,6 +72,16 @@ class MapWebEngineView(FramelessWebEngineView):
         super().wheelEvent(event)
 
 
+class RoundedMapFrame(QFrame):
+    """Clip the native WebEngine surface to the same radius as the map page."""
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 8.0, 8.0)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+
+
 class GlobePickerDialog(QWidget):
     """Display the globe as a modal-looking card embedded in the main window."""
 
@@ -109,29 +119,26 @@ class GlobePickerDialog(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        dark = host.palette().color(host.palette().ColorRole.Window).lightness() < 128
-        card_color = "#202020" if dark else "#ffffff"
         self.setStyleSheet(
             "QWidget#globePickerOverlay { background-color: rgba(0, 0, 0, 76); }"
-            f"QFrame#globePickerCard {{ background-color: {card_color}; border-radius: 8px; }}"
+            "QFrame#globePickerCard { background-color: transparent; border: none; }"
         )
 
         overlay_layout = QHBoxLayout(self)
         overlay_layout.setContentsMargins(0, 0, 0, 0)
-        self._card = QFrame(self, objectName="globePickerCard")
+        self._card = RoundedMapFrame(self, objectName="globePickerCard")
         overlay_layout.addWidget(self._card, 0, Qt.AlignmentFlag.AlignCenter)
 
         card_layout = QVBoxLayout(self._card)
-        card_layout.setContentsMargins(8, 8, 8, 8)
+        card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.setSpacing(0)
 
         # qframelesswindow 会在 WebEngine 创建原生视图后重新应用 macOS 无边框状态。
         self._webview = MapWebEngineView(self._card)
         self._webview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._webview.setMinimumSize(320, 240)
-        self._webview.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._webview.setZoomFactor(1.0)
-        self._webview.page().setBackgroundColor(QColor("#d7e9f5"))
+        self._webview.page().setBackgroundColor(QColor(0, 0, 0, 0))
         card_layout.addWidget(self._webview, 1)
 
         page = self._webview.page()
