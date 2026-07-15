@@ -179,6 +179,21 @@
     return lonLat;
   };
 
+  PolarTileMap.prototype.lonLatPixel = function(lonLat) {
+    if (!this.map || !this.projection) return null;
+    var coordinate = ol.proj.transform(lonLat, 'EPSG:4326', this.projection);
+    var pixel = this.map.getPixelFromCoordinate(coordinate);
+    if (!pixel || !Number.isFinite(pixel[0]) || !Number.isFinite(pixel[1])) return null;
+    return pixel;
+  };
+
+  PolarTileMap.prototype.onViewChange = function(callback) {
+    if (!this.map || typeof callback !== 'function') return;
+    var view = this.map.getView();
+    view.on('change:center', callback);
+    view.on('change:resolution', callback);
+  };
+
   PolarTileMap.prototype.setTool = function(tool) {
     if (!this.map) return;
     this.map.getInteractions().forEach(function(interaction) {

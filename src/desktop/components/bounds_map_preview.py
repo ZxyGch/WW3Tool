@@ -23,10 +23,15 @@ class BoundsMapPreview(MapWebEngineView):
         self._regions: list[dict[str, object]] = []
         self._field_regions: list[dict[str, object]] = []
         self._field_connections: list[tuple[object, object]] = []
+        self._applying_web_move = False
+        self._move_poll_in_flight = False
         self._update_timer = QTimer(self)
         self._update_timer.setSingleShot(True)
         self._update_timer.setInterval(180)
         self._update_timer.timeout.connect(self._update_from_bound_fields)
+        self._move_poll_timer = QTimer(self)
+        self._move_poll_timer.setInterval(120)
+        self._move_poll_timer.timeout.connect(self._poll_preview_move)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(210)
@@ -61,7 +66,7 @@ class BoundsMapPreview(MapWebEngineView):
         fields = (west, east, south, north)
         self._field_regions.append({"fields": fields, "color": color, "label": label})
         for field in fields:
-            slot = lambda *_: self._update_timer.start()
+            slot = lambda *_: self._schedule_field_update()
             field.textChanged.connect(slot)
             self._field_connections.append((field, slot))
         self._update_timer.start()
@@ -118,21 +123,73 @@ class BoundsMapPreview(MapWebEngineView):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        if self._page_loaded:
+            self._move_poll_timer.start()
         self._restore_host_frameless()
+
+    def hideEvent(self, event) -> None:
+        self._move_poll_timer.stop()
+        super().hideEvent(event)
 
     def _on_page_loaded(self, ok: bool) -> None:
         self._page_loaded = ok
         if ok:
             self._sync_regions()
+            if self.isVisible():
+                self._move_poll_timer.start()
             self._restore_host_frameless()
             QTimer.singleShot(0, self._restore_host_frameless)
             QTimer.singleShot(100, self._restore_host_frameless)
+
+    def _schedule_field_update(self) -> None:
+        if not self._applying_web_move:
+            self._update_timer.start()
+
+    def _poll_preview_move(self) -> None:
+        if not self._page_loaded or self._move_poll_in_flight:
+            return
+        self._move_poll_in_flight = True
+        self.page().runJavaScript(
+            "(function(){var r=window.__previewMoveResult||null;"
+            "window.__previewMoveResult=null;return r;})()",
+            self._on_preview_move,
+        )
+
+    def _on_preview_move(self, result: object) -> None:
+        self._move_poll_in_flight = False
+        if not isinstance(result, dict):
+            return
+        try:
+            index = int(result["index"])
+            bounds = tuple(float(result[key]) for key in ("west", "east", "south", "north"))
+        except (KeyError, TypeError, ValueError):
+            return
+        if index < 0 or index >= len(self._field_regions):
+            return
+        west, east, south, north = bounds
+        if not all(math.isfinite(value) for value in bounds):
+            return
+        if south >= north or south < -90 or north > 90 or east <= west or east - west > 360:
+            return
+
+        fields = self._field_regions[index]["fields"]
+        self._applying_web_move = True
+        try:
+            for field, value in zip(fields, bounds):
+                field.setText(f"{value:.4f}")
+        finally:
+            self._applying_web_move = False
+
+        for region in self._regions:
+            if int(region.get("fieldIndex", -1)) == index:
+                region.update({"west": west, "east": east, "south": south, "north": north})
+                break
 
     def _update_from_bound_fields(self) -> None:
         if not self._field_regions:
             return
         regions: list[dict[str, object]] = []
-        for binding in self._field_regions:
+        for field_index, binding in enumerate(self._field_regions):
             fields = binding["fields"]
             try:
                 west, east, south, north = (
@@ -155,6 +212,7 @@ class BoundsMapPreview(MapWebEngineView):
                     "color": binding["color"],
                     "label": binding["label"],
                     "width": 1.5,
+                    "fieldIndex": field_index,
                 }
             )
         self.set_regions(regions)

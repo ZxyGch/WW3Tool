@@ -197,6 +197,14 @@
     font-size: 11px; line-height: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none;
   }
+  .rect-move-handle {
+    position: absolute; z-index: 13; display: none;
+    width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%;
+    background: #1677d2; box-shadow: 0 1px 5px rgba(0,0,0,0.55);
+    transform: translate(-50%, -50%); cursor: grab;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .rect-move-handle.dragging { cursor: grabbing; }
   #confirm-btn {
     padding: 7px 20px; border: none; border-radius: 6px; font-size: 13px;
     cursor: pointer; font-weight: 500; background: #27ae60; color: white;
@@ -228,6 +236,7 @@
 <div id="status-panel">正在加载高清地图...</div>
 <div id="map-attribution">OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap</div>
 <div id="region-legend"></div>
+<div id="rect-move-handle" class="rect-move-handle" aria-hidden="true"></div>
 
 <div id="toolbar">
   <div id="style-select" class="style-combo">
@@ -337,6 +346,7 @@
       pointCount: '{count} 个点', undoPoint: '撤销', deletePoint: '删除上一个点', confirmPoints: '确认点位',
       pointOutside: '该位置不在网格范围内。', duplicatePoint: '该位置已有点位。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
+      moveRegion: '拖动圆点移动区域',
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
     },
     en: {
@@ -360,6 +370,7 @@
       pointCount: '{count} point(s)', undoPoint: 'Undo', deletePoint: 'Delete last point', confirmPoints: 'Confirm points',
       pointOutside: 'This location is outside the grid region.', duplicatePoint: 'A point already exists here.',
       selected: 'Region selected. Click the rectangle button to redraw.',
+      moveRegion: 'Drag to move the region',
       drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
     }
   };
@@ -456,6 +467,9 @@
   var polarLastPointer = null;
   var polarTileMap = null;
   var polarTileScriptPromise = null;
+  var rectMoveDrag = null;
+  var previewMoveHandles = [];
+  window.__previewMoveResult = null;
 
   // -- DOM 引用 --
   var coordEls = {
@@ -469,6 +483,7 @@
   var polarNav = document.getElementById('polar-nav');
   var polarZoomIn = document.getElementById('polar-zoom-in');
   var polarZoomOut = document.getElementById('polar-zoom-out');
+  var rectMoveHandle = document.getElementById('rect-move-handle');
   var infoPanel = document.getElementById('info-panel');
   var confirmBtn = document.getElementById('confirm-btn');
   var panBtn = document.getElementById('pan-btn');
@@ -537,6 +552,7 @@
     rectBtn.title = text.rectangle;
     rectBtn.textContent = text.rectangle;
     confirmBtn.textContent = '✓ ' + text.confirm;
+    rectMoveHandle.title = text.moveRegion;
     ['west', 'east', 'south', 'north'].forEach(function(key) {
       document.getElementById('label-' + key).textContent = text[key];
     });
@@ -780,6 +796,7 @@
         ? displayRegions.concat(currentRect ? [currentRect] : [])
         : displayRegions;
       polarTileMap.render(tileRegions, selectedPoints, polarRectangleGeometry);
+      positionRectangleMoveHandle();
       return;
     }
     if (!polarRoot || !polarPath) return;
@@ -815,6 +832,7 @@
         .attr('x', 8).attr('y', 4)
         .text(String(point.name || index));
     });
+    positionRectangleMoveHandle();
   }
 
   function renderPolarMap() {
@@ -868,6 +886,7 @@
     polarZoom = d3.zoom().scaleExtent([1, 8]).on('zoom', function(event) {
       polarZoomTransform = event.transform;
       polarRoot.attr('transform', event.transform);
+      positionRectangleMoveHandle();
     });
     svg.call(polarZoom).on('dblclick.zoom', null);
     renderPolarOverlays();
@@ -906,6 +925,7 @@
         return;
       }
       attributionEl.textContent = polarTileMap.attribution;
+      polarTileMap.onViewChange(positionRectangleMoveHandle);
       drawingSourceReady = true;
       rectBtn.disabled = false;
       renderPolarOverlays();
@@ -1141,6 +1161,7 @@
       };
       hasRect = true;
       renderPolarOverlays();
+      positionRectangleMoveHandle();
       return true;
     }
     if (
@@ -1168,7 +1189,126 @@
       color: selectionColor, width: 1.5
     };
     hasRect = true;
+    positionRectangleMoveHandle();
     return true;
+  }
+
+  function rectangleMoveAnchor(rect) {
+    return [(rect.west + rect.east) / 2, rect.north];
+  }
+
+  function positionMoveHandle(element, rect) {
+    var width = rect.east - rect.west;
+    var height = rect.north - rect.south;
+    if (width >= 359.999 || height >= 179.999) {
+      element.style.display = 'none';
+      return;
+    }
+    var anchor = rectangleMoveAnchor(rect);
+    var pixel = null;
+    var hostBounds;
+    if (isPolarActive()) {
+      if (!polarPointVisible(anchor)) {
+        element.style.display = 'none';
+        return;
+      }
+      if (polarTileMap) {
+        pixel = polarTileMap.lonLatPixel(anchor);
+      } else if (polarProjection && polarZoomTransform) {
+        var projected = polarProjection(anchor);
+        if (projected) pixel = polarZoomTransform.apply(projected);
+      }
+      hostBounds = polarMapElement.getBoundingClientRect();
+    } else if (map) {
+      var mapLongitude = unwrapLongitude(anchor[0], map.getCenter().lng);
+      pixel = map.project([mapLongitude, anchor[1]]);
+      hostBounds = mapElement.getBoundingClientRect();
+    }
+    var pixelX = Array.isArray(pixel) ? pixel[0] : pixel && pixel.x;
+    var pixelY = Array.isArray(pixel) ? pixel[1] : pixel && pixel.y;
+    if (!hostBounds || !Number.isFinite(pixelX) || !Number.isFinite(pixelY)) {
+      element.style.display = 'none';
+      return;
+    }
+    var bodyBounds = document.body.getBoundingClientRect();
+    element.style.left = (hostBounds.left - bodyBounds.left + pixelX) + 'px';
+    element.style.top = (hostBounds.top - bodyBounds.top + pixelY) + 'px';
+    element.style.backgroundColor = rect.color || selectionColor;
+    element.style.display = 'block';
+  }
+
+  function positionRectangleMoveHandle() {
+    if (!selectionEnabled || !currentRect || !hasRect) {
+      rectMoveHandle.style.display = 'none';
+    } else {
+      positionMoveHandle(rectMoveHandle, currentRect);
+    }
+    previewMoveHandles.forEach(function(handle, index) {
+      var region = displayRegions[index];
+      if (!embeddedPreview || !region) handle.style.display = 'none';
+      else positionMoveHandle(handle, region);
+    });
+  }
+
+  function syncPreviewMoveHandles() {
+    if (!embeddedPreview) return;
+    while (previewMoveHandles.length > displayRegions.length) {
+      previewMoveHandles.pop().remove();
+    }
+    displayRegions.forEach(function(region, index) {
+      var handle = previewMoveHandles[index];
+      if (!handle) {
+        handle = document.createElement('div');
+        handle.className = 'rect-move-handle';
+        handle.title = text.moveRegion;
+        handle.dataset.regionIndex = String(index);
+        document.body.appendChild(handle);
+        installMoveHandleEvents(handle, index);
+        previewMoveHandles.push(handle);
+      }
+      handle.style.backgroundColor = region.color || selectionColor;
+      positionMoveHandle(handle, region);
+    });
+  }
+
+  function movePointerLonLat(event) {
+    if (isPolarActive()) return polarPointerLonLat(event);
+    var bounds = mapElement.getBoundingClientRect();
+    var point = map.unproject([event.clientX - bounds.left, event.clientY - bounds.top]);
+    return point ? [point.lng, point.lat] : null;
+  }
+
+  function moveRectangleToPointer(event) {
+    if (!rectMoveDrag) return;
+    var sourceRect = rectMoveDrag.previewIndex == null
+      ? currentRect
+      : displayRegions[rectMoveDrag.previewIndex];
+    if (!sourceRect) return;
+    var lonLat = movePointerLonLat(event);
+    if (!lonLat) return;
+    var center = unwrapLongitude(lonLat[0], rectMoveDrag.anchorLongitude);
+    var north = Math.max(-90 + rectMoveDrag.height, Math.min(90, lonLat[1]));
+    var west = center - rectMoveDrag.width / 2;
+    var east = west + rectMoveDrag.width;
+    while (west < -360) { west += 360; east += 360; }
+    while (east > 360) { west -= 360; east -= 360; }
+    var south = north - rectMoveDrag.height;
+    if (rectMoveDrag.previewIndex != null) {
+      var region = displayRegions[rectMoveDrag.previewIndex];
+      displayRegions[rectMoveDrag.previewIndex] = Object.assign({}, region, {
+        west: west, east: east, south: south, north: north
+      });
+      applyDisplayRegions(false);
+      window.__previewMoveResult = {
+        index: Number.isInteger(Number(region.fieldIndex))
+          ? Number(region.fieldIndex)
+          : rectMoveDrag.previewIndex,
+        west: west, east: east, south: south, north: north,
+        revision: Date.now()
+      };
+    } else if (updateRectangle(north, south, east, west)) {
+      showCoords(west, east, north - rectMoveDrag.height, north);
+    }
   }
 
   function scheduleRectanglePreview(north, south, east, west) {
@@ -1273,10 +1413,11 @@
     );
   }
 
-  function applyDisplayRegions() {
+  function applyDisplayRegions(fitViewport) {
     if (selectionEnabled || !drawingSourceReady) return;
     if (isPolarActive()) {
       renderPolarOverlays();
+      syncPreviewMoveHandles();
       renderRegionLegend();
       updatePointTools();
       if (pointSelectionEnabled) setStatus(text.pointReady, false);
@@ -1311,7 +1452,8 @@
       type: 'FeatureCollection', features: outlineFeatures
     });
     renderRegionLegend();
-    if (displayRegions.length > 0) fitDisplayRegions();
+    syncPreviewMoveHandles();
+    if (displayRegions.length > 0 && fitViewport !== false) fitDisplayRegions();
     if (pointSelectionEnabled) {
       renderPointMarkers();
       setStatus(text.pointReady, false);
@@ -1361,7 +1503,8 @@
         south: Number(bounds.south), north: Number(bounds.north),
         color: String(bounds.color || '#1677d2'),
         width: Number(bounds.width || 1.5),
-        label: String(bounds.label || index + 1)
+        label: String(bounds.label || index + 1),
+        fieldIndex: Number.isInteger(Number(bounds.fieldIndex)) ? Number(bounds.fieldIndex) : index
       };
       if (!['west', 'east', 'south', 'north'].every(function(key) {
         return Number.isFinite(region[key]);
@@ -1575,6 +1718,9 @@
     infoPanel.classList.remove('visible');
     currentRect = null;
     hasRect = false;
+    rectMoveDrag = null;
+    rectMoveHandle.classList.remove('dragging');
+    rectMoveHandle.style.display = 'none';
     confirmBtn.disabled = true;
     if (isPolarActive()) renderPolarOverlays();
   }
@@ -1750,6 +1896,47 @@
       map.on('click', function(e) { addSelectedPoint(e.lngLat); });
     }
   });
+
+  map.on('move', positionRectangleMoveHandle);
+
+  function installMoveHandleEvents(handle, previewIndex) {
+    handle.addEventListener('pointerdown', function(event) {
+      var rect = previewIndex == null ? currentRect : displayRegions[previewIndex];
+      if (!rect || !drawingSourceReady || (!selectionEnabled && !embeddedPreview)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      var anchor = rectangleMoveAnchor(rect);
+      rectMoveDrag = {
+        pointerId: event.pointerId,
+        previewIndex: previewIndex,
+        anchorLongitude: anchor[0],
+        width: rect.east - rect.west,
+        height: rect.north - rect.south
+      };
+      handle.classList.add('dragging');
+      handle.setPointerCapture(event.pointerId);
+    });
+
+    handle.addEventListener('pointermove', function(event) {
+      if (!rectMoveDrag || event.pointerId !== rectMoveDrag.pointerId) return;
+      event.preventDefault();
+      moveRectangleToPointer(event);
+    });
+
+    function finishRectangleMove(event) {
+      if (!rectMoveDrag || event.pointerId !== rectMoveDrag.pointerId) return;
+      moveRectangleToPointer(event);
+      rectMoveDrag = null;
+      handle.classList.remove('dragging');
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (selectionEnabled) setStatus(text.selected, false);
+    }
+
+    handle.addEventListener('pointerup', finishRectangleMove);
+    handle.addEventListener('pointercancel', finishRectangleMove);
+  }
+
+  installMoveHandleEvents(rectMoveHandle, null);
 
   map.on('error', function(e) {
     var message = e && e.error && e.error.message ? e.error.message : '';
