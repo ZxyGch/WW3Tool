@@ -514,6 +514,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._local_run_panel.refresh_st_versions()
         if section == "forcing":
             self._sync_forcing_options_from_runtime()
+        if section == "map_type" and hasattr(self, "_grid_panel"):
+            self._grid_panel.bounds_preview.reload_map_type()
 
     def _refresh_home_st_and_output_options(self, config: dict) -> None:
         st_names = self._server_st_names(config)
@@ -604,7 +606,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             create_button=self._primary_button,
             input_style=self._input_style,
             combo_style=self._combo_style,
-            grid_bounds_fields=self._grid_panel.fields,
             browse_path=self._browse_path,
             clear_path=self._clear_forcing_path,
             show_file_info=self._show_forcing_files_info,

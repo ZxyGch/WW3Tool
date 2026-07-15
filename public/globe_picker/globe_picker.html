@@ -299,6 +299,8 @@
     south_polar: { baseStyle: 'polar', pole: 'south' }
   };
   var queryParams = new URLSearchParams(window.location.search);
+  var requestedMapType = queryParams.get('mapType');
+  var initialMapType = MAP_TYPES[requestedMapType] ? requestedMapType : 'administrative';
   var appLanguage = queryParams.get('lang') === 'en' ? 'en' : 'zh';
   var interactionMode = queryParams.get('mode') || 'select';
   var embeddedPreview = interactionMode === 'preview';
@@ -1680,8 +1682,12 @@
   // ----------------------------------------------------------------
 
   map.on('load', function() {
-    addDrawingLayers();
-    scheduleNavigationOverlay();
+    if (initialMapType === 'administrative') {
+      addDrawingLayers();
+      scheduleNavigationOverlay();
+    } else {
+      switchStyle(initialMapType);
+    }
     rectBtn.disabled = false;
     if (eventsBound) return;
     eventsBound = true;

@@ -11,7 +11,7 @@ from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import QSizePolicy
 
-from .globe_picker_dialog import MapWebEngineView, current_map_language
+from .globe_picker_dialog import MapWebEngineView, current_map_language, current_map_type
 
 
 class BoundsMapPreview(MapWebEngineView):
@@ -43,6 +43,7 @@ class BoundsMapPreview(MapWebEngineView):
         query = QUrlQuery()
         query.addQueryItem("mode", "preview")
         query.addQueryItem("lang", current_map_language())
+        query.addQueryItem("mapType", current_map_type())
         url.setQuery(query)
         self.load(url)
 
@@ -99,6 +100,15 @@ class BoundsMapPreview(MapWebEngineView):
 
     def regions(self) -> list[dict[str, object]]:
         return [dict(region) for region in self._regions]
+
+    def reload_map_type(self) -> None:
+        url = self.url()
+        query = QUrlQuery(url)
+        query.removeAllQueryItems("mapType")
+        query.addQueryItem("mapType", current_map_type())
+        url.setQuery(query)
+        self._page_loaded = False
+        self.load(url)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

@@ -37,6 +37,16 @@ def current_map_language() -> str:
     return "en" if language.lower().startswith("en") else "zh"
 
 
+def current_map_type() -> str:
+    """Return the configured default map type."""
+    try:
+        from workflows.infrastructure.runtime_config import load_config, normalize_map_type
+
+        return normalize_map_type(load_config().get("MAP_TYPE"))
+    except Exception:
+        return "administrative"
+
+
 class MapWebEngineView(FramelessWebEngineView):
     """Send trackpad pinch gestures to the map without scaling the web page."""
 
@@ -169,6 +179,7 @@ class GlobePickerDialog(QWidget):
         html_url = QUrl.fromLocalFile(str(html_path.resolve()))
         query = QUrlQuery()
         query.addQueryItem("lang", self._map_language())
+        query.addQueryItem("mapType", current_map_type())
         if self._point_selection_enabled:
             query.addQueryItem("mode", "points")
         elif self._point_display_enabled:

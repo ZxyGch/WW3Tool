@@ -39,6 +39,7 @@ PARAMS_FILE = os.path.join(PROJECT_ROOT, "params.yml")
 _DESKTOP_YAML_TO_LEGACY = {
     "language": "LANGUAGE",
     "theme": "THEME",
+    "map_type": "MAP_TYPE",
     "run_mode": "RUN_MODE",
     "recent_workdirs": "RECENT_WORKDIRS",
     "forcing_field_dir": "FORCING_FIELD_DIR_PATH",
@@ -497,6 +498,7 @@ def save_smc_grid_json_updates(updates: dict):
 DEFAULT_CONFIG = {
     "DEFAULT_WORKDIR": os.path.join(PROJECT_ROOT, "workSpace"),
     "RECENT_WORKDIRS": [],
+    "MAP_TYPE": "administrative",
 }
 
 
@@ -627,6 +629,14 @@ def swap_ww3_version(new_version: str) -> bool:
 
 
 RUN_MODE_VALUES = ("local", "server", "both")
+MAP_TYPE_VALUES = (
+    "administrative", "satellite", "dark", "light", "north_polar", "south_polar",
+)
+
+
+def normalize_map_type(value: object, *, default: str = "administrative") -> str:
+    candidate = str(value or "").strip().lower()
+    return candidate if candidate in MAP_TYPE_VALUES else default
 
 # Legacy RUN_MODE strings (display labels or old saves) → canonical codes.
 _RUN_MODE_ALIASES = {
@@ -911,6 +921,7 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "# Desktop-only settings (managed by the Settings page; CLI ignores).\n"
      "#   language           – UI locale: 'en_US' or 'zh_CN'.\n"
      "#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.\n"
+     "#   map_type           – default map type used by map views.\n"
      "#   run_mode           – 'local' / 'server' / 'both'.\n"
      "#   recent_workdirs    – recently opened work directories (MRU list).\n"
      "#   forcing_field_dir  – last-used forcing file browse directory.\n"
@@ -1112,10 +1123,12 @@ def load_config():
         merged = DEFAULT_CONFIG.copy()
         merged.update(_desktop_section_to_legacy(desktop_raw))
         merged["RUN_MODE"] = normalize_run_mode(merged.get("RUN_MODE"))
+        merged["MAP_TYPE"] = normalize_map_type(merged.get("MAP_TYPE"))
         return merged
 
     default_config = DEFAULT_CONFIG.copy()
     default_config["RUN_MODE"] = normalize_run_mode(default_config.get("RUN_MODE"))
+    default_config["MAP_TYPE"] = normalize_map_type(default_config.get("MAP_TYPE"))
     return default_config
 
 

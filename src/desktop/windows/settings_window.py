@@ -61,8 +61,10 @@ from ..components.combo_box import (
     select_file_split_combo,
 )
 from workflows.infrastructure.runtime_config import (
+    MAP_TYPE_VALUES,
     RUN_MODE_VALUES,
     WW3_VERSION_VALUES,
+    normalize_map_type,
     normalize_run_mode,
     smc_bathymetry_relpath_for_combo_index,
     swap_ww3_version,
@@ -487,7 +489,17 @@ class SettingsInterface(QWidget):
         grid = self._card(tr("interface_settings", "界面设置"))
         self._combo(grid, 0, 0, tr("language_select", "语言:"), "LANGUAGE", ["zh_CN", "en_US"])
         self._build_run_mode_combo(grid, 1, 0)
+        map_options = [
+            (tr("map_type_administrative", "行政区划海图"), MAP_TYPE_VALUES[0]),
+            (tr("map_type_satellite", "卫星图"), MAP_TYPE_VALUES[1]),
+            (tr("map_type_dark", "暗色图"), MAP_TYPE_VALUES[2]),
+            (tr("map_type_light", "亮色图"), MAP_TYPE_VALUES[3]),
+            (tr("map_type_north_polar", "北极地图"), MAP_TYPE_VALUES[4]),
+            (tr("map_type_south_polar", "南极地图"), MAP_TYPE_VALUES[5]),
+        ]
+        self._combo(grid, 2, 0, tr("map_type_label", "地图类型"), "MAP_TYPE", map_options)
         self._combos["LANGUAGE"].currentTextChanged.connect(self._on_language_changed)
+        self._combos["MAP_TYPE"].currentIndexChanged.connect(self._on_map_type_changed)
 
     def _build_run_mode_combo(self, grid: QGridLayout, row: int, col: int) -> None:
         combo = ComboBox()
@@ -1299,8 +1311,8 @@ class SettingsInterface(QWidget):
         for widget in self._fields.values():
             self._connect_autosave(widget, self._save_config_now)
         for key, widget in self._combos.items():
-            if key == "WW3_VERSION":
-                continue  # handled by _on_ww3_version_changed (manages directory swap)
+            if key in {"WW3_VERSION", "MAP_TYPE"}:
+                continue  # These combos have dedicated save handlers.
             self._connect_autosave(widget, self._save_config_now)
         for widget in self._checks.values():
             self._connect_autosave(widget, self._save_config_now)
@@ -1351,6 +1363,17 @@ class SettingsInterface(QWidget):
         self._config = self._vm.load()
         if callable(self._on_run_mode_changed_callback):
             self._on_run_mode_changed_callback(run_mode)
+
+    def _on_map_type_changed(self, _index: int = 0) -> None:
+        combo = self._combos.get("MAP_TYPE")
+        if combo is None:
+            return
+        value = normalize_map_type(combo.itemData(combo.currentIndex()))
+        if normalize_map_type(self._config.get("MAP_TYPE")) == value:
+            return
+        self._vm.save({"MAP_TYPE": value})
+        self._config = self._vm.load()
+        self._notify_config_changed("map_type")
 
     def _toast(self, message: str) -> None:
         InfoBar.success(title="", content=message, duration=2000, parent=self.window())
