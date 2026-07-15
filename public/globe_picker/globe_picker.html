@@ -99,14 +99,13 @@
   #info-panel .coord-box .label { margin-right: 6px; font-size: 11px; color: #999; }
   .coord-input {
     width: 88px; height: 30px; padding: 0 7px;
-    border: 1px solid #4a4a4a; border-radius: 4px;
+    border: none; border-radius: 4px;
     outline: none; background: #2d2d2d; color: #4fc3f7;
     text-align: center; font-size: 13px; font-weight: 600;
     font-family: 'SF Mono', 'Menlo', monospace;
   }
-  .coord-input:hover { border-color: #666; }
-  .coord-input:focus { border-color: #0078d4; box-shadow: 0 0 0 1px #0078d4; }
-  .coord-input.invalid { border-color: #e25555; box-shadow: 0 0 0 1px #e25555; }
+  .coord-input:focus { box-shadow: 0 0 0 1px #0078d4; }
+  .coord-input.invalid { box-shadow: 0 0 0 1px #e25555; }
   .coord-input::-webkit-inner-spin-button,
   .coord-input::-webkit-outer-spin-button { appearance: none; margin: 0; }
   #status-panel {
