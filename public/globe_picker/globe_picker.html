@@ -197,14 +197,16 @@
     font-size: 11px; line-height: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none;
   }
-  .rect-move-handle {
+  .rect-edit-handle {
     position: absolute; z-index: 13; display: none;
     width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%;
     background: #1677d2; box-shadow: 0 1px 5px rgba(0,0,0,0.55);
-    transform: translate(-50%, -50%); cursor: grab;
+    transform: translate(-50%, -50%);
     touch-action: none; user-select: none; -webkit-user-select: none;
   }
+  .rect-move-handle { cursor: grab; }
   .rect-move-handle.dragging { cursor: grabbing; }
+  .rect-resize-handle { cursor: nwse-resize; }
   #confirm-btn {
     padding: 7px 20px; border: none; border-radius: 6px; font-size: 13px;
     cursor: pointer; font-weight: 500; background: #27ae60; color: white;
@@ -236,7 +238,8 @@
 <div id="status-panel">正在加载高清地图...</div>
 <div id="map-attribution">OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap</div>
 <div id="region-legend"></div>
-<div id="rect-move-handle" class="rect-move-handle" aria-hidden="true"></div>
+<div id="rect-move-handle" class="rect-edit-handle rect-move-handle" aria-hidden="true"></div>
+<div id="rect-resize-handle" class="rect-edit-handle rect-resize-handle" aria-hidden="true"></div>
 
 <div id="toolbar">
   <div id="style-select" class="style-combo">
@@ -347,6 +350,7 @@
       pointOutside: '该位置不在网格范围内。', duplicatePoint: '该位置已有点位。',
       selected: '已选择区域，再次点击矩形按钮可重新选择。',
       moveRegion: '拖动圆点移动区域',
+      resizeRegion: '拖动圆点调整区域大小',
       drawing: '请在地图上拖动鼠标绘制矩形。', resourceError: '地图资源加载异常：'
     },
     en: {
@@ -371,6 +375,7 @@
       pointOutside: 'This location is outside the grid region.', duplicatePoint: 'A point already exists here.',
       selected: 'Region selected. Click the rectangle button to redraw.',
       moveRegion: 'Drag to move the region',
+      resizeRegion: 'Drag to resize the region',
       drawing: 'Drag on the map to draw a rectangle.', resourceError: 'Map resource error: '
     }
   };
@@ -468,7 +473,9 @@
   var polarTileMap = null;
   var polarTileScriptPromise = null;
   var rectMoveDrag = null;
+  var rectResizeDrag = null;
   var previewMoveHandles = [];
+  var previewResizeHandles = [];
   window.__previewMoveResult = null;
 
   // -- DOM 引用 --
@@ -484,6 +491,7 @@
   var polarZoomIn = document.getElementById('polar-zoom-in');
   var polarZoomOut = document.getElementById('polar-zoom-out');
   var rectMoveHandle = document.getElementById('rect-move-handle');
+  var rectResizeHandle = document.getElementById('rect-resize-handle');
   var infoPanel = document.getElementById('info-panel');
   var confirmBtn = document.getElementById('confirm-btn');
   var panBtn = document.getElementById('pan-btn');
@@ -553,6 +561,7 @@
     rectBtn.textContent = text.rectangle;
     confirmBtn.textContent = '✓ ' + text.confirm;
     rectMoveHandle.title = text.moveRegion;
+    rectResizeHandle.title = text.resizeRegion;
     ['west', 'east', 'south', 'north'].forEach(function(key) {
       document.getElementById('label-' + key).textContent = text[key];
     });
@@ -1194,17 +1203,20 @@
   }
 
   function rectangleMoveAnchor(rect) {
-    return [(rect.west + rect.east) / 2, rect.north];
+    return [(rect.west + rect.east) / 2, rect.south];
   }
 
-  function positionMoveHandle(element, rect) {
+  function rectangleResizeAnchor(rect) {
+    return [rect.east, rect.south];
+  }
+
+  function positionEditHandle(element, rect, anchor) {
     var width = rect.east - rect.west;
     var height = rect.north - rect.south;
     if (width >= 359.999 || height >= 179.999) {
       element.style.display = 'none';
       return;
     }
-    var anchor = rectangleMoveAnchor(rect);
     var pixel = null;
     var hostBounds;
     if (isPolarActive()) {
@@ -1240,13 +1252,20 @@
   function positionRectangleMoveHandle() {
     if (!selectionEnabled || !currentRect || !hasRect) {
       rectMoveHandle.style.display = 'none';
+      rectResizeHandle.style.display = 'none';
     } else {
-      positionMoveHandle(rectMoveHandle, currentRect);
+      positionEditHandle(rectMoveHandle, currentRect, rectangleMoveAnchor(currentRect));
+      positionEditHandle(rectResizeHandle, currentRect, rectangleResizeAnchor(currentRect));
     }
     previewMoveHandles.forEach(function(handle, index) {
       var region = displayRegions[index];
       if (!embeddedPreview || !region) handle.style.display = 'none';
-      else positionMoveHandle(handle, region);
+      else positionEditHandle(handle, region, rectangleMoveAnchor(region));
+    });
+    previewResizeHandles.forEach(function(handle, index) {
+      var region = displayRegions[index];
+      if (!embeddedPreview || !region) handle.style.display = 'none';
+      else positionEditHandle(handle, region, rectangleResizeAnchor(region));
     });
   }
 
@@ -1255,19 +1274,35 @@
     while (previewMoveHandles.length > displayRegions.length) {
       previewMoveHandles.pop().remove();
     }
+    while (previewResizeHandles.length > displayRegions.length) {
+      previewResizeHandles.pop().remove();
+    }
     displayRegions.forEach(function(region, index) {
-      var handle = previewMoveHandles[index];
-      if (!handle) {
-        handle = document.createElement('div');
-        handle.className = 'rect-move-handle';
-        handle.title = text.moveRegion;
-        handle.dataset.regionIndex = String(index);
-        document.body.appendChild(handle);
-        installMoveHandleEvents(handle, index);
-        previewMoveHandles.push(handle);
+      var moveHandle = previewMoveHandles[index];
+      if (!moveHandle) {
+        moveHandle = document.createElement('div');
+        moveHandle.className = 'rect-edit-handle rect-move-handle';
+        moveHandle.title = text.moveRegion;
+        moveHandle.dataset.regionIndex = String(index);
+        document.body.appendChild(moveHandle);
+        installMoveHandleEvents(moveHandle, index);
+        previewMoveHandles.push(moveHandle);
       }
-      handle.style.backgroundColor = region.color || selectionColor;
-      positionMoveHandle(handle, region);
+      moveHandle.style.backgroundColor = region.color || selectionColor;
+      positionEditHandle(moveHandle, region, rectangleMoveAnchor(region));
+
+      var resizeHandle = previewResizeHandles[index];
+      if (!resizeHandle) {
+        resizeHandle = document.createElement('div');
+        resizeHandle.className = 'rect-edit-handle rect-resize-handle';
+        resizeHandle.title = text.resizeRegion;
+        resizeHandle.dataset.regionIndex = String(index);
+        document.body.appendChild(resizeHandle);
+        installResizeHandleEvents(resizeHandle, index);
+        previewResizeHandles.push(resizeHandle);
+      }
+      resizeHandle.style.backgroundColor = region.color || selectionColor;
+      positionEditHandle(resizeHandle, region, rectangleResizeAnchor(region));
     });
   }
 
@@ -1287,12 +1322,12 @@
     var lonLat = movePointerLonLat(event);
     if (!lonLat) return;
     var center = unwrapLongitude(lonLat[0], rectMoveDrag.anchorLongitude);
-    var north = Math.max(-90 + rectMoveDrag.height, Math.min(90, lonLat[1]));
+    var south = Math.max(-90, Math.min(90 - rectMoveDrag.height, lonLat[1]));
+    var north = south + rectMoveDrag.height;
     var west = center - rectMoveDrag.width / 2;
     var east = west + rectMoveDrag.width;
     while (west < -360) { west += 360; east += 360; }
     while (east > 360) { west -= 360; east -= 360; }
-    var south = north - rectMoveDrag.height;
     if (rectMoveDrag.previewIndex != null) {
       var region = displayRegions[rectMoveDrag.previewIndex];
       displayRegions[rectMoveDrag.previewIndex] = Object.assign({}, region, {
@@ -1307,7 +1342,40 @@
         revision: Date.now()
       };
     } else if (updateRectangle(north, south, east, west)) {
-      showCoords(west, east, north - rectMoveDrag.height, north);
+      showCoords(west, east, south, north);
+    }
+  }
+
+  function resizeRectangleToPointer(event) {
+    if (!rectResizeDrag) return;
+    var sourceRect = rectResizeDrag.previewIndex == null
+      ? currentRect
+      : displayRegions[rectResizeDrag.previewIndex];
+    if (!sourceRect) return;
+    var lonLat = movePointerLonLat(event);
+    if (!lonLat) return;
+    var minimumSize = 0.0001;
+    var east = unwrapLongitude(lonLat[0], rectResizeDrag.referenceLongitude);
+    east = Math.max(rectResizeDrag.west + minimumSize, Math.min(rectResizeDrag.west + 360, east));
+    var south = Math.max(-90, Math.min(rectResizeDrag.north - minimumSize, lonLat[1]));
+    var bounds = {
+      west: rectResizeDrag.west,
+      east: east,
+      south: south,
+      north: rectResizeDrag.north
+    };
+    if (rectResizeDrag.previewIndex != null) {
+      var region = displayRegions[rectResizeDrag.previewIndex];
+      displayRegions[rectResizeDrag.previewIndex] = Object.assign({}, region, bounds);
+      applyDisplayRegions(false);
+      window.__previewMoveResult = Object.assign({
+        index: Number.isInteger(Number(region.fieldIndex))
+          ? Number(region.fieldIndex)
+          : rectResizeDrag.previewIndex,
+        revision: Date.now()
+      }, bounds);
+    } else if (updateRectangle(bounds.north, bounds.south, bounds.east, bounds.west)) {
+      showCoords(bounds.west, bounds.east, bounds.south, bounds.north);
     }
   }
 
@@ -1719,8 +1787,11 @@
     currentRect = null;
     hasRect = false;
     rectMoveDrag = null;
+    rectResizeDrag = null;
     rectMoveHandle.classList.remove('dragging');
     rectMoveHandle.style.display = 'none';
+    rectResizeHandle.classList.remove('dragging');
+    rectResizeHandle.style.display = 'none';
     confirmBtn.disabled = true;
     if (isPolarActive()) renderPolarOverlays();
   }
@@ -1936,7 +2007,44 @@
     handle.addEventListener('pointercancel', finishRectangleMove);
   }
 
+  function installResizeHandleEvents(handle, previewIndex) {
+    handle.addEventListener('pointerdown', function(event) {
+      var rect = previewIndex == null ? currentRect : displayRegions[previewIndex];
+      if (!rect || !drawingSourceReady || (!selectionEnabled && !embeddedPreview)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      rectResizeDrag = {
+        pointerId: event.pointerId,
+        previewIndex: previewIndex,
+        west: rect.west,
+        north: rect.north,
+        referenceLongitude: rect.east
+      };
+      handle.classList.add('dragging');
+      handle.setPointerCapture(event.pointerId);
+    });
+
+    handle.addEventListener('pointermove', function(event) {
+      if (!rectResizeDrag || event.pointerId !== rectResizeDrag.pointerId) return;
+      event.preventDefault();
+      resizeRectangleToPointer(event);
+    });
+
+    function finishRectangleResize(event) {
+      if (!rectResizeDrag || event.pointerId !== rectResizeDrag.pointerId) return;
+      resizeRectangleToPointer(event);
+      rectResizeDrag = null;
+      handle.classList.remove('dragging');
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (selectionEnabled) setStatus(text.selected, false);
+    }
+
+    handle.addEventListener('pointerup', finishRectangleResize);
+    handle.addEventListener('pointercancel', finishRectangleResize);
+  }
+
   installMoveHandleEvents(rectMoveHandle, null);
+  installResizeHandleEvents(rectResizeHandle, null);
 
   map.on('error', function(e) {
     var message = e && e.error && e.error.message ? e.error.message : '';
