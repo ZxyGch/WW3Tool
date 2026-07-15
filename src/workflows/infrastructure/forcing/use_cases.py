@@ -208,8 +208,13 @@ class ImportForcingFileUseCase:
         else:
             target_filename = self._path_manager.generate_forcing_filename([field.value], auto_associate=False)
         target_file = os.path.join(selected_folder, target_filename)
+        crop_requested = bool(crop_time_range and crop_bbox)
+        try:
+            source_is_target = os.path.samefile(file_path, target_file)
+        except OSError:
+            source_is_target = os.path.realpath(file_path) == os.path.realpath(target_file)
 
-        if auto_associate and len(fields) > 1:
+        if auto_associate and len(fields) > 1 and not source_is_target:
             self._emit(
                 tr("log_detected_multi_forcing", "ℹ️ 检测到文件包含多个强迫场: {fields}").format(
                     fields=", ".join(fields)
@@ -219,20 +224,14 @@ class ImportForcingFileUseCase:
                 tr("log_file_will_save_as", "📁 文件将保存为: {filename}").format(filename=target_filename)
             )
 
-        need_process = self._log_existing_target(file_path, target_file, target_filename)
-        crop_requested = bool(crop_time_range and crop_bbox)
-        try:
-            source_is_target = os.path.samefile(file_path, target_file)
-        except OSError:
-            source_is_target = os.path.realpath(file_path) == os.path.realpath(target_file)
+        need_process = self._log_existing_target(
+            file_path,
+            target_file,
+            target_filename,
+            announce_same=not (crop_requested and source_is_target),
+        )
         if crop_requested and source_is_target:
             need_process = True
-            self._emit(
-                tr(
-                    "log_recrop_workdir_forcing",
-                    "✂️ 将重新裁剪工作目录中的强迫场文件: {filename}",
-                ).format(filename=target_filename)
-            )
         if need_process:
             if crop_requested:
                 copied_file = self._file_service.crop_and_fix_forcing_file(
@@ -271,7 +270,14 @@ class ImportForcingFileUseCase:
             files_patch=files_patch,
         )
 
-    def _log_existing_target(self, file_path: str, target_file: str, target_filename: str) -> bool:
+    def _log_existing_target(
+        self,
+        file_path: str,
+        target_file: str,
+        target_filename: str,
+        *,
+        announce_same: bool = True,
+    ) -> bool:
         """记录目标文件是否已存在，并返回是否仍需复制/修复。
 
         [EN] Log whether the target file already exists and return whether copy/fix is still needed.
@@ -280,12 +286,13 @@ class ImportForcingFileUseCase:
         if os.path.exists(target_file):
             try:
                 if os.path.samefile(file_path, target_file):
-                    self._emit(
-                        tr(
-                            "log_file_exists_same",
-                            "ℹ️ 文件已存在于工作目录且与源文件相同: {filename}",
-                        ).format(filename=target_filename)
-                    )
+                    if announce_same:
+                        self._emit(
+                            tr(
+                                "log_file_exists_same",
+                                "ℹ️ 文件已存在于工作目录且与源文件相同: {filename}",
+                            ).format(filename=target_filename)
+                        )
                     need_process = False
                 else:
                     self._emit(

@@ -502,19 +502,26 @@ class FileService:
                 if os.path.exists(processing_target):
                     os.remove(processing_target)
             self.log(
-                tr("log_crop_forcing_start", "✂️ 正在按范围裁剪强迫场：{src} → {dst}").format(
-                    src=os.path.basename(source_file),
-                    dst=os.path.basename(target_file),
+                tr("log_crop_forcing_start", "✂️ 正在裁剪强迫场：{file}").format(
+                    file=os.path.basename(target_file),
                 )
             )
             merge_forcing_netcdf(
                 [source_file],
                 processing_target,
-                log=self.log,
                 time_range=time_range,
                 bbox=bbox,
             )
-            ok = self._normalizer.normalize(processing_target, processing_target, log=self.log)
+            def log_normalize_problem(message: str) -> None:
+                text = str(message)
+                if text.startswith(("❌", "⚠️")) or "失败" in text or "error" in text.lower():
+                    self.log(text)
+
+            ok = self._normalizer.normalize(
+                processing_target,
+                processing_target,
+                log=log_normalize_problem,
+            )
             if not ok:
                 if replace_target and os.path.exists(processing_target):
                     os.remove(processing_target)
@@ -534,7 +541,7 @@ class FileService:
                         )
                     )
             self.log(
-                tr("log_crop_forcing_done", "✅ 强迫场裁剪并标准化完成：{file}").format(
+                tr("log_crop_forcing_done", "✅ 强迫场裁剪完成：{file}").format(
                     file=os.path.basename(target_file)
                 )
             )
