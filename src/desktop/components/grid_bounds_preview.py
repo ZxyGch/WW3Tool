@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import QRectF, QUrl, QUrlQuery
+from PyQt6.QtCore import QRectF, QTimer, QUrl, QUrlQuery
 from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import QSizePolicy
 
-from .globe_picker_dialog import MapWebEngineView
+from .globe_picker_dialog import MapWebEngineView, current_map_language
 
 
 class GridBoundsPreview(MapWebEngineView):
@@ -35,6 +35,7 @@ class GridBoundsPreview(MapWebEngineView):
         url = QUrl.fromLocalFile(str(html_path.resolve()))
         query = QUrlQuery()
         query.addQueryItem("mode", "preview")
+        query.addQueryItem("lang", current_map_language())
         url.setQuery(query)
         self.load(url)
 
@@ -57,10 +58,31 @@ class GridBoundsPreview(MapWebEngineView):
         path.addRoundedRect(QRectF(self.rect()), 8.0, 8.0)
         self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._restore_host_frameless()
+
     def _on_page_loaded(self, ok: bool) -> None:
         self._page_loaded = ok
         if ok:
             self._sync_bounds()
+            self._restore_host_frameless()
+            QTimer.singleShot(0, self._restore_host_frameless)
+            QTimer.singleShot(100, self._restore_host_frameless)
+
+    def _restore_host_frameless(self) -> None:
+        host = self.window()
+        if host is self:
+            return
+        update_frameless = getattr(host, "updateFrameless", None)
+        if callable(update_frameless):
+            update_frameless()
+        set_system_buttons = getattr(host, "setSystemTitleBarButtonVisible", None)
+        if callable(set_system_buttons):
+            set_system_buttons(False)
+        title_bar = getattr(host, "titleBar", None)
+        if title_bar is not None:
+            title_bar.raise_()
 
     def _sync_bounds(self) -> None:
         if not self._page_loaded:

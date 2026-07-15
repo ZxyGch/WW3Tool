@@ -26,6 +26,17 @@ from PyQt6.QtWidgets import (
 from qframelesswindow.webengine import FramelessWebEngineView
 
 
+def current_map_language() -> str:
+    """Return the two-letter map language matching the application setting."""
+    try:
+        from workflows.infrastructure.runtime_config import load_config
+
+        language = str(load_config().get("LANGUAGE", "zh_CN") or "zh_CN")
+    except Exception:
+        language = "zh_CN"
+    return "en" if language.lower().startswith("en") else "zh"
+
+
 class MapWebEngineView(FramelessWebEngineView):
     """Send trackpad pinch gestures to the map without scaling the web page."""
 
@@ -199,13 +210,7 @@ class GlobePickerDialog(QWidget):
 
     @staticmethod
     def _map_language() -> str:
-        try:
-            from workflows.infrastructure.runtime_config import load_config
-
-            language = str(load_config().get("LANGUAGE", "zh_CN") or "zh_CN")
-        except Exception:
-            language = "zh_CN"
-        return "en" if language.lower().startswith("en") else "zh"
+        return current_map_language()
 
     @staticmethod
     def _initial_bounds(host) -> tuple[float, float, float, float] | None:
