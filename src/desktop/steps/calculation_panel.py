@@ -23,6 +23,7 @@ against the current grid bounding box (``bounds_provider``). After any point cha
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -82,11 +83,13 @@ class CalculationStepPanel:
         bounds_provider: Callable[[], dict | None] | None = None,
         notify: Callable[[str], None] | None = None,
         points_changed: Callable[[], None] | None = None,
+        track_datetime_provider: Callable[[int], list[str]] | None = None,
     ) -> None:
         self._input_style = input_style or (lambda: "")
         self._bounds_provider = bounds_provider or (lambda: None)
         self._notify = notify or (lambda _msg: None)
         self._points_changed = points_changed or (lambda: None)
+        self._track_datetime_provider = track_datetime_provider or self._fallback_track_datetimes
         group, layout = create_header_card(parent, tr("step3_title", "第三步：计算模式"))
 
         grid = QGridLayout()
@@ -296,7 +299,28 @@ class CalculationStepPanel:
                 rows.append([p.get("datetime", ""), p["lon"], p["lat"], p.get("name", "")])
             else:
                 rows.append([p["lon"], p["lat"], p.get("name", "")])
+        if kind == "track":
+            defaults = self._track_datetime_provider(len(rows))
+            for index, row in enumerate(rows):
+                if not self._valid_track_datetime(str(row[0])):
+                    row[0] = defaults[index]
         self._fill_table(table, kind, rows)
+
+    @staticmethod
+    def _valid_track_datetime(value: str) -> bool:
+        try:
+            datetime.strptime(value.strip(), "%Y%m%d %H%M%S")
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _fallback_track_datetimes(count: int) -> list[str]:
+        start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return [
+            (start + timedelta(hours=index)).strftime("%Y%m%d %H%M%S")
+            for index in range(count)
+        ]
 
     def _delete(self, kind: str) -> None:
         row = self._selected_data_row(kind)

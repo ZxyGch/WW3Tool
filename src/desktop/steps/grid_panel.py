@@ -647,6 +647,19 @@ class GridStepPanel:
         _, _, lon, lat = base
         return lon, lat
 
+    def level_regions(self) -> list[GridRegion]:
+        """Return valid level bounds directly from the current form."""
+        values = [self._grid_region_floats()]
+        if self.is_nested:
+            values.extend(card.region_floats() for card in self.level_cards)
+        regions: list[GridRegion] = []
+        for value in values:
+            if value is None:
+                continue
+            dx, dy, lon, lat = value
+            regions.append(GridRegion(dx=dx, dy=dy, lon=lon, lat=lat))
+        return regions
+
     def needs_global_alignment_prompt(self) -> bool:
         """True when level0 bounds are very close to, but not exactly, global."""
         bounds = self.outer_lon_lat()

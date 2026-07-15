@@ -7,7 +7,7 @@ import posixpath
 import re
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, QUrl, Qt
@@ -631,6 +631,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             bounds_provider=self._calc_grid_bounds,
             notify=self._append_log,
             points_changed=self._persist_step3_points_to_params,
+            track_datetime_provider=self._default_track_datetimes,
         )
         self._calc_mode_combo = self._calculation_panel.mode_combo
         layout.addWidget(self._calculation_panel.widget)
@@ -1323,18 +1324,18 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return None
 
     def _calc_grid_bounds(self) -> dict | None:
-        # [EN] Read grid lon/lat bounding box from params.yml (config.grid) for step 3 point validation.
+        # [EN] Read grid bounds directly from the Step 1 form so incomplete Step 3 rows cannot block the map.
         # [EN] Nested grids include every level rectangle for map display (union for click validation).
-        """从 params.yml 的 config.grid 读取经纬度包围盒，供第三步点位校验。
+        """直接从第一步表单读取经纬度包围盒，供第三步点位校验。
 
         嵌套网格返回各层矩形列表（``levels``）及并集范围；选点须在并集内。
+        本方法不保存或校验第三步表格，因此临时的不完整点位不会阻止重新打开地图。
         """
         from ..steps.point_io import bounds_from_level_regions
 
-        config = self._config_from_current_workdir_params(validation_stage="grid", log=False)
-        if config is None:
+        levels = self._grid_panel.level_regions()
+        if not levels:
             return None
-        levels = config.grid.nested_levels or ([config.grid.outer] if config.grid.outer else [])
         n = len(levels)
         labels = []
         for i in range(n):
@@ -1345,6 +1346,33 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             else:
                 labels.append(tr("step1_level_n", "level{i}").format(i=i))
         return bounds_from_level_regions(levels, level_labels=labels)
+
+    def _default_track_datetimes(self, count: int) -> list[str]:
+        if count <= 0:
+            return []
+
+        def parse_date(value: str) -> datetime | None:
+            text = value.strip()
+            for fmt in ("%Y%m%d %H%M%S", "%Y%m%d"):
+                try:
+                    return datetime.strptime(text, fmt)
+                except ValueError:
+                    continue
+            return None
+
+        start = parse_date(self._ww3_panel.fields["ww3_start"].text())
+        end = parse_date(self._ww3_panel.fields["ww3_end"].text())
+        if start is None:
+            start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if count > 1 and end is not None and end > start:
+            step = (end - start) / (count - 1)
+        else:
+            try:
+                seconds = max(1.0, float(self._ww3_panel.fields["ww3_output"].text()))
+            except ValueError:
+                seconds = 3600.0
+            step = timedelta(seconds=seconds)
+        return [(start + step * index).strftime("%Y%m%d %H%M%S") for index in range(count)]
 
     def _persist_step3_points_to_params(self) -> None:
         """第三步点位表变更后立即写回工作目录 params.yml（不校验点位是否为空）。"""
