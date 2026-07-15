@@ -13,8 +13,8 @@
       worldExtent: [-180, 45, 180, 90],
       center: [2000000, 2000000],
       origin: [-28567784.109255, 32567784.109255],
-      service: 'https://services.arcgisonline.com/ArcGIS/rest/services/Polar/Arctic_Ocean_Base/MapServer',
-      attribution: 'Esri · Arctic Ocean Base'
+      service: 'https://services.arcgisonline.com/ArcGIS/rest/services/Polar/Arctic_Imagery/MapServer',
+      attribution: 'Esri · Arctic Imagery'
     },
     south: {
       code: 'EPSG:3031',
@@ -141,10 +141,12 @@
       resolutions: RESOLUTIONS,
       center: config.center,
       zoom: 4,
-      minZoom: 2,
       maxZoom: 18,
       extent: config.extent,
-      constrainOnlyCenter: true
+      constrainOnlyCenter: false,
+      showFullExtent: false,
+      smoothExtentConstraint: false,
+      smoothResolutionConstraint: false
     });
     this.map = new ol.Map({
       target: this.target,
