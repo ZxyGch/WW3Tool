@@ -11,6 +11,31 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, "Segoe UI", sans-serif; }
   #map { width: 100%; height: 100%; }
+  #polar-map {
+    position: absolute; inset: 0; z-index: 1; display: none;
+    width: 100%; height: 100%; background: #d8e2e8;
+    touch-action: none; user-select: none;
+  }
+  #polar-map.visible { display: block; }
+  #polar-map .polar-ocean { fill: #a9cfe1; stroke: #54859d; stroke-width: 1.2; }
+  #polar-map .polar-graticule {
+    fill: none; stroke: rgba(48, 100, 124, 0.56); stroke-width: 0.75;
+  }
+  #polar-map .polar-land { fill: #f7f5f1; stroke: #8c9ba2; stroke-width: 0.55; }
+  #polar-map .polar-label {
+    fill: #34454e; font-size: 11px; font-weight: 500;
+    text-anchor: middle; paint-order: stroke; stroke: rgba(255,255,255,0.9); stroke-width: 3px;
+  }
+  #polar-map .polar-degree-label {
+    fill: #38677d; font-size: 10px; text-anchor: middle;
+    paint-order: stroke; stroke: rgba(230,241,246,0.95); stroke-width: 3px;
+  }
+  #polar-map .polar-region { stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+  #polar-map .polar-point { fill: #26a269; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  #polar-map .polar-point-label {
+    fill: #168451; font-size: 11px; font-weight: 600;
+    paint-order: stroke; stroke: rgba(255,255,255,0.95); stroke-width: 3px;
+  }
 
   /* Toolbar */
   #toolbar {
@@ -162,6 +187,7 @@
 <body>
 
 <div id="map"></div>
+<svg id="polar-map" aria-hidden="true"></svg>
 <div id="status-panel">正在加载高清地图...</div>
 <div id="map-attribution">OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap</div>
 <div id="region-legend"></div>
@@ -232,8 +258,8 @@
     satellite: { baseStyle: 'satellite' },
     dark: { baseStyle: 'dark' },
     light: { baseStyle: 'light' },
-    north_polar: { baseStyle: 'administrative', center: [0, 80], zoom: 2 },
-    south_polar: { baseStyle: 'administrative', center: [0, -80], zoom: 2 }
+    north_polar: { baseStyle: 'polar', pole: 'north' },
+    south_polar: { baseStyle: 'polar', pole: 'south' }
   };
   var queryParams = new URLSearchParams(window.location.search);
   var appLanguage = queryParams.get('lang') === 'en' ? 'en' : 'zh';
@@ -249,6 +275,8 @@
       west: '西', east: '东', south: '南', north: '北',
       loading: '正在加载高清地图...', engineError: '地图引擎加载失败，请检查网络连接后重试。',
       ready: '地图已就绪，可拖动地球或点击矩形按钮选择范围。',
+      polarLoading: '正在加载极区投影地图...', polarReady: '极区地图已就绪，可缩放、拖动或框选区域。',
+      polarError: '极区地图加载失败，请检查网络连接后重试。',
       layerError: '矩形图层更新失败，请重新选择底图后重试。',
       styleLoading: '底图正在加载，请稍候再选择矩形。',
       styleTimeout: '底图仍在加载，请稍候再选择矩形。',
@@ -269,6 +297,8 @@
       west: 'W', east: 'E', south: 'S', north: 'N',
       loading: 'Loading high-resolution map...', engineError: 'Map engine failed to load. Check the network and retry.',
       ready: 'Map ready. Pan the globe or draw a rectangular region.',
+      polarLoading: 'Loading polar projection map...', polarReady: 'Polar map ready. Zoom, pan, or select a region.',
+      polarError: 'Polar map failed to load. Check the network and retry.',
       layerError: 'Rectangle layer failed to update. Switch the map style and retry.',
       styleLoading: 'The map style is loading. Please wait before drawing.',
       styleTimeout: 'The map style is still loading. Please try again shortly.',
@@ -359,12 +389,19 @@
   var currentRect = null;
   var hasRect = false;
   var currentStyle = 'administrative';
-  var standardMapView = null;
   var drawingSourceReady = false;
   var eventsBound = false;
   var lastPoint = null;
   var previewBounds = null;
   var previewFrame = null;
+  var polarWorld = null;
+  var polarProjection = null;
+  var polarPath = null;
+  var polarRoot = null;
+  var polarZoom = null;
+  var polarZoomTransform = null;
+  var polarDrawStart = null;
+  var polarLastPointer = null;
 
   // -- DOM 引用 --
   var coordEls = {
@@ -373,6 +410,8 @@
     south: document.getElementById('south'),
     north: document.getElementById('north')
   };
+  var mapElement = document.getElementById('map');
+  var polarMapElement = document.getElementById('polar-map');
   var infoPanel = document.getElementById('info-panel');
   var confirmBtn = document.getElementById('confirm-btn');
   var panBtn = document.getElementById('pan-btn');
@@ -528,32 +567,11 @@
   }
 
   function isPolarMap(styleId) {
-    return Boolean(mapTypeConfig(styleId).center);
+    return Boolean(mapTypeConfig(styleId).pole);
   }
 
-  function rememberStandardMapView(styleId, previousStyleId) {
-    var enteringPolar = isPolarMap(styleId) && !isPolarMap(previousStyleId);
-    if (!enteringPolar) return;
-    var center = map.getCenter();
-    standardMapView = {
-      center: [center.lng, center.lat], zoom: map.getZoom(),
-      bearing: map.getBearing(), pitch: map.getPitch()
-    };
-  }
-
-  function applyMapTypeView(styleId, previousStyleId) {
-    var leavingPolar = !isPolarMap(styleId) && isPolarMap(previousStyleId);
-    if (isPolarMap(styleId)) {
-      var config = mapTypeConfig(styleId);
-      map.setMinZoom(0);
-      map.jumpTo({ center: config.center, zoom: config.zoom, bearing: 0, pitch: 0 });
-    } else {
-      map.setMinZoom(2);
-      if (leavingPolar && standardMapView) {
-        map.jumpTo(standardMapView);
-        standardMapView = null;
-      }
-    }
+  function isPolarActive() {
+    return isPolarMap(currentStyle);
   }
 
   function addNavigationOverlay() {
@@ -583,6 +601,212 @@
       navigationOverlayTimer = null;
       if (baseStyleId(currentStyle) === 'administrative' && map.isStyleLoaded()) addNavigationOverlay();
     }, 250);
+  }
+
+  var POLAR_LABELS = {
+    north: [
+      { lon: -105, lat: 70, zh: '加拿大', en: 'Canada' },
+      { lon: -42, lat: 74, zh: '格陵兰', en: 'Greenland' },
+      { lon: 95, lat: 70, zh: '俄罗斯', en: 'Russia' },
+      { lon: -150, lat: 66, zh: '美国', en: 'United States' },
+      { lon: 18, lat: 66, zh: '挪威', en: 'Norway' },
+      { lon: -19, lat: 65, zh: '冰岛', en: 'Iceland' }
+    ],
+    south: [
+      { lon: 0, lat: -84, zh: '南极洲', en: 'Antarctica' },
+      { lon: -70, lat: -53, zh: '智利', en: 'Chile' },
+      { lon: -63, lat: -51, zh: '阿根廷', en: 'Argentina' },
+      { lon: 170, lat: -47, zh: '新西兰', en: 'New Zealand' },
+      { lon: 135, lat: -46, zh: '澳大利亚', en: 'Australia' }
+    ]
+  };
+  var polarLibraryPromise = null;
+
+  function loadExternalScript(url, globalName) {
+    if (window[globalName]) return Promise.resolve();
+    return new Promise(function(resolve, reject) {
+      var script = document.createElement('script');
+      script.src = url;
+      script.onload = function() { window[globalName] ? resolve() : reject(new Error(globalName)); };
+      script.onerror = function() {
+        script.remove();
+        reject(new Error(globalName));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensurePolarWorld() {
+    if (polarWorld) return;
+    if (!polarLibraryPromise) {
+      polarLibraryPromise = Promise.all([
+        loadExternalScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js', 'd3'),
+        loadExternalScript(
+          'https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js', 'topojson'
+        )
+      ]);
+    }
+    try {
+      await polarLibraryPromise;
+    } catch (error) {
+      polarLibraryPromise = null;
+      throw error;
+    }
+    var response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json', {
+      cache: 'force-cache'
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    var topology = await response.json();
+    polarWorld = topojson.feature(topology, topology.objects.countries);
+  }
+
+  function polarPointVisible(lonLat) {
+    if (!lonLat) return false;
+    return mapTypeConfig(currentStyle).pole === 'north' ? lonLat[1] >= 45 : lonLat[1] <= -45;
+  }
+
+  function polarPointerLonLat(event) {
+    if (!polarProjection || !polarZoomTransform) return null;
+    var bounds = polarMapElement.getBoundingClientRect();
+    var point = [event.clientX - bounds.left, event.clientY - bounds.top];
+    var projectedPoint = polarZoomTransform.invert(point);
+    var lonLat = polarProjection.invert(projectedPoint);
+    return polarPointVisible(lonLat) ? lonLat : null;
+  }
+
+  function degreeLabel(longitude) {
+    if (longitude === 0) return '0°';
+    if (Math.abs(longitude) === 180) return '180°';
+    return Math.abs(longitude) + '°' + (longitude < 0 ? 'W' : 'E');
+  }
+
+  function renderPolarOverlays() {
+    if (!polarRoot || !polarPath) return;
+    var regionLayer = polarRoot.select('.polar-regions');
+    var pointLayer = polarRoot.select('.polar-points');
+    regionLayer.selectAll('*').remove();
+    pointLayer.selectAll('*').remove();
+
+    var regions = selectionEnabled && currentRect ? [currentRect] : displayRegions;
+    regions.forEach(function(region) {
+      var color = region.color || '#1677d2';
+      regionLayer.append('path')
+        .attr('class', 'polar-region')
+        .attr('d', polarPath({ type: 'Feature', geometry: polarRectangleGeometry(
+          region.north, region.south, region.east, region.west
+        ) }))
+        .attr('fill', color)
+        .attr('fill-opacity', selectionEnabled ? 0.16 : 0.12)
+        .attr('stroke', color)
+        .attr('stroke-width', region.width || 1.5);
+    });
+
+    selectedPoints.forEach(function(point, index) {
+      var lonLat = [Number(point.lon), Number(point.lat)];
+      if (!polarPointVisible(lonLat)) return;
+      var position = polarProjection(lonLat);
+      var marker = pointLayer.append('g').attr('transform', 'translate(' + position.join(',') + ')');
+      marker.append('circle').attr('class', 'polar-point').attr('r', 5);
+      marker.append('text')
+        .attr('class', 'polar-point-label')
+        .attr('x', 8).attr('y', 4)
+        .text(String(point.name || index));
+    });
+  }
+
+  function renderPolarMap() {
+    var width = Math.max(320, polarMapElement.clientWidth);
+    var height = Math.max(260, polarMapElement.clientHeight);
+    var pole = mapTypeConfig(currentStyle).pole;
+    var radius = Math.min(width, height) * 0.43;
+    polarProjection = d3.geoAzimuthalEquidistant()
+      .rotate(pole === 'north' ? [0, -90] : [0, 90])
+      .clipAngle(45.0001)
+      .scale(radius / (Math.PI / 4))
+      .translate([width / 2, height / 2])
+      .precision(0.2);
+    polarPath = d3.geoPath(polarProjection);
+
+    var svg = d3.select(polarMapElement);
+    svg.selectAll('*').remove();
+    svg.attr('viewBox', '0 0 ' + width + ' ' + height);
+    polarRoot = svg.append('g');
+    polarRoot.append('path').datum({ type: 'Sphere' }).attr('class', 'polar-ocean').attr('d', polarPath);
+    var graticule = d3.geoGraticule()
+      .extent(pole === 'north' ? [[-180, 45], [180, 89.999]] : [[-180, -89.999], [180, -45]])
+      .step([30, 10]);
+    polarRoot.append('path').datum(graticule()).attr('class', 'polar-graticule').attr('d', polarPath);
+    polarRoot.append('g').selectAll('path')
+      .data(polarWorld.features)
+      .join('path')
+      .attr('class', 'polar-land')
+      .attr('d', polarPath);
+
+    var labelLatitude = pole === 'north' ? 46.2 : -46.2;
+    polarRoot.append('g').selectAll('text')
+      .data(d3.range(-150, 181, 30))
+      .join('text')
+      .attr('class', 'polar-degree-label')
+      .attr('x', function(longitude) { return polarProjection([longitude, labelLatitude])[0]; })
+      .attr('y', function(longitude) { return polarProjection([longitude, labelLatitude])[1] + 3; })
+      .text(degreeLabel);
+
+    polarRoot.append('g').selectAll('text')
+      .data(POLAR_LABELS[pole])
+      .join('text')
+      .attr('class', 'polar-label')
+      .attr('x', function(label) { return polarProjection([label.lon, label.lat])[0]; })
+      .attr('y', function(label) { return polarProjection([label.lon, label.lat])[1] + 4; })
+      .text(function(label) { return label[appLanguage]; });
+    polarRoot.append('g').attr('class', 'polar-regions');
+    polarRoot.append('g').attr('class', 'polar-points');
+
+    polarZoomTransform = d3.zoomIdentity;
+    polarZoom = d3.zoom().scaleExtent([1, 8]).on('zoom', function(event) {
+      polarZoomTransform = event.transform;
+      polarRoot.attr('transform', event.transform);
+    });
+    svg.call(polarZoom).on('dblclick.zoom', null);
+    renderPolarOverlays();
+    setTool(tool);
+  }
+
+  async function activatePolarMap(styleId) {
+    mapElement.style.display = 'none';
+    polarMapElement.classList.add('visible');
+    polarMapElement.setAttribute('aria-hidden', 'false');
+    attributionEl.textContent = 'Natural Earth · D3';
+    drawingSourceReady = false;
+    rectBtn.disabled = true;
+    setStatus(text.polarLoading, false);
+    try {
+      await ensurePolarWorld();
+      if (currentStyle !== styleId) return;
+      renderPolarMap();
+      drawingSourceReady = true;
+      rectBtn.disabled = false;
+      if (selectionEnabled && currentRect) {
+        renderPolarOverlays();
+        showCoords(currentRect.west, currentRect.east, currentRect.south, currentRect.north);
+        setStatus(text.initialBounds, false);
+      } else if (selectionEnabled) {
+        applyInitialBounds();
+        if (!initialBounds) setStatus(text.polarReady, false);
+      } else {
+        applyDisplayRegions();
+      }
+    } catch (_) {
+      if (currentStyle !== styleId) return;
+      rectBtn.disabled = true;
+      setStatus(text.polarError, true);
+    }
+  }
+
+  function deactivatePolarMap() {
+    polarMapElement.classList.remove('visible');
+    polarMapElement.setAttribute('aria-hidden', 'true');
+    mapElement.style.display = 'block';
+    map.resize();
   }
 
   // ----------------------------------------------------------------
@@ -623,7 +847,12 @@
     });
     drawingSourceReady = true;
     setStatus(text.ready, false);
-    if (selectionEnabled) applyInitialBounds();
+    if (selectionEnabled && currentRect) {
+      updateRectangle(
+        currentRect.north, currentRect.south, currentRect.east, currentRect.west
+      );
+      showCoords(currentRect.west, currentRect.east, currentRect.south, currentRect.north);
+    } else if (selectionEnabled) applyInitialBounds();
     else applyDisplayRegions();
   }
 
@@ -703,7 +932,49 @@
     };
   }
 
+  function polarRectangleGeometry(north, south, east, west) {
+    var draw = normalizedDrawLongitudes(east, west);
+    var drawWest = draw.west;
+    var drawEast = draw.east;
+
+    function ring(left, right) {
+      var coordinates = [];
+      var longitudeSteps = Math.max(1, Math.ceil((right - left) / 2));
+      var latitudeSteps = Math.max(1, Math.ceil((north - south) / 2));
+      var index;
+      for (index = 0; index <= longitudeSteps; index += 1) {
+        coordinates.push([left + (right - left) * index / longitudeSteps, north]);
+      }
+      for (index = 1; index <= latitudeSteps; index += 1) {
+        coordinates.push([right, north + (south - north) * index / latitudeSteps]);
+      }
+      for (index = 1; index <= longitudeSteps; index += 1) {
+        coordinates.push([right + (left - right) * index / longitudeSteps, south]);
+      }
+      for (index = 1; index <= latitudeSteps; index += 1) {
+        coordinates.push([left, south + (north - south) * index / latitudeSteps]);
+      }
+      return coordinates;
+    }
+
+    if (drawEast <= 180) return { type: 'Polygon', coordinates: [ring(drawWest, drawEast)] };
+    return {
+      type: 'MultiPolygon',
+      coordinates: [
+        [ring(drawWest, 180)],
+        [ring(-180, drawEast - 360)]
+      ]
+    };
+  }
+
   function updateRectangle(north, south, east, west) {
+    if (isPolarActive()) {
+      if (!drawingSourceReady || !polarRoot) return false;
+      currentRect = { west: west, east: east, south: south, north: north };
+      hasRect = true;
+      renderPolarOverlays();
+      return true;
+    }
     if (
       !drawingSourceReady
       || !map.getSource('draw-rect')
@@ -810,6 +1081,7 @@
     );
     setStatus(text.initialBounds, false);
 
+    if (isPolarActive()) return;
     var draw = normalizedDrawLongitudes(initialBounds.east, initialBounds.west);
     map.fitBounds(
       [[draw.west, initialBounds.south], [draw.east, initialBounds.north]],
@@ -823,6 +1095,18 @@
 
   function applyDisplayRegions() {
     if (selectionEnabled || !drawingSourceReady) return;
+    if (isPolarActive()) {
+      renderPolarOverlays();
+      renderRegionLegend();
+      updatePointTools();
+      if (pointSelectionEnabled) setStatus(text.pointReady, false);
+      else if (pointDisplayEnabled) {
+        setStatus(text.displayingPoints.replace('{count}', String(selectedPoints.length)), false);
+      } else {
+        setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
+      }
+      return;
+    }
     var fillFeatures = [];
     var outlineFeatures = [];
     displayRegions.forEach(function(region) {
@@ -882,6 +1166,7 @@
           .addTo(map)
       );
     });
+    if (isPolarActive()) renderPolarOverlays();
     updatePointTools();
   }
 
@@ -1031,12 +1316,24 @@
     currentRect = null;
     hasRect = false;
     confirmBtn.disabled = true;
+    if (isPolarActive()) renderPolarOverlays();
   }
 
   function setTool(t) {
     tool = t;
     panBtn.classList.toggle('active', t === 'pan');
     rectBtn.classList.toggle('active', t === 'rect');
+    if (isPolarActive()) {
+      polarMapElement.style.cursor = t === 'pan'
+        ? (pointSelectionEnabled ? 'default' : 'grab')
+        : 'crosshair';
+      if (polarZoom) {
+        polarZoom.filter(function(event) {
+          return tool === 'pan' && !event.ctrlKey && !event.button;
+        });
+      }
+      return;
+    }
     if (t === 'pan') {
       map.dragPan.enable();
       map.getCanvas().style.cursor = '';
@@ -1065,14 +1362,17 @@
       window.clearTimeout(navigationOverlayTimer);
       navigationOverlayTimer = null;
     }
+    if (isPolarMap(styleId)) {
+      activatePolarMap(styleId);
+      return;
+    }
+    if (isPolarMap(previousStyleId)) deactivatePolarMap();
     var targetBaseStyle = baseStyleId(styleId);
     attributionEl.textContent = RASTER_STYLES[targetBaseStyle].attribution;
-    if (selectionEnabled) clearRectangle();
     drawingSourceReady = false;
     // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
     rectBtn.disabled = false;
 
-    rememberStandardMapView(styleId, previousStyleId);
     if (targetBaseStyle === 'administrative') {
       map.setStyle(
         typeof administrativeStyle === 'string'
@@ -1089,7 +1389,6 @@
     // 样式切换完成后重建绘制层
     map.once('style.load', function() {
       if (styleId !== currentStyle) return;
-      applyMapTypeView(styleId, previousStyleId);
       addDrawingLayers();
       if (targetBaseStyle === 'administrative') scheduleNavigationOverlay();
       rectBtn.disabled = false;
@@ -1100,7 +1399,6 @@
       if (styleId !== currentStyle) return;
       if (drawingSourceReady) return;
       if (map.isStyleLoaded && map.isStyleLoaded()) {
-        applyMapTypeView(styleId, previousStyleId);
         addDrawingLayers();
         if (targetBaseStyle === 'administrative') scheduleNavigationOverlay();
         rectBtn.disabled = false;
@@ -1188,6 +1486,74 @@
   map.on('error', function(e) {
     var message = e && e.error && e.error.message ? e.error.message : '';
     setStatus(text.resourceError + message, true);
+  });
+
+  polarMapElement.addEventListener('pointerdown', function(event) {
+    if (!isPolarActive() || tool !== 'rect' || !drawingSourceReady) return;
+    var lonLat = polarPointerLonLat(event);
+    if (!lonLat) return;
+    event.preventDefault();
+    polarDrawStart = lonLat;
+    polarLastPointer = lonLat;
+    polarMapElement.setPointerCapture(event.pointerId);
+  });
+
+  polarMapElement.addEventListener('pointermove', function(event) {
+    if (!polarDrawStart || tool !== 'rect') return;
+    var lonLat = polarPointerLonLat(event);
+    if (!lonLat) return;
+    polarLastPointer = lonLat;
+    var endLongitude = unwrapLongitude(lonLat[0], polarDrawStart[0]);
+    scheduleRectanglePreview(
+      Math.max(polarDrawStart[1], lonLat[1]), Math.min(polarDrawStart[1], lonLat[1]),
+      Math.max(polarDrawStart[0], endLongitude), Math.min(polarDrawStart[0], endLongitude)
+    );
+  });
+
+  function finishPolarDrawing(event) {
+    if (!polarDrawStart || tool !== 'rect') return;
+    if (previewFrame !== null) {
+      window.cancelAnimationFrame(previewFrame);
+      previewFrame = null;
+    }
+    previewBounds = null;
+    var lonLat = polarPointerLonLat(event) || polarLastPointer;
+    var start = polarDrawStart;
+    polarDrawStart = null;
+    polarLastPointer = null;
+    if (!lonLat) {
+      setTool('pan');
+      return;
+    }
+    var endLongitude = unwrapLongitude(lonLat[0], start[0]);
+    var west = Math.min(start[0], endLongitude);
+    var east = Math.max(start[0], endLongitude);
+    var south = Math.min(start[1], lonLat[1]);
+    var north = Math.max(start[1], lonLat[1]);
+    if (east - west > 1e-6 && north - south > 1e-6
+        && updateRectangle(north, south, east, west)) {
+      showCoords(west, east, south, north);
+      setStatus(text.selected, false);
+    }
+    setTool('pan');
+  }
+
+  polarMapElement.addEventListener('pointerup', finishPolarDrawing);
+  polarMapElement.addEventListener('pointercancel', finishPolarDrawing);
+  polarMapElement.addEventListener('click', function(event) {
+    if (!isPolarActive() || !pointSelectionEnabled || tool !== 'pan') return;
+    var lonLat = polarPointerLonLat(event);
+    if (lonLat) addSelectedPoint({ lng: lonLat[0], lat: lonLat[1] });
+  });
+
+  var polarResizeTimer = null;
+  window.addEventListener('resize', function() {
+    if (!isPolarActive() || !polarWorld) return;
+    if (polarResizeTimer !== null) window.clearTimeout(polarResizeTimer);
+    polarResizeTimer = window.setTimeout(function() {
+      polarResizeTimer = null;
+      if (isPolarActive()) renderPolarMap();
+    }, 120);
   });
 
   // ----------------------------------------------------------------
