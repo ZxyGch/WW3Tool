@@ -363,14 +363,16 @@ paths:
 # Desktop-only settings (managed by the Settings page; CLI ignores).
 #   language           – UI locale: 'en_US' or 'zh_CN'.
 #   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.
+#   map_type           – default map type used by map views.
 #   run_mode           – 'local' / 'server' / 'both'.
 #   recent_workdirs    – recently opened work directories (MRU list).
 #   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
 desktop:
-  language: en_US
+  language: zh_CN
   theme: AUTO
-  run_mode: both
+  map_type: administrative
+  run_mode: server
   recent_workdirs:
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-07-04_15-08-53
   - /Users/zxy/ocean/Paper/WW3Tool/workSpace/2026-06-29_16-57-02

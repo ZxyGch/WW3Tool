@@ -14,7 +14,6 @@
   body.embedded-preview { border-radius: 8px; }
   body.embedded-preview #toolbar,
   body.embedded-preview #info-panel,
-  body.embedded-preview #status-panel,
   body.embedded-preview #map-attribution,
   body.embedded-preview #region-legend,
   body.embedded-preview #polar-nav { display: none !important; }
@@ -63,10 +62,16 @@
   #toolbar {
     position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
     z-index: 10; background: rgba(32, 32, 32, 0.88); backdrop-filter: blur(8px);
-    border-radius: 10px; padding: 6px; display: flex; gap: 4px;
+    border-radius: 6px; padding: 6px; display: flex; gap: 4px;
     align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     user-select: none; -webkit-user-select: none;
   }
+  #toolbar .status-msg {
+    padding: 0 8px 0 6px; color: #d8d8d8; font-size: 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 280px; flex-shrink: 1;
+  }
+  #toolbar .status-msg.error { color: #ff6b6b; }
   #toolbar button {
     padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px;
     cursor: pointer; transition: all 0.15s;
@@ -145,7 +150,7 @@
   #info-panel {
     position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
     z-index: 10; background: rgba(32, 32, 32, 0.88); backdrop-filter: blur(8px);
-    width: max-content; max-width: calc(100% - 32px); border-radius: 10px; padding: 12px 16px;
+    width: max-content; max-width: calc(100% - 32px); border-radius: 6px; padding: 12px 16px;
     display: none; align-items: center; justify-content: center; flex-wrap: nowrap;
     gap: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     color: #eee; font-size: 13px;
@@ -164,17 +169,6 @@
   .coord-input.invalid { box-shadow: 0 0 0 1px #e25555; }
   .coord-input::-webkit-inner-spin-button,
   .coord-input::-webkit-outer-spin-button { appearance: none; margin: 0; }
-  #status-panel {
-    position: absolute; top: 16px; left: 16px; z-index: 10;
-    max-width: min(420px, calc(100% - 32px));
-    padding: 8px 12px; border-radius: 6px;
-    background: rgba(32, 32, 32, 0.82); color: #d8d8d8;
-    font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,0.25);
-  }
-  #status-panel.error { background: rgba(125, 35, 35, 0.92); color: #fff; }
-  @media (max-width: 1150px) {
-    #status-panel { top: 72px; }
-  }
   #region-legend {
     position: absolute; left: 16px; bottom: 18px; z-index: 10;
     display: none; min-width: 140px; max-width: min(300px, calc(100% - 32px));
@@ -236,13 +230,13 @@
   <button id="polar-zoom-in" type="button" title="放大">+</button>
   <button id="polar-zoom-out" type="button" title="缩小">−</button>
 </div>
-<div id="status-panel">正在加载高清地图...</div>
 <div id="map-attribution">OpenFreeMap · OpenMapTiles · OpenStreetMap · OpenSeaMap</div>
 <div id="region-legend"></div>
 <div id="rect-move-handle" class="rect-edit-handle rect-move-handle" aria-hidden="true"></div>
 <div id="rect-resize-handle" class="rect-edit-handle rect-resize-handle" aria-hidden="true"></div>
 
 <div id="toolbar">
+  <span id="toolbar-status" class="status-msg">正在加载高清地图...</span>
   <div id="style-select" class="style-combo">
     <button id="style-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
       <span id="style-select-label">行政区划海图</span>
@@ -502,7 +496,7 @@
   var styleSelectLabel = document.getElementById('style-select-label');
   var styleSelectMenu = document.getElementById('style-select-menu');
   var styleOptions = Array.prototype.slice.call(document.querySelectorAll('.style-option'));
-  var statusPanel = document.getElementById('status-panel');
+  var statusPanel = document.getElementById('toolbar-status');
   var attributionEl = document.getElementById('map-attribution');
   var regionLegend = document.getElementById('region-legend');
   var pointTools = document.getElementById('point-tools');

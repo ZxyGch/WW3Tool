@@ -477,7 +477,10 @@ def _resolve_reference_data_cli(config, args) -> bool:
     if auto_download:
         return ensure_reference_data(config, log=print, auto_download=True)
 
-    # 未指定旗帜时：TTY 询问，非 TTY 报错
+    # 未指定旗帜时：先检查数据是否已存在；不存在时 TTY 询问，非 TTY 报错
+    if ensure_reference_data(config, log=print, auto_download=False):
+        return True
+
     if sys.stdin.isatty():
 
         def _prompt(ref_dir: str, missing: list[str]) -> bool:

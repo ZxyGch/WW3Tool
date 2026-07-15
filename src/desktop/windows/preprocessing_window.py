@@ -2127,6 +2127,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             "-u",
             str(root / "run.py"),
             "generate-grid",
+            "--no-download-ref-data",
             str(config.workdir.path),
         ]
         env = os.environ.copy()

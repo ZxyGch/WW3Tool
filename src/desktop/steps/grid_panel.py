@@ -534,7 +534,7 @@ class GridStepPanel:
                 self.widget.window(),
                 display_regions=display_regions,
                 initial_bounds=self._fields_bounds(level["fields"]),
-                selection_label=str(level["label"]),
+                selection_label=str(level["label"]) if self.is_nested else "",
                 selection_color=str(level["color"]),
             )
             if dialog.exec() != GlobePickerDialog.DialogCode.Accepted:
