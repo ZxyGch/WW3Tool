@@ -20,8 +20,8 @@ class BoundsMapPreview(MapWebEngineView):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._page_loaded = False
-        self._bounds: dict[str, float] | None = None
-        self._bound_fields = None
+        self._regions: list[dict[str, object]] = []
+        self._field_regions: list[dict[str, object]] = []
         self._update_timer = QTimer(self)
         self._update_timer.setSingleShot(True)
         self._update_timer.setInterval(180)
@@ -45,24 +45,39 @@ class BoundsMapPreview(MapWebEngineView):
         url.setQuery(query)
         self.load(url)
 
-    def bind_fields(self, *, west, east, south, north) -> None:
-        self._bound_fields = (west, east, south, north)
-        for field in self._bound_fields:
+    def bind_fields(
+        self, *, west, east, south, north, color: str = "#1677d2", label: str = ""
+    ) -> None:
+        self._field_regions = []
+        self.add_bound_fields(
+            west=west, east=east, south=south, north=north, color=color, label=label
+        )
+
+    def add_bound_fields(
+        self, *, west, east, south, north, color: str = "#1677d2", label: str = ""
+    ) -> None:
+        fields = (west, east, south, north)
+        self._field_regions.append({"fields": fields, "color": color, "label": label})
+        for field in fields:
             field.textChanged.connect(lambda *_: self._update_timer.start())
         self._update_timer.start()
 
     def set_bounds(self, west: float, east: float, south: float, north: float) -> None:
-        self._bounds = {
-            "west": west,
-            "east": east,
-            "south": south,
-            "north": north,
-        }
-        self._sync_bounds()
+        self.set_regions([{"west": west, "east": east, "south": south, "north": north}])
+
+    def set_regions(self, regions: list[dict[str, object]]) -> None:
+        self._regions = [dict(region) for region in regions]
+        self._sync_regions()
 
     def clear_bounds(self) -> None:
-        self._bounds = None
-        self._sync_bounds()
+        self.set_regions([])
+
+    def refresh(self) -> None:
+        self._update_timer.stop()
+        self._update_from_bound_fields()
+
+    def regions(self) -> list[dict[str, object]]:
+        return [dict(region) for region in self._regions]
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -77,30 +92,41 @@ class BoundsMapPreview(MapWebEngineView):
     def _on_page_loaded(self, ok: bool) -> None:
         self._page_loaded = ok
         if ok:
-            self._sync_bounds()
+            self._sync_regions()
             self._restore_host_frameless()
             QTimer.singleShot(0, self._restore_host_frameless)
             QTimer.singleShot(100, self._restore_host_frameless)
 
     def _update_from_bound_fields(self) -> None:
-        if self._bound_fields is None:
+        if not self._field_regions:
             return
-        try:
-            west, east, south, north = (
-                float(field.text().strip()) for field in self._bound_fields
+        regions: list[dict[str, object]] = []
+        for binding in self._field_regions:
+            fields = binding["fields"]
+            try:
+                west, east, south, north = (
+                    float(field.text().strip()) for field in fields
+                )
+            except ValueError:
+                continue
+            if not all(math.isfinite(value) for value in (west, east, south, north)):
+                continue
+            while east <= west:
+                east += 360
+            if south >= north or south < -90 or north > 90 or east - west > 360:
+                continue
+            regions.append(
+                {
+                    "west": west,
+                    "east": east,
+                    "south": south,
+                    "north": north,
+                    "color": binding["color"],
+                    "label": binding["label"],
+                    "width": 1.5,
+                }
             )
-        except ValueError:
-            self.clear_bounds()
-            return
-        if not all(math.isfinite(value) for value in (west, east, south, north)):
-            self.clear_bounds()
-            return
-        while east <= west:
-            east += 360
-        if south >= north or south < -90 or north > 90 or east - west > 360:
-            self.clear_bounds()
-            return
-        self.set_bounds(west, east, south, north)
+        self.set_regions(regions)
 
     def _restore_host_frameless(self) -> None:
         host = self.window()
@@ -116,8 +142,8 @@ class BoundsMapPreview(MapWebEngineView):
         if title_bar is not None:
             title_bar.raise_()
 
-    def _sync_bounds(self) -> None:
+    def _sync_regions(self) -> None:
         if not self._page_loaded:
             return
-        payload = json.dumps(self._bounds, separators=(",", ":"))
-        self.page().runJavaScript(f"window.__setPreviewBounds({payload})")
+        payload = json.dumps(self._regions, separators=(",", ":"))
+        self.page().runJavaScript(f"window.__setPreviewRegions({payload})")

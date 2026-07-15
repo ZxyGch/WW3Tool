@@ -24,6 +24,7 @@ class ForcingStepPanel:
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         input_style: Callable[[], str],
         combo_style: Callable[[], str],
+        grid_bounds_fields: dict[str, LineEdit],
         browse_path: Callable[[str, bool], None],
         clear_path: Callable[[str], None],
         show_file_info: Callable[[], None],
@@ -99,10 +100,20 @@ class ForcingStepPanel:
         )
         layout.addLayout(range_grid)
         self.bounds_preview.bind_fields(
+            west=grid_bounds_fields["grid_lon_west"],
+            east=grid_bounds_fields["grid_lon_east"],
+            south=grid_bounds_fields["grid_lat_south"],
+            north=grid_bounds_fields["grid_lat_north"],
+            color="#1677d2",
+            label=tr("step1_grid_range", "网格范围"),
+        )
+        self.bounds_preview.add_bound_fields(
             west=self.range_fields["lon_west"],
             east=self.range_fields["lon_east"],
             south=self.range_fields["lat_south"],
             north=self.range_fields["lat_north"],
+            color="#e25555",
+            label=tr("step2_crop_range", "强迫场裁剪范围"),
         )
 
         self.load_intersection_button = create_button(

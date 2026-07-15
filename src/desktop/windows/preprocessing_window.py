@@ -604,6 +604,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             create_button=self._primary_button,
             input_style=self._input_style,
             combo_style=self._combo_style,
+            grid_bounds_fields=self._grid_panel.fields,
             browse_path=self._browse_path,
             clear_path=self._clear_forcing_path,
             show_file_info=self._show_forcing_files_info,
@@ -1718,7 +1719,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         regions, labels = regions_and_labels
         from ..components.globe_picker_dialog import GlobePickerDialog
 
-        display_regions = [
+        self._grid_panel.bounds_preview.refresh()
+        display_regions = self._grid_panel.bounds_preview.regions()
+        display_regions.extend([
             {
                 "label": label,
                 "west": region.lon[0],
@@ -1727,7 +1730,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 "north": region.lat[1],
             }
             for region, label in zip(regions, labels)
-        ]
+        ])
         GlobePickerDialog(
             self,
             display_regions=display_regions,

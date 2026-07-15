@@ -230,6 +230,7 @@ class GridStepPanel:
             east=self.fields["grid_lon_east"],
             south=self.fields["grid_lat_south"],
             north=self.fields["grid_lat_north"],
+            label=tr("step1_grid_range", "网格范围"),
         )
 
         # level1…levelN：可增删层卡片列表

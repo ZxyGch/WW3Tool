@@ -303,9 +303,12 @@
   var pointSelectionEnabled = interactionMode === 'points';
   var pointDisplayEnabled = interactionMode === 'points-display';
   document.body.classList.add(embeddedPreview ? 'embedded-preview' : 'picker-window');
-  var pendingPreviewBounds = null;
+  var pendingPreviewRegions = null;
+  window.__setPreviewRegions = function(regions) {
+    pendingPreviewRegions = regions;
+  };
   window.__setPreviewBounds = function(bounds) {
-    pendingPreviewBounds = bounds;
+    pendingPreviewRegions = bounds == null ? [] : [bounds];
   };
   var UI_TEXT = {
     zh: {
@@ -1267,30 +1270,39 @@
     }
   }
 
-  function setPreviewBounds(bounds) {
+  function setPreviewRegions(regions) {
     if (!embeddedPreview) return false;
-    if (bounds == null) {
-      displayRegions = [];
-    } else {
+    if (!Array.isArray(regions)) return false;
+    var normalizedRegions = [];
+    regions.forEach(function(bounds, index) {
+      if (!bounds || typeof bounds !== 'object') return;
       var region = {
         west: Number(bounds.west), east: Number(bounds.east),
         south: Number(bounds.south), north: Number(bounds.north),
-        color: '#1677d2', width: 1.5
+        color: String(bounds.color || '#1677d2'),
+        width: Number(bounds.width || 1.5),
+        label: String(bounds.label || index + 1)
       };
       if (!['west', 'east', 'south', 'north'].every(function(key) {
         return Number.isFinite(region[key]);
-      })) return false;
+      })) return;
       while (region.east <= region.west) region.east += 360;
       if (region.south >= region.north || region.south < -90 || region.north > 90
-          || region.east - region.west > 360) return false;
-      displayRegions = [region];
-    }
+          || region.east - region.west > 360) return;
+      normalizedRegions.push(region);
+    });
+    displayRegions = normalizedRegions;
     if (drawingSourceReady) applyDisplayRegions();
     return true;
   }
 
+  function setPreviewBounds(bounds) {
+    return setPreviewRegions(bounds == null ? [] : [bounds]);
+  }
+
+  window.__setPreviewRegions = setPreviewRegions;
   window.__setPreviewBounds = setPreviewBounds;
-  if (pendingPreviewBounds !== null) setPreviewBounds(pendingPreviewBounds);
+  if (pendingPreviewRegions !== null) setPreviewRegions(pendingPreviewRegions);
 
   function updatePointTools() {
     pointCount.textContent = text.pointCount.replace('{count}', String(selectedPoints.length));
