@@ -529,37 +529,20 @@ def _smc_regional_bounds_from_run_info(run_info: dict) -> tuple[float, float, fl
 
 def _smc_extent_for_plot(run_info: dict, lon_c: np.ndarray, lat_c: np.ndarray) -> list[float]:
     """
-    SMC 地图范围：区域任务下若多数格心在 ``regional_bounds`` 内，则用该框（+边距），
-    与 ``set_extent`` 一致且避免离群点把整个画布拉成全球；若格心基本落在框外（索引/原点
-    与可视化不一致时），改用格点分位数范围，避免网线全被裁掉得到「空图」。
+    区域 SMC 使用用户指定的 ``regional_bounds`` 作为精确视口。生成器可以向外对齐
+    单元以完整覆盖计算域，但可视化不应因此额外显示一圈区域。缺少区域范围元数据时，
+    才根据实际格心自动计算显示范围。
 
-    若稳健格点跨度仍接近全球，再退回区域框。
-
-    [EN] SMC map extent: for regional runs, if most cell centers fall within ``regional_bounds``,
-    use that bounding box (+ margin), consistent with ``set_extent``, preventing outliers from
-    stretching the canvas to global scale; if cell centers mostly fall outside the box (when
-    indices/origin are inconsistent with visualization), fall back to cell quantile ranges to
-    avoid all grid lines being clipped, resulting in an "empty plot".
-
-    If the robust cell span still approaches global scale, fall back to the regional bounding box.
+    [EN] Regional SMC plots use the requested ``regional_bounds`` as the exact viewport.
+    Generated cells may align outward to cover the computational domain, but that alignment
+    must not enlarge the plotted map. Fall back to cell-derived bounds only when metadata is absent.
     """
-    if lon_c.size == 0:
-        rb0 = _smc_regional_bounds_from_run_info(run_info)
-        if rb0 is not None:
-            w, e, s, n = rb0
-            return unst_extent_from_xy(np.array([[w, s], [e, n]], dtype=float))
-        return [-180.0, 180.0, -90.0, 90.0]
-
-    raw_ext = unst_extent_from_xy(np.column_stack([lon_c, lat_c]))
     rb = _smc_regional_bounds_from_run_info(run_info)
-    if rb is None:
-        return raw_ext
-    w, e, s, n = rb
-    reg_ext = unst_extent_from_xy(np.array([[w, s], [e, n]], dtype=float))
-    # Always prefer actual cell footprint extent to avoid clipping valid cells.
-    if (raw_ext[1] - raw_ext[0]) <= 175.0 and (raw_ext[3] - raw_ext[2]) <= 120.0:
-        return raw_ext
-    return reg_ext
+    if rb is not None:
+        return list(rb)
+    if lon_c.size == 0:
+        return [-180.0, 180.0, -90.0, 90.0]
+    return unst_extent_from_xy(np.column_stack([lon_c, lat_c]))
 
 
 def _smc_unique_rect_outline_segments(
