@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
+from ..components.bounds_map_preview import BoundsMapPreview
 from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
 from workflows.support.translations import tr
@@ -38,6 +39,8 @@ class ForcingStepPanel:
         self.clear_buttons: dict[str, PrimaryPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
         group, layout = create_header_card(parent, tr("step2_title", "第二步：选择强迫场文件"), include_vbox_style=True)
+        self.bounds_preview = BoundsMapPreview(parent)
+        layout.addWidget(self.bounds_preview)
         grid = QGridLayout()
         grid.setSpacing(10)
         grid.setColumnStretch(1, 1)
@@ -95,6 +98,12 @@ class ForcingStepPanel:
             end_placeholder=tr("step2_lon_east_placeholder", "110"),
         )
         layout.addLayout(range_grid)
+        self.bounds_preview.bind_fields(
+            west=self.range_fields["lon_west"],
+            east=self.range_fields["lon_east"],
+            south=self.range_fields["lat_south"],
+            north=self.range_fields["lat_north"],
+        )
 
         self.load_intersection_button = create_button(
             tr("step2_load_intersection", "读取公共范围"),

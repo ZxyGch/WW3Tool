@@ -1,8 +1,9 @@
-"""Inline map preview for the level-0 grid bounds."""
+"""Reusable inline map preview for editable geographic bounds."""
 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from PyQt6.QtCore import QRectF, QTimer, QUrl, QUrlQuery
@@ -13,13 +14,18 @@ from PyQt6.QtWidgets import QSizePolicy
 from .globe_picker_dialog import MapWebEngineView, current_map_language
 
 
-class GridBoundsPreview(MapWebEngineView):
-    """Show the current grid extent without exposing map editing controls."""
+class BoundsMapPreview(MapWebEngineView):
+    """Show a blue outline for four bound fields without map editing controls."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._page_loaded = False
         self._bounds: dict[str, float] | None = None
+        self._bound_fields = None
+        self._update_timer = QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.setInterval(180)
+        self._update_timer.timeout.connect(self._update_from_bound_fields)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(210)
@@ -38,6 +44,12 @@ class GridBoundsPreview(MapWebEngineView):
         query.addQueryItem("lang", current_map_language())
         url.setQuery(query)
         self.load(url)
+
+    def bind_fields(self, *, west, east, south, north) -> None:
+        self._bound_fields = (west, east, south, north)
+        for field in self._bound_fields:
+            field.textChanged.connect(lambda *_: self._update_timer.start())
+        self._update_timer.start()
 
     def set_bounds(self, west: float, east: float, south: float, north: float) -> None:
         self._bounds = {
@@ -69,6 +81,26 @@ class GridBoundsPreview(MapWebEngineView):
             self._restore_host_frameless()
             QTimer.singleShot(0, self._restore_host_frameless)
             QTimer.singleShot(100, self._restore_host_frameless)
+
+    def _update_from_bound_fields(self) -> None:
+        if self._bound_fields is None:
+            return
+        try:
+            west, east, south, north = (
+                float(field.text().strip()) for field in self._bound_fields
+            )
+        except ValueError:
+            self.clear_bounds()
+            return
+        if not all(math.isfinite(value) for value in (west, east, south, north)):
+            self.clear_bounds()
+            return
+        while east <= west:
+            east += 360
+        if south >= north or south < -90 or north > 90 or east - west > 360:
+            self.clear_bounds()
+            return
+        self.set_bounds(west, east, south, north)
 
     def _restore_host_frameless(self) -> None:
         host = self.window()
