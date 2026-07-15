@@ -782,10 +782,20 @@ def _crop_bathy_for_regional_smc(
         Merg = 2 ** (k - 10)
     MFMG = Merg * MFct
 
-    istart = int(round((xstart - xlon[0]) / (MFMG * dlon))) * MFMG
-    jstart = int(round((ystart - ylat[0]) / (MFct * dlat))) * MFct
-    iexpnd = int(round((xend - xstart) / (MFMG * dlon))) * MFMG
-    jexpnd = int(round((yend - ystart) / (MFct * dlat))) * MFct
+    from regional_bounds import outward_aligned_window
+
+    istart, iexpnd, jstart, jexpnd = outward_aligned_window(
+        xstart,
+        ystart,
+        xend,
+        yend,
+        lon0=float(xlon[0]),
+        lat0=float(ylat[0]),
+        dlon=dlon,
+        dlat=dlat,
+        mfct=MFct,
+        merg=Merg,
+    )
 
     if istart - MFMG < 0:
         istart = istart + MFMG
@@ -793,7 +803,7 @@ def _crop_bathy_for_regional_smc(
         jstart = jstart + MFct
 
     iend = istart + iexpnd
-    jend = jstart + jexpnd - MFct
+    jend = jstart + jexpnd
 
     # smcellgen ``subathy`` uses lon indices [i-iFct, i+iFc2) and lat [j-MFct, j+MFc2)
     # with iFct ≤ MFMG, iFc2 = 2*iFct. Min i is ~istart → need pad ≥ MFMG; max i near iend
@@ -802,8 +812,10 @@ def _crop_bathy_for_regional_smc(
     pad_i = max(64, 2 * MFMG + MFct)
     pad_j = max(64, 3 * MFct)
     i_lo = max(0, istart - pad_i)
+    i_lo = (i_lo // MFMG) * MFMG
     i_hi = min(nlon, iend + pad_i)
     j_lo = max(0, jstart - pad_j)
+    j_lo = (j_lo // MFct) * MFct
     j_hi = min(nlat, jend + pad_j)
 
     if i_hi <= i_lo or j_hi <= j_lo:
@@ -918,35 +930,22 @@ def _enforce_regional_bounds_policy(
     r_n = float(rect_geo["lat_north"])
     tol = float(tolerance_deg)
 
-    dx_w = max(0.0, req_w - r_w)
-    dx_e = max(0.0, r_e - req_e)
-    dy_s = max(0.0, req_s - r_s)
-    dy_n = max(0.0, r_n - req_n)
-    exceed = (dx_w > tol) or (dx_e > tol) or (dy_s > tol) or (dy_n > tol)
-    if not exceed:
+    gap_w = max(0.0, r_w - req_w)
+    gap_e = max(0.0, req_e - r_e)
+    gap_s = max(0.0, r_s - req_s)
+    gap_n = max(0.0, req_n - r_n)
+    uncovered = (gap_w > tol) or (gap_e > tol) or (gap_s > tol) or (gap_n > tol)
+    if not uncovered:
         return
 
-    fit_w = req_w + dx_w
-    fit_e = req_e - dx_e
-    fit_s = req_s + dy_s
-    fit_n = req_n - dy_n
-    accept_w = min(req_w, r_w)
-    accept_e = max(req_e, r_e)
-    accept_s = min(req_s, r_s)
-    accept_n = max(req_n, r_n)
-
     msg = (
-        "Regional SMC active RECT exceeded requested regional_bounds.\n"
+        "Regional SMC cell extent did not fully cover requested regional_bounds.\n"
         f"  requested lon/lat: [{req_w:.6f},{req_e:.6f}] x [{req_s:.6f},{req_n:.6f}]\n"
-        f"  actual ww3_rect_geo: [{r_w:.6f},{r_e:.6f}] x [{r_s:.6f},{r_n:.6f}]\n"
-        f"  exceeded (deg): west={dx_w:.6f}, east={dx_e:.6f}, south={dy_s:.6f}, north={dy_n:.6f}\n"
+        f"  actual cell extent: [{r_w:.6f},{r_e:.6f}] x [{r_s:.6f},{r_n:.6f}]\n"
+        f"  uncovered (deg): west={gap_w:.6f}, east={gap_e:.6f}, "
+        f"south={gap_s:.6f}, north={gap_n:.6f}\n"
         f"  tolerance (deg): {tol:.6f}\n"
-        "Suggested fixes:\n"
-        f"  keep inside current requested envelope (try regional_bounds): "
-        f"[{fit_w:.6f},{fit_e:.6f}] x [{fit_s:.6f},{fit_n:.6f}]\n"
-        f"  or accept current active RECT (expand regional_bounds to): "
-        f"[{accept_w:.6f},{accept_e:.6f}] x [{accept_s:.6f},{accept_n:.6f}]\n"
-        "Adjust grid.origin/regional_bounds (or increase tolerance), then regenerate."
+        "The regional SMC index alignment should expand outward; check grid origin and spacing."
     )
     if policy_mode == "warn":
         print("WARNING: " + msg.replace("\n", "\nWARNING: "), flush=True)
@@ -1423,6 +1422,16 @@ def main() -> None:
             run_doc["ww3_rect"]["y0"] + (int(run_doc["ww3_rect"]["ny"]) - 1) * run_doc["ww3_rect"]["sy"]
         ),
     }
+    run_doc["smc_cell_extent_geo"] = {
+        "lon_west": float(run_doc["ww3_rect"]["x0"]),
+        "lon_east": float(
+            run_doc["ww3_rect"]["x0"] + int(run_doc["ww3_rect"]["nx"]) * run_doc["ww3_rect"]["sx"]
+        ),
+        "lat_south": float(run_doc["ww3_rect"]["y0"]),
+        "lat_north": float(
+            run_doc["ww3_rect"]["y0"] + int(run_doc["ww3_rect"]["ny"]) * run_doc["ww3_rect"]["sy"]
+        ),
+    }
     if not global_grid:
         _rg = run_doc["ww3_rect_geo"]
         _snap = 0.25
@@ -1435,7 +1444,7 @@ def main() -> None:
     if not global_grid:
         _enforce_regional_bounds_policy(
             requested_bounds=requested_bounds,
-            rect_geo=run_doc["ww3_rect_geo"],
+            rect_geo=run_doc["smc_cell_extent_geo"],
             policy_mode=regional_policy_mode,
             tolerance_deg=regional_policy_tol,
         )

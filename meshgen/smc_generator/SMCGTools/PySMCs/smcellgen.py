@@ -30,7 +30,8 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
     """
 
     import numpy  as np
-    from smcellgen import recursion_add 
+    from smcellgen import recursion_add
+    from regional_bounds import outward_aligned_window
     from datetime import datetime
 
 ## Bathy domain nlon and nlat and first point zlon zlat.
@@ -109,10 +110,11 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
         print(" Regional grid lon merging factor =", Merg)
         MFMG = Merg*MFct
  
-        istart=int(round((xstart-xlon[0])/(MFMG*dlon)))*MFMG
-        jstart=int(round((ystart-ylat[0])/(MFct*dlat)))*MFct
-        iexpnd=int(round((xend-xstart)/(MFMG*dlon)))*MFMG
-        jexpnd=int(round((yend-ystart)/(MFct*dlat)))*MFct
+        istart, iexpnd, jstart, jexpnd = outward_aligned_window(
+            xstart, ystart, xend, yend,
+            lon0=xlon[0], lat0=ylat[0], dlon=dlon, dlat=dlat,
+            mfct=MFct, merg=Merg,
+        )
 
 ## Adjust i/jstart if start marge is less than MFMG/MFct.
         if( istart - MFMG < 0 ): istart = istart + MFMG
@@ -203,7 +205,7 @@ def smcellgen(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
    
 ## Loop ends of i/j-loop at bathy data end.
     iend = istart + iexpnd
-    jend = jstart + jexpnd - MFct
+    jend = jstart + jexpnd - MFct if Global else jstart + jexpnd
     
 ## Initial smcels as a list to append cell arrays.
     smcels = []
@@ -445,4 +447,3 @@ if __name__ == '__main__':
     main()
 
 ## End of smcellgen.py program. 
-

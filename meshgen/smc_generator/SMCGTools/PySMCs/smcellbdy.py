@@ -30,6 +30,7 @@ def smcellbdy(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
     import numpy   as np
     import pandas  as pd
     from smcellbdy import recursion_add
+    from regional_bounds import outward_aligned_window
     from datetime import datetime
 
 ## Bathy domain nlon and nlat and south-west first point zlon zlat.
@@ -102,10 +103,11 @@ def smcellbdy(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
         print(" Regional grid longitude merging factor =", Merg )
         MFMG = Merg*MFct
  
-        istart = int(round( (xstart-xlon[0])/(MFMG*dlon) ))*MFMG
-        jstart = int(round( (ystart-ylat[0])/(MFct*dlat) ))*MFct
-        iexpnd = int(round( (xend - xstart + dlon)/(MFMG*dlon) ))*MFMG
-        jexpnd = int(round( (yend - ystart + dlat)/(MFct*dlat) ))*MFct
+        istart, iexpnd, jstart, jexpnd = outward_aligned_window(
+            xstart, ystart, xend, yend,
+            lon0=xlon[0], lat0=ylat[0], dlon=dlon, dlat=dlat,
+            mfct=MFct, merg=Merg,
+        )
 
 ## Adjust i/jstart if start marge is less than MFMG/MFct.
         if( istart < 0 ): istart = istart + MFMG
