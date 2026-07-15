@@ -35,7 +35,7 @@ from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
 from ..components import styles
 from ..components.validators import date_yyyymmdd_validator, int_validator
-from workflows.domain.config_models import PipelineConfig
+from workflows.domain.config_models import ForcingConfig, PipelineConfig
 from workflows.infrastructure.runtime_config import WW3_VERSION_VALUES
 from workflows.support.translations import tr
 
@@ -316,9 +316,10 @@ class WW3StepPanel:
         for grid_key, edit in {**self._spectrum_fields, **self._timesteps_fields}.items():
             edit.setText(str(params.get(grid_key, "")))
 
-        # [EN] ── Forcing field enabled state ──
-        # ── 强迫场启用状态 ──
-        forcing = config.forcing
+        self.render_forcing_availability(config.forcing)
+
+    def render_forcing_availability(self, forcing: ForcingConfig) -> None:
+        """Refresh only the forcing-field controls without resetting Step 4."""
         has_wind = bool(forcing.wind)
         has_current = bool(forcing.current)
         has_level = bool(forcing.level)

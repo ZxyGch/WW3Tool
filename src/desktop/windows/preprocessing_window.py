@@ -1057,9 +1057,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _render_summary(self, config: PipelineConfig) -> None:
         # [EN] Override config with current UI form forcing paths (ensure Step 4 shows latest selection)
         # 用当前 UI 表单中的强迫场路径覆盖 config（确保 Step 4 显示最新选择）
-        for key in ("wind", "current", "level", "ice"):
-            text = self._paths[key].text().strip()
-            setattr(config.forcing, key, Path(text) if text else None)
+        self._sync_config_forcing_paths(config)
         self._grid_panel.render(config.grid)
         self._calculation_panel.render(config.calc)
         self._ww3_panel.render(config)
@@ -1068,6 +1066,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if hasattr(self, "_server_ops_panel"):
             self._server_ops_panel.set_server_path(self._effective_server_path(config))
         self._scroll_steps_to_top()
+
+    def _sync_config_forcing_paths(self, config: PipelineConfig) -> None:
+        for key in ("wind", "current", "level", "ice"):
+            text = self._paths[key].text().strip()
+            setattr(config.forcing, key, Path(text) if text else None)
 
     def _browse_path(self, key: str, directory: bool) -> None:
         current = self._paths[key].text().strip()
@@ -3212,7 +3215,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # [EN] Refresh Step 4 panel forcing enabled state after Step 2 forcing processing completes
         # 强迫场处理完毕后刷新 Step 4 面板的启用状态显示
         if self._loaded_config is not None:
-            self._render_summary(self._loaded_config)
+            self._sync_config_forcing_paths(self._loaded_config)
+            self._preserve_steps_scroll(
+                lambda: self._ww3_panel.render_forcing_availability(
+                    self._loaded_config.forcing
+                )
+            )
 
     def _on_pipeline_done(self, result: object) -> None:
         self._set_busy(False)
