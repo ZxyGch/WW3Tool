@@ -17,11 +17,18 @@
     touch-action: none; user-select: none;
   }
   #polar-map.visible { display: block; }
-  #polar-map .polar-ocean { fill: #a9cfe1; stroke: #54859d; stroke-width: 1.2; }
+  #polar-map .polar-ocean {
+    fill: #a9cfe1; stroke: #54859d; stroke-width: 1.2;
+    vector-effect: non-scaling-stroke;
+  }
   #polar-map .polar-graticule {
     fill: none; stroke: rgba(48, 100, 124, 0.56); stroke-width: 0.75;
+    vector-effect: non-scaling-stroke;
   }
-  #polar-map .polar-land { fill: #f7f5f1; stroke: #8c9ba2; stroke-width: 0.55; }
+  #polar-map .polar-land {
+    fill: #f7f5f1; stroke: #8c9ba2; stroke-width: 0.55;
+    vector-effect: non-scaling-stroke;
+  }
   #polar-map .polar-label {
     fill: #34454e; font-size: 11px; font-weight: 500;
     text-anchor: middle; paint-order: stroke; stroke: rgba(255,255,255,0.9); stroke-width: 3px;
@@ -394,7 +401,8 @@
   var lastPoint = null;
   var previewBounds = null;
   var previewFrame = null;
-  var polarWorld = null;
+  var polarWorldLevels = {};
+  var polarWorldLevel = '110m';
   var polarProjection = null;
   var polarPath = null;
   var polarRoot = null;
@@ -402,6 +410,7 @@
   var polarZoomTransform = null;
   var polarDrawStart = null;
   var polarLastPointer = null;
+  var polarDetailTimer = null;
 
   // -- DOM 引用 --
   var coordEls = {
@@ -620,6 +629,16 @@
       { lon: 135, lat: -46, zh: '澳大利亚', en: 'Australia' }
     ]
   };
+  var POLAR_COUNTRY_IDS = {
+    north: new Set([
+      '040', '056', '112', '124', '156', '203', '208', '233', '246', '250', '276', '304',
+      '352', '372', '392', '398', '408', '410', '428', '440', '496', '528', '578', '616',
+      '642', '643', '703', '752', '756', '804', '826', '840'
+    ]),
+    south: new Set([
+      '010', '032', '036', '072', '152', '238', '260', '426', '516', '554', '710', '748', '858'
+    ])
+  };
   var polarLibraryPromise = null;
 
   function loadExternalScript(url, globalName) {
@@ -636,8 +655,7 @@
     });
   }
 
-  async function ensurePolarWorld() {
-    if (polarWorld) return;
+  async function ensurePolarLibraries() {
     if (!polarLibraryPromise) {
       polarLibraryPromise = Promise.all([
         loadExternalScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js', 'd3'),
@@ -652,12 +670,75 @@
       polarLibraryPromise = null;
       throw error;
     }
-    var response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json', {
-      cache: 'force-cache'
-    });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    var topology = await response.json();
-    polarWorld = topojson.feature(topology, topology.objects.countries);
+  }
+
+  async function loadPolarWorld(level) {
+    await ensurePolarLibraries();
+    var cached = polarWorldLevels[level];
+    if (cached && typeof cached.then !== 'function') return cached;
+    if (!cached) {
+      cached = fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-' + level + '.json', {
+        cache: 'force-cache'
+      }).then(function(response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      }).then(function(topology) {
+        return topojson.feature(topology, topology.objects.countries);
+      });
+      polarWorldLevels[level] = cached;
+    }
+    try {
+      var world = await cached;
+      polarWorldLevels[level] = world;
+      return world;
+    } catch (error) {
+      delete polarWorldLevels[level];
+      throw error;
+    }
+  }
+
+  async function ensurePolarWorld() {
+    await loadPolarWorld('110m');
+  }
+
+  function desiredPolarWorldLevel(scale) {
+    if (scale >= 3.5) return '10m';
+    if (scale >= 1.8) return '50m';
+    return '110m';
+  }
+
+  function renderPolarLand(world) {
+    if (!polarRoot || !world) return;
+    var pole = mapTypeConfig(currentStyle).pole;
+    var cacheKey = pole === 'north' ? '__northFeatures' : '__southFeatures';
+    if (!world[cacheKey]) {
+      world[cacheKey] = world.features.filter(function(feature) {
+        return POLAR_COUNTRY_IDS[pole].has(String(feature.id).padStart(3, '0'));
+      });
+    }
+    polarRoot.select('.polar-land-layer').selectAll('path')
+      .data(world[cacheKey], function(feature) { return feature.id; })
+      .join('path')
+      .attr('class', 'polar-land')
+      .attr('d', polarPath);
+  }
+
+  function requestPolarWorldLevel(scale) {
+    var level = desiredPolarWorldLevel(scale);
+    if (polarDetailTimer !== null) window.clearTimeout(polarDetailTimer);
+    polarDetailTimer = null;
+    if (level === polarWorldLevel) return;
+    polarDetailTimer = window.setTimeout(async function() {
+      polarDetailTimer = null;
+      try {
+        var world = await loadPolarWorld(level);
+        if (!isPolarActive() || desiredPolarWorldLevel(polarZoomTransform.k) !== level) return;
+        polarWorldLevel = level;
+        renderPolarLand(world);
+      } catch (_) {
+        // Keep the last successful detail level when a higher-resolution source is unavailable.
+      }
+    }, 180);
   }
 
   function polarPointVisible(lonLat) {
@@ -705,12 +786,30 @@
       var lonLat = [Number(point.lon), Number(point.lat)];
       if (!polarPointVisible(lonLat)) return;
       var position = polarProjection(lonLat);
-      var marker = pointLayer.append('g').attr('transform', 'translate(' + position.join(',') + ')');
+      var marker = pointLayer.append('g')
+        .attr('class', 'polar-point-marker')
+        .attr('data-x', position[0])
+        .attr('data-y', position[1]);
       marker.append('circle').attr('class', 'polar-point').attr('r', 5);
       marker.append('text')
         .attr('class', 'polar-point-label')
         .attr('x', 8).attr('y', 4)
         .text(String(point.name || index));
+    });
+    updatePolarSymbolScale(polarZoomTransform ? polarZoomTransform.k : 1);
+  }
+
+  function updatePolarSymbolScale(scale) {
+    if (!polarRoot) return;
+    var inverseScale = 1 / scale;
+    polarRoot.selectAll('.polar-label, .polar-degree-label').attr('transform', function() {
+      var x = Number(this.getAttribute('x'));
+      var y = Number(this.getAttribute('y'));
+      return 'translate(' + x + ',' + y + ') scale(' + inverseScale + ') translate(' + (-x) + ',' + (-y) + ')';
+    });
+    polarRoot.selectAll('.polar-point-marker').attr('transform', function() {
+      return 'translate(' + this.getAttribute('data-x') + ',' + this.getAttribute('data-y')
+        + ') scale(' + inverseScale + ')';
     });
   }
 
@@ -736,11 +835,9 @@
       .extent(pole === 'north' ? [[-180, 45], [180, 89.999]] : [[-180, -89.999], [180, -45]])
       .step([30, 10]);
     polarRoot.append('path').datum(graticule()).attr('class', 'polar-graticule').attr('d', polarPath);
-    polarRoot.append('g').selectAll('path')
-      .data(polarWorld.features)
-      .join('path')
-      .attr('class', 'polar-land')
-      .attr('d', polarPath);
+    polarRoot.append('g').attr('class', 'polar-land-layer');
+    polarWorldLevel = '110m';
+    renderPolarLand(polarWorldLevels[polarWorldLevel]);
 
     var labelLatitude = pole === 'north' ? 46.2 : -46.2;
     polarRoot.append('g').selectAll('text')
@@ -765,6 +862,8 @@
     polarZoom = d3.zoom().scaleExtent([1, 8]).on('zoom', function(event) {
       polarZoomTransform = event.transform;
       polarRoot.attr('transform', event.transform);
+      updatePolarSymbolScale(event.transform.k);
+      requestPolarWorldLevel(event.transform.k);
     });
     svg.call(polarZoom).on('dblclick.zoom', null);
     renderPolarOverlays();
@@ -1548,7 +1647,7 @@
 
   var polarResizeTimer = null;
   window.addEventListener('resize', function() {
-    if (!isPolarActive() || !polarWorld) return;
+    if (!isPolarActive() || !polarWorldLevels['110m']) return;
     if (polarResizeTimer !== null) window.clearTimeout(polarResizeTimer);
     polarResizeTimer = window.setTimeout(function() {
       polarResizeTimer = null;
