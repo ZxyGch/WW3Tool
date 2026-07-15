@@ -210,7 +210,11 @@ def smcellbdy(Bathy, ndzlonlat, mlvlxy0, FileNm='./SMC61250',
 ## Loop over NLvl to define different sized cells according to open sea area,
 ## starting with base level of size-MFct cell but exclude level 1 cells.
             levl = NLvl
-            while( levl > 1 ):
+            # The upstream loop intentionally stops before level 1 because a
+            # multi-level grid normally obtains its boundary strip from coarser
+            # cells.  A one-level regional grid has no coarser level, so that
+            # condition otherwise produces an empty boundary file every time.
+            while( levl > 1 or (NLvl == 1 and levl == 1) ):
                 if( np.sum(subchck) == 0 ):
                     break
                 else:
@@ -338,4 +342,3 @@ if __name__ == '__main__':
     main()
 
 ## End of smcellbdy.py program.
-
