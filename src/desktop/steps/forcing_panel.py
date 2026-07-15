@@ -29,6 +29,7 @@ class ForcingStepPanel:
         crop_import: Callable[[], None],
         direct_import: Callable[[], None],
         load_intersection: Callable[[], None],
+        use_grid_bounds: Callable[[], None],
         view_map: Callable[[], None],
         mode_changed: Callable[[], None],
     ) -> None:
@@ -95,11 +96,20 @@ class ForcingStepPanel:
             end_placeholder=tr("step2_lon_east_placeholder", "110"),
         )
         layout.addLayout(range_grid)
+        # 使用网格范围和读取公共范围在同一行
+        button_row = QGridLayout()
+        button_row.setSpacing(10)
+        self.use_grid_bounds_button = create_button(
+            tr("step2_use_grid_bounds", "使用网格范围"),
+            use_grid_bounds,
+        )
         self.load_intersection_button = create_button(
             tr("step2_load_intersection", "读取公共范围"),
             load_intersection,
         )
-        layout.addWidget(self.load_intersection_button)
+        button_row.addWidget(self.use_grid_bounds_button, 0, 0)
+        button_row.addWidget(self.load_intersection_button, 0, 1)
+        layout.addLayout(button_row)
 
         self.map_button = create_button(tr("step2_view_map", "查看地图"), view_map)
         layout.addWidget(self.map_button)

@@ -219,6 +219,7 @@ class GridStepPanel:
         layout.addWidget(self.outer_grid_title)
         self.bounds_preview = BoundsMapPreview(parent)
         layout.addWidget(self.bounds_preview)
+        self.bounds_preview.expand_requested.connect(self._open_globe_picker)
         outer_grid = QGridLayout()
         outer_grid.setSpacing(10)
         outer_grid.setColumnStretch(1, 1)
@@ -295,7 +296,6 @@ class GridStepPanel:
         self.recommend_button = create_button(tr("step1_recommend_params", "推荐参数"), recommend_params)
         self.grid_button = create_button(tr("step1_create_grid", "生成网格"), generate_grid)
         self.visualize_button = create_button(tr("step1_visualize_grid", "网格可视化"), visualize_grid)
-        self.globe_button = create_button(tr("step1_globe_picker", "选择地图区域"), self._open_globe_picker)
         # 添加/删除层并排一行（嵌套模式）
         # [EN] Add/delete level buttons in one row (nested mode).
         level_btn_row = QHBoxLayout()
@@ -309,7 +309,6 @@ class GridStepPanel:
             self.recommend_button,
             self.grid_button,
             self.visualize_button,
-            self.globe_button,
         ):
             layout.addWidget(button)
         self.action_buttons = [
@@ -319,7 +318,6 @@ class GridStepPanel:
             self.recommend_button,
             self.grid_button,
             self.visualize_button,
-            self.globe_button,
         ]
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
         group.viewLayout.addLayout(layout)

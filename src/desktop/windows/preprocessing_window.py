@@ -612,6 +612,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             crop_import=self._crop_forcing_import,
             direct_import=self._direct_forcing_import,
             load_intersection=self._load_forcing_intersection,
+            use_grid_bounds=self._use_grid_bounds,
             view_map=self._view_forcing_region_map,
             mode_changed=self._on_forcing_mode_changed,
         )
@@ -1131,11 +1132,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _show_forcing_files_info(self) -> None:
         if self._busy:
             return
+        # 优先从 ViewModel 读取已导入的强迫场路径（裁剪导入后路径在 state.files 中）
+        prepared_files = self._forcing_vm.state.files
         files = Step2Files(
-            wind=self._paths["wind"].text().strip() or None,
-            current=self._paths["current"].text().strip() or None,
-            level=self._paths["level"].text().strip() or None,
-            ice=self._paths["ice"].text().strip() or None,
+            wind=str(getattr(prepared_files, "wind", "") or "") or (self._paths["wind"].text().strip() or None),
+            current=str(getattr(prepared_files, "current", "") or "") or (self._paths["current"].text().strip() or None),
+            level=str(getattr(prepared_files, "level", "") or "") or (self._paths["level"].text().strip() or None),
+            ice=str(getattr(prepared_files, "ice", "") or "") or (self._paths["ice"].text().strip() or None),
         )
         self._set_busy(True)
 
@@ -1599,8 +1602,30 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not fields:
             self._show_error(tr("step2_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
-        if apply_crop and (self._forcing_crop_time_range() is None or self._forcing_crop_bbox() is None):
-            return
+        # 裁剪导入时，如果第二步范围未填写，自动使用第一步网格范围
+        if apply_crop:
+            bbox = self._forcing_crop_bbox(silent=True)
+            if bbox is None or all(v == 0.0 for v in bbox):
+                # 自动填入网格范围
+                try:
+                    grid_lon_west = float(self._grid_panel.fields["grid_lon_west"].text().strip())
+                    grid_lon_east = float(self._grid_panel.fields["grid_lon_east"].text().strip())
+                    grid_lat_south = float(self._grid_panel.fields["grid_lat_south"].text().strip())
+                    grid_lat_north = float(self._grid_panel.fields["grid_lat_north"].text().strip())
+                    self._forcing_panel.set_range_values(bbox=(grid_lon_west, grid_lon_east, grid_lat_south, grid_lat_north), overwrite_editable=True)
+                    self._append_log(
+                        tr(
+                            "step2_auto_grid_bounds",
+                            "裁剪范围未填写，已自动使用第一步网格范围：经度 {lon_west:.2f} ~ {lon_east:.2f}°，纬度 {lat_south:.2f} ~ {lat_north:.2f}°",
+                        ).format(lon_west=grid_lon_west, lon_east=grid_lon_east, lat_south=grid_lat_south, lat_north=grid_lat_north)
+                    )
+                except (ValueError, KeyError):
+                    pass
+            if self._forcing_crop_time_range() is None or self._forcing_crop_bbox() is None:
+                return
+        else:
+            if self._forcing_crop_time_range() is None or self._forcing_crop_bbox() is None:
+                return
         # 检查强迫场范围是否覆盖网格范围
         if not self._check_forcing_coverage():
             return
@@ -1651,9 +1676,19 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 # 强迫场经度标准化到 [-180, 180)
                 f_lon_min = self._normalize_lon(bounds.lon_min)
                 f_lon_max = self._normalize_lon(bounds.lon_max)
-                # 若标准化后 min > max（跨日界线文件），交换使之连续
-                if f_lon_min > f_lon_max:
-                    f_lon_min, f_lon_max = f_lon_max, f_lon_min
+
+                # 检测强迫场是否跨日界线：标准化后 min > max 表示跨日界线
+                forcing_crosses_date_line = f_lon_min > f_lon_max
+
+                # 特殊情况：ERA5 全球数据 (0–360° 口径) 标准化后可能变成 [-180, 负数]
+                # 例如 [0, 359.75] → [-180, -0.25]，实际覆盖全球
+                # 若标准化后东边界 < -90（西半球），说明原始是接近 360° 的值
+                # 此时应使用原始 0–360° 口径与网格比较
+                if f_lon_max < -90 and not forcing_crosses_date_line:
+                    # 使用原始口径（0–360°）
+                    f_lon_min = bounds.lon_min
+                    f_lon_max = bounds.lon_max
+                    forcing_crosses_date_line = bounds.lon_min > bounds.lon_max
 
                 # 纬度不做标准化（始终 -90~90）
                 lat_ok = bounds.lat_min <= grid_lat_south and bounds.lat_max >= grid_lat_north
@@ -1661,9 +1696,22 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 # 经度覆盖检查
                 if grid_crosses_date_line:
                     # 网格跨日界线 => 分 [g_west, 180) 和 [-180, g_east) 两段
-                    lon_ok = (f_lon_min <= g_west) and (f_lon_max >= g_east)
+                    if forcing_crosses_date_line:
+                        # 强迫场也跨日界线：直接比较标准化后的值
+                        lon_ok = (f_lon_min <= g_west) and (f_lon_max >= g_east)
+                    else:
+                        # 强迫场不跨日界线（0–360° 全球数据）：检查是否覆盖整个 [0, 360) 或 [-180, 180)
+                        lon_span = f_lon_max - f_lon_min
+                        lon_ok = lon_span >= 359.0  # 允许 0.75° 的舍入误差
                 else:
-                    lon_ok = f_lon_min <= g_west and f_lon_max >= g_east
+                    # 网格不跨日界线
+                    if forcing_crosses_date_line:
+                        # 强迫场跨日界线：检查是否覆盖整个 [-180, 180)
+                        lon_span = (180 - f_lon_min) + (f_lon_max + 180)
+                        lon_ok = lon_span >= 359.0
+                    else:
+                        # 两者都不跨日界线：直接比较
+                        lon_ok = f_lon_min <= g_west and f_lon_max >= g_east
 
                 if not (lon_ok and lat_ok):
                     insufficient_fields.append({
@@ -1798,6 +1846,24 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._show_error(tr("step2_select_forcing_first", "请先选择至少一个强迫场文件"))
             return
         self._refresh_forcing_common_ranges(clear_if_empty=False)
+
+    def _use_grid_bounds(self) -> None:
+        """将第一步的网格范围填入第二步的经纬度输入框。"""
+        try:
+            lon_west = float(self._grid_panel.fields["grid_lon_west"].text().strip())
+            lon_east = float(self._grid_panel.fields["grid_lon_east"].text().strip())
+            lat_south = float(self._grid_panel.fields["grid_lat_south"].text().strip())
+            lat_north = float(self._grid_panel.fields["grid_lat_north"].text().strip())
+        except (ValueError, KeyError):
+            self._show_error(tr("step1_grid_bounds_missing", "请先在第一步设置有效的网格范围"))
+            return
+        self._forcing_panel.set_range_values(bbox=(lon_west, lon_east, lat_south, lat_north), overwrite_editable=True)
+        self._append_log(
+            tr(
+                "step2_grid_bounds_applied",
+                "已使用第一步网格范围：经度 {lon_west:.2f} ~ {lon_east:.2f}°，纬度 {lat_south:.2f} ~ {lat_north:.2f}°",
+            ).format(lon_west=lon_west, lon_east=lon_east, lat_south=lat_south, lat_north=lat_north)
+        )
 
     def _clear_forcing_common_ranges(self) -> None:
         self._forcing_panel.clear_range_values()
@@ -3221,6 +3287,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                     self._loaded_config.forcing
                 )
             )
+        # 主动刷新第二步状态显示（确保 state.files 更新到 UI）
+        self._render_forcing_state(self._forcing_vm.state)
 
     def _on_pipeline_done(self, result: object) -> None:
         self._set_busy(False)

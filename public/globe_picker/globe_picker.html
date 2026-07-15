@@ -220,6 +220,17 @@
     background: rgba(255,255,255,0.72); color: #4f5962;
     font-size: 10px; line-height: 1.3; pointer-events: none;
   }
+  /* Expand button — visible only in preview mode */
+  #expand-btn {
+    position: absolute; right: 8px; bottom: 8px; z-index: 20;
+    display: none; width: 32px; height: 32px; padding: 0;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+    background: rgba(60,60,60,0.75); backdrop-filter: blur(4px);
+    color: #eee; cursor: pointer; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25); transition: all 0.15s;
+  }
+  #expand-btn:hover { background: rgba(80,80,80,0.85); color: #fff; }
+  body.embedded-preview #expand-btn { display: flex; }
 </style>
 </head>
 <body>
@@ -234,6 +245,15 @@
 <div id="region-legend"></div>
 <div id="rect-move-handle" class="rect-edit-handle rect-move-handle" aria-hidden="true"></div>
 <div id="rect-resize-handle" class="rect-edit-handle rect-resize-handle" aria-hidden="true"></div>
+
+<button id="expand-btn" type="button" title="打开地球选择区域">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 3 21 3 21 9"></polyline>
+    <polyline points="9 21 3 21 3 15"></polyline>
+    <line x1="21" y1="3" x2="14" y2="10"></line>
+    <line x1="3" y1="21" x2="10" y2="14"></line>
+  </svg>
+</button>
 
 <div id="toolbar">
   <span id="toolbar-status" class="status-msg">正在加载高清地图...</span>
@@ -499,6 +519,7 @@
   var statusPanel = document.getElementById('toolbar-status');
   var attributionEl = document.getElementById('map-attribution');
   var regionLegend = document.getElementById('region-legend');
+  var expandBtn = document.getElementById('expand-btn');
   var pointTools = document.getElementById('point-tools');
   var pointCount = document.getElementById('point-count');
   var deletePointBtn = document.getElementById('delete-point-btn');
@@ -2188,6 +2209,11 @@
     clearRectangle();
     setTool('rect');
     setStatus(text.drawing, false);
+  });
+
+  expandBtn.addEventListener('click', function() {
+    if (window.__globeResult) return; // already confirmed
+    window.__expandRequested = true;
   });
 
   confirmBtn.addEventListener('click', function() {

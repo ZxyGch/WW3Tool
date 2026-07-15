@@ -6,7 +6,7 @@ import json
 import math
 from pathlib import Path
 
-from PyQt6.QtCore import QRectF, QTimer, QUrl, QUrlQuery
+from PyQt6.QtCore import pyqtSignal, QRectF, QTimer, QUrl, QUrlQuery
 from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import QSizePolicy
@@ -16,6 +16,8 @@ from .globe_picker_dialog import MapWebEngineView, current_map_language, current
 
 class BoundsMapPreview(MapWebEngineView):
     """Show a blue outline for four bound fields without map editing controls."""
+
+    expand_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -150,14 +152,23 @@ class BoundsMapPreview(MapWebEngineView):
             return
         self._move_poll_in_flight = True
         self.page().runJavaScript(
-            "(function(){var r=window.__previewMoveResult||null;"
-            "window.__previewMoveResult=null;return r;})()",
+            "(function(){"
+            "var r=window.__previewMoveResult||null;"
+            "window.__previewMoveResult=null;"
+            "var x=window.__expandRequested||false;"
+            "window.__expandRequested=false;"
+            "if(x)return {_expand:true};"
+            "return r;"
+            "})()",
             self._on_preview_move,
         )
 
     def _on_preview_move(self, result: object) -> None:
         self._move_poll_in_flight = False
         if not isinstance(result, dict):
+            return
+        if result.get("_expand"):
+            QTimer.singleShot(0, self.expand_requested.emit)
             return
         try:
             index = int(result["index"])

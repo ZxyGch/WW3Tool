@@ -2578,6 +2578,7 @@
   "step2_lon_west_placeholder": "-30",
   "step2_lon_east_placeholder": "110",
   "step2_load_intersection": "读取公共范围",
+  "step2_use_grid_bounds": "使用网格范围",
   "step2_confirm_import": "确认导入",
   "step2_confirm_crop_import": "确认裁剪并导入",
   "step2_direct_import": "直接导入，不进行裁剪",
@@ -2617,6 +2618,9 @@
   "step2_forcing_coverage_continue": "继续导入",
   "step2_forcing_coverage_cancel": "返回修改",
   "step2_forcing_coverage_read_failed_detail": "• {name}：{path}（读取失败：{error}）",
+  "step1_grid_bounds_missing": "请先在第一步设置有效的网格范围",
+  "step2_grid_bounds_applied": "已使用第一步网格范围：经度 {lon_west:.2f} ~ {lon_east:.2f}°，纬度 {lat_south:.2f} ~ {lat_north:.2f}°",
+  "step2_auto_grid_bounds": "裁剪范围未填写，已自动使用第一步网格范围：经度 {lon_west:.2f} ~ {lon_east:.2f}°，纬度 {lat_south:.2f} ~ {lat_north:.2f}°",
   "step2_forcing_coverage_warning_cli": "⚠️ 强迫场范围警告：以下文件范围可能不足或读取失败（将继续导入）：\n{details}",
   "step4_time_range_warning_cli": "⚠️ WW3 时间范围警告：以下强迫场时间范围不足（将继续生成 namelist）：\n{details}",
   "step4_time_range_warning_detail": "• {name}：{path}\n  强迫场时间：{time_start} → {time_end}\n  WW3 请求时间：{req_start} → {req_end}"
