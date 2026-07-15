@@ -171,6 +171,9 @@
     font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,0.25);
   }
   #status-panel.error { background: rgba(125, 35, 35, 0.92); color: #fff; }
+  @media (max-width: 1150px) {
+    #status-panel { top: 72px; }
+  }
   #region-legend {
     position: absolute; left: 16px; bottom: 18px; z-index: 10;
     display: none; min-width: 140px; max-width: min(300px, calc(100% - 32px));
@@ -324,6 +327,7 @@
       styleLoading: '底图正在加载，请稍候再选择矩形。',
       styleTimeout: '底图仍在加载，请稍候再选择矩形。',
       initialBounds: '已显示当前网格范围，可点击矩形按钮重新选择。',
+      selectingLevel: '正在选择 {label}，可拖动地图或重新框选区域。',
       invalidCoordinates: '请输入有效范围：经度 -360～360、纬度 -90～90，且西 < 东、南 < 北，经度跨度不超过 360°。',
       displayingRegions: '已显示 {count} 个强迫场范围。',
       pointReady: '点击地图添加点位，拖动地图可平移。',
@@ -346,6 +350,7 @@
       styleLoading: 'The map style is loading. Please wait before drawing.',
       styleTimeout: 'The map style is still loading. Please try again shortly.',
       initialBounds: 'Current grid bounds are displayed. Click the rectangle button to redraw.',
+      selectingLevel: 'Selecting {label}. Pan the map or redraw the region.',
       invalidCoordinates: 'Enter a valid region: longitude -360 to 360, latitude -90 to 90, west < east, south < north, and longitude span no greater than 360°.',
       displayingRegions: 'Displaying {count} forcing-field region(s).',
       pointReady: 'Click the map to add points. Drag to pan.',
@@ -375,6 +380,8 @@
   }
 
   var initialBounds = readInitialBounds(queryParams);
+  var selectionLabel = queryParams.get('selectionLabel') || '';
+  var selectionColor = queryParams.get('selectionColor') || '#1677d2';
   var initialBoundsApplied = false;
 
   function readDisplayRegions(params) {
@@ -767,7 +774,9 @@
 
   function renderPolarOverlays() {
     if (polarTileMap) {
-      var tileRegions = selectionEnabled && currentRect ? [currentRect] : displayRegions;
+      var tileRegions = selectionEnabled
+        ? displayRegions.concat(currentRect ? [currentRect] : [])
+        : displayRegions;
       polarTileMap.render(tileRegions, selectedPoints, polarRectangleGeometry);
       return;
     }
@@ -777,7 +786,9 @@
     regionLayer.selectAll('*').remove();
     pointLayer.selectAll('*').remove();
 
-    var regions = selectionEnabled && currentRect ? [currentRect] : displayRegions;
+    var regions = selectionEnabled
+      ? displayRegions.concat(currentRect ? [currentRect] : [])
+      : displayRegions;
     regions.forEach(function(region) {
       var color = region.color || '#1677d2';
       regionLayer.append('path')
@@ -932,9 +943,19 @@
     // 先移除旧的绘制层（切换样式后 style.load 时会重建）
     try { map.removeLayer('draw-rect-outline'); } catch(_) {}
     try { map.removeLayer('draw-rect-fill'); } catch(_) {}
+    try { map.removeLayer('reference-regions-outline'); } catch(_) {}
+    try { map.removeLayer('reference-regions-fill'); } catch(_) {}
     try { map.removeSource('draw-rect-outline-source'); } catch(_) {}
     try { map.removeSource('draw-rect'); } catch(_) {}
+    try { map.removeSource('reference-regions-outline-source'); } catch(_) {}
+    try { map.removeSource('reference-regions'); } catch(_) {}
 
+    map.addSource('reference-regions', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addSource('reference-regions-outline-source', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
     map.addSource('draw-rect', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
@@ -942,6 +963,21 @@
     map.addSource('draw-rect-outline-source', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'reference-regions-fill', type: 'fill', source: 'reference-regions',
+      paint: {
+        'fill-color': ['coalesce', ['get', 'color'], '#6bbcff'],
+        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.08]
+      }
+    });
+    map.addLayer({
+      id: 'reference-regions-outline', type: 'line', source: 'reference-regions-outline-source',
+      paint: {
+        'line-color': ['coalesce', ['get', 'color'], '#1677d2'],
+        'line-width': ['coalesce', ['get', 'width'], 1.5],
+        'line-opacity': 0.9
+      }
     });
     map.addLayer({
       id: 'draw-rect-fill', type: 'fill', source: 'draw-rect',
@@ -960,6 +996,7 @@
       }
     });
     drawingSourceReady = true;
+    applyReferenceRegions();
     setStatus(text.ready, false);
     if (selectionEnabled && currentRect) {
       updateRectangle(
@@ -1096,7 +1133,10 @@
   function updateRectangle(north, south, east, west) {
     if (isPolarActive()) {
       if (!drawingSourceReady || (!polarTileMap && !polarRoot)) return false;
-      currentRect = { west: west, east: east, south: south, north: north };
+      currentRect = {
+        west: west, east: east, south: south, north: north,
+        color: selectionColor, width: 1.5
+      };
       hasRect = true;
       renderPolarOverlays();
       return true;
@@ -1109,17 +1149,22 @@
     try {
       map.getSource('draw-rect').setData({
         type: 'Feature',
+        properties: { color: selectionColor },
         geometry: rectangleGeometry(north, south, east, west)
       });
       map.getSource('draw-rect-outline-source').setData({
         type: 'Feature',
+        properties: { color: selectionColor, width: 1.5 },
         geometry: rectangleOutlineGeometry(north, south, east, west)
       });
     } catch(e) {
       setStatus(text.layerError, true);
       return false;
     }
-    currentRect = { west: west, east: east, south: south, north: north };
+    currentRect = {
+      west: west, east: east, south: south, north: north,
+      color: selectionColor, width: 1.5
+    };
     hasRect = true;
     return true;
   }
@@ -1205,9 +1250,16 @@
       initialBounds.south,
       initialBounds.north
     );
-    setStatus(text.initialBounds, false);
+    setStatus(
+      selectionLabel ? text.selectingLevel.replace('{label}', selectionLabel) : text.initialBounds,
+      false
+    );
 
     if (isPolarActive()) return;
+    if (displayRegions.length > 0) {
+      fitDisplayRegions(displayRegions.concat([initialBounds]));
+      return;
+    }
     var draw = normalizedDrawLongitudes(initialBounds.east, initialBounds.west);
     map.fitBounds(
       [[draw.west, initialBounds.south], [draw.east, initialBounds.north]],
@@ -1268,6 +1320,32 @@
     } else {
       setStatus(text.displayingRegions.replace('{count}', String(displayRegions.length)), false);
     }
+  }
+
+  function applyReferenceRegions() {
+    if (!selectionEnabled || !drawingSourceReady || isPolarActive()) return;
+    var fillFeatures = [];
+    var outlineFeatures = [];
+    displayRegions.forEach(function(region) {
+      var properties = {
+        color: region.color || '#1687d9', opacity: 0.08, width: region.width || 1.5
+      };
+      fillFeatures.push({
+        type: 'Feature', properties: properties,
+        geometry: rectangleGeometry(region.north, region.south, region.east, region.west)
+      });
+      outlineFeatures.push({
+        type: 'Feature', properties: properties,
+        geometry: rectangleOutlineGeometry(region.north, region.south, region.east, region.west)
+      });
+    });
+    map.getSource('reference-regions').setData({
+      type: 'FeatureCollection', features: fillFeatures
+    });
+    map.getSource('reference-regions-outline-source').setData({
+      type: 'FeatureCollection', features: outlineFeatures
+    });
+    renderRegionLegend();
   }
 
   function setPreviewRegions(regions) {
@@ -1398,13 +1476,15 @@
     regionLegend.classList.toggle('visible', displayRegions.length > 0);
   }
 
-  function fitDisplayRegions() {
-    var reference = (displayRegions[0].west + displayRegions[0].east) / 2;
+  function fitDisplayRegions(regionList) {
+    var regions = regionList || displayRegions;
+    if (regions.length === 0) return;
+    var reference = (regions[0].west + regions[0].east) / 2;
     var west = Infinity;
     var east = -Infinity;
     var south = Infinity;
     var north = -Infinity;
-    displayRegions.forEach(function(region) {
+    regions.forEach(function(region) {
       var drawWest = region.west;
       var drawEast = region.east;
       var center = (drawWest + drawEast) / 2;

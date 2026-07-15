@@ -22,6 +22,7 @@ class BoundsMapPreview(MapWebEngineView):
         self._page_loaded = False
         self._regions: list[dict[str, object]] = []
         self._field_regions: list[dict[str, object]] = []
+        self._field_connections: list[tuple[object, object]] = []
         self._update_timer = QTimer(self)
         self._update_timer.setSingleShot(True)
         self._update_timer.setInterval(180)
@@ -48,7 +49,7 @@ class BoundsMapPreview(MapWebEngineView):
     def bind_fields(
         self, *, west, east, south, north, color: str = "#1677d2", label: str = ""
     ) -> None:
-        self._field_regions = []
+        self._clear_field_bindings()
         self.add_bound_fields(
             west=west, east=east, south=south, north=north, color=color, label=label
         )
@@ -59,8 +60,28 @@ class BoundsMapPreview(MapWebEngineView):
         fields = (west, east, south, north)
         self._field_regions.append({"fields": fields, "color": color, "label": label})
         for field in fields:
-            field.textChanged.connect(lambda *_: self._update_timer.start())
+            slot = lambda *_: self._update_timer.start()
+            field.textChanged.connect(slot)
+            self._field_connections.append((field, slot))
         self._update_timer.start()
+
+    def replace_bound_fields(self, bindings: list[dict[str, object]]) -> None:
+        """Replace all live field bindings, for example after nested levels change."""
+        self._clear_field_bindings()
+        for binding in bindings:
+            self.add_bound_fields(**binding)
+        if not bindings:
+            self.clear_bounds()
+
+    def _clear_field_bindings(self) -> None:
+        self._update_timer.stop()
+        for field, slot in self._field_connections:
+            try:
+                field.textChanged.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+        self._field_connections.clear()
+        self._field_regions.clear()
 
     def set_bounds(self, west: float, east: float, south: float, north: float) -> None:
         self.set_regions([{"west": west, "east": east, "south": south, "north": north}])

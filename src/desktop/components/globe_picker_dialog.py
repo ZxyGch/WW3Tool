@@ -105,6 +105,9 @@ class GlobePickerDialog(QWidget):
         *,
         display_regions: Sequence[dict[str, object]] | None = None,
         selection_enabled: bool = True,
+        initial_bounds: tuple[float, float, float, float] | None = None,
+        selection_label: str = "",
+        selection_color: str = "#1677d2",
         point_selection_bounds: dict[str, object] | None = None,
         existing_points: Sequence[dict[str, object]] | None = None,
         display_points: Sequence[dict[str, object]] | None = None,
@@ -173,10 +176,13 @@ class GlobePickerDialog(QWidget):
         else:
             query.addQueryItem("mode", "select" if self._selection_enabled else "display")
         if self._selection_enabled:
-            initial_bounds = self._initial_bounds(host)
-            if initial_bounds is not None:
-                for key, value in zip(("west", "east", "south", "north"), initial_bounds):
+            picker_bounds = self._normalize_bounds(initial_bounds) or self._initial_bounds(host)
+            if picker_bounds is not None:
+                for key, value in zip(("west", "east", "south", "north"), picker_bounds):
                     query.addQueryItem(key, f"{value:.10g}")
+            if selection_label:
+                query.addQueryItem("selectionLabel", selection_label)
+            query.addQueryItem("selectionColor", selection_color)
         encoded_regions = self._display_regions(display_regions or ())
         if encoded_regions:
             query.addQueryItem(
@@ -224,6 +230,18 @@ class GlobePickerDialog(QWidget):
             south = float(fields["grid_lat_south"].text().strip())
             north = float(fields["grid_lat_north"].text().strip())
         except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+        return GlobePickerDialog._normalize_bounds((west, east, south, north))
+
+    @staticmethod
+    def _normalize_bounds(
+        bounds: tuple[float, float, float, float] | None,
+    ) -> tuple[float, float, float, float] | None:
+        if bounds is None:
+            return None
+        try:
+            west, east, south, north = (float(value) for value in bounds)
+        except (TypeError, ValueError):
             return None
         if not all(math.isfinite(value) for value in (west, east, south, north)):
             return None

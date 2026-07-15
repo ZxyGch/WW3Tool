@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 
 from PyQt6.QtCore import Qt
@@ -160,6 +161,8 @@ class GridStepPanel:
     用可增删的 ``_LevelCard`` 卡片表示。``overrides()`` 统一回传 ``levels`` 列表。
     """
 
+    _LEVEL_COLORS = ("#1677d2", "#e25555", "#26a269", "#a66dd4", "#d58a24")
+
     def __init__(
         self,
         parent: QWidget,
@@ -225,13 +228,7 @@ class GridStepPanel:
         self._display_pair(outer_grid, 1, tr("step1_lat_south", "纬度："), "grid_lat_south", "grid_lat_north")
         self._display_pair(outer_grid, 2, tr("step1_lon_west", "经度："), "grid_lon_west", "grid_lon_east")
         layout.addLayout(outer_grid)
-        self.bounds_preview.bind_fields(
-            west=self.fields["grid_lon_west"],
-            east=self.fields["grid_lon_east"],
-            south=self.fields["grid_lat_south"],
-            north=self.fields["grid_lat_north"],
-            label=tr("step1_grid_range", "网格范围"),
-        )
+        self._refresh_bounds_preview()
 
         # level1…levelN：可增删层卡片列表
         # [EN] level1…levelN: list of addable/removable level cards.
@@ -373,6 +370,7 @@ class GridStepPanel:
                 self.level_cards.append(card)
                 self._cards_layout.addWidget(card)
             self._renumber_cards()
+            self._refresh_bounds_preview()
         finally:
             self.grid_type_combo.blockSignals(False)
             self.mesh_type_combo.blockSignals(False)
@@ -510,22 +508,136 @@ class GridStepPanel:
         self.set_value(f"{prefix}_lat_north", f"{lat[1]:.4f}")
 
     def _open_globe_picker(self) -> None:
-        """打开 3D 地球选择器，用户选取矩形范围后自动填入经纬度。"""
-        dialog = GlobePickerDialog(self.widget.window())
-        if dialog.exec() != GlobePickerDialog.DialogCode.Accepted:
-            return
-        bounds = dialog.get_bounds()
-        if bounds is None:
-            return
-        west, east, south, north = bounds
-        self.set_bounds("grid", (west, east), (south, north))
+        """Select normal-grid bounds once, or collect every nested level in order."""
+        levels = self._map_selection_levels()
+        selected: dict[int, tuple[float, float, float, float]] = {}
+        for index, level in enumerate(levels):
+            display_regions: list[dict[str, object]] = []
+            for other_index, other in enumerate(levels):
+                if other_index == index:
+                    continue
+                bounds = selected.get(other_index) or self._fields_bounds(other["fields"])
+                if bounds is None:
+                    continue
+                west, east, south, north = bounds
+                display_regions.append(
+                    {
+                        "label": other["label"],
+                        "color": other["color"],
+                        "west": west,
+                        "east": east,
+                        "south": south,
+                        "north": north,
+                    }
+                )
+            dialog = GlobePickerDialog(
+                self.widget.window(),
+                display_regions=display_regions,
+                initial_bounds=self._fields_bounds(level["fields"]),
+                selection_label=str(level["label"]),
+                selection_color=str(level["color"]),
+            )
+            if dialog.exec() != GlobePickerDialog.DialogCode.Accepted:
+                return
+            bounds = dialog.get_bounds()
+            if bounds is None:
+                return
+            selected[index] = bounds
+
+        for index, level in enumerate(levels):
+            self._set_fields_bounds(level["fields"], selected[index])
+        self._refresh_bounds_preview()
+        self._validate_levels()
+        west, east, south, north = selected[0]
         from qfluentwidgets import InfoBar
+        if len(levels) == 1:
+            message = tr(
+                "step1_map_region_selected",
+                "已选择区域：经度 {west:.2f} ~ {east:.2f}°，纬度 {south:.2f} ~ {north:.2f}°",
+            ).format(west=west, east=east, south=south, north=north)
+        else:
+            message = tr(
+                "step1_map_levels_selected",
+                "已选择 {count} 层网格范围；level0 经度 {west:.2f} ~ {east:.2f}°，纬度 {south:.2f} ~ {north:.2f}°",
+            ).format(count=len(levels), west=west, east=east, south=south, north=north)
         InfoBar.success(
             title=tr("step1_globe_picker", "选择地图区域"),
-            content=f"已选择区域：经度 {west:.2f} ~ {east:.2f}°，纬度 {south:.2f} ~ {north:.2f}°",
+            content=message,
             duration=4000,
             parent=self.widget.window(),
         )
+
+    def _map_selection_levels(self) -> list[dict[str, object]]:
+        levels: list[dict[str, object]] = [
+            {
+                "label": "level0",
+                "color": self._LEVEL_COLORS[0],
+                "fields": {
+                    "west": self.fields["grid_lon_west"],
+                    "east": self.fields["grid_lon_east"],
+                    "south": self.fields["grid_lat_south"],
+                    "north": self.fields["grid_lat_north"],
+                },
+            }
+        ]
+        if self.is_nested:
+            for index, card in enumerate(self.level_cards, start=1):
+                levels.append(
+                    {
+                        "label": f"level{index}",
+                        "color": self._LEVEL_COLORS[index % len(self._LEVEL_COLORS)],
+                        "fields": {
+                            "west": card.fields["lon_west"],
+                            "east": card.fields["lon_east"],
+                            "south": card.fields["lat_south"],
+                            "north": card.fields["lat_north"],
+                        },
+                    }
+                )
+        return levels
+
+    @staticmethod
+    def _fields_bounds(fields: object) -> tuple[float, float, float, float] | None:
+        if not isinstance(fields, dict):
+            return None
+        try:
+            west, east, south, north = (
+                float(fields[key].text().strip()) for key in ("west", "east", "south", "north")
+            )
+        except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+        if not all(math.isfinite(value) for value in (west, east, south, north)):
+            return None
+        while east <= west:
+            east += 360
+        if south >= north or south < -90 or north > 90 or east - west > 360:
+            return None
+        return west, east, south, north
+
+    @staticmethod
+    def _set_fields_bounds(fields: object, bounds: tuple[float, float, float, float]) -> None:
+        if not isinstance(fields, dict):
+            return
+        for key, value in zip(("west", "east", "south", "north"), bounds):
+            fields[key].setText(f"{value:.4f}")
+
+    def _refresh_bounds_preview(self) -> None:
+        if not hasattr(self, "bounds_preview"):
+            return
+        bindings: list[dict[str, object]] = []
+        for level in self._map_selection_levels():
+            fields = level["fields"]
+            bindings.append(
+                {
+                    "west": fields["west"],
+                    "east": fields["east"],
+                    "south": fields["south"],
+                    "north": fields["north"],
+                    "color": level["color"],
+                    "label": level["label"],
+                }
+            )
+        self.bounds_preview.replace_bound_fields(bindings)
 
     def outer_lon_lat(self) -> tuple[list[float], list[float]] | None:
         """Return level0 lon/lat as float lists, or None when invalid."""
@@ -585,6 +697,7 @@ class GridStepPanel:
         self.level_cards.append(card)
         self._cards_layout.addWidget(card)
         self._renumber_cards()
+        self._refresh_bounds_preview()
         self._validate_levels()
 
     def _delete_last_level(self) -> None:
@@ -596,6 +709,7 @@ class GridStepPanel:
         self._cards_layout.removeWidget(card)
         card.deleteLater()
         self._renumber_cards()
+        self._refresh_bounds_preview()
         self._validate_levels()
 
     def _clear_cards(self) -> None:
@@ -603,6 +717,7 @@ class GridStepPanel:
             self._cards_layout.removeWidget(card)
             card.deleteLater()
         self.level_cards = []
+        self._refresh_bounds_preview()
 
     def _renumber_cards(self) -> None:
         n_cards = len(self.level_cards)
@@ -792,6 +907,7 @@ class GridStepPanel:
             self._validate_levels()
         elif not self.is_nested:
             self.levels_hint.hide()
+        self._refresh_bounds_preview()
 
     def _on_mesh_type_changed(self) -> None:
         idx = self.mesh_type_combo.currentIndex()
@@ -810,4 +926,5 @@ class GridStepPanel:
             self.field_labels[key].setVisible(structured)
         self.smc_params_widget.setVisible(smc)
         self.unst_params_widget.setVisible(unstructured)
+        self._refresh_bounds_preview()
         self._on_grid_type_changed()
