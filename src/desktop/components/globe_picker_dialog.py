@@ -11,7 +11,7 @@ import math
 from collections.abc import Sequence
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QEventLoop, Qt, QTimer, QUrl, QUrlQuery
+from PyQt6.QtCore import QEvent, QEventLoop, QObject, Qt, QTimer, QUrl, QUrlQuery
 from PyQt6.QtGui import QColor
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import (
@@ -29,12 +29,44 @@ from qframelesswindow.webengine import FramelessWebEngineView
 class MapWebEngineView(FramelessWebEngineView):
     """Send trackpad pinch gestures to the map without scaling the web page."""
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.installEventFilter(self)
+        self._install_child_event_filters()
+
+    def _install_child_event_filters(self) -> None:
+        for child in self.findChildren(QObject):
+            child.installEventFilter(self)
+
+    def _zoom_map(self, delta: float) -> None:
+        if delta:
+            self.page().runJavaScript(f"window.__zoomMapFromHost?.({delta})")
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.ChildAdded:
+            child = event.child()
+            if child is not None:
+                child.installEventFilter(self)
+        elif event.type() == QEvent.Type.NativeGesture:
+            if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
+                self._zoom_map(float(event.value()) * 2.0)
+                event.accept()
+                return True
+        elif event.type() == QEvent.Type.Wheel:
+            zoom_modifiers = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier
+            if event.modifiers() & zoom_modifiers:
+                delta = event.angleDelta().y() or event.pixelDelta().y()
+                self._zoom_map(delta / 240.0)
+                event.accept()
+                return True
+        return super().eventFilter(watched, event)
+
     def wheelEvent(self, event) -> None:
         modifiers = event.modifiers()
         zoom_modifiers = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier
         if modifiers & zoom_modifiers:
             delta = event.angleDelta().y() or event.pixelDelta().y()
-            self.page().runJavaScript(f"window.__zoomMapFromHost?.({delta / 240.0})")
+            self._zoom_map(delta / 240.0)
             event.accept()
             return
         super().wheelEvent(event)
@@ -101,9 +133,6 @@ class GlobePickerDialog(QWidget):
         self._webview.setZoomFactor(1.0)
         self._webview.page().setBackgroundColor(QColor("#d7e9f5"))
         card_layout.addWidget(self._webview, 1)
-        self._application = QApplication.instance()
-        if self._application is not None:
-            self._application.installEventFilter(self)
 
         page = self._webview.page()
         settings = page.settings()
@@ -293,8 +322,6 @@ class GlobePickerDialog(QWidget):
     def _finish(self, result: QDialog.DialogCode) -> None:
         self._result = result
         self._check_timer.stop()
-        if self._application is not None:
-            self._application.removeEventFilter(self)
         self.hide()
         self._restore_host_frameless()
         QTimer.singleShot(0, self._restore_host_frameless)
@@ -331,21 +358,6 @@ class GlobePickerDialog(QWidget):
         self._card.setFixedSize(card_width, card_height)
 
     def eventFilter(self, watched, event) -> bool:
-        if self._belongs_to_webview(watched):
-            if event.type() == QEvent.Type.NativeGesture:
-                if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
-                    self._zoom_map(float(event.value()) * 2.0)
-                    event.accept()
-                    return True
-            if event.type() == QEvent.Type.Wheel:
-                zoom_modifiers = (
-                    Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier
-                )
-                if event.modifiers() & zoom_modifiers:
-                    delta = event.angleDelta().y() or event.pixelDelta().y()
-                    self._zoom_map(delta / 240.0)
-                    event.accept()
-                    return True
         if watched is self.parentWidget() and event.type() in {
             QEvent.Type.Resize,
             QEvent.Type.Show,
@@ -354,18 +366,6 @@ class GlobePickerDialog(QWidget):
             if self.isVisible():
                 QTimer.singleShot(0, self.raise_)
         return super().eventFilter(watched, event)
-
-    def _belongs_to_webview(self, watched) -> bool:
-        current = watched
-        while current is not None:
-            if current is self._webview:
-                return True
-            current = current.parent()
-        return False
-
-    def _zoom_map(self, delta: float) -> None:
-        if delta:
-            self._webview.page().runJavaScript(f"window.__zoomMapFromHost?.({delta})")
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

@@ -82,7 +82,7 @@
           text: String(feature.get('label') || ''),
           offsetX: 10,
           textAlign: 'left',
-          font: '600 11px -apple-system, "Segoe UI", sans-serif',
+          font: '600 11px system-ui, sans-serif',
           fill: new ol.style.Fill({ color: '#168451' }),
           stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.95)', width: 3 })
         })
