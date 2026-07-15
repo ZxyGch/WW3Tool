@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import QUrl, QUrlQuery
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QRectF, QUrl, QUrlQuery
+from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import QSizePolicy
 
@@ -50,6 +50,12 @@ class GridBoundsPreview(MapWebEngineView):
     def clear_bounds(self) -> None:
         self._bounds = None
         self._sync_bounds()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 8.0, 8.0)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     def _on_page_loaded(self, ok: bool) -> None:
         self._page_loaded = ok

@@ -11,6 +11,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
   body.picker-window { border-radius: 8px; }
+  body.embedded-preview { border-radius: 8px; }
   body.embedded-preview #toolbar,
   body.embedded-preview #info-panel,
   body.embedded-preview #status-panel,
@@ -619,10 +620,10 @@
   var map = new maplibregl.Map({
     container: 'map',
     style: administrativeStyle,
-    projection: 'globe',
+    projection: embeddedPreview ? 'mercator' : 'globe',
     center: [120, 20],
     zoom: 2.8,
-    minZoom: 2,
+    minZoom: embeddedPreview ? 0 : 2,
     maxZoom: 22,
     renderWorldCopies: true,
     fadeDuration: 0,
@@ -1000,6 +1001,9 @@
       return [[left, north], [right, north], [right, south], [left, south], [left, north]];
     }
 
+    if (embeddedPreview) {
+      return { type: 'Polygon', coordinates: [ring(drawWest, drawEast)] };
+    }
     if (drawEast <= 180) {
       return { type: 'Polygon', coordinates: [ring(drawWest, drawEast)] };
     }
@@ -1018,6 +1022,15 @@
     var drawWest = draw.west;
     var drawEast = draw.east;
 
+    if (embeddedPreview) {
+      return {
+        type: 'LineString',
+        coordinates: [
+          [drawWest, north], [drawEast, north], [drawEast, south],
+          [drawWest, south], [drawWest, north]
+        ]
+      };
+    }
     if (drawEast <= 180) {
       return {
         type: 'LineString',
@@ -1402,9 +1415,25 @@
       west = -180;
       east = 180;
     }
+    if (embeddedPreview && east - west < 360) {
+      var longitudeMargin = Math.max(1, (east - west) * 0.18);
+      var latitudeMargin = Math.max(1, (north - south) * 0.18);
+      west -= longitudeMargin;
+      east += longitudeMargin;
+      south = Math.max(-90, south - latitudeMargin);
+      north = Math.min(90, north + latitudeMargin);
+      while (west < -180) {
+        west += 360;
+        east += 360;
+      }
+      while (west >= 180) {
+        west -= 360;
+        east -= 360;
+      }
+    }
     map.fitBounds([[west, south], [east, north]], {
       padding: embeddedPreview
-        ? { top: 18, right: 18, bottom: 18, left: 18 }
+        ? { top: 10, right: 10, bottom: 10, left: 10 }
         : { top: 90, right: 90, bottom: 90, left: 90 },
       duration: 0,
       maxZoom: 8
