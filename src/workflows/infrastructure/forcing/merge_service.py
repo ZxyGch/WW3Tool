@@ -700,19 +700,29 @@ def _parse_epoch(token: str, *, end: bool = False) -> float:
 
 
 def _coord_slice(values, lo: float, hi: float):
-    """返回坐标数组中落在 ``[lo, hi]`` 的连续切片（坐标单调，升降序均可）。
+    """返回完整包围 ``[lo, hi]`` 的最小连续切片（坐标单调，升降序均可）。
 
-    [EN] Return a contiguous slice of coordinate values falling within ``[lo, hi]``
-    (coordinates may be monotonically increasing or decreasing).
+    [EN] Return the smallest contiguous slice whose coordinate extent encloses
+    ``[lo, hi]`` (coordinates may be monotonically increasing or decreasing).
     """
     _, np = _imports()
     arr = np.asarray(values, dtype="float64")
-    idx = np.where((arr >= lo) & (arr <= hi))[0]
-    if idx.size == 0:
+    if arr.ndim != 1 or arr.size == 0 or lo > hi:
         raise ValueError(
             tr("tools_merge_bbox_empty", "指定范围内无格点：[{lo}, {hi}]").format(lo=lo, hi=hi)
         )
-    return slice(int(idx.min()), int(idx.max()) + 1)
+
+    tolerance = max(1e-10, float(np.max(np.abs(arr))) * 1e-12)
+    lower_candidates = np.flatnonzero(arr <= lo + tolerance)
+    upper_candidates = np.flatnonzero(arr >= hi - tolerance)
+    if lower_candidates.size == 0 or upper_candidates.size == 0:
+        raise ValueError(
+            tr("tools_merge_bbox_empty", "指定范围内无格点：[{lo}, {hi}]").format(lo=lo, hi=hi)
+        )
+
+    lower = int(lower_candidates[np.argmax(arr[lower_candidates])])
+    upper = int(upper_candidates[np.argmin(arr[upper_candidates])])
+    return slice(min(lower, upper), max(lower, upper) + 1)
 
 
 def _spatial_dim_slices(first_path: str, bbox: Sequence[float]) -> dict[str, slice]:
