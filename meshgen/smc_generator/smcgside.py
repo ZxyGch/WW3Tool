@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Pure-Python SMC cell-face generator compatible with ``SMCGSideMP``.
 
-The original implementation is ``SMCGTools/F90SMC/SMCGSideMP.f90``.  This
-module keeps its one-based cell identifiers, boundary-cell convention, polar
+This implementation was ported from the upstream SMCGTools algorithm. It keeps
+the original one-based cell identifiers, boundary-cell convention, polar
 connections, row order, and fixed-width ``ISide.d`` / ``JSide.d`` formats.
 """
 
