@@ -327,6 +327,7 @@ class PipelineViewModel:
         ww3_overrides: dict | None = None,
         restart_overrides: dict | None = None,
         ww3_grid_overrides: dict | None = None,
+        ww3_namelist_overrides: dict | None = None,
         plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
@@ -351,6 +352,7 @@ class PipelineViewModel:
             ww3_overrides=ww3_overrides,
             restart_overrides=restart_overrides,
             ww3_grid_overrides=ww3_grid_overrides,
+            ww3_namelist_overrides=ww3_namelist_overrides,
             plot_overrides=plot_overrides,
             slurm_overrides=slurm_overrides,
             server_overrides=server_overrides,
@@ -538,6 +540,7 @@ class PipelineViewModel:
         ww3_overrides: dict | None = None,
         restart_overrides: dict | None = None,
         ww3_grid_overrides: dict | None = None,
+        ww3_namelist_overrides: dict | None = None,
         plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
@@ -609,6 +612,10 @@ class PipelineViewModel:
             # [EN] Step 4 visible spectrum/timestep groups override ww3_grid (after config.json overrides -> form takes priority).
             # 第四步可见的频谱/时间步分组覆盖 ww3_grid（在 config.json 覆盖之后 → 表单优先）。
             raw["ww3_grid"] = {**_as_dict(raw.get("ww3_grid")), **ww3_grid_overrides}
+        if ww3_namelist_overrides:
+            ww3_raw = {**_as_dict(raw.get("ww3"))}
+            ww3_raw["namelist"] = {**_as_dict(ww3_raw.get("namelist")), **ww3_namelist_overrides}
+            raw["ww3"] = ww3_raw
         if plot_overrides:
             plot_raw = {**_as_dict(raw.get("plot"))}
             for section, values in plot_overrides.items():
@@ -776,6 +783,11 @@ _NUMERIC_PARAM_PATHS = {
     "grid.unstructured.margin_deg",
     "ww3_grid.SPECTRUM%XFR",
     "ww3_grid.SPECTRUM%FREQ1",
+    "ww3.namelist.SIN4%BETAMAX",
+    "ww3.namelist.SIN4%SWELLF",
+    "ww3.namelist.SDS4%SDSC2",
+    "ww3.namelist.SDS4%SDSBR",
+    "ww3.namelist.SBT1%GAMMA",
     "plot.wave_maps.time_step_hours",
     "plot.spectrum.time_step_hours",
     "plot.spectrum.energy_threshold",

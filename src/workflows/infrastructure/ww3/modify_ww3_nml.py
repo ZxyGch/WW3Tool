@@ -545,6 +545,7 @@ class ModifyWW3NML(
             self._apply_spectral_params_to_dir(dir_path, self.shel_start_edit.text().strip(),
                                               self.shel_end_edit.text().strip(), output_stride)
             self._apply_config_parameters_to_grid_nml_in_dir(dir_path, level_idx=idx)
+            self._apply_config_parameters_to_namelists_nml_in_dir(dir_path, level_idx=idx)
             # 按各层自身 dx 与全局 FREQ1 重算 CFL 时间步（细网格 DTXY 更小）
             # [EN] Recalculate CFL timesteps from each level's own dx and the global FREQ1 (finer grids have smaller DTXY).
             self._apply_cfl_timesteps_to_grid_nml(dir_path)

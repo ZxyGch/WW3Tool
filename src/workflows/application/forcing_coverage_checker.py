@@ -108,15 +108,19 @@ def check_lonlat_coverage(
             if f_lon_min > f_lon_max:
                 f_lon_min, f_lon_max = f_lon_max, f_lon_min
 
+            # 覆盖检查容差：0.001°（≈100m）处理 float32 精度误差
+            # [EN] 0.001° tolerance (~100m) for float32 precision
+            EPS = 0.001
+
             # 纬度不做标准化（始终 -90~90）
-            lat_ok = bounds.lat_min <= grid_lat_south and bounds.lat_max >= grid_lat_north
+            lat_ok = (bounds.lat_min - EPS) <= grid_lat_south and (bounds.lat_max + EPS) >= grid_lat_north
 
             # 经度覆盖检查
             if grid_crosses_date_line:
                 # 网格跨日界线 => 分 [g_west, 180) 和 [-180, g_east) 两段
-                lon_ok = (f_lon_min <= g_west) and (f_lon_max >= g_east)
+                lon_ok = (f_lon_min - EPS) <= g_west and (f_lon_max + EPS) >= g_east
             else:
-                lon_ok = f_lon_min <= g_west and f_lon_max >= g_east
+                lon_ok = (f_lon_min - EPS) <= g_west and (f_lon_max + EPS) >= g_east
 
             if not (lon_ok and lat_ok):
                 issues.append(

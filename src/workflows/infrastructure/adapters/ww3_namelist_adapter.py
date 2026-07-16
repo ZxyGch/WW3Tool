@@ -44,6 +44,10 @@ from ..ww3 import modify_ww3_nml as modify_ww3_nml_module
 from ..ww3 import step4_service as step4_service_module
 from ..ww3.modify_ww3_nml import ModifyWW3NML
 from ..ww3.grid_param_write import write_ww3_grid_parameters_to_nml
+from ..ww3.namelist_param_write import (
+    namelist_parameters_from_config,
+    write_namelist_parameters_to_nml,
+)
 from ..ww3.nested_level_dirs import list_nested_level_paths
 from ..ww3.step4_service import StepFourServiceMixin
 from ..ww3.widget_stubs import _Checkbox, _ComboValue, _Table, _TextValue
@@ -250,6 +254,13 @@ def _merged_runtime_config(config: PipelineConfig) -> Dict[str, Any]:
         schemes["__params__"] = list(config.ww3.output_fields)
     merged["OUTPUT_VARS_SCHEMES"] = schemes
     merged["WW3_VERSION"] = config.ww3.version
+    if config.ww3_namelist.parameters:
+        ww3_raw = merged.get("ww3")
+        if not isinstance(ww3_raw, dict):
+            ww3_raw = {}
+        ww3_raw = dict(ww3_raw)
+        ww3_raw["namelist"] = dict(config.ww3_namelist.parameters)
+        merged["ww3"] = ww3_raw
     return merged
 
 
@@ -270,6 +281,23 @@ def _ww3_grid_paths(config: PipelineConfig) -> List[Path]:
     return [workdir / "ww3_grid.nml"]
 
 
+def _namelist_paths(config: PipelineConfig) -> List[Path]:
+    """返回需写入物理源项参数的 ``namelists.nml`` 路径列表。
+
+    [EN] Return ``namelists.nml`` paths that should receive physics parameter writes.
+    """
+    workdir = config.workdir.path
+    if config.grid.grid_type == "nested":
+        level_dirs = list_nested_level_paths(workdir)
+        if level_dirs:
+            return [path / "namelists.nml" for path in level_dirs]
+        n = len(config.grid.nested_levels or [])
+        if n >= 1:
+            return [workdir / f"level{i}" / "namelists.nml" for i in range(n)]
+        return []
+    return [workdir / "namelists.nml"]
+
+
 def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None:
     """将 ``ww3_grid.parameters`` 中的数值写回已有 ``ww3_grid.nml`` 对应 namelist 段。
 
@@ -278,6 +306,25 @@ def _apply_ww3_grid_settings(config: PipelineConfig, logger: CoreLogger) -> None
     parameters = dict(config.ww3_grid.parameters)
     for path in _ww3_grid_paths(config):
         write_ww3_grid_parameters_to_nml(path, parameters, logger.log)
+
+
+def _apply_namelist_physics_settings(config: PipelineConfig, logger: CoreLogger) -> None:
+    """将 ``ww3.namelist`` 参数写回 ``namelists.nml``（普通网格 Step 4 确认后补写）。
+
+    嵌套网格已在 ``modify_ww3_file`` 的逐层循环内写入；此处仅覆盖普通网格。
+
+    [EN] Write ``ww3.namelist`` parameters into ``namelists.nml`` for normal grids
+    after Step 4 confirm. Nested grids are handled inside ``modify_ww3_file``.
+    """
+    if config.grid.grid_type == "nested":
+        return
+    parameters = dict(config.ww3_namelist.parameters or {})
+    if not parameters:
+        parameters = namelist_parameters_from_config()
+    if not parameters:
+        return
+    for path in _namelist_paths(config):
+        write_namelist_parameters_to_nml(path, parameters, logger.log)
 
 
 @contextmanager
@@ -348,6 +395,7 @@ def prepare_ww3_files(
         adapter.modify_ww3_file()
     if config.grid.grid_type != "nested":
         _apply_ww3_grid_settings(config, logger)
+        _apply_namelist_physics_settings(config, logger)
 
 
 def update_server_script(config: PipelineConfig, logger: CoreLogger) -> None:

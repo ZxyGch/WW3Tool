@@ -702,26 +702,52 @@ def _parse_epoch(token: str, *, end: bool = False) -> float:
 def _coord_slice(values, lo: float, hi: float):
     """返回完整包围 ``[lo, hi]`` 的最小连续切片（坐标单调，升降序均可）。
 
+    支持多维坐标数组（先展平处理）；当请求范围略超出数据范围时，按网格
+    分辨率推断容差，而非直接报错。
+
     [EN] Return the smallest contiguous slice whose coordinate extent encloses
     ``[lo, hi]`` (coordinates may be monotonically increasing or decreasing).
+    Supports multidimensional coordinate arrays by flattening first.
+    Uses grid-resolution-based tolerance when the requested range slightly
+    exceeds the data range.
     """
     _, np = _imports()
     arr = np.asarray(values, dtype="float64")
-    if arr.ndim != 1 or arr.size == 0 or lo > hi:
+    if arr.size == 0 or lo > hi:
         raise ValueError(
             tr("tools_merge_bbox_empty", "指定范围内无格点：[{lo}, {hi}]").format(lo=lo, hi=hi)
         )
 
-    tolerance = max(1e-10, float(np.max(np.abs(arr))) * 1e-12)
-    lower_candidates = np.flatnonzero(arr <= lo + tolerance)
-    upper_candidates = np.flatnonzero(arr >= hi - tolerance)
-    if lower_candidates.size == 0 or upper_candidates.size == 0:
+    # 展平多维坐标（如 2D lat/lon 网格）为一维后处理
+    flat = arr.ravel()
+
+    # 请求范围与数据完全无重叠
+    if float(flat.min()) > hi or float(flat.max()) < lo:
         raise ValueError(
             tr("tools_merge_bbox_empty", "指定范围内无格点：[{lo}, {hi}]").format(lo=lo, hi=hi)
         )
 
-    lower = int(lower_candidates[np.argmax(arr[lower_candidates])])
-    upper = int(upper_candidates[np.argmin(arr[upper_candidates])])
+    # 根据网格分辨率计算容差：取中位数格距 × 1%（至少 1e-10），
+    # 解决 float32 精度（~1e-5）或边界对齐不足（~半个格距）的问题。
+    sorted_flat = np.sort(flat)
+    if sorted_flat.size > 1:
+        diffs = np.diff(sorted_flat)
+        grid_res = float(np.median(diffs[diffs > 0])) if np.any(diffs > 0) else 1.0
+    else:
+        grid_res = 1.0
+    tolerance = max(grid_res * 0.01, 1e-10)
+
+    lower_candidates = np.flatnonzero(flat <= lo + tolerance)
+    upper_candidates = np.flatnonzero(flat >= hi - tolerance)
+
+    # 若容差搜索找不到，使用数据边缘
+    if lower_candidates.size == 0:
+        lower_candidates = np.array([int(np.argmin(flat))])
+    if upper_candidates.size == 0:
+        upper_candidates = np.array([int(np.argmax(flat))])
+
+    lower = int(lower_candidates[np.argmax(flat[lower_candidates])])
+    upper = int(upper_candidates[np.argmin(flat[upper_candidates])])
     return slice(min(lower, upper), max(lower, upper) + 1)
 
 

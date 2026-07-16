@@ -72,6 +72,7 @@ from ..domain.config_models import (
     UnstructuredGridSettings,
     WW3Config,
     WW3GridSettings,
+    WW3NamelistSettings,
     WaveMapsConfig,
     WindFieldConfig,
     WorkdirConfig,
@@ -1067,6 +1068,19 @@ def parse_pipeline_config(
         }
     )
 
+    nml_raw = _as_dict(ww3_raw.get("namelist"), "ww3.namelist")
+    nml_params: dict[str, str] = {}
+    for nml_key in (
+        "SIN4%BETAMAX",
+        "SIN4%SWELLF",
+        "SDS4%SDSC2",
+        "SDS4%SDSBR",
+        "SBT1%GAMMA",
+    ):
+        if nml_key in nml_raw and nml_raw[nml_key] is not None and str(nml_raw[nml_key]).strip():
+            nml_params[nml_key] = _numeric_text(nml_raw[nml_key], f"ww3.namelist.{nml_key}")
+    ww3_namelist = WW3NamelistSettings(parameters=nml_params if nml_params else None)
+
     original_ww3_raw = original_raw.get("ww3") if isinstance(original_raw.get("ww3"), dict) else {}
     if isinstance(original_ww3_raw.get("restart"), dict):
         restart_source = ww3_raw.get("restart")
@@ -1127,6 +1141,7 @@ def parse_pipeline_config(
         calc=calc,
         ww3=ww3,
         ww3_grid=ww3_grid,
+        ww3_namelist=ww3_namelist,
         restart=restart,
         slurm=slurm,
         local_run=local_run,

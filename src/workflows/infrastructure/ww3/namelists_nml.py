@@ -275,3 +275,24 @@ class NamelistsNML(NMLPrimitives):
                 ).format(err=e)
             )
             return False
+
+    def _apply_config_parameters_to_namelists_nml_in_dir(
+        self, target_dir: str, level_idx: int | None = None
+    ) -> None:
+        """将 params.yml 中 ``ww3.namelist`` 段写入该目录 ``namelists.nml``。
+
+        [EN] Write the ``ww3.namelist`` section from params.yml into
+        ``namelists.nml`` under ``target_dir``.
+        """
+        from .namelist_param_write import (
+            namelist_parameters_from_config,
+            write_namelist_parameters_to_nml,
+        )
+
+        parameters = namelist_parameters_from_config()
+        if not parameters:
+            return
+        nml_path = os.path.join(target_dir, "namelists.nml")
+        write_namelist_parameters_to_nml(
+            nml_path, parameters, self.log, level_idx=level_idx
+        )

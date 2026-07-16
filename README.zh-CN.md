@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-
+![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
 
 WW3Tool 是围绕 **WAVEWATCH III**（海浪数值模式）构建的 **预处理与运行辅助工具**。它不替代 WW3 本身的可执行程序（ww3_grid、ww3_prnc、ww3_shel 等），而是负责：
 
@@ -35,7 +35,9 @@ python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤
 
 ### 2.1 GUI
 
-![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
+
+![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
+
 
 ```bash
 python3 run.py
@@ -303,7 +305,7 @@ flowchart LR
 
 ### 5.1 创建工作目录
 
-![](public/resource/README-media/截屏2026-06-18%2013.02.46.png)
+![](public/resource/README-media/截屏2026-07-16%2016.23.32.png)
 
 创建工作目录时，程序会自动执行以下操作：
 
@@ -370,7 +372,6 @@ ww3> queue-status
 
 第一步负责根据 `params.yml` 的 `grid` 段生成 WW3 网格文件。它只负责“把经纬度范围、水深、海岸线、网格类型变成 WW3 可读取的网格输入”，不运行 `ww3_grid`；真正把网格编译成 `mod_def.ww3` 是 Step 4 / 运行脚本中的 `ww3_grid` 完成的。
 
-![](public/resource/README-media/截屏2026-06-28%2010.50.13.png)
 
 
 #### GUI 操作逻辑
@@ -379,20 +380,19 @@ ww3> queue-status
 
 关于底层网格生成器 `WW3Tool/meshgen`，详细说明见 `meshgen/README.md`。这里只写 GUI / CLI 使用时最常改、最容易误解的部分。
 
-
-
-
-![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
-
+![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
+![](public/resource/README-media/截屏2026-07-16%2016.25.11.png)
 
 1. 选择网格类型：普通网格 / 嵌套网格，以及矩形网格 / SMC 网格 / 非结构网格。
 2. 填写主网格范围。界面统一显示为 `纬度`、`经度` 两行，每行两个输入框；对应 yml 中的 `grid.lat: [south, north]` 和 `grid.lon: [west, east]`。
 3. 矩形网格需要填写 `DX/DY`；SMC 和非结构网格会隐藏 `DX/DY`，改用各自的参数卡片。
 4. 点击“推荐网格间距”可按当前范围和网格类型写入一组保守起步参数。
-5. 点击“查看地图”可预览当前网格范围。嵌套网格会显示各层矩形范围，便于检查细层是否完全落在粗层内部。
-6. 点击“生成网格”后，程序调用 `meshgen` 生成对应文件，并写入工作目录。
+5. 点击“生成网格”后，程序调用 `meshgen` 生成对应文件，并写入工作目录。
 
 如果生成网格前缺少水深数据、海岸线数据 `reference_data`，GUI 会提示下载。生成结果会按参数 hash 缓存在 `meshgen/cache/`，同一组参数重复生成时会优先复用缓存。
+
+
+
 
 #### reference_data
 
@@ -400,7 +400,7 @@ reference_data 数据包内含 gebco、etopo1/2 及海岸边界等文件，它�
 
 如果 WW3Tool/meshgen/reference_data 没有找到这些数据文件，那么在第一步生成网格时会弹出一个下载窗口
 
-![](public/resource/README-media/截屏2026-06-29%2017.01.09.png)
+![](public/resource/README-media/截屏2026-07-16%2016.26.01.png)
 
 点击下载按钮：程序会从自动从 [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) 下载（大约 6.5GB）不需要你手动执行。
 
@@ -490,8 +490,7 @@ grid:
 
 ##### 嵌套网格
 
-![](public/resource/README-media/截屏2026-06-28%2012.46.43.png)
-![](public/resource/README-media/截屏2026-06-28%2012.53.13.png)
+![](public/resource/README-media/截屏2026-07-16%2016.28.37.png)
 
 嵌套用于「外圈粗、内圈细」的多分辨率模拟：外层覆盖大尺度背景，内层在感兴趣区域加密。WW3Tool 采用 WW3 的 ww3_multi 路线，一次积分驱动多层网格（见 §5.5.8、嵌套网格设计与问题分析.md）。
 
@@ -735,7 +734,8 @@ smc:
 
 ### 5.3 Step 2 — 强迫场准备
 
-![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
+![](public/resource/README-media/截屏2026-07-16%2016.46.47.png)
+
 
 Step 2 负责把外部 NetCDF 强迫场导入工作目录，并统一成 WW3Tool 后续步骤能够直接识别的标准文件。支持四类场：风场、流场、水位场、海冰场。
 
@@ -746,9 +746,6 @@ Step 2 负责把外部 NetCDF 强迫场导入工作目录，并统一成 WW3Tool
 1. 点击风场、流场、水位场、海冰场按钮选择 NetCDF 文件。
 
 2. 选择某个文件后，右侧日志会立即显示该文件信息，包括变量、时间范围、经纬度范围等；这一步只读取信息，不会复制、剪切或裁剪文件。
-
-![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
-
 
 3. 如果要按范围裁剪，先编辑时间、纬度、经度范围，然后点击"确认裁剪并导入"。时间格式为 `YYYYMMDD`，空间范围为经纬度数值。
 4. 如果不裁剪，点击"直接导入，不进行裁剪"。此时会完整复制或剪切原文件到工作目录，再做标准化。
@@ -845,8 +842,8 @@ forcing:
 
 计算模式决定 WW3 算一整片海域、只算若干固定点位，还是沿一条移动轨迹算。在 params.yml 的 calc.mode 里设置，GUI 上第三步选择；没有单独的 CLI 子命令，会在 prepare-ww3 或 run-workflow 时自动读取。
 
-![](public/resource/README-media/截屏2026-06-28%2013.03.46.png)
 
+![](public/resource/README-media/截屏2026-07-16%2016.48.13.png)
 ![](public/resource/README-media/截屏2026-06-28%2014.09.11.png)
 
 
@@ -904,8 +901,7 @@ calc:
 >
 原则很简单：只在模板文件里改和本次算例有关的字段，其余保持 public/nml/ 模板原样，方便你对照官方示例排错。
 
-![](public/resource/README-media/截屏2026-06-28%2016.34.00.png)
-
+![](public/resource/README-media/截屏2026-07-16%2016.49.19.png)
 
 
 #### 5.5.3 按 CFL 推荐时间步
@@ -1158,6 +1154,8 @@ ww3:
 ⏭️ Restart mode: skip ww3_strt, start from 20250105 230000
 ```
 
+
+
 ##### 手动指定 checkpoint（不用自动最新）
 
 关掉「自动最新」后，须填 **Restart 日期**；**Restart 文件**可选。
@@ -1170,6 +1168,7 @@ ww3:
 
 只填日期 `20250104` 会当作 `20250104 000000`。
 
+
 ##### 工作目录里会出现哪些 restart 文件
 
 | 样子                                  | 怎么来的                              | 时刻怎么知道                          |
@@ -1181,9 +1180,12 @@ ww3:
 
 若多次热启动后，较早的 `restartNNN.ww3` 可能被覆盖，编号与内嵌时刻会对不上，`ww3_shel` 会报 `CONFLICTING TIMES`。这时应改用手动指定 Restart 文件，或换用带时间戳的 checkpoint。
 
+
 ##### 嵌套网格
 
 嵌套算例每层目录 `level0/`、`level1/` … 各自有 restart；热启动时各层须同一时刻。自动最新在嵌套模式下**只认带时间戳的 checkpoint**（如 `20250104.120000.restart.level2`），暂不支持用 `restartNNN.ww3` 反推。改的是根目录 `ww3_multi.nml` 里的积分起点，而不是各层 `ww3_shel.nml`。
+
+
 
 ##### 使用注意
 
@@ -1221,7 +1223,7 @@ ww3:
 
 #### 5.5.7 强迫场开关与多套 prnc
 
-![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
+![](public/resource/README-media/截屏2026-07-16%2018.40.23.png)
 
 当第二步导入了多个强迫场，那么在第四步会显示可选的强迫场多选，其中风场是必选的，其他强迫场可以选择是否使用。
 

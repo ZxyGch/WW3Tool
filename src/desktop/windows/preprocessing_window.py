@@ -806,16 +806,39 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _fill_auto_associated_forcing_slots(self, file_path: str, *, trigger_key: str) -> list[str]:
         """选择单个 NetCDF 时，按变量检测自动填充其它强迫场槽位。
 
-        仅填充**空槽位**；已有有效选择不会被覆盖。用户点击的 ``trigger_key`` 始终更新为本次所选文件。
+        ``trigger_key`` 始终更新为本次所选文件；auto_associate 开启时，其他
+        槽位若有旧路径先清空（已被 trigger 覆盖），再按检测结果重新填充。
+
+        如果所选文件不包含 ``trigger_key`` 对应的变量，则拒绝填入并弹窗提示。
         """
         labels = self._forcing_field_button_labels()
+        from workflows.infrastructure.forcing.variable_detector import VariableDetector
+
+        detected = VariableDetector.inspect_forcing_fields(file_path).get("detected", {}) or {}
+        # 校验用户所选场类型的变量是否匹配
+        if not detected.get(trigger_key, False):
+            field_name = {
+                "wind": tr("wind", "风场"),
+                "current": tr("current", "流场"),
+                "level": tr("level", "水位场"),
+                "ice": tr("ice", "海冰场"),
+            }.get(trigger_key, trigger_key)
+            self._show_error(
+                tr("step2_field_mismatch", "所选文件不包含 {field} 所需的变量，请重新选择").format(field=field_name)
+            )
+            return []
+
+        # 先清空其他槽位中的旧路径，准备重新自动填充
+        if self._auto_associate.isChecked():
+            for key in ("wind", "current", "level", "ice"):
+                if key != trigger_key:
+                    self._paths[key].setText("")
+                    self._path_buttons[key].setText(labels[key])
+
         self._set_path_value(trigger_key, file_path, labels[trigger_key])
         filled: list[str] = [trigger_key]
         if not self._auto_associate.isChecked():
             return filled
-        from workflows.infrastructure.forcing.variable_detector import VariableDetector
-
-        detected = VariableDetector.inspect_forcing_fields(file_path).get("detected", {}) or {}
         log_by_field = {
             "wind": tr("log_auto_fill_wind", "✅ 检测到风场变量（u10/v10），已自动填充风场"),
             "current": tr("log_auto_fill_current", "✅ 检测到流场变量（uo/vo），已自动填充流场"),
@@ -1244,6 +1267,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             },
             restart_overrides=self._ww3_panel.restart_overrides(),
             ww3_grid_overrides=self._ww3_panel.ww3_grid_overrides(),
+            ww3_namelist_overrides=self._ww3_panel.ww3_namelist_overrides(),
             plot_overrides=self._plot_overrides(),
             slurm_overrides=(
                 self._server_connect_panel.slurm_overrides()
@@ -1690,15 +1714,19 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                     f_lon_max = bounds.lon_max
                     forcing_crosses_date_line = bounds.lon_min > bounds.lon_max
 
+                # 覆盖检查容差：0.001°（≈100m）处理 float32 精度误差
+                # [EN] 0.001° tolerance (~100m) for float32 precision
+                EPS = 0.001
+
                 # 纬度不做标准化（始终 -90~90）
-                lat_ok = bounds.lat_min <= grid_lat_south and bounds.lat_max >= grid_lat_north
+                lat_ok = (bounds.lat_min - EPS) <= grid_lat_south and (bounds.lat_max + EPS) >= grid_lat_north
 
                 # 经度覆盖检查
                 if grid_crosses_date_line:
                     # 网格跨日界线 => 分 [g_west, 180) 和 [-180, g_east) 两段
                     if forcing_crosses_date_line:
                         # 强迫场也跨日界线：直接比较标准化后的值
-                        lon_ok = (f_lon_min <= g_west) and (f_lon_max >= g_east)
+                        lon_ok = (f_lon_min - EPS) <= g_west and (f_lon_max + EPS) >= g_east
                     else:
                         # 强迫场不跨日界线（0–360° 全球数据）：检查是否覆盖整个 [0, 360) 或 [-180, 180)
                         lon_span = f_lon_max - f_lon_min
@@ -1711,7 +1739,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                         lon_ok = lon_span >= 359.0
                     else:
                         # 两者都不跨日界线：直接比较
-                        lon_ok = f_lon_min <= g_west and f_lon_max >= g_east
+                        lon_ok = (f_lon_min - EPS) <= g_west and (f_lon_max + EPS) >= g_east
 
                 if not (lon_ok and lat_ok):
                     insufficient_fields.append({

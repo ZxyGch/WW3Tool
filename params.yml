@@ -187,7 +187,7 @@ calc:
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
-  version: 7.14
+  version: '6.07'
   start_date: '20250101'
   end_date: '20250103'
   output_step: 3600
@@ -200,6 +200,12 @@ ww3:
     restart_file: null
     restart_step: 0
     pick_latest_checkpoint: true
+  namelist:
+    SIN4%BETAMAX: 1.43
+    SIN4%SWELLF: 0.66
+    SDS4%SDSC2: -2.2e-05
+    SDS4%SDSBR: 0.0009
+    SBT1%GAMMA: -0.067
 # ────────────────────────────────────────────────────────────────────
 # WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
 # Keys follow the Fortran namelist syntax with '%' as sub-key separator.
@@ -369,7 +375,7 @@ paths:
 #   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
 desktop:
-  language: zh_CN
+  language: en_US
   theme: AUTO
   map_type: administrative
   run_mode: server

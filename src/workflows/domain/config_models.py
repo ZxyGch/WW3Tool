@@ -361,6 +361,18 @@ class WW3GridSettings:
 
 
 @dataclass
+class WW3NamelistSettings:
+    """``namelists.nml`` 物理源项覆盖（对应 YAML ``ww3.namelist`` 段）。
+
+    ST4 常用：SIN4（风输入）、SDS4（白冠耗散）、SBT1（底摩擦）。
+
+    [EN] Physics source-term overrides in ``namelists.nml`` (YAML ``ww3.namelist``).
+    """
+
+    parameters: Optional[Dict[str, str]] = None
+
+
+@dataclass
 class RestartConfig:
     """WW3 restart / hot-start settings (corresponds to YAML ``ww3.restart:`` section)."""
 
@@ -617,6 +629,7 @@ class PipelineConfig:
     calc: CalcConfig = field(default_factory=CalcConfig)
     ww3: WW3Config = field(default_factory=WW3Config)
     ww3_grid: WW3GridSettings = field(default_factory=WW3GridSettings)
+    ww3_namelist: WW3NamelistSettings = field(default_factory=WW3NamelistSettings)
     restart: RestartConfig = field(default_factory=RestartConfig)
     slurm: SlurmConfig = field(default_factory=SlurmConfig)
     local_run: LocalRunConfig = field(default_factory=LocalRunConfig)

@@ -506,19 +506,31 @@ class FileService:
                     file=os.path.basename(target_file),
                 )
             )
-            self.log(f"  裁剪范围：经度 [{bbox[0]:.2f}, {bbox[1]:.2f}]，纬度 [{bbox[2]:.2f}, {bbox[3]:.2f}]")
+            self.log(
+                tr("log_crop_bbox", "  裁剪范围：经度 [{lon_west:.2f}, {lon_east:.2f}]，纬度 [{lat_south:.2f}, {lat_north:.2f}]").format(
+                    lon_west=bbox[0], lon_east=bbox[1], lat_south=bbox[2], lat_north=bbox[3],
+                )
+            )
             # 读取原始强迫场范围
             from netCDF4 import Dataset
             with Dataset(source_file, "r") as ds:
                 for var_name in ["longitude", "lon", "x"]:
                     if var_name in ds.variables:
                         lon = ds.variables[var_name][:]
-                        self.log(f"  原始经度范围：[{float(lon.min()):.2f}, {float(lon.max()):.2f}]")
+                        self.log(
+                            tr("log_crop_orig_lon_range", "  原始经度范围：[{min:.2f}, {max:.2f}]").format(
+                                min=float(lon.min()), max=float(lon.max()),
+                            )
+                        )
                         break
                 for var_name in ["latitude", "lat", "y"]:
                     if var_name in ds.variables:
                         lat = ds.variables[var_name][:]
-                        self.log(f"  原始纬度范围：[{float(lat.min()):.2f}, {float(lat.max()):.2f}]")
+                        self.log(
+                            tr("log_crop_orig_lat_range", "  原始纬度范围：[{min:.2f}, {max:.2f}]").format(
+                                min=float(lat.min()), max=float(lat.max()),
+                            )
+                        )
                         break
             merge_forcing_netcdf(
                 [source_file],

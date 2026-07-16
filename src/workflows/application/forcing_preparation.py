@@ -128,6 +128,14 @@ def prepare_forcing(
             continue
         source_path = str(Path(path).expanduser().resolve())
         if config.forcing.auto_associate and source_path in processed_sources:
+            # 同一文件已被处理过（自动关联），但不同场类型的变量仍需校验
+            # [EN] File already processed via auto-association, but variables for
+            #     this specific field type must still be validated.
+            if not variable_detector.inspect_forcing_fields(source_path)["detected"].get(field.value, False):
+                raise RuntimeError(
+                    tr("step2_field_missing_vars", "{field} 文件缺少所需变量，请检查 NetCDF 内容")
+                    .format(field=field.value)
+                )
             continue
         result = importer.execute(
             field,

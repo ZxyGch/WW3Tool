@@ -22,6 +22,13 @@ _TIMESTEP_SPECS = [
     ("TIMESTEPS%DTKTH", "set_dtkth", "谱空间时间步长："),
     ("TIMESTEPS%DTMIN", "set_dtmin", "最小源项时间步长："),
 ]
+_NAMELIST_SPECS = [
+    ("SIN4%BETAMAX", "step4_namelist_betamax", "BETAMAX:"),
+    ("SIN4%SWELLF", "step4_namelist_swellf", "SWELLF:"),
+    ("SDS4%SDSC2", "step4_namelist_sdsc2", "SDSC2:"),
+    ("SDS4%SDSBR", "step4_namelist_sdsbr", "SDSBR:"),
+    ("SBT1%GAMMA", "step4_namelist_gamma", "GAMMA:"),
+]
 
 from ..components.combo_box import (
     add_labeled_combo_items,
@@ -103,6 +110,7 @@ class WW3StepPanel:
         self._restart_hot_only: list[QWidget] = []
         self._spectrum_hideables: list[QWidget] = []
         self._timesteps_hideables: list[QWidget] = []
+        self._namelist_hideables: list[QWidget] = []
         self._slurm_hideables: list[QWidget] = []
         group, layout = create_header_card(parent, tr("step4_title", "第四步：配置WW3运行参数"))
 
@@ -259,6 +267,13 @@ class WW3StepPanel:
             _TIMESTEP_SPECS,
             self._timesteps_hideables,
         )
+        self._namelist_fields = self._build_param_section(
+            layout,
+            section_title,
+            tr("step4_namelist_parameters", "Namelist Parameters"),
+            _NAMELIST_SPECS,
+            self._namelist_hideables,
+        )
         self.auto_timesteps_button = create_button(
             tr("step4_auto_timesteps", "按 CFL 推荐时间步长"),
             auto_configure_timesteps,
@@ -315,6 +330,9 @@ class WW3StepPanel:
         params = config.ww3_grid.parameters
         for grid_key, edit in {**self._spectrum_fields, **self._timesteps_fields}.items():
             edit.setText(str(params.get(grid_key, "")))
+        nml_params = config.ww3_namelist.parameters or {}
+        for nml_key, edit in self._namelist_fields.items():
+            edit.setText(str(nml_params.get(nml_key, "")))
 
         self.render_forcing_availability(config.forcing)
 
@@ -538,6 +556,10 @@ class WW3StepPanel:
         out.update({k: e.text().strip() for k, e in self._spectrum_fields.items() if e.text().strip()})
         out.update({k: e.text().strip() for k, e in self._timesteps_fields.items() if e.text().strip()})
         return out
+
+    def ww3_namelist_overrides(self) -> dict[str, str]:
+        """第四步 namelists.nml 物理参数；填写后覆盖 ``ww3.namelist``。"""
+        return {k: e.text().strip() for k, e in self._namelist_fields.items() if e.text().strip()}
 
     def ww3_overrides(self) -> dict[str, object]:
         from workflows.domain.output_scheme_yaml import serialize_ww3_output_scheme

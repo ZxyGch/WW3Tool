@@ -80,6 +80,8 @@ class BoundsMapPreview(MapWebEngineView):
             self.add_bound_fields(**binding)
         if not bindings:
             self.clear_bounds()
+        # 立即同步 regions，确保 regions() 返回最新数据
+        self._update_from_bound_fields()
 
     def _clear_field_bindings(self) -> None:
         self._update_timer.stop()
