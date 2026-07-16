@@ -18,33 +18,11 @@ python create_grid.py
 
 `create_grid.py` reads grid settings from `grid.json`, including where to write the mesh outputs.
 
-## Windows: SMCGSideMP / `gfortran` compilation issues
+## Side generation
 
-After `smcellgen` and `smcellbdy`, **`SMCGSideMP`** is invoked. If no usable Windows executable is available, `create_grid.py` tries to **auto-compile** with **`gfortran`**.
-
-If you are prompted that `gfortran` cannot be found, follow the steps below to install it and add it to `PATH` so SMCGSideMP can be auto-compiled:
-
-1. Download and install MSYS2 from the official website (search for “MSYS2”).
-2. Open the **“MSYS2 MinGW64”** terminal.
-3. Execute:
-
-   ```bash
-   pacman -S mingw-w64-x86_64-gcc-fortran
-   ```
-
-4. In **PowerShell**, append the MinGW64 `bin` directory to the **current user** `Path`, then restart this application (e.g. WW3Tool):
-
-   ```powershell
-   [Environment]::SetEnvironmentVariable(
-     "Path",
-     $env:Path + ";C:\msys64\mingw64\bin",
-     "User"
-   )
-   ```
-
-   If MSYS2 is not installed under `C:\msys64`, change the path above to your actual installation directory.
-
-5. Close and reopen PowerShell / WW3Tool, then run SMC grid generation again.
+`create_grid.py` generates ISIDE/JSIDE and Arctic AISID/AJSID with the pure-Python
+`smcgside.py` implementation. No `gfortran` installation or platform-specific
+`SMCGSideMP` executable is required.
 
 ## `grid.json` layout
 
@@ -117,33 +95,10 @@ python create_grid.py
 
 create_grid.py 会自动读取 grid.json 的网格配置，其中包含网格的输出路径
 
-## Windows：SMCGSideMP / `gfortran` 编译问题
+## 侧边文件生成
 
-在 `smcellgen`、`smcellbdy` 之后会调用 **`SMCGSideMP`**；若无可用 Windows 可执行文件，`create_grid.py` 会尝试用 **`gfortran`** 自动编译。
-
-若提示找不到 `gfortran`，可按下列步骤安装并加入 PATH，以便自动编译 SMCGSideMP：
-
-1. 从 MSYS2 官网下载并安装（可搜索 “MSYS2”）。
-2. 打开 **“MSYS2 MinGW64”** 终端。
-3. 执行：
-
-   ```bash
-   pacman -S mingw-w64-x86_64-gcc-fortran
-   ```
-
-4. 在 **PowerShell** 中将 MinGW64 的 `bin` 目录追加到**当前用户**的 `Path`，然后重启本应用（例如 WW3Tool）：
-
-   ```powershell
-   [Environment]::SetEnvironmentVariable(
-     "Path",
-     $env:Path + ";C:\msys64\mingw64\bin",
-     "User"
-   )
-   ```
-
-   若 MSYS2 未安装在 `C:\msys64`，请把上述路径改成你的实际安装路径。
-
-5. 关闭并重新打开 PowerShell / WW3Tool，再跑一次 SMC 网格生成。
+`create_grid.py` 通过纯 Python 的 `smcgside.py` 生成 ISIDE/JSIDE，以及极区网格的
+AISID/AJSID，不再需要安装 `gfortran`，也不依赖特定平台的 `SMCGSideMP` 可执行文件。
 
 
 ## `grid.json` 结构
@@ -191,4 +146,3 @@ create_grid.py 会自动读取 grid.json 的网格配置，其中包含网格的
 | `output_dir` 下的 `grid.json` | 传给 `--grid` / `--config` 的**输入**配置副本（使用默认路径时与 `smc_generator/grid.json` 一致）。 |
 
 运行过程中临时文件使用前缀 `_smc_generate_tmp*`，成功后会重命名。
-

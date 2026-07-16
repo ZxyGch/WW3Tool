@@ -490,7 +490,7 @@ class WW3GridNML(NMLPrimitives):
         WW3 w3gridmd.F90 在读完 MCELS 后会依次无条件 OPEN：ISIDE、JSIDE、SUBTR（见 develop
         model/src/w3gridmd.F90 约 4263–4343 行）。namelist 项若被注释，默认 FILENAME 仍为
         ``unset``，会导致 IOSTAT=2。此处为 ISIDE/JSIDE/SUBTR 写入约定文件名；MCELS、SUBTR
-        由 smc_generator 生成，ISIDE/JSIDE 需由 SMCGTools SMCGSideMP 等另行生成。
+        均由 smc_generator 生成。
 
         ``&RECT_NML`` 从工作目录 ``grid.json`` 的 ``ww3_rect`` 写回（若存在）。
 
@@ -503,9 +503,8 @@ class WW3GridNML(NMLPrimitives):
         After reading MCELS, WW3 w3gridmd.F90 unconditionally OPENs ISIDE, JSIDE, SUBTR
         (see develop model/src/w3gridmd.F90 around lines 4263–4343). If the namelist items
         are commented out, the default FILENAME remains ``unset`` and causes IOSTAT=2.
-        Therefore write the conventional filenames for ISIDE/JSIDE/SUBTR here; MCELS and SUBTR
-        are produced by smc_generator, while ISIDE/JSIDE must be generated separately with
-        SMCGTools such as SMCGSideMP.
+        Therefore write the conventional filenames for ISIDE/JSIDE/SUBTR here; all of these
+        files are produced by smc_generator.
 
         ``&RECT_NML`` is written back from ``ww3_rect`` in the working directory ``grid.json`` if present.
         """
@@ -739,7 +738,7 @@ class WW3GridNML(NMLPrimitives):
                     self.log(
                         tr(
                             "step4_smcc_ww3_aux_missing",
-                            "⚠️ WW3 SMCG 预处理还需要数据文件 {file}（请放在工作目录；grid_subtr 可由 smc_generator 生成，ISIDE/JSIDE 需 SMCGSideMP 等工具生成）",
+                            "⚠️ WW3 SMCG 预处理缺少数据文件 {file}（请重新生成网格或将文件放入工作目录）",
                         ).format(file=aux)
                     )
         except Exception as e:

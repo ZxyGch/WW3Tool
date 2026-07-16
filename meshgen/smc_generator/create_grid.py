@@ -5,20 +5,17 @@ Generate SMC grid data files from grid.json (or path via --config / --grid).
 Final outputs in output_dir (smcellgen/smcellbdy write to a temp stem, then rename):
 
 - grid_cell.dat — SMC MCELS (from *Cels.dat)
-- grid_iside.dat / grid_jside.dat — ISIDE / JSIDE (SMCGTools ``SMCGSideMP`` + count step)
+- grid_iside.dat / grid_jside.dat — ISIDE / JSIDE (pure-Python side generation + count step)
 - grid_subtr.dat — SUBTR (zero obstruction); ``ww3_grid`` opens after MCELS/ISIDE/JSIDE
 - grid_boundary.dat — regional boundary strip cells from smcellbdy (*Bdys.dat)
 - grid_bundy.dat — WW3 BUNDY integer list (*Blst.dat style) when open boundaries are enabled
 - grid_arctic_cells.dat — MBARC (from *BArc.dat) when ``grid.arctic`` is true;
-  grid_aisid.dat / grid_ajsid.dat — AISID / AJSID from a second SMCGSideMP run on the
-  Arctic cell file (same toolchain as ISIDE/JSIDE).
+  grid_aisid.dat / grid_ajsid.dat — AISID / AJSID from a second Python side-generation
+  pass on the Arctic cell file.
 - grid.json (in ``output_dir``) — copy of the config file passed to ``--grid``/``--config``
 
-If ``SMCGSideMP`` is missing, the script tries **auto-build** with ``gfortran -O2 -fopenmp``
-(see ``output.smcgside_auto_build``, ``output.gfortran``, env ``FC`` / ``PATH``).
-Override the binary with env ``SMCGSIDE_MP`` or ``output.smcgside_executable`` in grid.json.
-Face generation is slow on multi-million-cell grids; the script sets ``OMP_NUM_THREADS`` for
-``SMCGSideMP`` (default ``min(cpu_count(), 32)``), override with ``output.smcgside_omp_threads``.
+Side generation is implemented by ``smcgside.py`` and does not require a Fortran compiler
+or a platform-specific executable.
 """
 
 from __future__ import annotations
@@ -28,10 +25,6 @@ import copy
 import json
 import math
 import os
-import re
-import shutil
-import struct
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -49,8 +42,6 @@ OUT_AJSID_NAME = "grid_ajsid.dat"
 OUT_RUN_INFO_NAME = "grid.json"
 WORK_STEM_NAME = "_smc_generate_tmp"
 
-# SMCGSideMP.f90 limits: command-line InpFile & READ(CelFile) are LEN=80; first-line SMCGrid LEN=16.
-SMCGSIDE_INP_BASENAME = "smcside.in"
 SMCGSIDE_STEM_GLOBAL = "SMCSideG"
 SMCGSIDE_STEM_ARCTIC = "SMCSideA"
 
@@ -169,33 +160,6 @@ def _rebase_smc_ij_file(path: Path, *, shift_i: int, shift_j: int) -> None:
     _write_int_table(path, header_line, data)
 
 
-def _parse_cell_header_counts(cell_path: Path) -> tuple[int, list[int]]:
-    """First header line: NGLo then NRLCel(1..MRL) as written by smcellgen (global/regional Cels)."""
-    with cell_path.open("r", encoding="utf-8") as f:
-        line = f.readline()
-    parts = [int(x) for x in line.split()]
-    if len(parts) < 2:
-        raise SystemExit(f"Invalid SMC cell header (need at least two integers): {cell_path}")
-    return parts[0], parts[1:]
-
-
-def _parse_arctic_cell_header_nglo(cell_path: Path) -> int:
-    """Arctic BArc.dat header: NArc, NArB, NGLB (see SMCGSideMP READCELL)."""
-    with cell_path.open("r", encoding="utf-8") as f:
-        line = f.readline()
-    parts = [int(x) for x in line.split()]
-    if len(parts) < 1:
-        raise SystemExit(f"Invalid Arctic cell header: {cell_path}")
-    return parts[0]
-
-
-def _side_allocation_bounds(nglo: int) -> tuple[int, int]:
-    """NCL / NFC lower bounds for SMCGSideMP (array sizes; must cover cells and faces)."""
-    ncl = max(nglo + 4096, int(nglo * 1.02) + 512)
-    nfc = max(nglo * 4 + 1_000_000, int(nglo * 3) + 2_000_000, 300_000)
-    return ncl, nfc
-
-
 def _countijsd_write_dat(iside_d: Path, jside_d: Path, out_iside: Path, out_jside: Path) -> None:
     """Same as SMCGTools/Linuxs/countijsd6lv: sort faces, prepend size-count header line."""
     isd = np.atleast_2d(np.loadtxt(iside_d, dtype=np.int64))
@@ -247,339 +211,19 @@ def _write_smc_side_dat(path: Path, header: str, data: np.ndarray, col_fmt: list
         np.savetxt(f, data, fmt=col_fmt, delimiter="")
 
 
-def _cell_path_for_smcgside(cel_abs: Path, out_dir: Path) -> str:
-    """Paths in SMCGSideMP's input must fit CHARACTER(LEN=80); prefer relative when cells live in out_dir."""
-    cel_r = cel_abs.resolve()
-    out_r = out_dir.resolve()
-    try:
-        spec = cel_r.relative_to(out_r).as_posix()
-    except ValueError:
-        spec = cel_r.as_posix()
-    if len(spec) > 80:
-        raise SystemExit(
-            "SMCGSideMP Fortran input allows at most 80 characters for the cell file path.\n"
-            f"Current path ({len(spec)} chars): {spec}\n"
-            "Use a shorter output.output_dir or place the grid under the output directory."
-        )
-    return spec
-
-
-def _write_side_mp_input(
-    path: Path,
-    smc_grid_name: str,
-    ncl: int,
-    nfc: int,
-    mrl: int,
-    nlon: int,
-    nlat: int,
-    npol: int,
-    cel_abs: Path,
-    out_dir: Path,
-) -> None:
-    if len(smc_grid_name) > 16:
-        raise SystemExit(
-            f"SMCGSideMP grid name must be <= 16 characters (Fortran SMCGrid): {smc_grid_name!r}"
-        )
-    if not re.fullmatch(r"[A-Za-z0-9_]+", smc_grid_name):
-        raise SystemExit(f"SMC grid stem must be alphanumeric/underscore: {smc_grid_name!r}")
-    cel_spec = _cell_path_for_smcgside(cel_abs, out_dir)
-    txt = (
-        f"{smc_grid_name}\n"
-        f" {ncl:8d} {nfc:8d} {mrl:8d}\n"
-        f" {nlon:8d} {nlat:8d} {npol:8d}\n"
-        f"'{cel_spec}'\n"
-    )
-    path.write_text(txt, encoding="utf-8")
-
-
-def _is_windows_pe_executable(path: Path) -> bool:
-    """
-    True if *path* looks like a Windows PE binary (MZ header).
-
-    Windows needs PE; Linux/macOS will get ``Exec format error`` / ENOEXEC if they try to run it.
-    Conversely, ELF under Windows gives WinError 193.
-    """
-    try:
-        with path.open("rb") as f:
-            head = f.read(4)
-    except OSError:
-        return False
-    if len(head) < 2:
-        return False
-    if head[:4] == b"\x7fELF":
-        return False
-    return head[:2] == b"MZ"
-
-
-def _is_elf_binary(path: Path) -> bool:
-    """True if *path* starts with ELF magic (Linux, *BSD, etc.)."""
-    try:
-        with path.open("rb") as f:
-            head = f.read(4)
-    except OSError:
-        return False
-    return head == b"\x7fELF"
-
-
-def _is_mach_o_binary(path: Path) -> bool:
-    """True if *path* looks like Mach-O or a universal (fat) binary (macOS)."""
-    try:
-        with path.open("rb") as f:
-            m = f.read(4)
-    except OSError:
-        return False
-    if len(m) < 4:
-        return False
-    le = struct.unpack("<I", m)[0]
-    be = struct.unpack(">I", m)[0]
-    # MH_MAGIC*, MH_CIGAM*, FAT_MAGIC (see mach-o/loader.h, mach-o/fat.h).
-    magics = (
-        0xFEEDFACE,
-        0xFEEDFACF,
-        0xCEFAEDFE,
-        0xCFFAEDFE,
-        0xCAFEBABE,
-        0xBEBAFECA,
-    )
-    return le in magics or be in magics
-
-
-def _smcgside_path_usable(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    if sys.platform == "win32":
-        return _is_windows_pe_executable(path)
-    # Reject Windows PE on Unix (Errno 8 Exec format error).
-    if _is_windows_pe_executable(path):
-        return False
-    if sys.platform == "darwin":
-        return _is_mach_o_binary(path)
-    return _is_elf_binary(path)
-
-
-def _find_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) -> Path | None:
-    candidates: list[Path] = []
-    for key in ("smcgside_executable", "SMCGSideMP"):
-        v = output_cfg.get(key)
-        if isinstance(v, str) and v.strip():
-            p = Path(v.strip())
-            if not p.is_absolute():
-                p = (script_dir / p).resolve()
-            candidates.append(p)
-    envp = os.environ.get("SMCGSIDE_MP", "").strip()
-    if envp:
-        candidates.append(Path(envp))
-    pdir = script_dir / "SMCGTools" / "F90SMC"
-    # Windows: prefer .exe first; extensionless SMCGSideMP is often a Linux ELF copy.
-    if sys.platform == "win32":
-        for name in ("SMCGSideMP.exe", "SMCGSideMP"):
-            candidates.append(pdir / name)
-    else:
-        candidates.append(pdir / "SMCGSideMP")
-    for p in candidates:
-        if not p.is_file():
-            continue
-        if _smcgside_path_usable(p):
-            return p
-        if sys.platform != "win32" and _is_windows_pe_executable(p):
-            print(
-                f"Ignoring SMCGSideMP: Windows PE binary cannot run on this OS -> {p}\n"
-                "  (auto-build with gfortran or replace with a native ELF executable.)",
-                flush=True,
-            )
-    return None
-
-
-def _default_smcgside_build_target(f90_dir: Path) -> Path:
-    if sys.platform == "win32":
-        return f90_dir / "SMCGSideMP.exe"
-    return f90_dir / "SMCGSideMP"
-
-
-def _smcgside_manual_compile_lines(f90_dir: Path) -> str:
-    """Shell snippet to build SMCGSideMP; Windows needs .exe output name."""
-    out = "SMCGSideMP.exe" if sys.platform == "win32" else "SMCGSideMP"
-    return f"  cd {f90_dir}\n  gfortran -O2 -fopenmp SMCGSideMP.f90 -o {out}"
-
-
-def _gfortran_missing_instructions(f90_dir: Path) -> str:
-    lines = [
-        "SMCGSideMP not found; auto-build requires gfortran on PATH",
-        "(or set output.gfortran / FC in grid.json \"output\", or environment variable FC).",
-        "",
-    ]
-    if sys.platform == "win32":
-        lines.append(
-            "=============================== What you need to do? ===============================\n"
-            "Windows: install gfortran for SMCGSideMP auto-build\n"
-            "\n"
-            "1. Download and install MSYS2 from the official website (search: MSYS2).\n"
-            "2. Open the \"MSYS2 MinGW64\" terminal.\n"
-            "3. Run:\n"
-            "       pacman -S mingw-w64-x86_64-gcc-fortran\n"
-            "4. In PowerShell, append MinGW64 to your user Path, then restart this application:\n"
-            "       [Environment]::SetEnvironmentVariable(\n"
-            "         \"Path\",\n"
-            "         $env:Path + \";C:\\msys64\\mingw64\\bin\",\n"
-            "         \"User\"\n"
-            "       )\n"
-            "   If MSYS2 is not under C:\\msys64, change the path accordingly.\n"
-            "5. Close and reopen PowerShell / WW3Tool, then run SMC grid generation again.\n"
-            "================================================================================"
-        )
-        lines.append("")
-    else:
-        lines.append("macOS (Homebrew): brew install gcc")
-        lines.append("Linux: sudo apt install gfortran   # or your distro's gcc-fortran")
-        lines.append("")
-    lines.append("Or build manually:")
-    lines.append(_smcgside_manual_compile_lines(f90_dir))
-    return "\n".join(lines)
-
-
-def _find_gfortran(output_cfg: dict[str, Any]) -> str | None:
-    """Resolve gfortran: output.gfortran, env FC, then PATH."""
-    override = output_cfg.get("gfortran")
-    if isinstance(override, str) and override.strip():
-        val = override.strip()
-        q = Path(val)
-        if q.is_file():
-            return str(q)
-        w = shutil.which(val)
-        if w:
-            return w
-    fc = os.environ.get("FC", "").strip()
-    if fc:
-        q = Path(fc)
-        if q.is_file():
-            return str(q)
-        w = shutil.which(fc)
-        if w:
-            return w
-        base = Path(fc).name
-        w = shutil.which(base)
-        if w:
-            return w
-    w = shutil.which("gfortran")
-    return w
-
-
-def _build_smcgside_mp(script_dir: Path, output_cfg: dict[str, Any]) -> Path:
-    f90_dir = (script_dir / "SMCGTools" / "F90SMC").resolve()
-    src = f90_dir / "SMCGSideMP.f90"
-    if not src.is_file():
-        raise SystemExit(
-            "SMCGSideMP executable not found and source is missing:\n"
-            f"  {src}\n"
-            "Install a prebuilt binary (set SMCGSIDE_MP or output.smcgside_executable)."
-        )
-    gfortran = _find_gfortran(output_cfg)
-    if gfortran is None:
-        raise SystemExit(_gfortran_missing_instructions(f90_dir))
-    out_exe = _default_smcgside_build_target(f90_dir)
-    cmd = [gfortran, "-O2", "-fopenmp", str(src), "-o", str(out_exe)]
-    print(f"Auto-building SMCGSideMP:\n  cd {f90_dir}\n  {' '.join(cmd)}", flush=True)
-    proc = subprocess.run(cmd, cwd=str(f90_dir), capture_output=True, text=True)
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip()
-        msg = tail[-8000:] if tail else "(no compiler output)"
-        raise SystemExit(
-            f"gfortran failed to build SMCGSideMP (exit {proc.returncode}):\n{msg}"
-        )
-    if not out_exe.is_file():
-        raise SystemExit(f"Build exited 0 but output missing: {out_exe}")
-    print(f"SMCGSideMP built: {out_exe}", flush=True)
-    return out_exe
-
-
-def _ensure_smcgside_executable(script_dir: Path, output_cfg: dict[str, Any]) -> Path:
-    found = _find_smcgside_executable(script_dir, output_cfg)
-    if found is not None:
-        return found
-    if not bool(output_cfg.get("smcgside_auto_build", True)):
-        f90 = (script_dir / "SMCGTools" / "F90SMC").resolve()
-        raise SystemExit(
-            "SMCGSideMP executable not found and output.smcgside_auto_build is false.\n"
-            "Build with:\n"
-            + _smcgside_manual_compile_lines(f90)
-            + "\nOr set SMCGSIDE_MP / output.smcgside_executable."
-        )
-    return _build_smcgside_mp(script_dir, output_cfg)
-
-
-def _smcgside_omp_threads(output_cfg: dict[str, Any]) -> int:
-    """Thread count for SMCGSideMP only (does not change the parent shell)."""
-    key = output_cfg.get("smcgside_omp_threads")
-    if key is not None:
-        return max(1, int(key))
-    cpus = os.cpu_count() or 8
-    # Large SMC grids (10^6–10^7 cells) benefit from more threads; cap to reduce oversubscription.
-    return max(1, min(int(cpus), 32))
-
-
-def _run_smcgside_mp(
-    exe: Path,
-    inp_basename: str,
-    work_cwd: Path,
-    output_cfg: dict[str, Any],
-) -> None:
-    # Fortran GET_COMMAND_ARGUMENT uses CHARACTER(LEN=80); pass a short name and cwd=out_dir.
-    env = os.environ.copy()
-    nthr = _smcgside_omp_threads(output_cfg)
-    env["OMP_NUM_THREADS"] = str(nthr)
-    print(
-        f"SMCGSideMP OMP_NUM_THREADS={nthr} "
-        f"(set output.smcgside_omp_threads in grid.json to override).",
-        flush=True,
-    )
-    try:
-        proc = subprocess.run(
-            [str(exe), inp_basename],
-            cwd=str(work_cwd),
-            env=env,
-            timeout=None,
-            check=False,
-        )
-    except OSError as e:
-        raise SystemExit(f"Failed to execute SMCGSideMP ({exe}): {e}") from e
-    if proc.returncode != 0:
-        raise SystemExit(
-            f"SMCGSideMP failed (exit {proc.returncode}): {exe} (see log above)"
-        )
-
-
 def _generate_iside_jside_pair(
     *,
-    script_dir: Path,
-    output_cfg: dict[str, Any],
     out_dir: Path,
     smc_stem: str,
     cell_path: Path,
     n_levels: int,
     nlon: int,
-    nlat: int,
     npol: int,
     final_iside: Path,
     final_jside: Path,
 ) -> None:
-    exe = _ensure_smcgside_executable(script_dir, output_cfg)
-    if npol > 0:
-        nglo = _parse_arctic_cell_header_nglo(cell_path)
-        nrl: list[int] = []
-    else:
-        nglo, nrl = _parse_cell_header_counts(cell_path)
-        if len(nrl) != n_levels:
-            print(
-                f"Note: cell header MRL count {len(nrl)} vs config n_levels={n_levels} "
-                f"(using n_levels for side input).",
-                flush=True,
-            )
-    ncl, nfc = _side_allocation_bounds(nglo)
-    inp_path = out_dir / SMCGSIDE_INP_BASENAME
-    cel_abs = cell_path.resolve()
-    _write_side_mp_input(
-        inp_path, smc_stem, ncl, nfc, n_levels, nlon, nlat, npol, cel_abs, out_dir
-    )
+    from smcgside import generate_side_files
+
     is_d = out_dir / f"{smc_stem}ISide.d"
     js_d = out_dir / f"{smc_stem}JSide.d"
     for p in (is_d, js_d):
@@ -589,17 +233,24 @@ def _generate_iside_jside_pair(
         except OSError:
             pass
     print(
-        f"Running SMCGSideMP ({exe.name}) stem={smc_stem} inp={SMCGSIDE_INP_BASENAME} "
+        f"Generating SMC sides in Python stem={smc_stem} "
         f"-> {final_iside.name} / {final_jside.name}",
         flush=True,
     )
-    _run_smcgside_mp(exe, SMCGSIDE_INP_BASENAME, out_dir, output_cfg)
+    generate_side_files(
+        cell_path,
+        grid_name=smc_stem,
+        output_dir=out_dir,
+        levels=n_levels,
+        nlon=nlon,
+        npol=npol,
+    )
     if not is_d.is_file() or not js_d.is_file():
         raise SystemExit(
-            f"SMCGSideMP did not create expected outputs: {is_d.name} / {js_d.name}"
+            f"Python side generator did not create expected outputs: {is_d.name} / {js_d.name}"
         )
     _countijsd_write_dat(is_d, js_d, final_iside, final_jside)
-    for p in (is_d, js_d, out_dir / f"{smc_stem}Side.txt", inp_path):
+    for p in (is_d, js_d):
         try:
             if p.is_file():
                 p.unlink()
@@ -1199,7 +850,7 @@ def main() -> None:
             print(
                 f"Warning: global SMC with n_levels={n_levels} (MFct={mfct}) on "
                 f"~{int(lon.size)}x{int(lat.size)} bathy often yields millions of cells "
-                f"and SMCGSideMP may run for hours. For global grids, n_levels>=4 is "
+                f"and side generation may take a long time. For global grids, n_levels>=4 is "
                 f"usually much faster (fewer cells).",
                 flush=True,
             )
@@ -1270,8 +921,8 @@ def main() -> None:
         ncel_hdr = 0
     if ncel_hdr >= 1_000_000:
         print(
-            f"Warning: smcellgen produced {ncel_hdr:,} cells — SMCGSideMP (ISIDE/JSIDE) "
-            f"typically dominates runtime and may take hours at this scale. "
+            f"Warning: smcellgen produced {ncel_hdr:,} cells; ISIDE/JSIDE generation "
+            f"may take a long time at this scale. "
             f"For global grids, try n_levels=4 or 6; for regional, widen MFct by raising n_levels.",
             flush=True,
         )
@@ -1334,19 +985,16 @@ def main() -> None:
 
     t_sides = time.time()
     _generate_iside_jside_pair(
-        script_dir=script_dir,
-        output_cfg=output_cfg,
         out_dir=out_dir,
         smc_stem=SMCGSIDE_STEM_GLOBAL,
         cell_path=cells_tmp,
         n_levels=n_levels,
         nlon=side_nlon,
-        nlat=side_nlat,
         npol=0,
         final_iside=final_iside,
         final_jside=final_jside,
     )
-    print(f"SMCGSideMP (global) finished in {time.time() - t_sides:.1f}s", flush=True)
+    print(f"Python SMC side generation finished in {time.time() - t_sides:.1f}s", flush=True)
 
     os.replace(cells_tmp, final_cell)
 
@@ -1356,14 +1004,11 @@ def main() -> None:
     arctic_written = bool(barc_tmp.is_file())
     if arctic_grid and arctic_written:
         _generate_iside_jside_pair(
-            script_dir=script_dir,
-            output_cfg=output_cfg,
             out_dir=out_dir,
             smc_stem=SMCGSIDE_STEM_ARCTIC,
             cell_path=barc_tmp,
             n_levels=n_levels,
             nlon=side_nlon,
-            nlat=side_nlat,
             npol=1,
             final_iside=final_aisid,
             final_jside=final_ajsid,
