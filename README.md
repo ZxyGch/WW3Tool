@@ -2,7 +2,7 @@
 
 ## 1. Project Overview
 
-![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
+![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
 
 WW3Tool is a **preprocessing and run-assist toolkit** built around **WAVEWATCH III** (a spectral ocean wave model). It does not replace WW3 executables (`ww3_grid`, `ww3_prnc`, `ww3_shel`, etc.). Instead it handles:
 
@@ -36,7 +36,7 @@ All three modes share the same business logic (`src/workflows/application/`); on
 
 ### 2.1 GUI
 
-![](public/resource/README-media/截屏2026-06-28%2009.57.44.png)
+![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
 
 ```bash
 python3 run.py
@@ -301,7 +301,7 @@ The following sections explain each step in detail.
 
 ### 5.1 Creating a Work Directory
 
-![](public/resource/README-media/截屏2026-06-18%2013.02.46.png)
+![](public/resource/README-media/截屏2026-07-16%2016.23.32.png)
 
 When creating a work directory, the program:
 
@@ -364,7 +364,6 @@ ww3> queue-status
 
 Step 1 builds WW3 grid input from the `params.yml` `grid` section — turning domain extent, bathymetry, coastlines, and grid type into files WW3 can read. It does **not** run `ww3_grid`; compiling `mod_def.ww3` happens in Step 4 / run scripts.
 
-![](public/resource/README-media/截屏2026-06-28%2010.50.13.png)
 
 
 #### GUI workflow
@@ -373,11 +372,8 @@ Step 1 on the home page is **set grid params, preview bounds, then generate grid
 
 For meshgen internals see `meshgen/README.md`. Below covers the GUI/CLI fields you change most often and common misunderstandings.
 
-Recommended order on Step 1:
-
-
-![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
-
+![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
+![](public/resource/README-media/截屏2026-07-16%2016.25.11.png)
 
 1. Choose grid type: normal / nested, and rectangular / SMC / unstructured.
 2. Enter main grid extent (`lat` and `lon` rows; maps to `grid.lat: [south, north]`, `grid.lon: [west, east]`).
@@ -394,7 +390,7 @@ The reference data package (GEBCO, ETOPO1/2, coastlines, etc.) is required for g
 
 If `WW3Tool/meshgen/reference_data` is missing, Step 1 shows a download dialog:
 
-![](public/resource/README-media/截屏2026-06-29%2017.01.09.png)
+![](public/resource/README-media/截屏2026-07-16%2016.26.01.png)
 
 Click download: the program fetches from [GitHub Release](https://github.com/ZxyGch/WW3Tool/releases/tag/data) (~6.5 GB) automatically.
 
@@ -481,8 +477,7 @@ pygridgen / gridgen on a regular lat-lon lattice. `normal`: one layer at work-di
 
 ##### Nested grids
 
-![](public/resource/README-media/截屏2026-06-28%2012.46.43.png)
-![](public/resource/README-media/截屏2026-06-28%2012.53.13.png)
+![](public/resource/README-media/截屏2026-07-16%2016.28.37.png)
 
 Nesting = coarse outer + fine inner for multi-resolution runs. WW3Tool uses WW3 `ww3_multi` (one integration drives all levels; see §5.5.8 and nested-grid design notes).
 
@@ -721,7 +716,7 @@ smc:
 
 ### 5.3 Step 2 — Forcing Preparation
 
-![](public/resource/README-media/截屏2026-06-28%2011.09.59.png)
+![](public/resource/README-media/截屏2026-07-16%2016.46.47.png)
 
 Step 2 imports external NetCDF forcing into the work directory and normalizes it for later steps. Supported fields: wind, current, water level, sea ice.
 
@@ -731,9 +726,6 @@ Recommended order on Step 2:
 
 1. Click wind / current / level / ice buttons to choose NetCDF files.
 2. After selection, the log shows file info (variables, time range, lat/lon extent). This step only reads metadata; no copy, move, or crop yet.
-
-![](public/resource/README-media/截屏2026-06-28%2013.19.18.png)
-
 
 3. To crop, edit time/lat/lon, then click **Confirm crop and import**. Time format: `YYYYMMDD`; space: decimal degrees.
 4. To import without cropping, click **Import directly without cropping**. Files are copied or moved in full, then normalized.
@@ -825,7 +817,7 @@ On open, normalized forcing files are detected and GUI buttons restored (`wind.n
 
 Computation mode chooses whether WW3 integrates over the full grid, fixed spectral points, or a moving track. Set in `calc.mode` (GUI Step 3). No dedicated CLI subcommand; read during `prepare-ww3` or `run-workflow`.
 
-![](public/resource/README-media/截屏2026-06-28%2013.03.46.png)
+![](public/resource/README-media/截屏2026-07-16%2016.48.13.png)
 
 ![](public/resource/README-media/截屏2026-06-28%2014.09.11.png)
 
@@ -880,7 +872,7 @@ Notes:
 >
 > Principle: only change fields relevant to this case; keep `public/nml/` templates otherwise intact for comparison with official examples.
 
-![](public/resource/README-media/截屏2026-06-28%2016.34.00.png)
+![](public/resource/README-media/截屏2026-07-16%2016.49.19.png)
 
 
 
@@ -958,6 +950,54 @@ In short:
 Nested grids: CFL recomputed **per level** (fine grids → smaller `DTXY` → more steps). Tied to `ww3_multi.nml` process allocation (§5.5.8).
 
 If the grid is very coarse or `FREQ1` very small, recommended steps may still be too large; reduce spacing or CFL factor rather than blindly increasing `DTMAX`.
+
+
+
+
+#### 5.5.10 Namelist physics source-term parameters
+
+Step 4 provides a **Namelist Parameters** group below the numerical-integration timestep fields. It exposes five physics coefficients commonly tuned under the ST4 package. After you click **Confirm parameters**, values are written into `namelists.nml` (work-directory root for a normal grid; each `level*/namelists.nml` for nested grids) and saved under `ww3.namelist` in `params.yml`.
+
+Unlike spectrum discretization and timesteps in `ww3_grid.nml`, these five entries control **wind input, whitecapping dissipation, and bottom friction**, affecting significant wave height $H_s$, swell decay, and nearshore energy levels. Defaults match the WW3 6.07 ST4 (Ardhuin et al. 2010) template.
+
+| GUI field | YAML key | Namelist block | Default | Meaning and typical tuning |
+|-----------|----------|----------------|---------|----------------------------|
+| BETAMAX | `SIN4%BETAMAX` | `&SIN4` | 1.43 | Wind-input gain (Miles coefficient); **most often tuned**. Increase (e.g. 1.52, 1.55) if $H_s$ is too low; decrease (e.g. 1.33) if too high. |
+| SWELLF | `SIN4%SWELLF` | `&SIN4` | 0.66 | Swell attenuation in wind input; affects far-field swell propagation; often tuned in 0.6–0.8. |
+| SDSC2 | `SDS4%SDSC2` | `&SDS4` | -2.2e-5 | Saturation dissipation coefficient; **tune together with BETAMAX** for energy balance. |
+| SDSBR | `SDS4%SDSBR` | `&SDS4` | 0.90e-3 | Saturation threshold $B_r$; affects when dissipation starts and spectral shape. |
+| GAMMA | `SBT1%GAMMA` | `&SBT1` | -0.067 | JONSWAP bottom-friction coefficient; important for **nearshore/shelf** runs. Try -0.038 for swell-dominated cases; keep -0.067 for mixed sea states. |
+
+Example `params.yml`:
+
+```yaml
+ww3:
+  namelist:
+    SIN4%BETAMAX: 1.43
+    SIN4%SWELLF: 0.66
+    SDS4%SDSC2: -2.2e-05
+    SDS4%SDSBR: 0.0009
+    SBT1%GAMMA: -0.067
+```
+
+After confirming parameters, `run.log` may show:
+
+```log
+✅ Physics source-term parameters written to namelists.nml:
+  SIN4/BETAMAX = 1.43
+  SIN4/SWELLF  = 0.66
+
+  SDS4/SDSC2   = -2.2e-05
+  SDS4/SDSBR   = 0.0009
+  SBT1/GAMMA   = -0.067
+```
+
+**Usage notes:**
+
+- Tune **BETAMAX + SDSC2** together for overall $H_s$ and energy balance; do not change only one of them.
+- For nearshore or shallow-water cases with $H_s$ or period bias, try **GAMMA** (bottom friction) separately.
+- With ST2/ST3 or other non-ST4 source packages, `&SIN4` / `&SDS4` blocks may be ignored; edit the namelist blocks for your ST version or leave defaults.
+- Leaving a field empty skips overwriting that key (same behavior as spectrum/timestep fields).
 
 
 
@@ -1192,7 +1232,7 @@ ww3:
 
 #### 5.5.7 Forcing switches and multiple prnc
 
-![](public/resource/README-media/截屏2026-06-28%2019.06.49.png)
+![](public/resource/README-media/截屏2026-07-16%2018.40.23.png)
 
 If Step 2 imported multiple fields, Step 4 shows multi-select (wind required). Separate `ww3_prnc_*.nml` per field type.
 
