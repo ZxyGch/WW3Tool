@@ -1,6 +1,6 @@
 {
   "input": {
-    "bathymetry_file": "../reference_data/etopo2.nc",
+    "bathymetry_file": "../reference_data/gebco.nc",
     "lon_var": null,
     "lat_var": null,
     "bathy_var": null,

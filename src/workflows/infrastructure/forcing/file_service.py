@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """WW3 Step 2 强迫场文件 I/O 与格式修复服务。
 
 [EN] WW3 Step 2 forcing field file I/O and format fixing service.

@@ -16,7 +16,6 @@ from __future__ import annotations
 def is_dark() -> bool:
     try:
         from qfluentwidgets import isDarkTheme
-
         return bool(isDarkTheme())
     except Exception:
         return False
@@ -26,24 +25,30 @@ def input_style() -> str:
     if is_dark():
         return """
             LineEdit, EditableComboBox {
-                background-color: #2D2D2D; border: 1px solid #404040;
-                border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
+                background-color: #2D2D2D !important;
+                border: 1px solid #404040 !important;
+                border-radius: 4px; padding: 4px 8px;
+                color: #FFFFFF !important;
             }
-            LineEdit:focus, EditableComboBox:focus { border: 1px solid #404040; }
+            LineEdit:focus, EditableComboBox:focus { border: 1px solid #404040 !important; }
             LineEdit:read-only, EditableComboBox:read-only {
-                background-color: #2D2D2D; border: 1px solid #404040;
-                color: #FFFFFF;
+                background-color: #2D2D2D !important;
+                border: 1px solid #404040 !important;
+                color: #FFFFFF !important;
             }
         """
     return """
         LineEdit, EditableComboBox {
-            background-color: #FFFFFF; border: 1px solid #D0D0D0;
-            border-radius: 4px; padding: 4px 8px; color: #000000;
+            background-color: #FFFFFF !important;
+            border: 1px solid #D0D0D0 !important;
+            border-radius: 4px; padding: 4px 8px;
+            color: #000000 !important;
         }
-        LineEdit:focus, EditableComboBox:focus { border: 1px solid #D0D0D0; }
+        LineEdit:focus, EditableComboBox:focus { border: 1px solid #D0D0D0 !important; }
         LineEdit:read-only, EditableComboBox:read-only {
-            background-color: #FFFFFF; border: 1px solid #D0D0D0;
-            color: #000000;
+            background-color: #FFFFFF !important;
+            border: 1px solid #D0D0D0 !important;
+            color: #000000 !important;
         }
     """
 
@@ -52,19 +57,23 @@ def combo_style() -> str:
     if is_dark():
         return """
             ComboBox {
-                background-color: #2D2D2D; border: 1px solid #404040;
-                border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
+                background-color: #2D2D2D !important;
+                border: 1px solid #404040 !important;
+                border-radius: 4px; padding: 4px 8px;
+                color: #FFFFFF !important;
                 text-align: left;
             }
-            ComboBox:disabled { color: #FFFFFF; }
+            ComboBox:disabled { color: #FFFFFF !important; }
         """
     return """
         ComboBox {
-            background-color: #FFFFFF; border: 1px solid #D0D0D0;
-            border-radius: 4px; padding: 4px 8px; color: #000000;
+            background-color: #FFFFFF !important;
+            border: 1px solid #D0D0D0 !important;
+            border-radius: 4px; padding: 4px 8px;
+            color: #000000 !important;
             text-align: left;
         }
-        ComboBox:disabled { color: #000000; }
+        ComboBox:disabled { color: #000000 !important; }
     """
 
 
@@ -75,7 +84,7 @@ def label_style(*, extra: str = "") -> str:
     a type selector).
     """
     color = "#FFFFFF" if is_dark() else "#000000"
-    parts = [f"color: {color};"]
+    parts = [f"color: {color} !important;"]
     if extra:
         parts.append(extra)
     return " ".join(parts)
@@ -83,26 +92,36 @@ def label_style(*, extra: str = "") -> str:
 
 def section_title_style() -> str:
     color = "#FFFFFF" if is_dark() else "#000000"
-    return f"font-weight: normal; font-size: 14px; color: {color};"
+    return f"font-weight: normal; font-size: 14px; color: {color} !important;"
 
 
 def button_style() -> str:
     if is_dark():
         return """
             PrimaryPushButton {
-                background-color: #2D2D2D; border: 1px solid #404040;
-                border-radius: 4px; min-height: 20px; padding: 8px 16px; color: #FFFFFF;
+                background-color: #2D2D2D !important;
+                border: 1px solid #404040 !important;
+                border-radius: 4px; min-height: 20px; padding: 8px 16px;
+                color: #FFFFFF !important;
             }
-            PrimaryPushButton:hover { background-color: #3D3D3D; }
-            PrimaryPushButton:pressed { background-color: #353535; }
-            PrimaryPushButton:disabled { background-color: #1D1D1D; color: #666666; }
+            PrimaryPushButton:hover { background-color: #3D3D3D !important; }
+            PrimaryPushButton:pressed { background-color: #353535 !important; }
+            PrimaryPushButton:disabled {
+                background-color: #1D1D1D !important;
+                color: #666666 !important;
+            }
         """
     return """
         PrimaryPushButton {
-            background-color: #F5F5F5; border: 1px solid #E0E0E0;
+            background-color: #F5F5F5 !important;
+            border: 1px solid #E0E0E0 !important;
             border-radius: 4px; min-height: 20px; padding: 8px 16px;
+            color: #000000 !important;
         }
-        PrimaryPushButton:hover { background-color: #EEEEEE; }
-        PrimaryPushButton:pressed { background-color: #E8E8E8; }
-        PrimaryPushButton:disabled { background-color: #E0E0E0; color: #999999; }
+        PrimaryPushButton:hover { background-color: #EEEEEE !important; }
+        PrimaryPushButton:pressed { background-color: #E8E8E8 !important; }
+        PrimaryPushButton:disabled {
+            background-color: #E0E0E0 !important;
+            color: #999999 !important;
+        }
     """

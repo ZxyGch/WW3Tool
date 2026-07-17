@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """WW3Tool 运行时配置与路径常量。
 
 本模块管理根目录 ``params.yml`` 中 ``desktop:`` 段的加载/保存，以及桌面端与 CLI

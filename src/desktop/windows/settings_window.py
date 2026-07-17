@@ -258,6 +258,7 @@ class SettingsInterface(QWidget):
         on_language_changed: Callable[[str], None] | None = None,
         on_run_mode_changed: Callable[[str], None] | None = None,
         on_config_changed: Callable[[str], None] | None = None,
+        on_theme_changed: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("settings_interface")
@@ -265,6 +266,7 @@ class SettingsInterface(QWidget):
         self._on_language_changed_callback = on_language_changed
         self._on_run_mode_changed_callback = on_run_mode_changed
         self._on_config_changed_callback = on_config_changed
+        self._on_theme_changed_callback = on_theme_changed
         self._config = self._vm.load()
         self._fields: dict[str, LineEdit] = {}
         self._combos: dict[str, ComboBox] = {}
@@ -498,8 +500,19 @@ class SettingsInterface(QWidget):
             (tr("map_type_south_polar", "南极地图"), MAP_TYPE_VALUES[5]),
         ]
         self._combo(grid, 2, 0, tr("map_type_label", "地图类型"), "MAP_TYPE", map_options)
+        theme_options = [
+            (tr("theme_auto", "跟随系统"), "AUTO"),
+            (tr("theme_light", "明亮"), "LIGHT"),
+            (tr("theme_dark", "黑暗"), "DARK"),
+        ]
+        _cur_theme = str(self._config.get("THEME", "") or "").upper()
+        if _cur_theme not in ("AUTO", "LIGHT", "DARK"):
+            _cur_theme = "AUTO"
+        self._config["THEME"] = _cur_theme
+        self._combo(grid, 3, 0, tr("theme_select", "界面主题:"), "THEME", theme_options)
         self._combos["LANGUAGE"].currentTextChanged.connect(self._on_language_changed)
         self._combos["MAP_TYPE"].currentIndexChanged.connect(self._on_map_type_changed)
+        self._combos["THEME"].currentIndexChanged.connect(self._on_theme_changed)
 
     def _build_run_mode_combo(self, grid: QGridLayout, row: int, col: int) -> None:
         combo = ComboBox()
@@ -1342,9 +1355,17 @@ class SettingsInterface(QWidget):
     def _save_smc_now(self) -> None:
         self._vm.save_smc(self._collect_nested(self._smc_fields))
 
-    def _on_theme_changed(self, name: str) -> None:
+    def _on_theme_changed(self, _index: int = 0) -> None:
+        combo = self._combos.get("THEME")
+        if combo is None:
+            return
+        name = str(combo.itemData(combo.currentIndex()) or "")
+        if not name:
+            return
         self._vm.apply_theme(name)
         self._vm.save({"THEME": name})
+        if callable(self._on_theme_changed_callback):
+            self._on_theme_changed_callback(name)
 
     def _on_language_changed(self, code: str) -> None:
         self._vm.save({"LANGUAGE": code})

@@ -57,8 +57,7 @@ from workflows.support.translations import tr
 from ..background_runner import BackgroundRunner
 from ..components.forcing_progress_dialog import ForcingProgressDialog
 from ..components.image_gallery_drawer import ImageGalleryHost
-from ..components import styles
-from ..components.section_title import apply_section_title_style, create_section_title
+from ..components.section_title import create_section_title
 from .settings_window import SettingsInterface
 from .plot_window import PlotInterface
 from .tools_window import ToolsInterface, delete_all_under, delete_run_artifacts_under
@@ -88,7 +87,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     """Workflow-backed preprocessing UI with CLI/GUI separation."""
 
     def __init__(self) -> None:
-        setTheme(Theme.AUTO)
+        # 启动时应用 params.yml 中保存的主题（默认 AUTO 跟随系统）
+        _saved_theme = str(_load_runtime_config().get("THEME", "AUTO") or "AUTO").upper()
+        # 自己跟踪用户主题设置（不依赖 qconfig，因为 setTheme 会篡改 qconfig.themeMode）
+        self._user_theme_mode: str = _saved_theme
+        _theme_map = {"AUTO": Theme.AUTO, "LIGHT": Theme.LIGHT, "DARK": Theme.DARK}
+        setTheme(_theme_map.get(_saved_theme, Theme.AUTO))
         setThemeColor(QColor(0, 120, 212))
         super().__init__()
         from ..branding import apply_window_logo
@@ -136,6 +140,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._build_surface()
         self._last_dark_theme = self._is_dark_theme()
         self._setup_theme_monitor()
+        # 启动后刷新自定义 QSS（初始化时 setTheme 可能未作用于所有控件）
+        QTimer.singleShot(0, self._refresh_manual_styles)
+        # 连接 themeChangedFinished 确保主题切换后自动刷新 QSS
+        try:
+            from qfluentwidgets.common.config import qconfig as _qf_config
+            _qf_config.themeChangedFinished.connect(self._refresh_manual_styles)
+        except Exception:
+            pass
         if str(_load_runtime_config().get("LANGUAGE", "zh_CN")).startswith("en"):
             self._append_log("Developed by Gong Chuheng, Shanghai Ocean University, Sep 2025. Assisted by Han Ziqi, supervised by Prof. Wei Yongliang")
         else:
@@ -155,23 +167,62 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self.sync_image_gallery_geometry()
 
     def _is_dark_theme(self) -> bool:
-        color = self.palette().color(self.palette().ColorRole.Window)
-        return color.lightness() < 128
+        if self._user_theme_mode == "AUTO":
+            # AUTO: 用系统调色板检测（setTheme 只改变 QSS 不改变 palette）
+            color = self.palette().color(self.palette().ColorRole.Window)
+            return color.lightness() < 128
+        # 显式 LIGHT/DARK：用 qfluentwidgets
+        try:
+            from qfluentwidgets import isDarkTheme
+            return bool(isDarkTheme())
+        except Exception:
+            color = self.palette().color(self.palette().ColorRole.Window)
+            return color.lightness() < 128
 
     def _setup_theme_monitor(self) -> None:
         app = QApplication.instance()
         if app is not None and hasattr(app, "paletteChanged"):
             app.paletteChanged.connect(self._on_palette_changed)
+        # 轮询兜底：某些 macOS/PyQt6 版本 paletteChanged 可能不触发
+        self._theme_poll_timer = QTimer(self)
+        self._theme_poll_timer.timeout.connect(self._poll_theme)
+        self._theme_poll_timer.start(1000)
+
+    def _poll_theme(self) -> None:
+        dark = self._is_dark_theme()
+        if dark == self._last_dark_theme:
+            return
+        self._last_dark_theme = dark
+        # 安全调用 setTheme 更新 qfluentwidgets 全局 QSS（背景色等）
+        try:
+            from qfluentwidgets.common.config import qconfig, Theme as QFTheme
+            saved_mode = qconfig.get(qconfig.themeMode)
+            setTheme(QFTheme.DARK if dark else QFTheme.LIGHT)
+            qconfig.set(qconfig.themeMode, saved_mode, save=False)
+        except Exception:
+            pass
+        # 延迟执行自定义样式，确保在 qfluentwidgets 异步 QSS 之后覆盖
+        QTimer.singleShot(100, self._refresh_manual_styles)
 
     def _on_palette_changed(self, _palette) -> None:
         dark = self._is_dark_theme()
         if dark == self._last_dark_theme:
             return
         self._last_dark_theme = dark
-        setTheme(Theme.DARK if dark else Theme.LIGHT)
-        self._refresh_manual_styles()
+        # 安全调用 setTheme：保存并恢复 themeMode，避免被从 AUTO 篡改为 LIGHT/DARK
+        try:
+            from qfluentwidgets.common.config import qconfig, Theme as QFTheme
+            saved_mode = qconfig.get(qconfig.themeMode)
+            setTheme(QFTheme.DARK if dark else QFTheme.LIGHT)
+            qconfig.set(qconfig.themeMode, saved_mode, save=False)
+        except Exception:
+            pass
+        # setTheme 会触发 themeChangedFinished → _refresh_manual_styles
+        # 不重复调用，避免 qfluentwidgets 异步 QSS 覆盖我们的样式
 
     def _refresh_manual_styles(self) -> None:
+        _is_dark = self._is_dark_theme()
+        _fg = "#FFFFFF" if _is_dark else "#000000"
         for button in self.findChildren(PrimaryPushButton):
             button.setStyleSheet(self._button_style())
         if hasattr(self, "_forcing_panel"):
@@ -181,60 +232,94 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         for combo in self.findChildren(ComboBox):
             combo.setStyleSheet(self._combo_style())
         for label in self.findChildren(QLabel):
-            if label.objectName() == "headerLabel":
-                continue
             if label.property("sectionTitle"):
-                apply_section_title_style(label)
-            elif label.styleSheet().strip() and "font-size" not in label.styleSheet():
-                label.setStyleSheet(styles.label_style())
+                label.setStyleSheet(
+                    f"font-weight: normal; font-size: 14px; color: {_fg} !important;"
+                )
+                continue
+            if label.objectName() == "headerLabel":
+                label.setStyleSheet(
+                    f"font-weight: normal; margin-left: 0px; padding-left: 0px;"
+                    f" color: {_fg} !important;"
+                )
+                continue
+            css = (label.styleSheet() or "").strip()
+            if "font-size" in css or "background" in css or "border" in css:
+                continue
+            label.setStyleSheet(f"color: {_fg} !important;")
         if hasattr(self, "_log"):
             self._log.setStyleSheet(self._log_style())
+        # 刷新 WW3 面板中的小标题
+        if hasattr(self, "_ww3_panel") and self._ww3_panel is not None:
+            ww3_widget = getattr(self._ww3_panel, "widget", None)
+            if ww3_widget is not None:
+                for label in ww3_widget.findChildren(QLabel):
+                    if label.property("sectionTitle"):
+                        label.setStyleSheet(
+                            f"font-weight: normal; font-size: 14px; color: {_fg} !important;"
+                        )
 
     def _button_style(self) -> str:
         if self._is_dark_theme():
             return """
                 PrimaryPushButton {
-                    background-color: #2D2D2D; border: 1px solid #404040;
-                    border-radius: 4px; min-height: 20px; padding: 8px 16px; color: #FFFFFF;
+                    background-color: #2D2D2D !important;
+                    border: 1px solid #404040 !important;
+                    border-radius: 4px; min-height: 20px; padding: 8px 16px;
+                    color: #FFFFFF !important;
                 }
-                PrimaryPushButton:hover { background-color: #3D3D3D; }
-                PrimaryPushButton:pressed { background-color: #353535; }
-                PrimaryPushButton:disabled { background-color: #1D1D1D; color: #666666; }
-                PrimaryPushButton[filled="true"] { color: #2E6BD9; }
+                PrimaryPushButton:hover { background-color: #3D3D3D !important; }
+                PrimaryPushButton:pressed { background-color: #353535 !important; }
+                PrimaryPushButton:disabled {
+                    background-color: #1D1D1D !important;
+                    color: #666666 !important;
+                }
+                PrimaryPushButton[filled="true"] { color: #2E6BD9 !important; }
             """
         return """
             PrimaryPushButton {
-                background-color: #F5F5F5; border: 1px solid #E0E0E0;
+                background-color: #F5F5F5 !important;
+                border: 1px solid #E0E0E0 !important;
                 border-radius: 4px; min-height: 20px; padding: 8px 16px;
+                color: #000000 !important;
             }
-            PrimaryPushButton:hover { background-color: #EEEEEE; }
-            PrimaryPushButton:pressed { background-color: #E8E8E8; }
-            PrimaryPushButton:disabled { background-color: #E0E0E0; color: #999999; }
-            PrimaryPushButton[filled="true"] { color: #2E6BD9; }
+            PrimaryPushButton:hover { background-color: #EEEEEE !important; }
+            PrimaryPushButton:pressed { background-color: #E8E8E8 !important; }
+            PrimaryPushButton:disabled {
+                background-color: #E0E0E0 !important;
+                color: #999999 !important;
+            }
+            PrimaryPushButton[filled="true"] { color: #2E6BD9 !important; }
         """
 
     def _input_style(self) -> str:
         if self._is_dark_theme():
             return """
                 LineEdit, EditableComboBox {
-                    background-color: #2D2D2D; border: 1px solid #404040;
-                    border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
+                    background-color: #2D2D2D !important;
+                    border: 1px solid #404040 !important;
+                    border-radius: 4px; padding: 4px 8px;
+                    color: #FFFFFF !important;
                 }
-                LineEdit:focus, EditableComboBox:focus { border: 1px solid #404040; }
+                LineEdit:focus, EditableComboBox:focus { border: 1px solid #404040 !important; }
                 LineEdit:read-only, EditableComboBox:read-only {
-                    background-color: #2D2D2D; border: 1px solid #404040;
-                    color: #FFFFFF;
+                    background-color: #2D2D2D !important;
+                    border: 1px solid #404040 !important;
+                    color: #FFFFFF !important;
                 }
             """
         return """
             LineEdit, EditableComboBox {
-                background-color: #FFFFFF; border: 1px solid #D0D0D0;
-                border-radius: 4px; padding: 4px 8px; color: #000000;
+                background-color: #FFFFFF !important;
+                border: 1px solid #D0D0D0 !important;
+                border-radius: 4px; padding: 4px 8px;
+                color: #000000 !important;
             }
-            LineEdit:focus, EditableComboBox:focus { border: 1px solid #D0D0D0; }
+            LineEdit:focus, EditableComboBox:focus { border: 1px solid #D0D0D0 !important; }
             LineEdit:read-only, EditableComboBox:read-only {
-                background-color: #FFFFFF; border: 1px solid #D0D0D0;
-                color: #000000;
+                background-color: #FFFFFF !important;
+                border: 1px solid #D0D0D0 !important;
+                color: #000000 !important;
             }
         """
 
@@ -242,34 +327,42 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if self._is_dark_theme():
             return """
                 ComboBox {
-                    background-color: #2D2D2D; border: 1px solid #404040;
-                    border-radius: 4px; padding: 4px 8px; color: #FFFFFF;
+                    background-color: #2D2D2D !important;
+                    border: 1px solid #404040 !important;
+                    border-radius: 4px; padding: 4px 8px;
+                    color: #FFFFFF !important;
                     text-align: left;
                 }
-                ComboBox:disabled { color: #FFFFFF; }
+                ComboBox:disabled { color: #FFFFFF !important; }
             """
         return """
             ComboBox {
-                background-color: #FFFFFF; border: 1px solid #D0D0D0;
-                border-radius: 4px; padding: 4px 8px; color: #000000;
+                background-color: #FFFFFF !important;
+                border: 1px solid #D0D0D0 !important;
+                border-radius: 4px; padding: 4px 8px;
+                color: #000000 !important;
                 text-align: left;
             }
-            ComboBox:disabled { color: #000000; }
+            ComboBox:disabled { color: #000000 !important; }
         """
 
     def _log_style(self) -> str:
         if self._is_dark_theme():
             return (
-                "QTextEdit { background-color: #2d2d2d; border: 0.5px solid #404040;"
-                " border-radius: 4px; padding-left: 2px; }"
-                " QTextEdit:focus { border: 0.5px solid #404040; padding-left: 2px; }"
-                " QTextEdit:hover { border: 0.5px solid #404040; padding-left: 2px; }"
+                "QTextEdit { background-color: #2d2d2d !important;"
+                " border: 0.5px solid #404040 !important;"
+                " border-radius: 4px; padding-left: 2px;"
+                " color: #FFFFFF !important; }"
+                " QTextEdit:focus { border: 0.5px solid #404040 !important; padding-left: 2px; }"
+                " QTextEdit:hover { border: 0.5px solid #404040 !important; padding-left: 2px; }"
             )
         return (
-            "QTextEdit { background-color: transparent; border: 0.5px solid #D0D0D0;"
-            " border-radius: 4px; padding-left: 2px; }"
-            " QTextEdit:focus { border: 0.5px solid #D0D0D0; padding-left: 2px; }"
-            " QTextEdit:hover { border: 0.5px solid #D0D0D0; padding-left: 2px; }"
+            "QTextEdit { background-color: transparent;"
+            " border: 0.5px solid #D0D0D0 !important;"
+            " border-radius: 4px; padding-left: 2px;"
+            " color: #000000 !important; }"
+            " QTextEdit:focus { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
+            " QTextEdit:hover { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
         )
 
     def _primary_button(self, text: str, handler) -> PrimaryPushButton:
@@ -438,6 +531,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             on_language_changed=self._restart_for_language_change,
             on_run_mode_changed=self._on_run_mode_changed_from_settings,
             on_config_changed=self._on_settings_config_changed,
+            on_theme_changed=self._on_theme_changed_from_settings,
         )
         self.left_stacked.addWidget(self._settings_interface)  # [EN] index 1: settings page (shares right-side log)
         # index 1：设置页（共享右侧日志）
@@ -486,6 +580,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         scroll = getattr(self, "_steps_scroll", None)
         if scroll is not None:
             scroll.scroll_to_top()
+
+    def _on_theme_changed_from_settings(self, name: str) -> None:
+        # 保存用户的主题设置（用于 _is_dark_theme 独立判断）
+        self._user_theme_mode = str(name or "AUTO").upper()
+        # 主题切换后刷新手动 QSS
+        self._refresh_manual_styles()
 
     def _on_run_mode_changed_from_settings(self, run_mode: str) -> None:
         self._update_run_mode_visibility(run_mode)

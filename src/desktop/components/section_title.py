@@ -50,7 +50,7 @@ def create_section_title(text: str) -> QWidget:
 
 def apply_section_title_style(label: QLabel) -> None:
     color = "#FFFFFF" if styles.is_dark() else "#000000"
-    label.setStyleSheet(f"font-weight: normal; font-size: 14px; color: {color};")
+    label.setStyleSheet(f"font-weight: normal; font-size: 14px; color: {color} !important;")
     palette = label.palette()
     palette.setColor(QPalette.ColorRole.WindowText, QColor(color))
     label.setPalette(palette)
