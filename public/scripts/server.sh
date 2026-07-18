@@ -41,20 +41,40 @@ FAIL_MARK="$SCRIPT_ROOT/fail"
 # Clean old markers only; keep earlier preparation/submission logs.
 rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
-# MPI 启动器与库路径由服务器 ~/.bashrc 统一配置（6.07/7.14 共用 Intel MPI 2019）；
-# dispatch 脚本会 source ~/.bashrc，此处不再重复修补 PATH/LD_LIBRARY_PATH。
+# Slurm 多节点作业使用原生 PMI2 启动 Intel MPI，避免在作业内部再次由 Hydra
+# 调用 srun 时将远端代理错误连接到 localhost。非 Slurm 环境仍使用 mpirun。
+SLURM_PMI2_LIB="${SLURM_PMI2_LIB:-/opt/gridview/slurm/lib/libpmi2.so}"
 
-# ww3_prnc: Slurm 下 mpirun 偶发失败时，清理 PMI 环境变量后直接运行。
+run_mpi_program() {
+    local nprocs="$1"; shift
+    if [ -n "${SLURM_JOB_ID:-}" ]; then
+        if [ ! -r "$SLURM_PMI2_LIB" ]; then
+            echo "Slurm PMI2 library not found: $SLURM_PMI2_LIB" >> "$LOG"
+            return 127
+        fi
+        export I_MPI_PMI_LIBRARY="$SLURM_PMI2_LIB"
+        if [ "$nprocs" -eq 1 ]; then
+            srun --mpi=pmi2 --nodes=1 --ntasks=1 --kill-on-bad-exit=1 "$@"
+        else
+            srun --mpi=pmi2 --ntasks="$nprocs" --distribution=block:block \
+                --kill-on-bad-exit=1 "$@"
+        fi
+    else
+        mpirun -n "$nprocs" "$@"
+    fi
+}
+
+# ww3_prnc 优先使用与作业环境一致的 MPI 启动器，失败后再尝试串行执行。
 run_ww3_prnc_cmd() {
     echo -e "
-============================== Running mpirun -n 1 ww3_prnc ==============================" >> "$LOG"
-    mpirun -n 1 ww3_prnc >> "$LOG" 2>&1
+============================== Running MPI ww3_prnc (1 task) ==============================" >> "$LOG"
+    run_mpi_program 1 ww3_prnc >> "$LOG" 2>&1
     local rc=$?
     if [ "$rc" -eq 0 ]; then
         return 0
     fi
     echo -e "
-============================== mpirun ww3_prnc failed (exit $rc); retrying direct ww3_prnc ==============================" >> "$LOG"
+============================== MPI ww3_prnc failed (exit $rc); retrying direct ww3_prnc ==============================" >> "$LOG"
     env -u PMI_RANK -u PMI_SIZE -u PMI_FD -u PMI_JOB -u PMI_PROCESS -u PMI_MMU \
         -u PMIX_NAMESPACE -u PMIX_RANK -u SLURM_MPI_TYPE -u OMPI_MCA_ess \
         ww3_prnc >> "$LOG" 2>&1
@@ -435,14 +455,20 @@ prepare_nested_restart() {
     return 0
 }
 
-# ww3_shel: try MPI first, fall back to a direct (non-MPI) run before failing
+# ww3_shel: Slurm 内使用 srun+PMI2；本地 mpirun 失败时保留串行回退。
 run_ww3_shel_with_fallback() {
     echo -e "
-============================== Running mpirun ww3_shel ==============================" >> "$LOG"
-    mpirun -n $MPI_NPROCS ww3_shel >> "$LOG" 2>&1
+============================== Running MPI ww3_shel ($MPI_NPROCS tasks) ==============================" >> "$LOG"
+    run_mpi_program "$MPI_NPROCS" ww3_shel >> "$LOG" 2>&1
     rc_mpi=$?
     if [ $rc_mpi -eq 0 ]; then
         return 0
+    fi
+
+    if [ -n "${SLURM_JOB_ID:-}" ]; then
+        echo -e "
+============================== Slurm MPI ww3_shel failed with exit code $rc_mpi ==============================" >> "$LOG"
+        return $rc_mpi
     fi
 
     echo -e "
@@ -488,7 +514,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
         if [ "$RESTART_SKIP_STRT" -eq 1 ]; then
             echo "⏭️ Restart mode: skip ww3_strt ($lv), start from $RESTART_RUNTIME_TIME" >> "$LOG"
         else
-            run_step "ww3_strt ($lv)" ww3_strt
+            run_step "ww3_strt ($lv)" run_mpi_program 1 ww3_strt
         fi
         cd ..
     done
@@ -508,8 +534,8 @@ if [ "$GRID_TYPE" = "nested" ]; then
     # Run MPI program (nested grid mode)
     ######################################
     echo -e "
-============================== Running mpirun ww3_multi ==============================" >> "$LOG"
-    mpirun -n $MPI_NPROCS ww3_multi >> "$LOG" 2>&1
+============================== Running MPI ww3_multi ($MPI_NPROCS tasks) ==============================" >> "$LOG"
+    run_mpi_program "$MPI_NPROCS" ww3_multi >> "$LOG" 2>&1
     rc_mpi=$?
 
     if [ $rc_mpi -ne 0 ]; then
@@ -542,7 +568,7 @@ else
     if [ "$RESTART_SKIP_STRT" -eq 1 ]; then
         echo "⏭️ Restart mode: skip ww3_strt, start from $RESTART_RUNTIME_TIME" >> "$LOG"
     else
-        run_step "ww3_strt" ww3_strt
+        run_step "ww3_strt" run_mpi_program 1 ww3_strt
     fi
 
     ######################################
