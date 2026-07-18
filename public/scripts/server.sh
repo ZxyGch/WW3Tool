@@ -61,6 +61,8 @@ run_mpi_program() {
             return 2
         fi
         layout="${MPI_TASKS_PER_NODE:-}"
+        layout="${layout//:/,}"
+        layout="${layout//+/,}"
         if [ -n "$layout" ]; then
             IFS=',' read -r -a counts <<< "$layout"
             if [ "${#counts[@]}" -ne "$nnodes" ]; then
