@@ -52,20 +52,55 @@ MPI_FI_SOCKETS_IFACE="${FI_SOCKETS_IFACE:-$MPI_HYDRA_IFACE}"
 run_mpi_program() {
     local nprocs="$1"; shift
     if [ -n "${SLURM_JOB_ID:-}" ]; then
-        local host_csv nnodes ppn
+        local host_csv nnodes ppn layout hostfile total count index
+        local -a counts
         host_csv="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | paste -sd, -)"
         nnodes="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | sed '/^$/d' | wc -l)"
         if [ -z "$host_csv" ] || [ "$nnodes" -lt 1 ]; then
             echo "Cannot resolve Slurm nodes: ${SLURM_JOB_NODELIST:-unset}" >> "$LOG"
             return 2
         fi
-        ppn=$(( (nprocs + nnodes - 1) / nnodes ))
-        mpirun -bootstrap ssh -hosts "$host_csv" -ppn "$ppn" \
-            -genv I_MPI_HYDRA_IFACE "$MPI_HYDRA_IFACE" \
-            -genv I_MPI_FABRICS "$MPI_FABRICS" \
-            -genv FI_PROVIDER "$MPI_FI_PROVIDER" \
-            -genv FI_SOCKETS_IFACE "$MPI_FI_SOCKETS_IFACE" \
-            -n "$nprocs" "$@"
+        layout="${MPI_TASKS_PER_NODE:-}"
+        if [ -n "$layout" ]; then
+            IFS=',' read -r -a counts <<< "$layout"
+            if [ "${#counts[@]}" -ne "$nnodes" ]; then
+                echo "MPI_TASKS_PER_NODE=$layout does not match $nnodes Slurm nodes" >> "$LOG"
+                return 2
+            fi
+            hostfile="$SCRIPT_ROOT/.mpi_hosts_${SLURM_JOB_ID}"
+            : > "$hostfile"
+            total=0
+            index=0
+            while IFS= read -r host; do
+                count="${counts[$index]}"
+                if ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -lt 1 ]; then
+                    echo "Invalid MPI task count in layout: $layout" >> "$LOG"
+                    return 2
+                fi
+                printf '%s:%s\n' "$host" "$count" >> "$hostfile"
+                total=$((total + count))
+                index=$((index + 1))
+            done < <(scontrol show hostnames "$SLURM_JOB_NODELIST")
+            if [ "$total" -lt "$nprocs" ]; then
+                echo "MPI hostfile provides $total slots, fewer than requested $nprocs" >> "$LOG"
+                return 2
+            fi
+            echo "MPI hosts: $(tr '\n' ' ' < "$hostfile")" >> "$LOG"
+            mpirun -bootstrap ssh -f "$hostfile" \
+                -genv I_MPI_HYDRA_IFACE "$MPI_HYDRA_IFACE" \
+                -genv I_MPI_FABRICS "$MPI_FABRICS" \
+                -genv FI_PROVIDER "$MPI_FI_PROVIDER" \
+                -genv FI_SOCKETS_IFACE "$MPI_FI_SOCKETS_IFACE" \
+                -n "$nprocs" "$@"
+        else
+            ppn=$(( (nprocs + nnodes - 1) / nnodes ))
+            mpirun -bootstrap ssh -hosts "$host_csv" -ppn "$ppn" \
+                -genv I_MPI_HYDRA_IFACE "$MPI_HYDRA_IFACE" \
+                -genv I_MPI_FABRICS "$MPI_FABRICS" \
+                -genv FI_PROVIDER "$MPI_FI_PROVIDER" \
+                -genv FI_SOCKETS_IFACE "$MPI_FI_SOCKETS_IFACE" \
+                -n "$nprocs" "$@"
+        fi
     else
         mpirun -n "$nprocs" "$@"
     fi
