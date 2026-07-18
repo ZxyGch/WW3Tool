@@ -41,24 +41,31 @@ FAIL_MARK="$SCRIPT_ROOT/fail"
 # Clean old markers only; keep earlier preparation/submission logs.
 rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
-# Slurm 多节点作业使用原生 PMI2 启动 Intel MPI，避免在作业内部再次由 Hydra
-# 调用 srun 时将远端代理错误连接到 localhost。非 Slurm 环境仍使用 mpirun。
-SLURM_PMI2_LIB="${SLURM_PMI2_LIB:-/opt/gridview/slurm/lib/libpmi2.so}"
+# Slurm 多节点作业继续使用 Intel MPI 的 mpirun，但显式采用 SSH bootstrap、
+# 计算网卡和 sockets provider，避免 Hydra 自动调用 srun 后让远端代理连接
+# localhost。非 Slurm 环境仍使用普通 mpirun。
+MPI_HYDRA_IFACE="${I_MPI_HYDRA_IFACE:-enp24s0f0}"
+MPI_FABRICS="${I_MPI_FABRICS:-shm:ofi}"
+MPI_FI_PROVIDER="${FI_PROVIDER:-sockets}"
+MPI_FI_SOCKETS_IFACE="${FI_SOCKETS_IFACE:-$MPI_HYDRA_IFACE}"
 
 run_mpi_program() {
     local nprocs="$1"; shift
     if [ -n "${SLURM_JOB_ID:-}" ]; then
-        if [ ! -r "$SLURM_PMI2_LIB" ]; then
-            echo "Slurm PMI2 library not found: $SLURM_PMI2_LIB" >> "$LOG"
-            return 127
+        local host_csv nnodes ppn
+        host_csv="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | paste -sd, -)"
+        nnodes="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | sed '/^$/d' | wc -l)"
+        if [ -z "$host_csv" ] || [ "$nnodes" -lt 1 ]; then
+            echo "Cannot resolve Slurm nodes: ${SLURM_JOB_NODELIST:-unset}" >> "$LOG"
+            return 2
         fi
-        export I_MPI_PMI_LIBRARY="$SLURM_PMI2_LIB"
-        if [ "$nprocs" -eq 1 ]; then
-            srun --mpi=pmi2 --nodes=1 --ntasks=1 --kill-on-bad-exit=1 "$@"
-        else
-            srun --mpi=pmi2 --ntasks="$nprocs" --distribution=block:block \
-                --kill-on-bad-exit=1 "$@"
-        fi
+        ppn=$(( (nprocs + nnodes - 1) / nnodes ))
+        mpirun -bootstrap ssh -hosts "$host_csv" -ppn "$ppn" \
+            -genv I_MPI_HYDRA_IFACE "$MPI_HYDRA_IFACE" \
+            -genv I_MPI_FABRICS "$MPI_FABRICS" \
+            -genv FI_PROVIDER "$MPI_FI_PROVIDER" \
+            -genv FI_SOCKETS_IFACE "$MPI_FI_SOCKETS_IFACE" \
+            -n "$nprocs" "$@"
     else
         mpirun -n "$nprocs" "$@"
     fi
@@ -455,7 +462,7 @@ prepare_nested_restart() {
     return 0
 }
 
-# ww3_shel: Slurm 内使用 srun+PMI2；本地 mpirun 失败时保留串行回退。
+# ww3_shel: Slurm 内使用显式配置的 mpirun；本地失败时保留串行回退。
 run_ww3_shel_with_fallback() {
     echo -e "
 ============================== Running MPI ww3_shel ($MPI_NPROCS tasks) ==============================" >> "$LOG"
@@ -467,7 +474,7 @@ run_ww3_shel_with_fallback() {
 
     if [ -n "${SLURM_JOB_ID:-}" ]; then
         echo -e "
-============================== Slurm MPI ww3_shel failed with exit code $rc_mpi ==============================" >> "$LOG"
+============================== Slurm mpirun ww3_shel failed with exit code $rc_mpi ==============================" >> "$LOG"
         return $rc_mpi
     fi
 
