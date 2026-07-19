@@ -41,13 +41,11 @@ FAIL_MARK="$SCRIPT_ROOT/fail"
 # Clean old markers only; keep earlier preparation/submission logs.
 rm -f "$SUCCESS_MARK" "$FAIL_MARK"
 
-# Slurm 多节点作业继续使用 Intel MPI 的 mpirun，但显式采用 SSH bootstrap、
-# 计算网卡和 sockets provider，避免 Hydra 自动调用 srun 后让远端代理连接
-# localhost。非 Slurm 环境仍使用普通 mpirun。
-MPI_HYDRA_IFACE="${I_MPI_HYDRA_IFACE:-enp24s0f0}"
+# Slurm 多节点：Intel MPI + SSH bootstrap，避免 Hydra 自动走 srun。
+# 不绑定计算网卡（I_MPI_HYDRA_IFACE / FI_SOCKETS_IFACE）；由 MPI 自行选路。
+# 非 Slurm 环境仍用普通 mpirun。
 MPI_FABRICS="${I_MPI_FABRICS:-shm:ofi}"
 MPI_FI_PROVIDER="${FI_PROVIDER:-sockets}"
-MPI_FI_SOCKETS_IFACE="${FI_SOCKETS_IFACE:-$MPI_HYDRA_IFACE}"
 
 run_mpi_program() {
     local nprocs="$1"; shift
@@ -59,6 +57,13 @@ run_mpi_program() {
         if [ -z "$host_csv" ] || [ "$nnodes" -lt 1 ]; then
             echo "Cannot resolve Slurm nodes: ${SLURM_JOB_NODELIST:-unset}" >> "$LOG"
             return 2
+        fi
+        # 单节点：共享内存即可，不绑网卡、不用 SSH bootstrap。
+        if [ "$nnodes" -eq 1 ]; then
+            echo "MPI single-node: mpirun -n ${nprocs}" >> "$LOG"
+            env -u I_MPI_HYDRA_IFACE -u FI_SOCKETS_IFACE \
+                mpirun -n "$nprocs" -ppn "$nprocs" "$@"
+            return $?
         fi
         layout="${MPI_TASKS_PER_NODE:-}"
         layout="${layout//:/,}"
@@ -88,19 +93,17 @@ run_mpi_program() {
                 return 2
             fi
             echo "MPI hosts: $(tr '\n' ' ' < "$hostfile")" >> "$LOG"
-            mpirun -bootstrap ssh -f "$hostfile" \
-                -genv I_MPI_HYDRA_IFACE "$MPI_HYDRA_IFACE" \
+            env -u I_MPI_HYDRA_IFACE -u FI_SOCKETS_IFACE \
+                mpirun -bootstrap ssh -f "$hostfile" \
                 -genv I_MPI_FABRICS "$MPI_FABRICS" \
                 -genv FI_PROVIDER "$MPI_FI_PROVIDER" \
-                -genv FI_SOCKETS_IFACE "$MPI_FI_SOCKETS_IFACE" \
                 -n "$nprocs" "$@"
         else
             ppn=$(( (nprocs + nnodes - 1) / nnodes ))
-            mpirun -bootstrap ssh -hosts "$host_csv" -ppn "$ppn" \
-                -genv I_MPI_HYDRA_IFACE "$MPI_HYDRA_IFACE" \
+            env -u I_MPI_HYDRA_IFACE -u FI_SOCKETS_IFACE \
+                mpirun -bootstrap ssh -hosts "$host_csv" -ppn "$ppn" \
                 -genv I_MPI_FABRICS "$MPI_FABRICS" \
                 -genv FI_PROVIDER "$MPI_FI_PROVIDER" \
-                -genv FI_SOCKETS_IFACE "$MPI_FI_SOCKETS_IFACE" \
                 -n "$nprocs" "$@"
         fi
     else
