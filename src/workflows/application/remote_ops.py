@@ -589,6 +589,7 @@ def _parse_sinfo_idle_resources(out: str) -> dict:
                 {
                     "cpu": cpu_name,
                     "nodes": 1,
+                    "node": record.get("node", ""),
                     "cores": idle_cpus,
                     "max_cores_per_node": idle_cpus,
                     "free_mem_mb": record.get("free_mem_mb"),

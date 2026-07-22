@@ -848,6 +848,7 @@
   "cluster_col_nodes": "节点",
   "cluster_col_elapsed": "时间",
   "idle_col_cpu": "分区",
+  "idle_col_node_names": "节点名",
   "idle_col_nodes": "节点数",
   "idle_col_cores": "可用核数",
   "step6_queue_ranking": "任务队列",

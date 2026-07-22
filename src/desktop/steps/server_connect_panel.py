@@ -182,7 +182,7 @@ class ServerConnectPanel:
         self._idle_table.setHorizontalHeaderLabels(
             [
                 tr("idle_col_cpu", "分区"),
-                tr("idle_col_nodes", "节点数"),
+                tr("idle_col_node_names", "节点名"),
                 tr("idle_col_cores", "可用核数"),
             ]
         )
@@ -368,7 +368,7 @@ class ServerConnectPanel:
         self._cpu_table.setVisible(True)
 
     def update_idle_resources(self, rows: list) -> None:
-        """Update idle resource table. rows: [{cpu, nodes, cores, max_cores_per_node}, ...]."""
+        """Update idle resource table. rows: [{cpu, node, nodes, cores, max_cores_per_node}, ...]."""
         valid = []
         for row in rows or []:
             if not isinstance(row, dict):
@@ -384,10 +384,12 @@ class ServerConnectPanel:
                 continue
             if nodes <= 0 or cores <= 0:
                 continue
+            node_name = str(row.get("node") or row.get("node_name") or "").strip()
             valid.append(
                 {
                     "cpu": cpu,
                     "nodes": nodes,
+                    "node_name": node_name,
                     "cores": cores,
                     "max_cores_per_node": max_per_node,
                     "free_mem_mb": row.get("free_mem_mb"),
@@ -398,7 +400,7 @@ class ServerConnectPanel:
         signature = tuple(
             (
                 row["cpu"],
-                row["nodes"],
+                row["node_name"],
                 row["cores"],
                 row["max_cores_per_node"],
                 row.get("free_mem_mb"),
@@ -416,7 +418,7 @@ class ServerConnectPanel:
         try:
             header_labels = [
                 tr("idle_col_cpu", "分区"),
-                tr("idle_col_nodes", "节点数"),
+                tr("idle_col_node_names", "节点名"),
                 tr("idle_col_cores", "可用核数"),
             ]
             self._idle_table.setRowCount(len(valid) + 1)
@@ -437,7 +439,7 @@ class ServerConnectPanel:
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             ]
             for row_index, row in enumerate(valid, start=1):
-                values = [row["cpu"], row["nodes"], row["cores"]]
+                values = [row["cpu"], row.get("node_name", ""), row["cores"]]
                 for col, (value, align) in enumerate(zip(values, aligns)):
                     item = QTableWidgetItem(str(value))
                     item.setTextAlignment(align)

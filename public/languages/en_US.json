@@ -859,6 +859,7 @@
   "cluster_col_nodes": "Nodes",
   "cluster_col_elapsed": "Time",
   "idle_col_cpu": "Partition",
+  "idle_col_node_names": "Node",
   "idle_col_nodes": "Nodes",
   "idle_col_cores": "Avail. cores",
   "step6_queue_ranking": "Task Queue",
