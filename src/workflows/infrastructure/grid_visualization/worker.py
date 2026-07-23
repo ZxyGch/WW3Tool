@@ -926,11 +926,13 @@ def unst_figsize_for_extent(extent, base_area=160.0, w_clip=(6.0, 28.0), h_clip=
 
 
 def unst_triangulation_mask(xy, ect):
+    """Hide only triangles that still wrap across a longitude cut (span > 180°).
+
+    Continuous antimeridian exports (lon may exceed ±180) stay drawable; the old
+    near-dateline heuristic incorrectly hid valid triangles near lon≈0.
+    """
     x_coords = xy[ect, 0]
-    signs = np.sign(x_coords)
-    uniform_sign = np.ptp(signs, axis=1) == 0
-    near_dateline = (np.abs(x_coords) < 10).any(axis=1)
-    return ~(uniform_sign | near_dateline)
+    return np.ptp(x_coords, axis=1) > 180.0
 
 
 def unst_wireframe_segments(

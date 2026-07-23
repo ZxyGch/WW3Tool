@@ -131,21 +131,11 @@ def calc_elm_size(xy, ect):
     return distmin, distmax
 
 def create_mask(xy, ect):
-    # Extract x-coordinates of the nodes for each element
-    x_coords = xy[ect, 0]  # ect indexes rows in xy, column 0 is x-coordinates
-
-    # Check for cross-dateline elements
-    # Calculate signs and check if all are the same for each element
-    signs = np.sign(x_coords)
-    uniform_sign = (np.ptp(signs, axis=1) == 0)  # Change in peak-to-peak (max-min) across rows; if 0, all signs are the same
-
-    # Check for elements near the dateline, i.e., abs(x) < 10
-    near_dateline = (np.abs(x_coords) < 10).any(axis=1)  # Check any coordinate < 10 in absolute value for each element
-
-    # Combine conditions: elements are valid if they do not cross the dateline and are not near the dateline
-    mask = ~(uniform_sign | near_dateline)
-
-    return mask.astype(int)  # Convert boolean mask to integer (1s and 0s)
+    # Hide only triangles that still wrap across a longitude cut (span > 180°).
+    # Continuous antimeridian exports (lon may exceed ±180) remain drawable.
+    x_coords = xy[ect, 0]
+    mask = np.ptp(x_coords, axis=1) > 180.0
+    return mask.astype(int)
 
 
 

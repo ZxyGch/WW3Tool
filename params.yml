@@ -251,7 +251,7 @@ slurm:
     6.07 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st4_rect/model/exe
     6.07 ST6_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st6_rect/model/exe
     6.07 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st2_unst/model/exe
-    6.07 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst/model/exe
+    6.07 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst_impi2021/model/exe
     6.07 ST4_UNST_IMPI2021: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst_impi2021/model/exe
     6.07 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st6_unst/model/exe
     7.14 ST2: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st2/bin

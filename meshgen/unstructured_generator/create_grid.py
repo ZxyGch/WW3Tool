@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import configparser
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -85,6 +86,141 @@ def _normalize_lon360(lon: float) -> float:
     return float(lon) % 360.0
 
 
+def _normalize_lon180(lon: float) -> float:
+    """Wrap longitude to (−180, 180]."""
+    x = (float(lon) + 180.0) % 360.0 - 180.0
+    return 180.0 if x == -180.0 else x
+
+
+def _normalize_regional_lon_box(
+    lon_min: float, lon_max: float
+) -> tuple[float, float, bool]:
+    """
+    Return a continuous longitude box (lon_min <= lon_max).
+
+    Accepts:
+    - already continuous boxes, including east > 180 (e.g. 112..193);
+    - −180..180 boxes that cross the antimeridian with west > east
+      (e.g. 170..−160 → 170..200).
+
+    Returns (lon_min, lon_max, crosses_antimeridian).
+    """
+    lo = float(lon_min)
+    hi = float(lon_max)
+    if hi >= lo:
+        # Contiguous box; east > 180 (or west < −180) means antimeridian unwrap
+        # for DEM subsetting / continuous export.
+        crosses = bool(hi > 180.0 or lo < -180.0)
+        return lo, hi, crosses
+    # west > east in −180..180 convention: unwrap east across the dateline
+    hi_unwrapped = hi + 360.0
+    if hi_unwrapped - lo >= 360.0 - 1e-9:
+        raise ValueError(
+            f"regional lon box [{lon_min}, {lon_max}] spans the full globe; "
+            "use an explicit global domain instead of a wrapped regional box."
+        )
+    return lo, hi_unwrapped, True
+
+
+def _unwrap_lons_around_center(lon: np.ndarray, center: float) -> np.ndarray:
+    """Unwrap node longitudes onto a continuous branch around ``center`` (deg)."""
+    lon = np.asarray(lon, dtype=np.float64)
+    rel = np.mod(lon - float(center) + 180.0, 360.0) - 180.0
+    return rel + float(center)
+
+
+def _triangle_signed_area_lonlat(
+    lon: np.ndarray, lat: np.ndarray, tri: np.ndarray
+) -> np.ndarray:
+    """Planar signed area of triangles in lon/lat degrees (WW3 TRIA convention)."""
+    i1 = tri[:, 0]
+    i2 = tri[:, 1]
+    i3 = tri[:, 2]
+    return 0.5 * (
+        (lat[i2] - lat[i1]) * (lon[i1] - lon[i3])
+        + (lat[i3] - lat[i1]) * (lon[i2] - lon[i1])
+    )
+
+
+def _finalize_export_lonlat(
+    point: np.ndarray,
+    tri_1based: np.ndarray,
+    *,
+    stereo_lon: float,
+    lon_min: float,
+    lon_max: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Make exported Gmsh lon/lat safe for WW3 ``WRONG TRIANGLE`` checks.
+
+    After stereographic inverse + ``R3toS2``, longitudes are typically wrapped to
+    (−180, 180]. For domains that cross 180°E this tears otherwise-valid
+    triangles (planar area ≤ 0). Unwrap onto a continuous branch around the
+    domain/stereo centre, enforce anticlockwise winding, and keep continuous
+    longitudes (may be > 180 or < −180) when that is required for continuity.
+    When the continuous range already lies in (−180, 180], values stay there.
+    """
+    point = np.asarray(point, dtype=np.float64).copy()
+    tri = np.asarray(tri_1based, dtype=np.int64).copy()
+    if point.ndim != 2 or point.shape[1] < 2:
+        raise ValueError("point array must be (N, >=2) lon/lat/[depth]")
+    if tri.ndim != 2 or tri.shape[1] != 3:
+        raise ValueError("triangle array must be (M, 3) 1-based indices")
+
+    center = 0.5 * (float(lon_min) + float(lon_max))
+    # Prefer stereo centre when it lies inside the continuous box.
+    if float(lon_min) - 1e-6 <= float(stereo_lon) <= float(lon_max) + 1e-6:
+        center = float(stereo_lon)
+
+    lon = _unwrap_lons_around_center(point[:, 0], center)
+    lat = point[:, 1]
+    point[:, 0] = lon
+
+    tri0 = tri - 1
+    area = _triangle_signed_area_lonlat(lon, lat, tri0)
+    flip = area < 0.0
+    n_flip = int(np.count_nonzero(flip))
+    if n_flip:
+        tri0[flip, 1], tri0[flip, 2] = tri0[flip, 2].copy(), tri0[flip, 1].copy()
+        area = _triangle_signed_area_lonlat(lon, lat, tri0)
+
+    tiny = float(np.finfo(np.float64).tiny)
+    bad = area <= tiny
+    if np.any(bad):
+        ib = int(np.flatnonzero(bad)[0])
+        a, b, c = (int(tri0[ib, 0]), int(tri0[ib, 1]), int(tri0[ib, 2]))
+        raise RuntimeError(
+            "antimeridian export still has non-positive triangle area after unwrap/"
+            f"reorder (example tri={ib} nodes=({lon[a]:.5f},{lat[a]:.5f}) "
+            f"({lon[b]:.5f},{lat[b]:.5f}) ({lon[c]:.5f},{lat[c]:.5f}) "
+            f"area={float(area[ib]):.3e}). Check domain lon box and stereo centre."
+        )
+
+    span = np.ptp(lon[tri0], axis=1)
+    n_wrap = int(np.count_nonzero(span > 180.0))
+    if n_wrap:
+        raise RuntimeError(
+            f"antimeridian export still has {n_wrap} triangles with lon span > 180°; "
+            "refusing to write a mesh that WW3 would reject as WRONG TRIANGLE."
+        )
+
+    lon_min_o = float(np.min(lon))
+    lon_max_o = float(np.max(lon))
+    if lon_min_o >= -180.0 - 1e-9 and lon_max_o <= 180.0 + 1e-9:
+        convention = "180"
+    elif lon_min_o >= -1e-9 and lon_max_o <= 360.0 + 1e-9:
+        convention = "360-continuous"
+    else:
+        convention = "unwrapped-continuous"
+
+    print(
+        f"*antimeridian export: center={center:.3f} lon[{lon_min_o:.3f},{lon_max_o:.3f}] "
+        f"flipped={n_flip} convention={convention}",
+        flush=True,
+    )
+    return point, tri0 + 1
+
+
 def _dem_lon_convention(lon: np.ndarray) -> str:
     lon = np.asarray(lon, dtype=np.float64).ravel()
     if lon.size >= 2 and float(lon[0]) >= 0.0 and float(lon[-1]) > 180.0 + 1e-6:
@@ -114,14 +250,29 @@ def _align_lon_lat_to_elev(
     return lon, lat
 
 
-def _dem_lon_to_360(lon: np.ndarray, elev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Reorder -180..180 DEM columns into ascending 0..360 longitudes."""
+def _reorder_lon_columns_to_360(
+    lon: np.ndarray, *fields: np.ndarray
+) -> tuple[np.ndarray, ...]:
+    """Return ascending 0–360 lon plus the same column permutation applied to each field."""
     lon = np.asarray(lon, dtype=np.float64)
     lon360 = np.where(lon < 0.0, lon + 360.0, lon)
     order = np.argsort(lon360)
     lon360 = lon360[order]
-    elev = np.asarray(elev)[:, order]
-    return lon360, elev
+    out: list[np.ndarray] = [lon360]
+    for field in fields:
+        arr = np.asarray(field)
+        if arr.ndim != 2 or arr.shape[1] != order.size:
+            raise ValueError(
+                f"field shape {arr.shape} incompatible with lon length {order.size}"
+            )
+        out.append(arr[:, order])
+    return tuple(out)
+
+
+def _dem_lon_to_360(lon: np.ndarray, elev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Reorder -180..180 DEM columns into ascending 0..360 longitudes."""
+    lon360, elev360 = _reorder_lon_columns_to_360(lon, elev)
+    return lon360, elev360
 
 
 def _regional_dem_lon_bounds(
@@ -133,6 +284,9 @@ def _regional_dem_lon_bounds(
 ) -> tuple[float, float, bool]:
     """
     Map regional box longitudes to DEM subset bounds.
+
+    ``lon_min``/``lon_max`` must already be a continuous box (lon_min <= lon_max),
+    possibly with lon_max > 180 after antimeridian unwrap.
 
     Returns (lon0, lon1, use_360). When the regional box uses 0–360° east
     longitudes beyond 180° (e.g. 113–189°E), convert the -180..180 DEM to 0–360
@@ -148,12 +302,20 @@ def _regional_dem_lon_bounds(
     lon0 = float(lon_min) - margin
     lon1 = float(lon_max) + margin
     if dem_conv == "360":
-        lon0 = _normalize_lon360(lon0)
-        lon1 = _normalize_lon360(lon1)
+        # Keep a contiguous 0–360 subset when possible; do not wrap lon1 below lon0.
+        lon0 = float(lon0)
+        lon1 = float(lon1)
+        if lon0 < 0.0 and lon1 <= 360.0:
+            # Shift both into [0,360+) while preserving width.
+            shift = -math.floor(lon0 / 360.0) * 360.0
+            lon0 += shift
+            lon1 += shift
+        lon0 = max(0.0, lon0)
+        lon1 = min(360.0, lon1)
         if lon1 < lon0:
             raise ValueError(
                 f"regional lon box [{lon_min}, {lon_max}] crosses the antimeridian "
-                "in 0–360° coordinates; split the domain or use a 0–360° DEM."
+                "in 0–360° coordinates; unwrap the box first (west>east → east+360)."
             )
     return lon0, lon1, use_360
 
@@ -311,8 +473,10 @@ def _subset_dem(dem_file: str, lon0: float, lon1: float, lat0: float, lat1: floa
         lon, z = _dem_lon_to_360(lon, z)
         dem_conv = "360"
         use_360 = True
-        lon0 = max(0.0, _normalize_lon360(lon0))
-        lon1 = _normalize_lon360(lon1)
+        # Keep a continuous [lon0, lon1] on the 0–360 DEM; do not wrap lon1
+        # with %360 (that would tear domains such as 170..200).
+        lon0 = max(0.0, float(lon0))
+        lon1 = float(lon1)
 
     nlon = z.shape[1]
     nlat = z.shape[0]
@@ -482,8 +646,23 @@ def run_regional_from_config(
     conf = load_regional_config(config_path)
     config_path = os.path.abspath(config_path)
 
-    lon_min = conf["lon_min"]
-    lon_max = conf["lon_max"]
+    lon_min_in = conf["lon_min"]
+    lon_max_in = conf["lon_max"]
+    lon_min, lon_max, crosses_antimeridian = _normalize_regional_lon_box(
+        lon_min_in, lon_max_in
+    )
+    conf["lon_min"] = lon_min
+    conf["lon_max"] = lon_max
+    # Keep stereographic centre on the same continuous branch as the box
+    # (e.g. stereo_lon=-170 with box 170..200 → 190).
+    stereo_in = float(conf["stereo_lon"])
+    stereo_u = float(
+        _unwrap_lons_around_center(
+            np.asarray([stereo_in], dtype=np.float64),
+            0.5 * (lon_min + lon_max),
+        )[0]
+    )
+    conf["stereo_lon"] = stereo_u
     lat_min = conf["lat_min"]
     lat_max = conf["lat_max"]
     margin = conf["margin_deg"]
@@ -494,8 +673,10 @@ def run_regional_from_config(
         sys.exit(1)
 
     print(
-        f"*regional box: lon [{lon_min},{lon_max}]  "
-        f"lat [{lat_min},{lat_max}]  margin {margin} deg"
+        f"*regional box: lon [{lon_min_in},{lon_max_in}] → continuous "
+        f"[{lon_min},{lon_max}]  lat [{lat_min},{lat_max}]  margin {margin} deg"
+        f"  crosses_antimeridian={crosses_antimeridian}"
+        f"  stereo_lon {stereo_in}→{stereo_u}"
     )
 
     dem_conv = "180"
@@ -623,6 +804,13 @@ def run_regional_from_config(
     depth[depth <= 0] = 2.0
     point = np.hstack((point, depth))
     tri_data = ocn_ww3.mesh.tria3["index"] + 1
+    point, tri_data = _finalize_export_lonlat(
+        point,
+        tri_data,
+        stereo_lon=float(conf["stereo_lon"]),
+        lon_min=float(lon_min),
+        lon_max=float(lon_max),
+    )
     write_gmsh_mesh(conf["ww3_mesh_file"], point, tri_data)
     print("*wrote", conf["ww3_mesh_file"])
 
@@ -1133,11 +1321,10 @@ def _validate_domain_zoom(cfg: configparser.ConfigParser) -> None:
     north = float(cfg.get("Domain", "north_lat", fallback="90"))
     if south >= north:
         sys.exit("grid config [Domain]: require south_lat < north_lat")
-    if west >= east:
-        sys.exit(
-            "grid config [Domain]: require west_lon < east_lon (same lon convention as DEM; "
-            "straddling the dateline is not supported here)"
-        )
+    try:
+        _normalize_regional_lon_box(west, east)
+    except ValueError as exc:
+        sys.exit(f"grid config [Domain]: {exc}")
 
     mask = cfg.get("CommandLineArgs", "mask_file", fallback="").strip()
     if mask:
@@ -1171,7 +1358,13 @@ def _write_clipped_dem_nc(
     north: float,
     dest: Path,
 ) -> None:
-    """Subset NWS/RTopo-style bathy NetCDF (lon, lat, bed_elevation [, ice_thickness]) to a lat–lon box."""
+    """Subset NWS/RTopo-style bathy NetCDF (lon, lat, bed_elevation [, ice_thickness]) to a lat–lon box.
+
+    Accepts −180..180 boxes with west > east (dateline) and continuous east > 180.
+    When the continuous box crosses 180°E on a −180..180 DEM, columns are reordered
+    to a contiguous 0–360° longitude axis before writing.
+    """
+    west_c, east_c, crosses = _normalize_regional_lon_box(west, east)
     with nc.Dataset(src, "r") as ds_in:
         if "lon" not in ds_in.variables or "lat" not in ds_in.variables:
             sys.exit("clip_to_bounds: DEM must contain lon and lat variables")
@@ -1185,7 +1378,36 @@ def _write_clipped_dem_nc(
         else:
             ice = np.zeros_like(elev)
 
-        ilon = np.where((lon >= west) & (lon <= east))[0]
+        # Normalize elevation to (nlat, nlon).
+        if elev.shape == (len(lat), len(lon)):
+            pass
+        elif elev.shape == (len(lon), len(lat)):
+            elev = elev.T
+            ice = ice.T
+        else:
+            sys.exit(
+                f"clip_to_bounds: bed_elevation shape {elev.shape} is not (nlat, nlon) or (nlon, nlat) "
+                f"for lon length {len(lon)}, lat length {len(lat)}"
+            )
+
+        dem_conv = _dem_lon_convention(lon)
+        if dem_conv == "180" and (crosses or east_c > 180.0):
+            lon, elev, ice = _reorder_lon_columns_to_360(lon, elev, ice)
+            dem_conv = "360"
+
+        if lon[0] > lon[-1]:
+            lon = lon[::-1]
+            elev = elev[:, ::-1]
+            ice = ice[:, ::-1]
+        if lat[0] > lat[-1]:
+            lat = lat[::-1]
+            elev = elev[::-1, :]
+            ice = ice[::-1, :]
+
+        lon0, lon1, _ = _regional_dem_lon_bounds(
+            west_c, east_c, 0.0, dem_conv=dem_conv
+        )
+        ilon = np.where((lon >= lon0) & (lon <= lon1))[0]
         ilat = np.where((lat >= south) & (lat <= north))[0]
         if ilon.size < 2 or ilat.size < 2:
             sys.exit(
@@ -1193,20 +1415,9 @@ def _write_clipped_dem_nc(
                 "Widen bounds or check DEM / lon–lat convention."
             )
 
-        if elev.shape == (len(lat), len(lon)):
-            elev_c = elev[np.ix_(ilat, ilon)]
-            ice_c = ice[np.ix_(ilat, ilon)]
-            lon_c, lat_c = lon[ilon], lat[ilat]
-        elif elev.shape == (len(lon), len(lat)):
-            # Source is (lon, lat); ocn_ww3 expects bed_elevation (lat, lon).
-            elev_c = elev[np.ix_(ilon, ilat)].T
-            ice_c = ice[np.ix_(ilon, ilat)].T
-            lon_c, lat_c = lon[ilon], lat[ilat]
-        else:
-            sys.exit(
-                f"clip_to_bounds: bed_elevation shape {elev.shape} is not (nlat, nlon) or (nlon, nlat) "
-                f"for lon length {len(lon)}, lat length {len(lat)}"
-            )
+        elev_c = elev[np.ix_(ilat, ilon)]
+        ice_c = ice[np.ix_(ilat, ilon)]
+        lon_c, lat_c = lon[ilon], lat[ilat]
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     with nc.Dataset(str(dest), "w", format="NETCDF4") as ds_out:
@@ -1238,6 +1449,7 @@ def _clip_dem_if_requested(
     east = float(cfg.get("Domain", "east_lon", fallback="180"))
     south = float(cfg.get("Domain", "south_lat", fallback="-90"))
     north = float(cfg.get("Domain", "north_lat", fallback="90"))
+    west_c, east_c, _ = _normalize_regional_lon_box(west, east)
     src = cfg.get("DataFiles", "dem_file", fallback="").strip()
     if not src:
         sys.exit("clip_to_bounds: DataFiles.dem_file is empty")
@@ -1245,7 +1457,8 @@ def _clip_dem_if_requested(
         sys.exit(f"clip_to_bounds: DEM not found: {src}")
     dest = run_dir / "_clipped_dem.nc"
     print(
-        f"clip_to_bounds: subsetting DEM [{west}, {east}] × [{south}, {north}] → {dest}",
+        f"clip_to_bounds: subsetting DEM [{west}, {east}] → continuous "
+        f"[{west_c}, {east_c}] × [{south}, {north}] → {dest}",
         file=sys.stderr,
     )
     _write_clipped_dem_nc(src, west, east, south, north, dest)
@@ -1412,9 +1625,12 @@ def main() -> None:
             if not src.is_file():
                 sys.exit(f"WW3 mesh not found for publish step: {src}")
             dest = dest_dir / name
-            shutil.copy2(src, dest)
+            if src.resolve() != dest.resolve():
+                shutil.copy2(src, dest)
+                print(f"Published WW3 mesh: {dest}", file=sys.stderr)
+            else:
+                print(f"WW3 mesh already at publish path: {dest}", file=sys.stderr)
             ww3_publish_resolved = dest_dir
-            print(f"Published WW3 mesh: {dest}", file=sys.stderr)
 
     entries: list[tuple[str, str]] = []
     ww3_raw = cfg.get("MeshSettings", "ww3_mesh_file", fallback="grid.ww3").strip() or "grid.ww3"

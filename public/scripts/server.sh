@@ -9,6 +9,13 @@
 #wavewatch3--ST2
 export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
 
+# Intel MPI 2021.18 + NetCDF/gfortran14 运行时（6.07 impi2021 构建链必须 source）
+WW3_ACTIVATE="${WW3_ACTIVATE:-/public/home/weiyl001/bin/wavewatch3/6.07/activate_impi2021.sh}"
+if [[ -f "${WW3_ACTIVATE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${WW3_ACTIVATE}"
+fi
+
 set -o pipefail
 
 ulimit -s unlimited
