@@ -15,6 +15,7 @@ connection for subsequent operations, avoiding repeated SSH handshakes.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, Optional
 
 from workflows.domain.config_models import PipelineConfig
@@ -30,10 +31,36 @@ class RemoteViewModel:
         self._on_log = on_log
         self._client = None  # [EN] Persistent SSH client
         # 持久化 SSH 客户端
+        # 第五步/第六步产生的日志镜像到工作目录 run.log（不存在则创建，不截断）
+        self._run_log_path: Optional[Path] = None
+
+    def _begin_run_log(self, config: PipelineConfig) -> None:
+        """根据 config 的工作目录设置 run.log 镜像目标；目录无效则不镜像。"""
+        self._run_log_path = None
+        try:
+            d = Path(getattr(config.workdir, "path", ""))
+        except Exception:
+            return
+        if not d.is_dir():
+            return
+        run_log = d / "run.log"
+        try:
+            if not run_log.exists():
+                run_log.touch()
+            self._run_log_path = run_log
+        except Exception:
+            self._run_log_path = None
 
     def _log(self, message: str) -> None:
+        text = str(message)
+        if self._run_log_path is not None:
+            try:
+                with self._run_log_path.open("a", encoding="utf-8") as fh:
+                    fh.write(text + "\n")
+            except Exception:
+                pass
         if self._on_log is not None:
-            self._on_log(str(message))
+            self._on_log(text)
 
     @property
     def is_connected(self) -> bool:
@@ -52,6 +79,7 @@ class RemoteViewModel:
     def _ensure_client(self, config: PipelineConfig):
         # [EN] Ensure an available connection: auto-reconnect when disconnected.
         """确保有可用连接：断开时自动重连。"""
+        self._begin_run_log(config)
         if self._client is not None and self._client.is_alive():
             return self._client
         from workflows.infrastructure.remote.ssh_client import SshClient
@@ -60,6 +88,7 @@ class RemoteViewModel:
         return self._client
 
     def connect_test(self, config: PipelineConfig):
+        self._begin_run_log(config)
         from workflows.infrastructure.remote.ssh_client import SshClient
         from workflows.support.logging import CoreLogger
 
