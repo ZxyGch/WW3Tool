@@ -187,9 +187,9 @@ calc:
 #   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
-  version: 6.07
-  start_date: '20250101'
-  end_date: '20250103'
+  version: 7.14
+  start_date: '20000227'
+  end_date: '20000228'
   output_step: 3600
   file_split: single
   output_scheme:
@@ -243,24 +243,25 @@ slurm:
   time: null
   mem: 190G
   server_st:
-    use: 6.07 ST2
-    6.07 ST2: /public/home/weiyl001/bin/wavewatch3/6.07/st2/model/exe
-    6.07 ST4: /public/home/weiyl001/bin/wavewatch3/6.07/st4/model/exe
-    6.07 ST6: /public/home/weiyl001/bin/wavewatch3/6.07/st6/model/exe
+    use: 7.14 ST4_RECT
+    6.07 ST2: /public/home/weiyl001/bin/wavewatch3/6.07/st2_smc/model/exe
+    6.07 ST4: /public/home/weiyl001/bin/wavewatch3/6.07/st4_smc/model/exe
+    6.07 ST6: /public/home/weiyl001/bin/wavewatch3/6.07/st6_smc/model/exe
     6.07 ST2_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st2_rect/model/exe
     6.07 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st4_rect/model/exe
     6.07 ST6_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st6_rect/model/exe
     6.07 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st2_unst/model/exe
-    6.07 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst_impi2021/model/exe
-    6.07 ST4_UNST_IMPI2021: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst_impi2021/model/exe
+    6.07 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst/model/exe
     6.07 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st6_unst/model/exe
-    7.14 ST2: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st2/bin
-    7.14 ST4: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st4/bin
-    7.14 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st4_rect/bin
-    7.14 ST6: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st6/bin
-    7.14 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st2_unst/bin
-    7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st4_unst/bin
-    7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/_legacy_intel2019_20260719/7.14/st6_unst/bin
+    7.14 ST2: /public/home/weiyl001/bin/wavewatch3/7.14/st2_smc/model/exe
+    7.14 ST4: /public/home/weiyl001/bin/wavewatch3/7.14/st4_smc/model/exe
+    7.14 ST6: /public/home/weiyl001/bin/wavewatch3/7.14/st6_smc/model/exe
+    7.14 ST2_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st2_rect/model/exe
+    7.14 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st4_rect/model/exe
+    7.14 ST6_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st6_rect/model/exe
+    7.14 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st2_unst/model/exe
+    7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st4_unst/model/exe
+    7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st6_unst/model/exe
 # ────────────────────────────────────────────────────────────────────
 # Local WW3 run settings (Step 5 local execution panel).
 #   local_st – local WW3 binaries: use + name: path (multi-scheme only).

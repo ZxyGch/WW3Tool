@@ -9,11 +9,13 @@
 #wavewatch3--ST2
 export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
 
-# Intel MPI 2021.18 + NetCDF/gfortran14 运行时（6.07 impi2021 构建链必须 source）
-WW3_ACTIVATE="${WW3_ACTIVATE:-/public/home/weiyl001/bin/wavewatch3/6.07/activate_impi2021.sh}"
-if [[ -f "${WW3_ACTIVATE}" ]]; then
-    # shellcheck disable=SC1090
-    source "${WW3_ACTIVATE}"
+# WW3 默认运行时：Intel MPI 2021.18（与 ~/.bashrc 内联块一致）
+# 登录/交互 shell 已由 ~/.bashrc 提供；Slurm 非交互作业在此补齐。
+# 禁止再 source 6.07/env.sh 或 activate_impi2021.sh。
+if [[ -z "${I_MPI_ROOT:-}" ]]; then
+    export PATH="/public/home/weiyl001/bin/intel/oneapi_2021.18/mpi/2021.18/bin:/public/home/weiyl001/bin/intel/oneapi_2021.18/ww3_toolchain/bin:${PATH:-}"
+    export LD_LIBRARY_PATH="/public/home/weiyl001/bin/intel/oneapi_2021.18/mpi/2021.18/lib:/public/home/weiyl001/bin/wavewatch3/third_party/netcdf-fortran-gfortran14/lib:/public/home/weiyl001/bin/miniconda3/envs/ww3-analysis/lib:/public/home/weiyl001/bin/meshgen-tools/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export I_MPI_ROOT="/public/home/weiyl001/bin/intel/oneapi_2021.18/mpi/2021.18"
 fi
 
 set -o pipefail

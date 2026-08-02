@@ -142,7 +142,12 @@ class StepFourServiceMixin:
             if not is_nested_grid:
                 if os.path.isdir(scripts_dir):
                     script_copy_entries = []
+                    # 禁止把仓库模板 params.yml 拷进工区，否则会覆盖算例真实 forcing.wind。
+                    # [EN] Never copy template params.yml into a workdir; it would wipe forcing.wind.
+                    skip_script_names = {"params.yml", ".DS_Store"}
                     for item in os.listdir(scripts_dir):
+                        if item in skip_script_names:
+                            continue
                         src_path = os.path.join(scripts_dir, item)
                         if not os.path.isfile(src_path):
                             continue
