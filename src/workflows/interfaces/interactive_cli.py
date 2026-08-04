@@ -264,6 +264,8 @@ def print_help() -> None:
     print(_bold(tr("icli_help_header", "🌊 WW3Tool 交互式命令行")))
     print(_color(tr("icli_help_hint", "输入命令后按回车执行，Tab 键自动补全，↑↓ 翻阅历史"), _Colors.CYAN))
     print()
+    print(_color(tr("icli_help_template", "默认 params.yml 模板：{path}（用 'workdir' 命令复制到工作目录）").format(path=str(_repo_root_path() / "params.yml")), _Colors.CYAN))
+    print()
 
     groups = _help_groups()
 
@@ -297,6 +299,7 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
     not_cfg = tr("icli_not_configured", "(未配置)")
 
     print(_bold(_color("\n" + tr("icli_config_summary", "📋 当前配置摘要"), _Colors.YELLOW)))
+    print(_config_field(tr("icli_default_template", "默认 params.yml 模板：{}"), str(_repo_root_path() / "params.yml"), indent=2))
     print(_config_field(tr("icli_config_file", "配置文件：{}"), params_path, indent=2))
     print(_config_field(tr("icli_workdir", "工作目录：{}"), cfg.workdir.path, indent=2))
 
