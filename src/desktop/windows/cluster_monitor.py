@@ -1,12 +1,12 @@
 """集群监控页：左侧 个人任务队列 + 空闲资源 两张卡片，右侧 日志(1/5) + 全集群任务列表(4/5)。
 
-打开页面自动连接 SSH；断开后每秒自动尝试重连；三个列表每秒刷新。
-集群任务列表显示集群上所有用户的任务（sacct -a），个人任务队列与空闲资源列表
-与主页第五步样式一致。
+打开页面自动连接 SSH；断开后每秒自动尝试重连；列表每秒刷新。
+左侧 = 集群作业表（sacct -a 所有用户）+ 空闲资源列表（与主页第五步样式一致）；
+右侧 = 其他用户任务详细列表（run_cluster_jobs_log）+ 日志（1/5）。
 
-[EN] Cluster monitor page: left = my task queue + idle resources cards, right =
-log (1/5) + cluster jobs for all users (4/5). Auto-connects on open and
-auto-reconnects every second when SSH drops; all lists refresh every second.
+[EN] Cluster monitor page: left = cluster jobs table + idle resources cards;
+right = other-users job detail list (run_cluster_jobs_log) + log (1/5).
+Auto-connects on open and auto-reconnects every second when SSH drops.
 """
 
 from __future__ import annotations
@@ -30,20 +30,8 @@ from PyQt6.QtWidgets import (
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
-from workflows.application.remote_ops import run_server_status
+from workflows.application.remote_ops import run_cluster_jobs_log, run_server_status
 from workflows.support.translations import tr
-
-# ── 任务状态映射（与主页第五步一致）────────────────────────────────────────────
-# [EN] Task state mapping (same as Step 5 on the home page).
-_STATE_MAP = {
-    "RUNNING": ("queue_status_running", "运行中"),
-    "PENDING": ("queue_status_pending", "等待中"),
-    "COMPLETING": ("queue_status_completing", "完成中"),
-    "CONFIGURING": ("queue_status_configuring", "配置中"),
-    "SUSPENDED": ("queue_status_suspended", "挂起"),
-}
-_ACTIVE_STATES = {"RUNNING", "PENDING", "COMPLETING", "CONFIGURING", "SUSPENDED"}
-
 
 def _section_title(parent: QWidget, text: str) -> QWidget:
     """带两侧分隔线的区块标题（样式同主页第五步）。"""
@@ -77,7 +65,7 @@ class ClusterJobsTable(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(
-            _section_title(self, tr("cm_cluster_jobs", "集群任务（所有用户）"))
+            _section_title(self, tr("cm_cluster_jobs", "集群作业（所有用户）"))
         )
         self._table = EdgeAlignedTableWidget()
         self._table.setColumnCount(4)
@@ -182,191 +170,6 @@ class ClusterJobsTable(QWidget):
                     item.setText(str(parts[3]))
         finally:
             self._table.setUpdatesEnabled(True)
-
-
-class QueueCardsPanel(QWidget):
-    """个人任务队列（squeue 卡片列表，样式同主页第五步）。"""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(
-            _section_title(self, tr("cm_my_queue", "个人任务队列"))
-        )
-        self._cards_container = QWidget()
-        self._cards_container.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
-        self._cards_layout = QVBoxLayout(self._cards_container)
-        self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(8)
-        layout.addWidget(self._cards_container)
-        self._task_tables: list[EdgeAlignedTableWidget] = []
-        self._signature: tuple = ()
-        self._struct_signature: tuple = ()
-
-    def update_queue(self, lines: list) -> None:
-        """lines: squeue 输出行。"""
-        tasks = self._parse_squeue_lines(lines)
-        value_sig = tuple(
-            (
-                task.get("jobid", ""),
-                task.get("partition", ""),
-                task.get("name", ""),
-                task.get("state", ""),
-                task.get("time", ""),
-                task.get("nodes", ""),
-                task.get("cpus", ""),
-                task.get("nodelist", ""),
-            )
-            for task in tasks
-        )
-        if value_sig == self._signature:
-            return
-        self._signature = value_sig
-        if not tasks:
-            self._clear()
-            return
-        # [EN] Structure signature excludes the ever-changing runtime column.
-        # 结构签名不含每秒变化的已运行时长列：结构不变时只更新卡片值，避免每秒重建卡片。
-        struct_sig = tuple(
-            (
-                task.get("jobid", ""),
-                task.get("partition", ""),
-                task.get("name", ""),
-                task.get("state", ""),
-                task.get("nodes", ""),
-                task.get("cpus", ""),
-                task.get("nodelist", ""),
-            )
-            for task in tasks
-        )
-        if struct_sig == self._struct_signature:
-            self._update_card_values(tasks)
-            return
-        self._struct_signature = struct_sig
-        self._cards_container.setUpdatesEnabled(False)
-        try:
-            self._rebuild(tasks)
-        finally:
-            self._cards_container.setUpdatesEnabled(True)
-
-    def _update_card_values(self, tasks: list[dict]) -> None:
-        """结构不变时仅更新卡片值单元格（第 1 列）。"""
-        if len(tasks) != len(self._task_tables):
-            self._rebuild(tasks)
-            return
-        for table, task in zip(self._task_tables, tasks):
-            values = [
-                task.get("jobid", ""),
-                task.get("name", ""),
-                task.get("state", ""),
-                task.get("time", ""),
-                task.get("partition", ""),
-                task.get("nodes", ""),
-                task.get("cpus", ""),
-                task.get("nodelist", ""),
-            ]
-            table.setUpdatesEnabled(False)
-            try:
-                for row, value in enumerate(values):
-                    item = table.item(row, 1)
-                    if item is not None and item.text() != str(value):
-                        item.setText(str(value))
-            finally:
-                table.setUpdatesEnabled(True)
-
-    def _parse_squeue_lines(self, lines: list) -> list[dict]:
-        tasks = []
-        for ln in lines:
-            if not ln or not ln.strip():
-                continue
-            parts = ln.split()
-            if len(parts) < 8:
-                continue
-            state = parts[3]
-            if state not in _ACTIVE_STATES:
-                continue
-            state_key, state_default = _STATE_MAP.get(state, (None, state))
-            state_text = tr(state_key, state_default) if state_key else state
-            tasks.append(
-                {
-                    "jobid": parts[0],
-                    "partition": parts[1],
-                    "name": parts[2],
-                    "state": state_text,
-                    "time": parts[4],
-                    "nodes": parts[5],
-                    "cpus": parts[6],
-                    "nodelist": " ".join(parts[7:]),
-                }
-            )
-        return tasks
-
-    def _rebuild(self, tasks: list[dict]) -> None:
-        self._clear()
-        self._task_tables = []
-        for idx, task in enumerate(tasks):
-            card = self._create_task_card(task)
-            self._task_tables.append(card)
-            self._cards_layout.addWidget(card)
-            if idx < len(tasks) - 1:
-                sep = QFrame()
-                sep.setFrameShape(QFrame.Shape.HLine)
-                sep.setFixedHeight(1)
-                sep.setStyleSheet("background-color: rgba(128,128,128,0.3);")
-                self._cards_layout.addWidget(sep)
-
-    def _create_task_card(self, task: dict) -> EdgeAlignedTableWidget:
-        fields = [
-            (tr("queue_jobid", "JobID:"), task.get("jobid", "")),
-            (tr("queue_job_name", "作业名:"), task.get("name", "")),
-            (tr("queue_status", "状态:"), task.get("state", "")),
-            (tr("queue_runtime", "已运行:"), task.get("time", "")),
-            (tr("queue_cpu", "分区:"), task.get("partition", "")),
-            (tr("queue_node_num", "节点数:"), task.get("nodes", "")),
-            (tr("queue_cpus", "核数:"), task.get("cpus", "")),
-            (tr("queue_node_list", "节点列表:"), task.get("nodelist", "")),
-        ]
-        table = EdgeAlignedTableWidget()
-        table.setColumnCount(2)
-        table.setRowCount(len(fields))
-        table.horizontalHeader().setVisible(False)
-        table.verticalHeader().setVisible(False)
-        table.setBorderVisible(False)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setWordWrap(True)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        hdr = table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hdr.setStretchLastSection(True)
-        for row, (label, value) in enumerate(fields):
-            lbl_item = QTableWidgetItem(label)
-            lbl_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-            val_item = QTableWidgetItem(str(value))
-            val_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            table.setItem(row, 0, lbl_item)
-            table.setItem(row, 1, val_item)
-        table.expand_to_contents(minimum_height=80, extra_height=10)
-        return table
-
-    def _clear(self) -> None:
-        while self._cards_layout.count() > 0:
-            item = self._cards_layout.takeAt(0)
-            if item:
-                w = item.widget()
-                if w:
-                    w.setParent(None)
-                    w.deleteLater()
-        self._task_tables = []
 
 
 class IdleResourcesTable(QWidget):
@@ -477,6 +280,50 @@ class IdleResourcesTable(QWidget):
             self._table.setUpdatesEnabled(True)
 
 
+class OthersJobsList(QWidget):
+    """其他用户任务详细列表（run_cluster_jobs_log 输出，等宽文本）。"""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(_section_title(self, tr("cm_others_jobs", "其他用户任务（详细）")))
+        self._text = QTextEdit()
+        mono_font = QFont(self.font())
+        fallback_monos = [
+            "Menlo",
+            "Monaco",
+            "Consolas",
+            "SF Mono",
+            "Courier New",
+            "Liberation Mono",
+            "DejaVu Sans Mono",
+            "Noto Sans Mono",
+        ]
+        available = set(QFontDatabase.families())
+        chosen = next((family for family in fallback_monos if family in available), None)
+        if not chosen:
+            chosen = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+        mono_font.setFamily(chosen)
+        self._text.setFont(mono_font)
+        self._text.setReadOnly(True)
+        self._text.setAcceptRichText(False)
+        self._text.setUndoRedoEnabled(False)
+        try:
+            self._text.document().setMaximumBlockCount(5000)
+        except Exception:
+            pass
+        layout.addWidget(self._text, 1)
+
+    def update_others_jobs(self, messages: list) -> None:
+        if not messages:
+            return
+        text = "\n".join(str(m) for m in messages)
+        if self._text.toPlainText() != text:
+            self._text.setPlainText(text)
+
+
 class ClusterMonitorInterface(QWidget):
     """集群监控主界面（FluentWindow 顶层子页面）。
 
@@ -546,9 +393,9 @@ class ClusterMonitorInterface(QWidget):
         left_content_layout = QVBoxLayout(left_content)
         left_content_layout.setContentsMargins(0, 0, 0, 0)
         left_content_layout.setSpacing(10)
-        self._queue_panel = QueueCardsPanel(left_content)
+        self._cluster_jobs_panel = ClusterJobsTable(left_content)
         self._idle_panel = IdleResourcesTable(left_content)
-        left_content_layout.addWidget(self._queue_panel)
+        left_content_layout.addWidget(self._cluster_jobs_panel)
         left_content_layout.addWidget(self._idle_panel)
         left_content_layout.addStretch(1)
         left_scroll.setWidget(left_content)
@@ -564,8 +411,8 @@ class ClusterMonitorInterface(QWidget):
         )
         self._status_label.setStyleSheet("font-weight: bold; color: #E08A00;")
         right_layout.addWidget(self._status_label)
-        self._cluster_table = ClusterJobsTable(right)
-        right_layout.addWidget(self._cluster_table, 4)
+        self._others_jobs_panel = OthersJobsList(right)
+        right_layout.addWidget(self._others_jobs_panel, 4)
         self._log = QTextEdit()
         mono_font = QFont(self.font())
         fallback_monos = [
@@ -657,8 +504,16 @@ class ClusterMonitorInterface(QWidget):
             self._try_connect(cfg)
             return
         self._busy = True
+        persistent = self._remote_vm._client
+
+        def _collect(cfg, messages):
+            status = run_server_status(cfg, client=persistent)
+            jobs = run_cluster_jobs_log(cfg, log=messages.append, client=persistent)
+            return status, jobs, messages
+
+        collector: list = []
         self._runner.run(
-            lambda: run_server_status(cfg, client=self._remote_vm._client),
+            lambda: _collect(cfg, collector),
             self._on_status_done,
         )
 
@@ -685,15 +540,16 @@ class ClusterMonitorInterface(QWidget):
 
     def _on_status_done(self, result: object) -> None:
         self._busy = False
-        if result is None:
+        if result is None or not isinstance(result, tuple) or len(result) != 3:
             return
-        data = getattr(result, "data", None)
+        status, jobs, messages = result
+        data = getattr(status, "data", None)
         if isinstance(data, dict):
-            self._cluster_table.update_cluster_jobs(data.get("cpu", []) or [])
-            self._queue_panel.update_queue(data.get("queue", []) or [])
+            self._cluster_jobs_panel.update_cluster_jobs(data.get("cpu", []) or [])
             self._idle_panel.update_idle(data.get("idle", []) or [])
             self._set_status(connected=True)
-        if not getattr(result, "success", True):
+        self._others_jobs_panel.update_others_jobs(list(messages or []))
+        if not getattr(status, "success", True) or not getattr(jobs, "success", True):
             # [EN] Connection is dead: stay disconnected; the next tick will detect
             # is_connected=False and auto-reconnect. Do NOT close the shared client
             # here — the home page polls through the same persistent connection.

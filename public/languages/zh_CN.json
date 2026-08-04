@@ -844,8 +844,7 @@
   "step6_cpu_ranking": "CPU 占用排行",
   "step6_cluster_jobs": "集群作业",
   "cluster_monitor": "集群监控",
-  "cm_cluster_jobs": "集群任务（所有用户）",
-  "cm_my_queue": "个人任务队列",
+  "cm_cluster_jobs": "集群作业（所有用户）",
   "cm_idle_resources": "空闲资源",
   "cm_status_connected": "已连接（每秒刷新）",
   "cm_status_disconnected": "未连接（每秒自动重连）",
@@ -1876,7 +1875,7 @@
   "upload_blocked_confirm_required": "上传被阻止：这是破坏性操作，必须显式传入 confirmed=True（CLI: --confirm）才能执行。",
   "error_prefix": "❌ {message}",
   "local_workdir_not_exists": "本地工作目录不存在：{path}",
-  "upload_failed": "❌ 上传失败：{error}",
+  "upload_failed": "❌ 上传失败：{path} - {error}",
   "remote_script_exit_code_plain": "脚本退出码 {code}",
   "submit_failed": "❌ 提交失败：{error}",
   "remote_status_success": "✅ 检测到 success 标记，计算已完成",
@@ -2660,9 +2659,8 @@
   "slurm_idle_check_success": "✅ Slurm 空闲资源检查完成",
   "slurm_idle_check_failed": "❌ Slurm 空闲资源检查失败：{error}",
   "upload_success": "✅ 上传成功：{path}",
-  "upload_failed": "❌ 上传失败：{path} - {error}",
   "submit_success": "✅ 提交成功：任务 ID {job_id}",
-  "submit_failed": "❌ 提交失败：{error}",
   "download_success": "✅ 下载成功：{path}",
-  "download_failed": "❌ 下载失败：{path} - {error}"
+  "download_failed": "❌ 下载失败：{path} - {error}",
+  "cm_others_jobs": "其他用户任务（详细）"
 }
