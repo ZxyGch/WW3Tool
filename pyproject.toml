@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ww3tool"
 version = "0.1.1"
 description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
-readme = "PACKAGING.md"
+readme = "public/packaging/PACKAGING.md"
 requires-python = ">=3.9"
 # 核心依赖（requirements.txt 中的非 GUI 部分）。GUI 相关见 [project.optional-dependencies]。
 # 注意：网格生成等命令还需要仓库资源（meshgen/、public/、params.yml 模板），
