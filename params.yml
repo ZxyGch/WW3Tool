@@ -1,29 +1,25 @@
 # ────────────────────────────────────────────────────────────────────
-# Working directory: all intermediate files, WW3 namelists, forcing
-# inputs, model output and post-processing results are stored here.
-#   path – absolute or relative path to the work directory.
-#   default_workspace – default parent folder for new work directories; the
-#                       `workdir <name>` command creates under here when given
-#                       a bare name. Empty/missing → falls back to workSpace.
+# workdir:
+#   path              路径字符串（工作目录：中间文件、namelist、强迫场、输出全放这里）。
+#                     路径含空格/特殊字符时用引号包住，如 "/my dir/ws"。
+#   default_workspace 路径字符串。新建工作目录的默认父目录；`workdir <name>`
+#                     用裸名字创建时放这里。留空/缺省 → 回退到 workSpace/。
 # ────────────────────────────────────────────────────────────────────
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
   default_workspace: /Users/zxy/ocean/Paper/WW3Tool/workSpace
 # ────────────────────────────────────────────────────────────────────
-# Grid generation settings (structured / SMC / unstructured).
-#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
-#   grid_type – 'normal' (single domain) or 'nested' (two-level
-#               refinement with inner high-resolution patch).
-#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').
-#   reference_data_path – path to bathymetry / coastline data bundle;
-#                          null = auto-detect from project defaults.
-#   lon       – [west, east] longitude bounds of the main domain (deg).
-#   lat       – [south, north] latitude bounds of the main domain (deg).
-#   structured.nested.levels – ordered list (coarse -> fine) of nested
-#               grid levels; each with dx/dy (deg) and own lon/lat bounds.
-#               level0 is coarsest (bounds default to grid.lon/lat); each
-#               finer level has smaller dx and lies inside the previous
-#               one (2 to 99 levels).
+# grid:（网格生成设置；字符串统一建议加引号，尤其以数字开头或含点号/空格时）
+#   mesh_type          字符串枚举，必须加引号：'structured' | 'smc' | 'unstructured'
+#   grid_type          字符串枚举，必须加引号：'normal'（单域）| 'nested'（两层嵌套细化）
+#   gridgen_version    字符串枚举，必须加引号：'Python' | 'MATLAB'
+#   reference_data_path 路径字符串（水深/海岸线数据包）；null = 自动探测项目默认值
+#   lon                数字数组，恰好 2 个浮点：[西经, 东经]，单位度，不加引号
+#   lat                数字数组，恰好 2 个浮点：[南纬, 北纬]，单位度，不加引号
+#   structured.nested.levels 数组（从粗到细），每个元素是字典：
+#                      { dx: 数字, dy: 数字, lon: [西,东], lat: [南,北] }
+#                      dx/dy 单位度；level0 最粗（边界默认取 grid.lon/lat），
+#                      更细层 dx 更小且完全落在上一层内（2~99 层）。
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -36,16 +32,16 @@ grid:
   lat:
   - 10.0
   - 30.0
-  # Structured grid options:
-  #   bathymetry       – GEBCO | ETOP1 | ETOP2
-  #   coastline_precision – full | high | inter | low | coarse
-  #   min_dist         – minimum distance filter between adjacent grid points (km).
-  #   cut_off          – land-sea mask cut-off: 0 = keep all sea points.
-  #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).
-  #   lim_val          – masking threshold for cell classification (0–1).
-  #   split_lim        – split-cell limit: 0 = disabled.
-  #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.
-  #   nested.nested_contraction_coefficient – nested level boundary shrink ratio (≥ 1, GUI helper).
+  # structured:（仅 mesh_type: structured 时生效；数字均不加引号）
+  #   bathymetry          字符串枚举：'GEBCO' | 'ETOP1' | 'ETOP2'
+  #   coastline_precision 字符串枚举：'full' | 'high' | 'inter' | 'low' | 'coarse'
+  #   min_dist            数字（整数/浮点）：相邻网格点最小距离过滤（km）
+  #   cut_off             数字：陆海掩膜截断值，0 = 保留全部海点
+  #   lim_bathy           数字（0~1）：按水深含湿比例决定保留哪些单元
+  #   lim_val             数字（0~1）：单元分类掩膜阈值
+  #   split_lim           数字：分裂单元上限，0 = 禁用
+  #   lake_tol            数字（整数）：保留的最小湖泊面积（格点数），更小则填平
+  #   nested.nested_contraction_coefficient 数字（浮点，≥1）：嵌套层边界收缩比（GUI 辅助）
   structured:
     nested:
       nested_contraction_coefficient: 1.3
@@ -74,18 +70,26 @@ grid:
     lim_val: 0.5
     split_lim: 0
     lake_tol: 50
-  # SMC (Spherical Multi-Cell) grid options:
-  #   bathymetry       – ETOPO1 | ETOPO2 | GEBCO
-  #   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).
-  #   n_levels         – number of cell-size refinement levels.
-  #   wlevel           – water-level reference index.
-  #   depmin           – minimum depth below which cells are excluded (m).
-  #   dshalw           – shallow-water depth threshold for extra refinement (m).
-  #   generate_boundary_cells – whether to create open-boundary ghost cells.
-  #   msea             – minimum cell count across straits.
-  #   options.input    – low-level input pre-processing (auto-flip, tolerances).
-  #   options.grid     – grid identity & projection (global, arctic, origin).
-  #   options.output   – output file naming and formatting.
+  # smc:（球面多单元网格，仅 mesh_type: smc 时生效；数字均不加引号）
+  #   bathymetry          字符串枚举：'ETOP1' | 'ETOP2' | 'GEBCO'
+  #   bathy_convention    字符串枚举，必须加引号：'elevation'（高程上正下负）| 'depth'（深度下正上负）
+  #   n_levels            数字（整数）：网格细化层数
+  #   wlevel              数字（整数）：水位参考索引
+  #   depmin              数字（整数）：低于此深度（m）的单元被排除
+  #   dshalw              数字：浅水额外细化深度阈值（m），可为负
+  #   generate_boundary_cells 布尔（true/false，不加引号）：是否生成开边界 ghost 单元
+  #   msea                数字（整数）：海峡最小单元数
+  #   options.input       字典：底层输入预处理（自动翻转、容差）
+  #     auto_flip_lat / auto_flip_lon  布尔
+  #     coord_spacing_rtol / coord_spacing_atol  数字（浮点）：坐标间距容差
+  #     nan_fill_value    数字（浮点）：NaN 填充值
+  #   options.grid        字典：网格标识与投影
+  #     name              字符串
+  #     global / arctic   布尔
+  #     glb_arc_lat       数字（浮点）：北极投影参考纬度
+  #     origin.lon0 / origin.lat0  数字（浮点）：投影原点经纬度
+  #   options.output      字典：输出文件命名
+  #     file_prefix       字符串（可空字符串 ''）
   smc:
     bathymetry: ETOPO2
     bathy_convention: elevation
@@ -112,18 +116,18 @@ grid:
           lat0: -90.0
       output:
         file_prefix: ''
-  # Unstructured (triangular) grid spacing parameters:
-  #   hmax  – maximum element spacing in deep water (km).
-  #   hmin  – minimum allowed spacing everywhere (km).
-  #   hshr  – target spacing near shorelines (km).
-  #   nwav  – number of wavelengths per element for resolution.
-  #   dhdx  – rate of spacing change with depth gradient.
-  #   deep_ocean_threshold_m – depth (m) above which hmax applies.
-  #   margin_deg       – buffer margin around domain boundary (degrees).
-  #   edge_segments    – number of segments along coastlines.
-  #   options.data     – optional mask / exclusion file.
-  #   options.command_line_args – extra JIGSAW CLI flags.
-  #   options.regional – stereographic projection centre (stereo_lon/lat).
+  # unstructured:（三角形非结构网格，仅 mesh_type: unstructured 时生效）
+  #   hmax / hmin / hshr  数字（浮点，km）：深水最大间距 / 全局最小间距 / 近岸目标间距
+  #   nwav                数字（整数）：每个单元覆盖的波长数（分辨率指标）
+  #   dhdx                数字（浮点）：间距随水深梯度的变化率
+  #   deep_ocean_threshold_m 数字（整数，m）：超过此水深后 hmax 生效
+  #   margin_deg          数字（浮点，度）：域边界缓冲余量
+  #   edge_segments       数字（整数）：海岸线分段数
+  #   options.data        字典：可选掩膜/排除文件
+  #     mask_file         路径字符串（可空字符串 ''）
+  #   options.command_line_args  字典：额外 JIGSAW CLI 参数（值可为数字，如 black_sea: 3）
+  #   options.regional    字典：球面投影中心
+  #     stereo_lon / stereo_lat  数字（浮点，度）
   unstructured:
     hmax: 100
     hmin: 2
@@ -142,17 +146,15 @@ grid:
         stereo_lon: 120.0
         stereo_lat: 20.0
 # ────────────────────────────────────────────────────────────────────
-# Forcing fields: NetCDF file paths for external driving fields.
-#   wind    – 10-m wind speed / direction (U10, V10).
-#   current – ocean surface current (UCUR, VCUR).
-#   level   – sea-surface elevation anomaly (LEV).
-#   ice     – sea-ice concentration (IC1 / IC5).
-#   process_mode     – 'copy' duplicates complete files into workdir;
-#                      'move' relocates complete originals.
-#   crop_time_range  – optional crop action default, [start_YYYYMMDD, end_YYYYMMDD].
-#   crop_bbox        – optional crop action default, [west, east, south, north].
-#   auto_associate   – when true, automatically match dropped / selected
-#                      files to forcing variables by filename keyword.
+# forcing:（强迫场 NetCDF 文件；路径含空格/特殊字符时加引号，null = 不提供该场）
+#   wind              路径字符串或 null：10m 风（U10/V10）
+#   current           路径字符串或 null：表层流（UCUR/VCUR）
+#   level             路径字符串或 null：海面高度异常（LEV）
+#   ice               路径字符串或 null：海冰浓度（IC1/IC5）
+#   process_mode      字符串枚举，必须加引号：'copy'（复制完整文件到 workdir）| 'move'（移动原件）
+#   crop_time_range   数组，2 个日期字符串（YYYYMMDD，必须加引号）：[开始, 结束]；[] = 不裁剪
+#   crop_bbox         数组，4 个数字：[西, 东, 南, 北]；[] = 不裁剪
+#   auto_associate    布尔（true/false，不加引号）：true = 按文件名关键词自动匹配强迫场变量
 # ────────────────────────────────────────────────────────────────────
 forcing:
   wind: null
@@ -164,27 +166,38 @@ forcing:
   crop_bbox: []
   auto_associate: true
 # ────────────────────────────────────────────────────────────────────
-# Calculation mode:
-#   mode – 'region' (gridded output over the full domain) or
-#          'points' (output at specific locations only).
-#   points      – list of [name, lon, lat] triples for point output.
-#   track_points – optional moving-point tracks for Lagrangian output
-#                  (each entry: list of [time, lon, lat] waypoints).
+# calc:（计算模式）
+#   mode              字符串枚举，必须加引号：'region'（全域网格输出）| 'points'（仅特定点输出）
+#   points            数组：每个元素是 [名称, 经度, 纬度] 三元组；名称是字符串（加引号），
+#                     经/纬度是数字（浮点）。示例：
+#                       points:
+#                       - ["station1", 121.5, 25.0]
+#   track_points      数组：航迹（移动点）列表，每个航迹是一个点列表，每点 [时间, 经度, 纬度]；
+#                     时间是日期字符串（YYYYMMDD 或 YYYYMMDDHHMM，必须加引号），经/纬度是数字。
+#                     示例：
+#                       track_points:
+#                       - [["20250101", 121.0, 24.0], ["20250102", 122.0, 25.0]]
 # ────────────────────────────────────────────────────────────────────
 calc:
   mode: region
   points: []
   track_points: []
 # ────────────────────────────────────────────────────────────────────
-# WW3 model run settings.
-#   version           – WW3 version: '6.07' or '7.14'
-#                          (reads public/{version}_nml template directory).
-#   start_date / end_date – simulation period (YYYYMMDD).
-#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.
-#   file_split        – output file splitting: single | hour | day | month | year.
-#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.
-#   restart           – restart / hot-start settings; checkpoint stride follows output_step.
-#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
+# ww3:（WW3 模型运行设置）
+#   version          字符串枚举，必须加引号（否则会被 YAML 解析成数字）：'6.07' | '7.14'
+#                    （读取 public/{version}_nml 模板目录）
+#   start_date / end_date  日期字符串（YYYYMMDD，必须加引号）：模拟时段
+#   output_step      数字（整数，秒）：ww3_shel / ww3_ounp / ww3_ounf 输出步长
+#   file_split       字符串枚举，必须加引号：'single' | 'hour' | 'day' | 'month' | 'year'
+#   output_scheme    字典：输出字段方案
+#     standard       字符串（空格分隔的字段缩写，加引号；多方案时用 <名称> 前缀）
+#   restart          字典：冷/热启动设置；检查点步长跟随 output_step
+#     mode           字符串枚举，必须加引号：'cold' | 'hot'
+#     restart_time   日期字符串（YYYYMMDDHHMMSS，加引号）或 null
+#     restart_file   路径字符串或 null
+#     restart_step   数字（整数，秒）
+#     pick_latest_checkpoint  布尔（true/false，不加引号）
+#   namelist         字典：SIN4% / SDS4% / SBT1% 等源项参数覆盖，值均为数字（浮点，不加引号）
 # ────────────────────────────────────────────────────────────────────
 ww3:
   version: 7.14
@@ -207,17 +220,16 @@ ww3:
     SDS4%SDSBR: 0.0009
     SBT1%GAMMA: -0.067
 # ────────────────────────────────────────────────────────────────────
-# WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
-# Keys follow the Fortran namelist syntax with '%' as sub-key separator.
-#
-# SPECTRUM%XFR   – logarithmic frequency increment ratio (default 1.1).
-# SPECTRUM%FREQ1 – lowest discrete frequency in Hz.
-# SPECTRUM%NK    – number of frequency bins.
-# SPECTRUM%NTH   – number of directional bins.
-# TIMESTEPS%DTMAX – maximum overall time-step (s).
-# TIMESTEPS%DTXY  – spatial propagation time-step (s).
-# TIMESTEPS%DTKTH – directional propagation time-step (s).
-# TIMESTEPS%DTMIN – minimum (source-term) time-step (s).
+# ww3_grid:（写进 ww3_grid.nml 的覆盖项；键用 Fortran namelist 语法，'%' 分隔子键；
+#            所有值都是数字（整数/浮点），不加引号）
+#   SPECTRUM%XFR    数字（浮点）：对数频率增量比（默认 1.1）
+#   SPECTRUM%FREQ1  数字（浮点，Hz）：最低离散频率
+#   SPECTRUM%NK     数字（整数）：频率格点数
+#   SPECTRUM%NTH    数字（整数）：方向格点数
+#   TIMESTEPS%DTMAX 数字（整数，秒）：最大全局时间步
+#   TIMESTEPS%DTXY  数字（整数，秒）：空间传播时间步
+#   TIMESTEPS%DTKTH 数字（整数，秒）：方向传播时间步
+#   TIMESTEPS%DTMIN 数字（整数，秒）：最小（源项）时间步
 # ────────────────────────────────────────────────────────────────────
 ww3_grid:
   SPECTRUM%XFR: 1.1
@@ -229,10 +241,17 @@ ww3_grid:
   TIMESTEPS%DTKTH: 300
   TIMESTEPS%DTMIN: 15
 # ────────────────────────────────────────────────────────────────────
-# SLURM job-scheduler settings for HPC cluster submissions.
-#   job_name  – Slurm job name (#SBATCH -J); null uses workdir name.
-#   cpu / nodes / cores / nodelist / time / mem – resource request.
-#   server_st – server WW3 binaries: use + name: path (multi-scheme only).
+# slurm:（HPC 集群作业调度设置）
+#   job_name   字符串或 null（#SBATCH -J）；null = 用 workdir 名
+#   partition  字符串：Slurm 分区名
+#   nodes      数字（整数）：节点数
+#   cores      数字（整数）：每节点核数
+#   nodelist   字符串或 null：指定节点列表
+#   time       字符串（HH:MM:SS，加引号）或 null
+#   mem        字符串（如 '190G'，建议加引号）
+#   server_st  字典：服务端 WW3 可执行文件路径映射
+#     use      字符串（含空格，必须加引号）：当前使用的方案名，如 '7.14 ST4_RECT'
+#     其它键   形如 '7.14 ST4'（含空格，必须加引号）: 路径字符串（exe 目录）
 # ────────────────────────────────────────────────────────────────────
 slurm:
   job_name: null
@@ -263,8 +282,10 @@ slurm:
     7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st4_unst/model/exe
     7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st6_unst/model/exe
 # ────────────────────────────────────────────────────────────────────
-# Local WW3 run settings (Step 5 local execution panel).
-#   local_st – local WW3 binaries: use + name: path (multi-scheme only).
+# local_run:（第 5 步本地执行设置）
+#   local_st  字典：本地 WW3 可执行文件路径映射
+#     use      字符串（含空格，必须加引号）：当前使用的方案名，如 '7.14 ST2 SMC'
+#     其它键   形如 '7.14 ST2 SMC'（含空格，必须加引号）: 路径字符串（bin 目录）
 # ────────────────────────────────────────────────────────────────────
 local_run:
   local_st:
@@ -278,17 +299,17 @@ local_run:
     6.07 ST4 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4_SMC
     6.07 ST6 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6_SMC
 # ────────────────────────────────────────────────────────────────────
-# Post-processing and validation plot settings.
-# Each sub-section is invoked individually via CLI commands:
+# plot:（后处理与验证绘图；各子段由对应 CLI 命令单独调用）
 #   plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc / plot-wind
 # ────────────────────────────────────────────────────────────────────
 plot:
-  # Wave-height filled-colour maps, contour maps, and video.
-  #   time_step_hours – temporal sampling interval (hours).
-  #   generate_video  – whether to create an MP4 animation.
-  #   show_land_coastline – overlay coastline on maps.
-  #   dpi / figsize   – image resolution and dimensions (null = auto).
-  #   output_folder   – custom output directory (null = workdir default).
+  # wave_maps:（波高填色图 / 等值线图 / 视频）
+  #   time_step_hours     数字（整数，小时）：时间采样间隔
+  #   generate_video      布尔（true/false）：是否生成 MP4 动画
+  #   show_land_coastline 布尔：图上叠加海岸线
+  #   dpi                 数字（整数）或 null（null = 自动）
+  #   figsize             数组 [宽, 高]（英寸，数字）或 null
+  #   output_folder       路径字符串或 null（null = workdir 默认）
   wave_maps:
     time_step_hours: 6
     generate_video: false
@@ -296,20 +317,20 @@ plot:
     dpi: null
     figsize: null
     output_folder: null
-  # 2-D directional spectrum plots at specified station locations.
-  #   time_step_hours  – temporal sampling interval (hours).
-  #   energy_threshold – minimum energy density to display.
-  #   plot_mode        – 'normalized' or 'actual' (null = actual).
+  # spectrum:（指定站点的 2D 方向谱）
+  #   time_step_hours  数字（整数，小时）
+  #   energy_threshold 数字（浮点）：最小显示能量密度
+  #   plot_mode        字符串枚举或 null：'normalized' | 'actual'（null = actual）
   spectrum:
     time_step_hours: 6
     energy_threshold: 0.01
     plot_mode: null
-  # Jason-3 satellite altimeter track matching / validation.
-  #   data_folder       – local folder containing downloaded Jason-3 files.
-  #   lon_lat           – [lon_w, lon_e, lat_s, lat_n] matching region.
-  #   time_range        – [start, end] date strings (YYYYMMDD).
-  #   max_dist_deg      – maximum spatial mismatch for track matching (degrees).
-  #   time_window_hours – maximum temporal mismatch window (hours).
+  # jason3:（Jason-3 卫星高度计轨道匹配/验证）
+  #   data_folder       路径字符串或 null：已下载 Jason-3 数据目录
+  #   lon_lat           数组，4 个数字：[西, 东, 南, 北] 匹配区域
+  #   time_range        数组，2 个日期字符串（YYYYMMDD，必须加引号）
+  #   max_dist_deg      数字（浮点，度）：轨道匹配最大空间误差
+  #   time_window_hours 数字（浮点，小时）：最大时间窗
   jason3:
     data_folder: null
     lon_lat:
@@ -322,33 +343,34 @@ plot:
     - '20250103'
     max_dist_deg: 0.125
     time_window_hours: 0.5
-  # NDBC buoy observation matching or data download.
-  #   data_folder – local folder containing NDBC station data files.
-  #   download    – if true, download station data automatically from NDBC.
-  #   time_range  – [start, end] date strings (YYYYMMDD).
+  # ndbc:（NDBC 浮标观测匹配或数据下载）
+  #   data_folder  路径字符串或 null：NDBC 站数据目录
+  #   download     布尔（true/false）：true = 自动从 NDBC 下载站数据
+  #   time_range   数组，2 个日期字符串（YYYYMMDD，必须加引号）
   ndbc:
     data_folder: null
     download: false
     time_range:
     - '20250101'
     - '20250103'
-  # Wind-field filled-colour maps with optional arrow / barb overlays.
-  #   time_step_hours – temporal sampling interval (null = auto from file).
-  #   flag_type       – overlay style: 'arrow' / 'barb' / 'none'.
-  #   flag_density    – spacing between flag glyphs (stride steps).
+  # wind_field:（风场填色图，可叠加风矢/风羽）
+  #   time_step_hours  数字（整数，小时）或 null（null = 从文件自动）
+  #   flag_type        字符串枚举或 null：'arrow' | 'barb' | 'none'
+  #   flag_density     数字（整数）或 null：风矢/风羽间距（步长）
   wind_field:
     time_step_hours: null
     flag_type: null
     flag_density: null
 # ────────────────────────────────────────────────────────────────────
-# Remote server connection settings (SSH / SFTP).
-#   host / port        – hostname or IP and SSH port number.
-#   user               – login username.
-#   password / key_file – password string or path to private key.
-#   ssh_config_host    – Host alias in ~/.ssh/config (resolved at connect time).
-#   default_remote_dir – base directory on the remote side; workdir name
-#                        is appended automatically during submission.
-#   remote_dir         – full resolved remote path (read-only, auto-set).
+# server:（远端 SSH / SFTP 连接设置）
+#   host               字符串或 null：主机名或 IP（加引号）
+#   port               数字（整数）：SSH 端口（默认 22）
+#   user               字符串或 null：登录用户名
+#   password           字符串或 null：密码（不建议明文存储）
+#   key_file           路径字符串或 null：私钥路径
+#   ssh_config_host    字符串：~/.ssh/config 中的 Host 别名（连接时解析）
+#   default_remote_dir 路径字符串：远端基础目录，提交时自动拼接 workdir 名
+#   remote_dir         路径字符串（只读，自动设置）
 # ────────────────────────────────────────────────────────────────────
 server:
   host: null
@@ -360,11 +382,11 @@ server:
   remote_dir: ''
   ssh_config_host: SHOU-TS
 # ────────────────────────────────────────────────────────────────────
-# External tool and data directory paths.
-#   matlab_path       – MATLAB executable for grid generators that require it.
-#   jason_path        – local storage directory for Jason-3 satellite data.
-#   ndbc_path         – local storage directory for NDBC buoy data.
-#   jason3_download_url – base URL for Jason-3 data downloads from NCEI.
+# paths:（外部工具与数据目录路径）
+#   matlab_path         路径字符串：MATLAB 可执行文件（需要 MATLAB 的网格生成器用）
+#   jason_path          路径字符串：Jason-3 卫星数据本地存储目录
+#   ndbc_path           路径字符串：NDBC 浮标数据本地存储目录
+#   jason3_download_url 字符串（URL）：Jason-3 数据下载基地址（NCEI）
 # ────────────────────────────────────────────────────────────────────
 paths:
   matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
@@ -372,13 +394,13 @@ paths:
   ndbc_path: /Users/zxy/ocean/Paper/WW3Tool/ndbc
   jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
 # ════════════════════════════════════════════════════════════════════
-# Desktop-only settings (managed by the Settings page; CLI ignores).
-#   language           – UI locale: 'en_US' or 'zh_CN'.
-#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.
-#   map_type           – default map type used by map views.
-#   run_mode           – 'local' / 'server' / 'both'.
-#   recent_workdirs    – recently opened work directories (MRU list).
-#   forcing_field_dir  – last-used forcing file browse directory.
+# desktop:（仅桌面端，由设置页管理，CLI 忽略）
+#   language           字符串枚举，必须加引号：'en_US' | 'zh_CN'
+#   theme              字符串枚举：'LIGHT' | 'DARK' | 'AUTO'
+#   map_type           字符串枚举：地图类型（如 'administrative'）
+#   run_mode           字符串枚举，必须加引号：'local' | 'server' | 'both'
+#   recent_workdirs    数组：最近打开的工作目录（路径字符串，MRU 列表）
+#   forcing_field_dir  路径字符串：上次浏览强迫场的目录
 # ════════════════════════════════════════════════════════════════════
 desktop:
   language: en_US
