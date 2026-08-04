@@ -310,14 +310,21 @@ class OthersJobsTable(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        self._card, card_layout = create_header_card(self, "")
+        card_layout.setSpacing(4)
         self._others_table = self._make_table()
-        layout.addWidget(self._others_table, 2)
-        layout.addWidget(_section_title(self, tr("cm_my_jobs", "本人任务")))
+        card_layout.addWidget(self._others_table, 2)
+        card_layout.addWidget(_section_title(self, tr("cm_my_jobs", "本人任务")))
         self._mine_table = self._make_table()
-        layout.addWidget(self._mine_table, 1)
+        card_layout.addWidget(self._mine_table, 1)
+        # 隐藏标题行，仅保留卡片背景（与左侧卡片同款）
+        self._card.headerView.setVisible(False)
+        self._card.separator.setVisible(False)
+        self._card.viewLayout.setContentsMargins(11, 10, 11, 12)
+        self._card.viewLayout.addLayout(card_layout)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._card)
         self._others_sig: tuple = ()
         self._others_struct: tuple = ()
         self._mine_sig: tuple = ()
@@ -538,7 +545,14 @@ class ClusterMonitorInterface(QWidget):
         except Exception:
             pass
         self._log.setStyleSheet(self._log_style())
-        right_layout.addWidget(self._log, 1)
+        log_card, log_layout = create_header_card(right, "")
+        log_layout.setSpacing(4)
+        log_layout.addWidget(self._log)
+        log_card.headerView.setVisible(False)
+        log_card.separator.setVisible(False)
+        log_card.viewLayout.setContentsMargins(11, 10, 11, 12)
+        log_card.viewLayout.addLayout(log_layout)
+        right_layout.addWidget(log_card, 1)
 
         splitter.addWidget(left)
         splitter.addWidget(right)
