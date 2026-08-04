@@ -46,10 +46,14 @@ ww3tool workdir my_workdir
 
 ### 3. Homebrew
 
+已发布 tap：`ZxyGch/homebrew-ww3tool`，直接使用：
+
 ```bash
 brew tap ZxyGch/ww3tool && brew install ww3tool
-# 或本地直接装：brew install ./Formula/ww3tool.rb
+# 或一步到位（自动 tap）：brew install ZxyGch/ww3tool
 ```
+
+也可不发布直接本地装：`brew install ./Formula/ww3tool.rb`
 
 formula 会把运行所需资源（meshgen / public / params.yml 模板）连同代码
 一起装进 Cellar，命令链接到 `/opt/homebrew/bin/ww3tool`，**无需**
@@ -174,8 +178,11 @@ mcp/.venv/bin/python mcp/tests/smoke_test.py
    curl -sL https://github.com/ZxyGch/WW3Tool/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
    ```
    把 `Formula/ww3tool.rb` 的 `url` 换成 tag 地址、`sha256` 换成新值。
-3. **可选**：发布到 PyPI（`pip install ww3tool`）、创建 `homebrew-ww3tool`
-   tap 仓库（`brew tap ZxyGch/ww3tool`）。
+3. **可选**：发布到 PyPI（`pip install ww3tool`）。
+   Homebrew tap 已建好（`ZxyGch/homebrew-ww3tool`）——每次更新 WW3Tool
+   后重算 master tarball 的 sha256（`curl -sL
+   https://github.com/ZxyGch/WW3Tool/archive/refs/heads/master.tar.gz | shasum -a 256`），
+   更新 tap 仓库的 `ww3tool.rb` 并推送。
 
 ---
 
