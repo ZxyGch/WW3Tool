@@ -40,5 +40,33 @@ dev = [
 [project.scripts]
 ww3tool = "run:main"
 
-# 注意：packages / py-modules / package-dir 的布局配置在 setup.py 中
-# （run.py 位于仓库根，而 workflows/desktop 位于 src/，需显式映射）。
+# 布局：run.py 位于仓库根（作为 py-module 打进 wheel 顶层），
+# 源码包 workflows/、desktop/ 位于 src/ 下（package-dir 显式映射）。
+# 注意：packages 必须显式列出（不能含通配符，不能直接用 find where=["src"]，
+# 否则隐式 package-dir {"": "src"} 会把 py-modules 的 run.py 也搬到 src/ 下）。
+[tool.setuptools]
+py-modules = ["run"]
+packages = [
+    "workflows",
+    "workflows.support",
+    "workflows.application",
+    "workflows.infrastructure",
+    "workflows.domain",
+    "workflows.interfaces",
+    "workflows.infrastructure.plot",
+    "workflows.infrastructure.forcing",
+    "workflows.infrastructure.ww3",
+    "workflows.infrastructure.local",
+    "workflows.infrastructure.adapters",
+    "workflows.infrastructure.grid_visualization",
+    "workflows.infrastructure.remote",
+    "desktop",
+    "desktop.view_models",
+    "desktop.components",
+    "desktop.steps",
+    "desktop.windows",
+]
+
+[tool.setuptools.package-dir]
+workflows = "src/workflows"
+desktop = "src/desktop"

@@ -27,17 +27,16 @@ class Ww3tool < Formula
     # GitHub archive 解压出 <repo>-<version>/ 顶层目录；Homebrew 的 buildpath
     # 可能是 staging 根或该子目录。显式定位项目目录，避免依赖 cwd。
     proj = buildpath/"WW3Tool-#{version}"
-    proj = buildpath unless (proj/"setup.py").exist?
+    proj = buildpath unless (proj/"pyproject.toml").exist?
     # 保留运行所需的仓库资源；libexec 即仓库根（ww3tool 脚本据此定位资源）。
     # 入口脚本位于 public/packaging/ww3tool（public/ 整体拷入，packaging 自动包含）。
     libexec.install Dir[proj/"meshgen", proj/"public", proj/"src", proj/"params.yml",
-                        proj/"run.py", proj/"public/packaging/ww3tool",
-                        proj/"pyproject.toml", proj/"setup.py"]
+                        proj/"run.py", proj/"public/packaging/ww3tool", proj/"pyproject.toml"]
     python = Formula["python@3.12"].opt_bin/"python3.12"
     system python, "-m", "venv", libexec/".venv"
     vpy = libexec/".venv/bin/python"
     system vpy, "-m", "pip", "install", "--upgrade", "pip"
-    # 显式切到 libexec 再安装（libexec 内含 setup.py/pyproject.toml），
+    # 显式切到 libexec 再安装（libexec 内含 pyproject.toml，纯 pyproject 布局），
     # 规避任何 cwd 不确定性；一次性装齐全部依赖（含 GUI extra），
     # 与 pip 安装方式一致，装完 CLI/GUI 开箱即用；run.py 首次运行仍保留
     # 自动补装核心依赖作为兜底。
