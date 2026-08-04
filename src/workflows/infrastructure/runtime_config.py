@@ -26,7 +26,25 @@ from workflows.domain.output_scheme_yaml import parse_ww3_output_scheme, seriali
 # ==================== 配置文件路径设置 ====================
 # 获取当前脚本所在目录的绝对路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(BASE_DIR)))
+
+
+def _infer_project_root() -> str:
+    """项目根目录：WW3TOOL_ROOT 环境变量优先，否则按仓库布局推导。
+
+    pip/brew 安装形态下代码位于 site-packages，无法从 __file__ 推导出
+    含 meshgen/public 的仓库，需用 WW3TOOL_ROOT 显式指定；仓库形态
+    （默认）行为与以往完全一致。
+
+    [EN] Project root: WW3TOOL_ROOT env wins; otherwise infer from the repo
+    layout (default behaviour unchanged).
+    """
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        return os.path.normpath(env_root)
+    return os.path.dirname(os.path.dirname(os.path.dirname(BASE_DIR)))
+
+
+PROJECT_ROOT = _infer_project_root()
 
 # 公共目录路径，用于存储配置文件和公共资源（在项目根目录下）
 PUBLIC_DIR = os.path.join(PROJECT_ROOT, "public")

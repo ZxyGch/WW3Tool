@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ww3tool"
+version = "0.1.0"
+description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
+readme = "PACKAGING.md"
+requires-python = ">=3.9"
+# 核心依赖（requirements.txt 中的非 GUI 部分）。GUI 相关见 [project.optional-dependencies]。
+# 注意：网格生成等命令还需要仓库资源（meshgen/、public/、params.yml 模板），
+# 请设置环境变量 WW3TOOL_ROOT 指向含这些资源的仓库目录（仓库形态下无需设置）。
+dependencies = [
+    "numpy",
+    "netCDF4",
+    "pandas",
+    "matplotlib",
+    "cartopy",
+    "Pillow",
+    "scipy",
+    "scikit-image",
+    "opencv-python",
+    "paramiko",
+    "requests",
+    "PyYAML",
+    "pyfiglet",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PyQt6",
+    "PyQt6-Fluent-Widgets",
+]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+ww3tool = "run:main"
+
+# 注意：packages / py-modules / package-dir 的布局配置在 setup.py 中
+# （run.py 位于仓库根，而 workflows/desktop 位于 src/，需显式映射）。

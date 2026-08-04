@@ -55,6 +55,9 @@ def _repo_root_path() -> Path:
 
     [EN] Return the absolute path of the repository root directory.
     """
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
     return Path(__file__).resolve().parents[3]
 
 

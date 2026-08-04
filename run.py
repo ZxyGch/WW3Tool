@@ -152,7 +152,11 @@ import sysconfig
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+# WW3TOOL_ROOT 环境变量优先：pip/brew 安装形态下指向含 meshgen/public 的仓库；
+# 仓库形态（默认）从脚本位置推导，行为与以前完全一致。
+# [EN] WW3TOOL_ROOT env wins: in pip/brew installs it points to the repo holding
+# meshgen/public; in the repo layout (default) we infer from __file__ as before.
+ROOT = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parent)
 ENTRY_SCRIPT = ROOT / "run.py"
 REQUIREMENTS_FILE = ROOT / "src" / "requirements.txt"
 VENV_DIR = ROOT / ".venv"
@@ -434,8 +438,16 @@ def _pip_install(python: Path, packages: list[str] | None = None) -> None:
             check=True,
         )
         return
+    if REQUIREMENTS_FILE.is_file():
+        subprocess.run(
+            [str(python), "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)],
+            check=True,
+        )
+        return
+    # 打包形态（pip/brew）没有 src/requirements.txt：直接按全量依赖表安装。
+    # [EN] Packaged installs have no requirements.txt: install the full dep map.
     subprocess.run(
-        [str(python), "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)],
+        [str(python), "-m", "pip", "install", *list(_REQUIRED_IMPORTS)],
         check=True,
     )
 

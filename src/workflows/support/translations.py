@@ -23,6 +23,7 @@ Main consumers:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 _translations: dict[str, str] = {}
@@ -77,7 +78,7 @@ def _configured_language() -> str:
 
 
 def _load_language(language: str) -> dict[str, str]:
-    root = Path(__file__).resolve().parents[3]
+    root = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parents[3])
     path = root / "public" / "languages" / f"{language}.json"
     if not path.is_file() and language != "zh_CN":
         path = root / "public" / "languages" / "zh_CN.json"

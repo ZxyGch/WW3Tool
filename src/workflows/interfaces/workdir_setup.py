@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
@@ -14,7 +15,14 @@ class WorkdirError(Exception):
 
 
 def repo_root_path() -> Path:
-    """Return the WW3Tool repository root directory."""
+    """Return the WW3Tool repository root directory.
+
+    ``WW3TOOL_ROOT`` env wins (packaged installs); otherwise inferred from
+    the repository layout.
+    """
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
     return Path(__file__).resolve().parents[3]
 
 

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# WW3Tool 全局命令入口（类似 mysql / git 的命令行工具）。
+#
+# 用法与 `python3 run.py` 完全一致：
+#   ww3tool                        启动 Desktop GUI（默认）
+#   ww3tool shell [params.yml]     交互式 REPL
+#   ww3tool <子命令> [选项] [工作目录]   无界面 CLI
+#
+# 本脚本只负责定位仓库根目录并把参数转交给 run.py —— venv 引导、依赖检查、
+# 语言切换等全部由 run.py 自身完成，因此从任何目录、任何用户调用行为一致。
+#
+# 安装：./install.sh  （或手动软链本脚本到 PATH，如 /usr/local/bin/ww3tool）
+set -euo pipefail
+
+# 解析软链，得到脚本的真实路径（脚本可能通过 /usr/local/bin/ww3tool -> 仓库/ww3tool 被调用）
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+exec python3 "$ROOT/run.py" "$@"
