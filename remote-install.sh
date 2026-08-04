@@ -2,10 +2,10 @@
 # WW3Tool 一键安装脚本（远程安装，自包含 —— 从 raw URL 获取后直接执行）。
 #
 # 用法：
-#   curl -fsSL https://raw.githubusercontent.com/<YOUR-ORG>/WW3Tool/main/remote-install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/remote-install.sh | bash
 #
 # 可覆盖的环境变量：
-#   WW3TOOL_REPO_URL    仓库 git 地址（默认 https://github.com/<YOUR-ORG>/WW3Tool.git）
+#   WW3TOOL_REPO_URL    仓库 git 地址（默认 https://github.com/ZxyGch/WW3Tool.git）
 #   WW3TOOL_INSTALL_DIR 安装目录（默认 $HOME/.ww3tool）
 #   WW3TOOL_BIN_DIR     命令链接目录（默认自动选择 ~/.local/bin 或 /usr/local/bin）
 #
@@ -13,17 +13,10 @@
 # 首次运行 ww3tool 时，run.py 会自动创建虚拟环境并安装依赖。
 set -euo pipefail
 
-# 发布前把下面的 <YOUR-ORG> 替换为真实组织/用户（README 有说明）。
-REPO_URL="${WW3TOOL_REPO_URL:-https://github.com/<YOUR-ORG>/WW3Tool.git}"
+# 仓库地址（可用环境变量 WW3TOOL_REPO_URL 覆盖）。
+REPO_URL="${WW3TOOL_REPO_URL:-https://github.com/ZxyGch/WW3Tool.git}"
 INSTALL_DIR="${WW3TOOL_INSTALL_DIR:-$HOME/.ww3tool}"
 BIN_DIR="${WW3TOOL_BIN_DIR:-}"
-
-# 发布占位符检测：<YOUR-ORG> 未替换时给出明确指引
-if [[ "$REPO_URL" == *"<YOUR-ORG>"* ]]; then
-  echo "错误: remote-install.sh 中的仓库地址仍是占位符 <YOUR-ORG>。" >&2
-  echo "      请先替换脚本顶部 REPO_URL（或设置环境变量 WW3TOOL_REPO_URL）再使用。" >&2
-  exit 1
-fi
 echo "==> WW3Tool 一键安装"
 echo "    仓库:   $REPO_URL"
 echo "    安装到: $INSTALL_DIR"

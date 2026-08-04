@@ -3,22 +3,21 @@
 # 本地测试（需要真实 URL 后才能通过）：
 #   brew install --HEAD ./Formula/ww3tool.rb
 # 或发布 tap 后：
-#   brew tap <YOUR-ORG>/ww3tool
+#   brew tap ZxyGch/ww3tool
 #   brew install ww3tool
 #
-# 发布前替换：
-#   1. homepage / url / head 中的 <YOUR-ORG> 为真实组织/用户
-#   2. url 指向 v0.1.0 的 tag tarball，并填入真实 sha256
-#      （curl -sL <tarball-url> | shasum -a 256）
+# 正式发布（打 tag）后替换：
+#   1. url 从 refs/heads/master 改为 refs/tags/v0.1.0
+#   2. 重新计算 sha256（curl -sL <tarball-url> | shasum -a 256）
 # 注意：formula 只分发运行所需资源（meshgen/public/params.yml/src），
 # WW3 计算内核与超大目录（WW3/、WW3-6.07.1/、workSpace/）不打包。
 class Ww3tool < Formula
   desc "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
-  homepage "https://github.com/<YOUR-ORG>/WW3Tool"
-  url "https://github.com/<YOUR-ORG>/WW3Tool/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "REPLACE_WITH_REAL_SHA256"
+  homepage "https://github.com/ZxyGch/WW3Tool"
+  url "https://github.com/ZxyGch/WW3Tool/archive/refs/heads/master.tar.gz"
+  sha256 "498fb68a8125b3c302c8a85fa918249a4e9e2b1356b6d360a35984f7e77b5435"
   version "0.1.0"
-  head "https://github.com/<YOUR-ORG>/WW3Tool.git", branch: "main"
+  head "https://github.com/ZxyGch/WW3Tool.git", branch: "master"
 
   depends_on "python@3.12"
 

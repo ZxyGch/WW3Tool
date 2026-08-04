@@ -18,7 +18,7 @@
 ### 1. 一键脚本（推荐给其他人）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<YOUR-ORG>/WW3Tool/main/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/remote-install.sh | bash
 ```
 
 自动完成：浅克隆仓库到 `~/.ww3tool` → 把 `ww3tool` 命令软链到 PATH
@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/<YOUR-ORG>/WW3Tool/main/remote-inst
 ### 2. pip install
 
 ```bash
-pip install git+https://github.com/<YOUR-ORG>/WW3Tool.git
+pip install git+https://github.com/ZxyGch/WW3Tool.git
 # 或发布到 PyPI / 内网源后：pip install ww3tool
 # 需要桌面 GUI 时：pip install "ww3tool[gui]"
 ```
@@ -47,7 +47,7 @@ ww3tool workdir my_workdir
 ### 3. Homebrew
 
 ```bash
-brew tap <YOUR-ORG>/ww3tool && brew install ww3tool
+brew tap ZxyGch/ww3tool && brew install ww3tool
 # 或本地直接装：brew install ./Formula/ww3tool.rb
 ```
 
@@ -163,21 +163,19 @@ mcp/.venv/bin/python mcp/tests/smoke_test.py
 
 ## 四、发布清单（把"给其他人用"变成现实）
 
-当前 `remote-install.sh`、`Formula/ww3tool.rb`、`pyproject.toml` 中的
-`<YOUR-ORG>` 均为占位符。正式发布前：
+仓库已指向 https://github.com/ZxyGch/WW3Tool（默认分支 `master`）。
+当前 formula 的 `url` 使用 master tarball 并已填入真实 `sha256`，
+`brew install ./Formula/ww3tool.rb` 现在即可用。正式发布前：
 
-1. **推送到远程仓库**（GitHub / Gitee / 自建 git），记下地址。
-2. **替换占位符**：
-   - `remote-install.sh` 顶部 `REPO_URL` 默认值
-   - `Formula/ww3tool.rb` 的 `homepage` / `url` / `head`
-3. **打 tag 并填 sha256**（brew 正式安装需要）：
+1. **推送代码**：`git push origin master`（确保已配好远程）。
+2. **打 tag**（建议每次发布递增版本号）：
    ```bash
    git tag v0.1.0 && git push --tags
-   curl -sL https://github.com/<YOUR-ORG>/WW3Tool/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
+   curl -sL https://github.com/ZxyGch/WW3Tool/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
    ```
-   把结果填进 `Formula/ww3tool.rb` 的 `sha256`。
-4. **可选**：发布到 PyPI（`pip install ww3tool`）、创建 `homebrew-ww3tool`
-   tap 仓库（`brew tap <YOUR-ORG>/ww3tool`）。
+   把 `Formula/ww3tool.rb` 的 `url` 换成 tag 地址、`sha256` 换成新值。
+3. **可选**：发布到 PyPI（`pip install ww3tool`）、创建 `homebrew-ww3tool`
+   tap 仓库（`brew tap ZxyGch/ww3tool`）。
 
 ---
 
