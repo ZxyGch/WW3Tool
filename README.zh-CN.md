@@ -1,5 +1,15 @@
 # WW3Tool  文档
 
+## 快速安装（一行命令）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/remote-install.sh | bash
+```
+
+克隆仓库到 `~/.ww3tool`，把 `ww3tool` 命令链接进 PATH，首次运行自动创建虚拟环境并安装依赖（约几分钟，仅一次）。需要 `git` 和 Python 3.9+。
+
+Homebrew 用户（macOS / Linux）：`brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
+
 ## 1. 项目定位
 
 ![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
