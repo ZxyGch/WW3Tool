@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ww3tool": {
+      "command": "/绝对/路径/WW3Tool/mcp/launch.sh",
+      "args": []
+    }
+  }
+}
