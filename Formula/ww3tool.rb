@@ -13,9 +13,9 @@
 class Ww3tool < Formula
   desc "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
   homepage "https://github.com/ZxyGch/WW3Tool"
-  url "https://github.com/ZxyGch/WW3Tool/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "82b659668897ea9f3186e69a8408efd581162945fa7f65ad44dc9007999fc5ae"
-  version "0.1.0"
+  url "https://github.com/ZxyGch/WW3Tool/archive/refs/tags/v0.1.1.tar.gz"
+  sha256 "52b6d03363bc2d0dcd5545c0faeda650044f2eb84b3fb5502eee27dbeb39760c"
+  version "0.1.1"
   head "https://github.com/ZxyGch/WW3Tool.git", branch: "master"
 
   depends_on "python@3.12"
