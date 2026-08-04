@@ -313,10 +313,11 @@ class OthersJobsTable(QWidget):
         self._card, card_layout = create_header_card(self, "")
         card_layout.setSpacing(4)
         self._others_table = self._make_table()
-        card_layout.addWidget(self._others_table, 2)
-        card_layout.addWidget(_section_title(self, tr("cm_my_jobs", "本人任务")))
-        self._mine_table = self._make_table()
-        card_layout.addWidget(self._mine_table, 1)
+        card_layout.addWidget(self._others_table, 1)
+        self._my_jobs_title = _section_title(self, tr("cm_my_jobs", "本人任务"))
+        card_layout.addWidget(self._my_jobs_title)
+        self._mine_table = self._make_table(expand_v=False)
+        card_layout.addWidget(self._mine_table, 0)
         # 隐藏标题行，仅保留卡片背景（与左侧卡片同款）
         self._card.headerView.setVisible(False)
         self._card.separator.setVisible(False)
@@ -331,7 +332,7 @@ class OthersJobsTable(QWidget):
         self._mine_struct: tuple = ()
 
     @staticmethod
-    def _make_table() -> EdgeAlignedTableWidget:
+    def _make_table(expand_v: bool = True) -> EdgeAlignedTableWidget:
         table = EdgeAlignedTableWidget()
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels(
@@ -351,7 +352,12 @@ class OthersJobsTable(QWidget):
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdr.setMinimumSectionSize(42)
         table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        vpolicy = QSizePolicy.Policy.Expanding if expand_v else QSizePolicy.Policy.Maximum
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, vpolicy)
+        # qfluentwidgets 用自定义浮动滚动条接管原生滚动条（原生恒 AlwaysOff），
+        # 需经 SmoothScrollDelegate 开启滚动显示
+        if expand_v:
+            table.scrollDelagate.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         table.setRowCount(0)
         return table
 
@@ -360,6 +366,10 @@ class OthersJobsTable(QWidget):
         me = str(me or "")
         others = [j for j in jobs or [] if str(j.get("user", "")) != me]
         mine = [j for j in jobs or [] if str(j.get("user", "")) == me]
+        # 本人无任务时隐藏标题与表格，避免大片空白
+        has_mine = bool(mine)
+        self._my_jobs_title.setVisible(has_mine)
+        self._mine_table.setVisible(has_mine)
         self._update_table(self._others_table, others, "others")
         self._update_table(self._mine_table, mine, "mine")
 
@@ -418,7 +428,6 @@ class OthersJobsTable(QWidget):
                     item = QTableWidgetItem(str(text))
                     item.setTextAlignment(align)
                     table.setItem(i, col, item)
-            table.expand_to_contents(minimum_height=60, extra_height=6)
         finally:
             table.setUpdatesEnabled(True)
 
@@ -500,15 +509,17 @@ class ClusterMonitorInterface(QWidget):
             }
             """
         )
+        left_scroll.viewport().setAutoFillBackground(False)
+        left_scroll.viewport().setStyleSheet("background: transparent;")
         left_content = QWidget()
         left_content_layout = QVBoxLayout(left_content)
         left_content_layout.setContentsMargins(0, 0, 0, 0)
         left_content_layout.setSpacing(10)
         self._cluster_jobs_panel = ClusterJobsTable(left_content)
         self._idle_panel = IdleResourcesTable(left_content)
-        left_content_layout.addWidget(self._cluster_jobs_panel)
-        left_content_layout.addWidget(self._idle_panel)
-        left_content_layout.addStretch(1)
+        # 卡片按比例拉伸占满整个左侧高度，避免卡片下方露出窗口底色（与右侧卡片对称）
+        left_content_layout.addWidget(self._cluster_jobs_panel, 3)
+        left_content_layout.addWidget(self._idle_panel, 2)
         left_scroll.setWidget(left_content)
         left_layout.addWidget(left_scroll)
 
