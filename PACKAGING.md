@@ -49,9 +49,11 @@ ww3tool workdir my_workdir
 已发布 tap：`ZxyGch/homebrew-ww3tool`，直接使用：
 
 ```bash
-brew tap ZxyGch/ww3tool && brew install ww3tool
-# 或一步到位（自动 tap）：brew install ZxyGch/ww3tool
+brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool
+# 或一步到位（自动 tap，首次仍需 trust）：brew install ZxyGch/ww3tool
 ```
+
+> Homebrew 6+ 对第三方 tap 默认不信任，首次使用需 `brew trust`（一次性）。
 
 也可不发布直接本地装：`brew install ./Formula/ww3tool.rb`
 
