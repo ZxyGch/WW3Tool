@@ -33,9 +33,10 @@ class Ww3tool < Formula
     vpy = libexec/".venv/bin/python"
     system vpy, "-m", "pip", "install", "--upgrade", "pip"
     # 显式切到 libexec 再安装（libexec 内含 setup.py/pyproject.toml），
-    # 规避任何 cwd 不确定性；--no-deps：轻量依赖由 run.py 首次运行时自动补装。
+    # 规避任何 cwd 不确定性；一次性装齐全部依赖（与 pip 安装方式一致），
+    # run.py 首次运行仍保留自动补装作为兜底。
     Dir.chdir(libexec) do
-      system vpy, "-m", "pip", "install", "--no-deps", "."
+      system vpy, "-m", "pip", "install", "."
     end
     # 移除 pip 生成的 console script，统一使用 libexec/ww3tool 入口
     # （其会通过 run.py 引导到 libexec/.venv 中的 Python）。
