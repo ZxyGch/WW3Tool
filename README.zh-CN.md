@@ -6,8 +6,6 @@
 curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/remote-install.sh | bash
 ```
 
-克隆仓库到 `~/.ww3tool`，把 `ww3tool` 命令链接进 PATH，首次运行自动创建虚拟环境并安装依赖（约几分钟，仅一次）。需要 `git` 和 Python 3.9+。
-
 Homebrew 用户（macOS / Linux）：`brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
 
 ## 1. 项目定位
@@ -32,15 +30,25 @@ WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshge
 
 ## 2. 快速开始
 
-run.py 是唯一入口，通过命令行参数区分三种模式：
+两种等效的使用方式：
 
-```sh
-python3 run.py                    # GUI（图形界面）
-python3 run.py shell              # 交互式终端（REPL，可反复执行各步骤）
-python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
-```
+- **用一键命令 / Homebrew 安装过**——从任意目录直接使用 `ww3tool` 命令（与 run.py 同一入口）：
 
-三种模式共享同一套业务逻辑（src/workflows/application/），差别仅在交互层。
+  ```sh
+  ww3tool                    # GUI（图形界面）
+  ww3tool shell              # 交互式终端（REPL，可反复执行各步骤）
+  ww3tool <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
+  ```
+
+- **只想在某个目录里用**——克隆仓库后使用 `python3 run.py`（行为完全一致，命令相同）：
+
+  ```sh
+  python3 run.py                    # GUI（图形界面）
+  python3 run.py shell              # 交互式终端（REPL，可反复执行各步骤）
+  python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
+  ```
+
+两种方式共享同一套业务逻辑（src/workflows/application/），差别仅在交互层。
 
 
 ### 2.1 GUI

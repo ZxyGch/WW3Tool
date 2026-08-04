@@ -6,8 +6,6 @@
 curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/remote-install.sh | bash
 ```
 
-Clones the repo to `~/.ww3tool`, links the `ww3tool` command into your PATH, and installs dependencies automatically on first run (a few minutes, once). Requires `git` and Python 3.9+.
-
 Homebrew users (macOS / Linux): `brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
 
 ## 1. Project Overview
@@ -33,15 +31,25 @@ Also, if you find WW3Tool helpful, please give it a 🌟! 🥳
 
 ## 2. Quick Start
 
-`run.py` is the single entry point. Three modes are selected via CLI arguments:
+Two equivalent ways to use WW3Tool:
 
-```sh
-python3 run.py                    # GUI (graphical interface)
-python3 run.py shell              # Interactive terminal (REPL; steps can be run repeatedly)
-python3 run.py <subcommand> [workdir]  # Headless CLI (one command per step; suited for scripts and AI agents)
-```
+- **Installed via the one-line command / Homebrew** — use the `ww3tool` command from anywhere (same entry point as `run.py`):
 
-All three modes share the same business logic (`src/workflows/application/`); only the interaction layer differs.
+  ```sh
+  ww3tool                    # GUI (graphical interface)
+  ww3tool shell              # Interactive terminal (REPL; steps can be run repeatedly)
+  ww3tool <subcommand> [workdir]  # Headless CLI (one command per step; suited for scripts and AI agents)
+  ```
+
+- **Just want to run it from a directory** — clone the repo and use `python3 run.py` (identical behavior, commands are the same):
+
+  ```sh
+  python3 run.py                    # GUI (graphical interface)
+  python3 run.py shell              # Interactive terminal (REPL; steps can be run repeatedly)
+  python3 run.py <subcommand> [workdir]  # Headless CLI (one command per step; suited for scripts and AI agents)
+  ```
+
+Both ways share the same business logic (`src/workflows/application/`); only the interaction layer differs.
 
 
 ### 2.1 GUI
