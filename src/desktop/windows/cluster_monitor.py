@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..components.header_card import create_header_card
+from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
 from workflows.application.remote_ops import run_server_status
 from workflows.support.translations import tr
@@ -516,18 +517,44 @@ class ClusterMonitorInterface(QWidget):
             """
         )
 
-        # ── 左侧：个人任务队列 + 空闲资源（两张卡片）──────────────────────────────
+        # ── 左侧：个人任务队列 + 空闲资源（两张卡片，可滚动）──────────────────────
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 5, 10)
-        left_layout.setSpacing(10)
-        self._queue_panel = QueueCardsPanel(left)
-        self._idle_panel = IdleResourcesTable(left)
-        left_layout.addWidget(self._queue_panel)
-        left_layout.addWidget(self._idle_panel)
-        left_layout.addStretch(1)
+        left_layout.setSpacing(0)
+        left_scroll = NoHScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        left_scroll.setStyleSheet(
+            """
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+                margin: 0px;
+                padding: 0px;
+            }
+            QScrollArea > QWidget > QWidget {
+                margin: 0px;
+                padding: 0px;
+            }
+            """
+        )
+        left_content = QWidget()
+        left_content.setStyleSheet("QWidget { background-color: transparent; margin: 0px; padding: 0px; }")
+        left_content_layout = QVBoxLayout(left_content)
+        left_content_layout.setContentsMargins(0, 0, 0, 0)
+        left_content_layout.setSpacing(10)
+        self._queue_panel = QueueCardsPanel(left_content)
+        self._idle_panel = IdleResourcesTable(left_content)
+        left_content_layout.addWidget(self._queue_panel)
+        left_content_layout.addWidget(self._idle_panel)
+        left_content_layout.addStretch(1)
+        left_scroll.setWidget(left_content)
+        left_layout.addWidget(left_scroll)
 
-        # ── 右侧：状态行 + 日志(1/5) + 集群任务列表(4/5)──────────────────────────
+        # ── 右侧：状态行 + 集群任务列表(4/5，上) + 日志(1/5，下)────────────────────
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(5, 1, 10, 11)
@@ -537,6 +564,8 @@ class ClusterMonitorInterface(QWidget):
         )
         self._status_label.setStyleSheet("font-weight: bold; color: #E08A00;")
         right_layout.addWidget(self._status_label)
+        self._cluster_table = ClusterJobsTable(right)
+        right_layout.addWidget(self._cluster_table, 4)
         self._log = QTextEdit()
         mono_font = QFont(self.font())
         fallback_monos = [
@@ -563,8 +592,6 @@ class ClusterMonitorInterface(QWidget):
         except Exception:
             pass
         right_layout.addWidget(self._log, 1)
-        self._cluster_table = ClusterJobsTable(right)
-        right_layout.addWidget(self._cluster_table, 4)
 
         splitter.addWidget(left)
         splitter.addWidget(right)
