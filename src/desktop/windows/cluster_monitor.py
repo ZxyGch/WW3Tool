@@ -313,9 +313,6 @@ class OthersJobsTable(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
-        layout.addWidget(
-            _section_title(self, tr("cm_others_jobs", "其他用户任务（详细）"))
-        )
         self._others_table = self._make_table()
         layout.addWidget(self._others_table, 2)
         layout.addWidget(_section_title(self, tr("cm_my_jobs", "本人任务")))
@@ -497,7 +494,6 @@ class ClusterMonitorInterface(QWidget):
             """
         )
         left_content = QWidget()
-        left_content.setStyleSheet("QWidget { background-color: transparent; margin: 0px; padding: 0px; }")
         left_content_layout = QVBoxLayout(left_content)
         left_content_layout.setContentsMargins(0, 0, 0, 0)
         left_content_layout.setSpacing(10)
