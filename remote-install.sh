@@ -18,6 +18,12 @@ REPO_URL="${WW3TOOL_REPO_URL:-https://github.com/<YOUR-ORG>/WW3Tool.git}"
 INSTALL_DIR="${WW3TOOL_INSTALL_DIR:-$HOME/.ww3tool}"
 BIN_DIR="${WW3TOOL_BIN_DIR:-}"
 
+# 发布占位符检测：<YOUR-ORG> 未替换时给出明确指引
+if [[ "$REPO_URL" == *"<YOUR-ORG>"* ]]; then
+  echo "错误: remote-install.sh 中的仓库地址仍是占位符 <YOUR-ORG>。" >&2
+  echo "      请先替换脚本顶部 REPO_URL（或设置环境变量 WW3TOOL_REPO_URL）再使用。" >&2
+  exit 1
+fi
 echo "==> WW3Tool 一键安装"
 echo "    仓库:   $REPO_URL"
 echo "    安装到: $INSTALL_DIR"
@@ -27,12 +33,20 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ -e "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
+  echo "错误: 安装目录 $INSTALL_DIR 已存在但不是 WW3Tool 仓库（缺少 .git）。" >&2
+  echo "      请删除或换用 WW3TOOL_INSTALL_DIR 指定其他目录。" >&2
+  exit 1
+fi
+
 if [ ! -d "$INSTALL_DIR/.git" ]; then
   echo "==> 克隆仓库（浅克隆）..."
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 else
   echo "==> 更新已有安装..."
-  git -C "$INSTALL_DIR" pull --ff-only
+  if ! git -C "$INSTALL_DIR" pull --ff-only; then
+    echo "警告: 更新失败（可能有本地改动）。请手动处理 $INSTALL_DIR。" >&2
+  fi
 fi
 
 if [ ! -x "$INSTALL_DIR/ww3tool" ]; then

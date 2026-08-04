@@ -7,7 +7,9 @@ from typing import Any
 
 from PyQt6.QtGui import QIcon
 
-LOGO_PATH = Path(__file__).resolve().parents[2] / "public" / "resource" / "logo.png"
+from ._repo_root import repo_root
+
+LOGO_PATH = repo_root() / "public" / "resource" / "logo.png"
 
 
 def load_logo_icon() -> QIcon | None:

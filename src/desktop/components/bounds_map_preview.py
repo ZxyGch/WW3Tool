@@ -11,6 +11,7 @@ from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import QSizePolicy
 
+from ._repo_root import repo_root
 from .globe_picker_dialog import MapWebEngineView, current_map_language, current_map_type
 
 
@@ -45,7 +46,7 @@ class BoundsMapPreview(MapWebEngineView):
         settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, True)
         page.loadFinished.connect(self._on_page_loaded)
 
-        html_path = Path(__file__).parents[3] / "public" / "globe_picker" / "globe_picker.html"
+        html_path = repo_root() / "public" / "globe_picker" / "globe_picker.html"
         url = QUrl.fromLocalFile(str(html_path.resolve()))
         query = QUrlQuery()
         query.addQueryItem("mode", "preview")

@@ -137,6 +137,9 @@ def _repo_root_path() -> Path:
     """
     # interactive_cli.py 位于 src/workflows/interfaces/，向上 3 级即为仓库根。
     # [EN] interactive_cli.py is in src/workflows/interfaces/; 3 levels up is the repo root.
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
     return Path(__file__).resolve().parents[3]
 
 
@@ -1805,7 +1808,7 @@ def _find_default_params() -> Optional[str]:
     """
     # interactive_cli.py 位于 src/workflows/interfaces/
     # [EN] interactive_cli.py is located at src/workflows/interfaces/
-    root = Path(__file__).resolve().parents[3]
+    root = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parents[3])
     default = root / "params.yml"
     if not default.is_file():
         return None

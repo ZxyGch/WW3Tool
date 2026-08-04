@@ -41,6 +41,8 @@ from qfluentwidgets import (
 from workflows.application.configuration import ConfigError, EXAMPLE_YAML
 from workflows.domain.config_models import GridRegion, PipelineConfig
 from workflows.domain.forcing_fields import ForcingField, Step2Files
+
+from .._repo_root import repo_root
 from workflows.infrastructure.runtime_config import (
     add_recent_workdir,
     get_forcing_field_default_dir,
@@ -2342,7 +2344,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _run_grid_cli_subprocess(self, config: PipelineConfig) -> PipelineStepState:
         """Run Step 1 in a separate Python process so geometry clipping cannot freeze Qt."""
-        root = Path(__file__).resolve().parents[3]
+        root = repo_root()
         cmd = [
             sys.executable,
             "-u",
@@ -2757,7 +2759,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             if self._loaded_config and self._loaded_config.paths.ndbc_path and os.path.isdir(self._loaded_config.paths.ndbc_path):
                 ndbc_folder = self._loaded_config.paths.ndbc_path
             else:
-                ndbc_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "ndbc")
+                ndbc_folder = os.path.join(str(repo_root()), "ndbc")
                 os.makedirs(ndbc_folder, exist_ok=True)
 
         self._append_log(tr("plotting_ndbc_fetch_stations", "🔄 正在获取 NDBC 站点列表..."))

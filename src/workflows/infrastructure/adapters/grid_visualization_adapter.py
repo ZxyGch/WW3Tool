@@ -116,7 +116,7 @@ def _run_worker(
 
     [EN] Launch the ``grid_visualization.worker`` subprocess and parse its ``WW3TOOL_VIZ`` protocol output.
     """
-    src_dir = Path(__file__).resolve().parents[3]
+    src_dir = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parents[3])
     env = os.environ.copy()
     previous = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(src_dir) + (os.pathsep + previous if previous else "")

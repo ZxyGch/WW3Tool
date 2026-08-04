@@ -19,6 +19,8 @@ from workflows.domain.forcing_fields import Step2Files
 from workflows.infrastructure.runtime_config import _dump_yaml_with_comments
 from workflows.support.translations import tr
 
+from .._repo_root import repo_root
+
 
 LogCallback = Callable[[str], None]
 StateCallback = Callable[["PipelineStepState"], None]
@@ -910,7 +912,7 @@ def _strip_unstructured_dem_file(raw: dict) -> None:
 def _repo_params_path() -> Path:
     # [EN] Repository root params.yml path (used as fallback template for new workdir params).
     """仓库根 params.yml 路径（作为新工作目录 params 的回退模板）。"""
-    return Path(__file__).resolve().parents[3] / "params.yml"
+    return repo_root() / "params.yml"
 
 
 def _deep_merge_defaults(defaults: dict, overrides: dict) -> dict:

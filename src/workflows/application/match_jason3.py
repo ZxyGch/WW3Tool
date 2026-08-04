@@ -40,6 +40,7 @@ from ..infrastructure.plot.photo_output import (
     collect_photo_files,
     photo_subdir,
 )
+from ..infrastructure.runtime_config import PROJECT_ROOT
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
 
@@ -99,9 +100,9 @@ def _resolve_jason3_data_folder(
     jason_path = config.paths.jason_path
     if jason_path and os.path.isdir(jason_path):
         return os.path.abspath(jason_path)
-    # 最终回退到项目根目录下的 jason3/
-    # [EN] Final fallback to jason3/ under the project root
-    default_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "jason3")
+    # 最终回退到项目根目录下的 jason3/（WW3TOOL_ROOT 优先，见 runtime_config）
+    # [EN] Final fallback to jason3/ under the project root (WW3TOOL_ROOT first)
+    default_dir = os.path.join(PROJECT_ROOT, "jason3")
     os.makedirs(default_dir, exist_ok=True)
     return default_dir
 

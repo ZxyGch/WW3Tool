@@ -25,6 +25,8 @@ from PyQt6.QtWidgets import (
 )
 from qframelesswindow.webengine import FramelessWebEngineView
 
+from .._repo_root import repo_root
+
 
 def current_map_language() -> str:
     """Return the two-letter map language matching the application setting."""
@@ -175,7 +177,7 @@ class GlobePickerDialog(QWidget):
                 settings.setAttribute(attribute, True)
         page.loadFinished.connect(self._on_page_loaded)
 
-        html_path = Path(__file__).parent.parent.parent.parent / "public" / "globe_picker" / "globe_picker.html"
+        html_path = repo_root() / "public" / "globe_picker" / "globe_picker.html"
         html_url = QUrl.fromLocalFile(str(html_path.resolve()))
         query = QUrlQuery()
         query.addQueryItem("lang", self._map_language())

@@ -33,6 +33,9 @@ class Ww3tool < Formula
     # --no-deps：轻量依赖由 run.py 首次运行时自动补装，
     # 避免 formula 构建期拉取全部重依赖（cartopy 等）。
     system vpy, "-m", "pip", "install", "--no-deps", "."
+    # 移除 pip 生成的 console script，统一使用 libexec/ww3tool 入口
+    # （其会通过 run.py 引导到 libexec/.venv 中的 Python）。
+    FileUtils.rm_f libexec/".venv/bin/ww3tool"
     bin.install_symlink libexec/"ww3tool"
   end
 
