@@ -2662,5 +2662,14 @@
   "submit_success": "✅ 提交成功：任务 ID {job_id}",
   "download_success": "✅ 下载成功：{path}",
   "download_failed": "❌ 下载失败：{path} - {error}",
-  "cm_others_jobs": "其他用户任务（详细）"
+  "cm_others_jobs": "其他用户任务（详细）",
+  "cm_my_jobs": "本人任务",
+  "cm_job_col_user": "用户",
+  "cm_job_col_jobid": "JobID",
+  "cm_job_col_partition": "分区",
+  "cm_job_col_name": "作业名",
+  "cm_job_col_state": "状态",
+  "cm_job_col_time": "运行时间",
+  "cm_job_col_nodes": "节点",
+  "cm_job_col_cpus": "核数"
 }

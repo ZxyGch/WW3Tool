@@ -30,7 +30,13 @@ from PyQt6.QtWidgets import (
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
-from workflows.application.remote_ops import run_cluster_jobs_log, run_server_status
+from workflows.application.remote_ops import (
+    _acquire,
+    _fetch_cluster_active_jobs,
+    _resolve_remote_username,
+    run_server_status,
+)
+from workflows.support.logging import CoreLogger
 from workflows.support.translations import tr
 
 def _section_title(parent: QWidget, text: str) -> QWidget:
@@ -61,12 +67,6 @@ class ClusterJobsTable(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(
-            _section_title(self, tr("cm_cluster_jobs", "集群作业（所有用户）"))
-        )
         self._table = EdgeAlignedTableWidget()
         self._table.setColumnCount(4)
         self._table.setHorizontalHeaderLabels(
@@ -98,7 +98,14 @@ class ClusterJobsTable(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self._table.setRowCount(0)
-        layout.addWidget(self._table, 1)
+        self._card, card_layout = create_header_card(
+            self, tr("cm_cluster_jobs", "集群作业（所有用户）")
+        )
+        card_layout.setSpacing(4)
+        card_layout.addWidget(self._table)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._card)
         self._signature: tuple = ()
         self._struct_signature: tuple = ()
 
@@ -177,12 +184,6 @@ class IdleResourcesTable(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(
-            _section_title(self, tr("cm_idle_resources", "空闲资源"))
-        )
         self._table = EdgeAlignedTableWidget()
         self._table.setColumnCount(3)
         self._table.setHorizontalHeaderLabels(
@@ -207,7 +208,14 @@ class IdleResourcesTable(QWidget):
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        layout.addWidget(self._table)
+        self._card, card_layout = create_header_card(
+            self, tr("cm_idle_resources", "空闲资源")
+        )
+        card_layout.setSpacing(4)
+        card_layout.addWidget(self._table)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._card)
         self._signature: tuple = ()
         self._rows: list[dict] = []
 
@@ -280,48 +288,139 @@ class IdleResourcesTable(QWidget):
             self._table.setUpdatesEnabled(True)
 
 
-class OthersJobsList(QWidget):
-    """其他用户任务详细列表（run_cluster_jobs_log 输出，等宽文本）。"""
+class OthersJobsTable(QWidget):
+    """其他用户/本人任务详细表格（结构化数据，非文本日志）。"""
+
+    _HEADERS = [
+        ("cm_job_col_user", "用户"),
+        ("cm_job_col_jobid", "JobID"),
+        ("cm_job_col_partition", "分区"),
+        ("cm_job_col_name", "作业名"),
+        ("cm_job_col_state", "状态"),
+        ("cm_job_col_time", "运行时间"),
+        ("cm_job_col_nodes", "节点"),
+        ("cm_job_col_cpus", "核数"),
+    ]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(_section_title(self, tr("cm_others_jobs", "其他用户任务（详细）")))
-        self._text = QTextEdit()
-        mono_font = QFont(self.font())
-        fallback_monos = [
-            "Menlo",
-            "Monaco",
-            "Consolas",
-            "SF Mono",
-            "Courier New",
-            "Liberation Mono",
-            "DejaVu Sans Mono",
-            "Noto Sans Mono",
-        ]
-        available = set(QFontDatabase.families())
-        chosen = next((family for family in fallback_monos if family in available), None)
-        if not chosen:
-            chosen = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
-        mono_font.setFamily(chosen)
-        self._text.setFont(mono_font)
-        self._text.setReadOnly(True)
-        self._text.setAcceptRichText(False)
-        self._text.setUndoRedoEnabled(False)
-        try:
-            self._text.document().setMaximumBlockCount(5000)
-        except Exception:
-            pass
-        layout.addWidget(self._text, 1)
+        layout.setSpacing(4)
+        layout.addWidget(
+            _section_title(self, tr("cm_others_jobs", "其他用户任务（详细）"))
+        )
+        self._others_table = self._make_table()
+        layout.addWidget(self._others_table, 2)
+        layout.addWidget(_section_title(self, tr("cm_my_jobs", "本人任务")))
+        self._mine_table = self._make_table()
+        layout.addWidget(self._mine_table, 1)
+        self._others_sig: tuple = ()
+        self._others_struct: tuple = ()
+        self._mine_sig: tuple = ()
+        self._mine_struct: tuple = ()
 
-    def update_others_jobs(self, messages: list) -> None:
-        if not messages:
+    @staticmethod
+    def _make_table() -> EdgeAlignedTableWidget:
+        table = EdgeAlignedTableWidget()
+        table.setColumnCount(8)
+        table.setHorizontalHeaderLabels(
+            [tr(key, default) for key, default in OthersJobsTable._HEADERS]
+        )
+        table.horizontalHeader().setVisible(False)
+        table.verticalHeader().setVisible(False)
+        table.setBorderVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setWordWrap(False)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        for col in range(8):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setMinimumSectionSize(42)
+        table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        table.setRowCount(0)
+        return table
+
+    def update_others_jobs(self, jobs: list, me: str) -> None:
+        """jobs: _fetch_cluster_active_jobs 的结构化任务字典列表。"""
+        me = str(me or "")
+        others = [j for j in jobs or [] if str(j.get("user", "")) != me]
+        mine = [j for j in jobs or [] if str(j.get("user", "")) == me]
+        self._update_table(self._others_table, others, "others")
+        self._update_table(self._mine_table, mine, "mine")
+
+    def _update_table(self, table: EdgeAlignedTableWidget, tasks: list, key: str) -> None:
+        rows = [
+            [
+                str(t.get("user", "")),
+                str(t.get("jobid", "")),
+                str(t.get("partition", "")),
+                str(t.get("name", "")),
+                str(t.get("state", "")),
+                str(t.get("time", "")),
+                str(t.get("nodes", "")),
+                str(t.get("cpus", "")),
+            ]
+            for t in tasks
+        ]
+        value_sig = tuple(tuple(r) for r in rows)
+        struct_sig = tuple(tuple(r[:5] + r[6:]) for r in rows)  # 不含运行时间列
+        sig_attr, struct_attr = f"_{key}_sig", f"_{key}_struct"
+        if value_sig == getattr(self, sig_attr):
             return
-        text = "\n".join(str(m) for m in messages)
-        if self._text.toPlainText() != text:
-            self._text.setPlainText(text)
+        setattr(self, sig_attr, value_sig)
+        if not rows:
+            table.setRowCount(0)
+            return
+        if struct_sig == getattr(self, struct_attr):
+            self._update_times(table, rows)
+            return
+        setattr(self, struct_attr, struct_sig)
+        table.setUpdatesEnabled(False)
+        try:
+            table.setRowCount(len(rows) + 1)
+            for col, (hkey, htext) in enumerate(OthersJobsTable._HEADERS):
+                item = QTableWidgetItem(tr(hkey, htext))
+                if col == 0:
+                    align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                elif col in (5,):
+                    align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                else:
+                    align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+                item.setTextAlignment(align)
+                table.setItem(0, col, item)
+            aligns = [
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            ]
+            for i, parts in enumerate(rows, start=1):
+                for col, (text, align) in enumerate(zip(parts, aligns)):
+                    item = QTableWidgetItem(str(text))
+                    item.setTextAlignment(align)
+                    table.setItem(i, col, item)
+            table.expand_to_contents(minimum_height=60, extra_height=6)
+        finally:
+            table.setUpdatesEnabled(True)
+
+    def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
+        table.setUpdatesEnabled(False)
+        try:
+            for i, parts in enumerate(rows, start=1):
+                item = table.item(i, 5)
+                if item is not None and item.text() != str(parts[5]):
+                    item.setText(str(parts[5]))
+        finally:
+            table.setUpdatesEnabled(True)
 
 
 class ClusterMonitorInterface(QWidget):
@@ -411,7 +510,7 @@ class ClusterMonitorInterface(QWidget):
         )
         self._status_label.setStyleSheet("font-weight: bold; color: #E08A00;")
         right_layout.addWidget(self._status_label)
-        self._others_jobs_panel = OthersJobsList(right)
+        self._others_jobs_panel = OthersJobsTable(right)
         right_layout.addWidget(self._others_jobs_panel, 4)
         self._log = QTextEdit()
         mono_font = QFont(self.font())
@@ -438,6 +537,7 @@ class ClusterMonitorInterface(QWidget):
             self._log.document().setMaximumBlockCount(2000)
         except Exception:
             pass
+        self._log.setStyleSheet(self._log_style())
         right_layout.addWidget(self._log, 1)
 
         splitter.addWidget(left)
@@ -506,14 +606,20 @@ class ClusterMonitorInterface(QWidget):
         self._busy = True
         persistent = self._remote_vm._client
 
-        def _collect(cfg, messages):
+        def _collect(cfg):
             status = run_server_status(cfg, client=persistent)
-            jobs = run_cluster_jobs_log(cfg, log=messages.append, client=persistent)
-            return status, jobs, messages
+            try:
+                c, _owns = _acquire(cfg, persistent)
+                me = _resolve_remote_username(cfg, c)
+                jobs, _source = _fetch_cluster_active_jobs(
+                    c, CoreLogger(callback=lambda _m: None)
+                )
+            except Exception:
+                jobs, me = [], ""
+            return status, (jobs, me)
 
-        collector: list = []
         self._runner.run(
-            lambda: _collect(cfg, collector),
+            lambda: _collect(cfg),
             self._on_status_done,
         )
 
@@ -542,20 +648,45 @@ class ClusterMonitorInterface(QWidget):
         self._busy = False
         if result is None or not isinstance(result, tuple) or len(result) != 3:
             return
-        status, jobs, messages = result
+        status, (jobs, me) = result
         data = getattr(status, "data", None)
         if isinstance(data, dict):
             self._cluster_jobs_panel.update_cluster_jobs(data.get("cpu", []) or [])
             self._idle_panel.update_idle(data.get("idle", []) or [])
             self._set_status(connected=True)
-        self._others_jobs_panel.update_others_jobs(list(messages or []))
-        if not getattr(status, "success", True) or not getattr(jobs, "success", True):
+        self._others_jobs_panel.update_others_jobs(jobs or [], me or "")
+        if not getattr(status, "success", True):
             # [EN] Connection is dead: stay disconnected; the next tick will detect
             # is_connected=False and auto-reconnect. Do NOT close the shared client
             # here — the home page polls through the same persistent connection.
             # 连接已失效：保持未连接，下个 tick 检测 is_connected=False 后自动重连。
             # 不要在这里 close 共享连接——主页轮询也复用同一个持久化连接。
             self._set_status(disconnected=True)
+
+    def _log_style(self) -> str:
+        try:
+            from qfluentwidgets import isDarkTheme
+
+            dark = bool(isDarkTheme())
+        except Exception:
+            dark = False
+        if dark:
+            return (
+                "QTextEdit { background-color: #2d2d2d !important;"
+                " border: 0.5px solid #404040 !important;"
+                " border-radius: 4px; padding-left: 2px;"
+                " color: #FFFFFF !important; }"
+                " QTextEdit:focus { border: 0.5px solid #404040 !important; padding-left: 2px; }"
+                " QTextEdit:hover { border: 0.5px solid #404040 !important; padding-left: 2px; }"
+            )
+        return (
+            "QTextEdit { background-color: transparent;"
+            " border: 0.5px solid #D0D0D0 !important;"
+            " border-radius: 4px; padding-left: 2px;"
+            " color: #000000 !important; }"
+            " QTextEdit:focus { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
+            " QTextEdit:hover { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
+        )
 
     def _set_status(
         self, *, connected: bool = False, connecting: bool = False, disconnected: bool = False
