@@ -441,6 +441,9 @@ class ClusterMonitorInterface(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("cluster_monitor_interface")
+        self.setStyleSheet(
+            "QWidget#cluster_monitor_interface { background: transparent; border: none; }"
+        )
         self._remote_vm = remote_vm
         self._runner = runner
         self._get_config = get_config or (lambda: None)
@@ -646,7 +649,7 @@ class ClusterMonitorInterface(QWidget):
 
     def _on_status_done(self, result: object) -> None:
         self._busy = False
-        if result is None or not isinstance(result, tuple) or len(result) != 3:
+        if result is None or not isinstance(result, tuple) or len(result) != 2:
             return
         status, (jobs, me) = result
         data = getattr(status, "data", None)
