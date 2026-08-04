@@ -1,32 +1,78 @@
 # WW3Tool 封装指南
 
-把 WW3Tool 封装成两种形态，让日常使用和 AI 客户端调用都像 `mysql` / `git`
+把 WW3Tool 封装成多种形态，让日常使用和 AI 客户端调用都像 `mysql` / `git`
 一样简单：
 
 | 形态 | 入口 | 适合谁 |
 | --- | --- | --- |
 | CLI 全局命令 | `ww3tool`（安装后任意目录可用） | 人（终端）与脚本 |
-| MCP server | 36 个 `ww3tool_*` tools（stdio） | Claude / Cursor 等 AI 客户端 |
+| MCP server | 34 个 `ww3tool_*` tools + `list_commands`（stdio） | Claude / Cursor 等 AI 客户端 |
 
-两种形态都复用仓库根的 `run.py` 统一入口，venv 引导、依赖检查、语言切换
-完全一致，**不需要改动任何现有代码**。
+所有形态都复用仓库根的 `run.py` 统一入口，venv 引导、依赖检查、语言切换
+完全一致，**不需要改动任何现有代码**（打包形态下仅需 `WW3TOOL_ROOT` 指向资源）。
 
 ---
 
-## 一、CLI 全局命令（类似 `mysql xxx`）
+## 一、安装方式
 
-### 安装
+### 1. 一键脚本（推荐给其他人）
 
 ```bash
-cd WW3Tool
-./install.sh            # 自动探测：~/.local/bin（在 PATH 中时）→ /usr/local/bin
-./install.sh --prefix /usr/local/bin   # 或指定目录（该目录需要 sudo 时加 sudo）
+curl -fsSL https://raw.githubusercontent.com/<YOUR-ORG>/WW3Tool/main/remote-install.sh | bash
 ```
 
-> `install.sh` 只是把仓库内的 `ww3tool` 脚本软链到 PATH 目录，不改动仓库、
-> 不复制文件。卸载：`./install.sh --uninstall`。
+自动完成：浅克隆仓库到 `~/.ww3tool` → 把 `ww3tool` 命令软链到 PATH
+（优先 `~/.local/bin`，其次 `/usr/local/bin`）→ 首次运行自动建 venv 装依赖。
+可覆盖：`WW3TOOL_REPO_URL`、`WW3TOOL_INSTALL_DIR`、`WW3TOOL_BIN_DIR`。
 
-### 使用
+### 2. pip install
+
+```bash
+pip install git+https://github.com/<YOUR-ORG>/WW3Tool.git
+# 或发布到 PyPI / 内网源后：pip install ww3tool
+# 需要桌面 GUI 时：pip install "ww3tool[gui]"
+```
+
+安装后 `ww3tool` 命令直接可用。**注意**：pip 只装 Python 代码；网格生成
+（`meshgen/`）、翻译、`params.yml` 模板等仓库资源需要指向一个仓库目录：
+
+```bash
+export WW3TOOL_ROOT=/path/to/WW3Tool   # 指向 clone 的仓库根
+ww3tool workdir my_workdir
+```
+
+不设置 `WW3TOOL_ROOT` 时，`workdir` 等需要模板的命令会报缺模板错误
+（其余轻量命令正常）。仓库形态（源码里直接跑 `python3 run.py`）无需设置。
+
+### 3. Homebrew
+
+```bash
+brew tap <YOUR-ORG>/ww3tool && brew install ww3tool
+# 或本地直接装：brew install ./Formula/ww3tool.rb
+```
+
+formula 会把运行所需资源（meshgen / public / params.yml 模板）连同代码
+一起装进 Cellar，命令链接到 `/opt/homebrew/bin/ww3tool`，**无需**
+`WW3TOOL_ROOT`。巨型目录（`WW3/`、`WW3-6.07.1/`、`workSpace/`）不随包分发。
+
+### 4. 已 clone 仓库的场景
+
+```bash
+./install.sh   # 把仓库内 ww3tool 软链到 PATH（可 --prefix 指定目录）
+```
+
+### 各方式对比
+
+| 方式 | 命令 | 需 clone 仓库 | 资源(meshgen等) | WW3TOOL_ROOT |
+| --- | --- | --- | --- | --- |
+| curl \| bash | 一条命令 | 自动（~/.ww3tool） | 随仓库 | 不需要 |
+| pip | 一条命令 | 需手动 clone | 不包含 | 需要 |
+| brew | 一条命令 | 自动（Cellar） | 随包 | 不需要 |
+| install.sh | 一条命令 | 已 clone | 随仓库 | 不需要 |
+
+---
+
+## 二、使用（CLI 命令）
 
 ```bash
 ww3tool --help                          # 命令参考
@@ -40,24 +86,14 @@ ww3tool upload --confirm my_workdir     # 上传到远程
 
 所有子命令与 `python3 run.py` 完全等价，从任何目录调用均可。
 
-### 给其他人用
-
-同事拿到仓库后（git clone 或拷贝）只需：
-
-```bash
-./install.sh          # 获得全局 ww3tool 命令
-```
-
-`run.py` 首次运行会自动创建/复用项目 `.venv` 并安装依赖。
-
 ---
 
-## 二、MCP server
+## 三、MCP server
 
-把 CLI 子命令暴露为 MCP tools（工具名 `ww3tool_<子命令>`，
-如 `ww3tool_run_workflow`、`ww3tool_plot_wave_maps`）。工具与参数 schema
-**运行时从 `build_parser()` 自动提取**，CLI 增加命令后 MCP 自动同步，无重复维护。
-交互式命令 `ssh`（打开 SSH 终端）不通过 MCP 提供，仅 CLI 使用。
+把 CLI 子命令暴露为 MCP tools（工具名 `ww3tool_<子命令>`，如
+`ww3tool_run_workflow`、`ww3tool_plot_wave_maps`）。工具与参数 schema
+**运行时从 `build_parser()` 自动提取**，CLI 增加命令后 MCP 自动同步。
+交互式命令 `ssh` 不通过 MCP 提供，仅 CLI 使用。
 
 ### 1. 初始化（新环境只需一次）
 
@@ -125,11 +161,33 @@ mcp/.venv/bin/python mcp/tests/smoke_test.py
 
 ---
 
-## 三、常见问题
+## 四、发布清单（把"给其他人用"变成现实）
 
-- **`ww3tool` 提示 command not found**：确认 `install.sh` 的安装目录在 PATH 中，
+当前 `remote-install.sh`、`Formula/ww3tool.rb`、`pyproject.toml` 中的
+`<YOUR-ORG>` 均为占位符。正式发布前：
+
+1. **推送到远程仓库**（GitHub / Gitee / 自建 git），记下地址。
+2. **替换占位符**：
+   - `remote-install.sh` 顶部 `REPO_URL` 默认值
+   - `Formula/ww3tool.rb` 的 `homepage` / `url` / `head`
+3. **打 tag 并填 sha256**（brew 正式安装需要）：
+   ```bash
+   git tag v0.1.0 && git push --tags
+   curl -sL https://github.com/<YOUR-ORG>/WW3Tool/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
+   ```
+   把结果填进 `Formula/ww3tool.rb` 的 `sha256`。
+4. **可选**：发布到 PyPI（`pip install ww3tool`）、创建 `homebrew-ww3tool`
+   tap 仓库（`brew tap <YOUR-ORG>/ww3tool`）。
+
+---
+
+## 五、常见问题
+
+- **`ww3tool` 提示 command not found**：确认安装目录在 PATH 中，
   或手动 `export PATH="$HOME/.local/bin:$PATH"`。
+- **pip 安装后 `workdir` 报缺模板**：设置 `export WW3TOOL_ROOT=/path/to/WW3Tool`。
 - **MCP 客户端连不上**：先跑冒烟测试确认 server 正常；再检查配置里的
   `command` 是否为**绝对路径**且 `launch.sh` 有执行权限。
 - **MCP 调用报 `Dependency check failed`**：项目 `.venv` 依赖不全，
   用 `python3 run.py --help` 触发一次自动安装即可。
+- **`pip install .` 生成 build/、*.egg-info/**：构建产物，已加入 `.gitignore`。
