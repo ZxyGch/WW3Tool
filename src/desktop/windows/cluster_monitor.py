@@ -103,6 +103,10 @@ class ClusterJobsTable(QWidget):
         )
         card_layout.setSpacing(4)
         card_layout.addWidget(self._table)
+        # [EN] Mount the returned layout into the card body (required for display).
+        # 必须把返回的 layout 挂进卡片 body，否则表格永远不会显示。
+        self._card.viewLayout.setContentsMargins(11, 10, 11, 12)
+        self._card.viewLayout.addLayout(card_layout)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self._card)
@@ -213,6 +217,8 @@ class IdleResourcesTable(QWidget):
         )
         card_layout.setSpacing(4)
         card_layout.addWidget(self._table)
+        self._card.viewLayout.setContentsMargins(11, 10, 11, 12)
+        self._card.viewLayout.addLayout(card_layout)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self._card)
@@ -508,11 +514,6 @@ class ClusterMonitorInterface(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(5, 1, 10, 11)
         right_layout.setSpacing(6)
-        self._status_label = QLabel(
-            tr("cm_status_disconnected", "未连接（每秒自动重连）")
-        )
-        self._status_label.setStyleSheet("font-weight: bold; color: #E08A00;")
-        right_layout.addWidget(self._status_label)
         self._others_jobs_panel = OthersJobsTable(right)
         right_layout.addWidget(self._others_jobs_panel, 4)
         self._log = QTextEdit()
@@ -601,7 +602,6 @@ class ClusterMonitorInterface(QWidget):
             return
         cfg = self._get_config()
         if cfg is None:
-            self._set_status(disconnected=True)
             return
         if not self._remote_vm.is_connected:
             self._try_connect(cfg)
@@ -628,7 +628,6 @@ class ClusterMonitorInterface(QWidget):
 
     def _try_connect(self, cfg) -> None:
         self._reconnecting = True
-        self._set_status(connecting=True)
         # 静默连接：内部日志抑制，结果由 _on_connect_done 统一写一条
         self._runner.run(
             lambda: self._remote_vm.connect_test(cfg),
@@ -638,10 +637,8 @@ class ClusterMonitorInterface(QWidget):
     def _on_connect_done(self, result: object) -> None:
         self._reconnecting = False
         if bool(getattr(result, "success", False)):
-            self._set_status(connected=True)
             self._append_log(tr("cm_reconnect_ok", "✔ 已连接服务器"))
         else:
-            self._set_status(disconnected=True)
             error = getattr(result, "error", None) or tr("connect_failed", "连接失败")
             self._append_log(
                 tr("cm_reconnect_fail", "✘ 连接失败：{error}").format(error=error)
@@ -656,15 +653,7 @@ class ClusterMonitorInterface(QWidget):
         if isinstance(data, dict):
             self._cluster_jobs_panel.update_cluster_jobs(data.get("cpu", []) or [])
             self._idle_panel.update_idle(data.get("idle", []) or [])
-            self._set_status(connected=True)
         self._others_jobs_panel.update_others_jobs(jobs or [], me or "")
-        if not getattr(status, "success", True):
-            # [EN] Connection is dead: stay disconnected; the next tick will detect
-            # is_connected=False and auto-reconnect. Do NOT close the shared client
-            # here — the home page polls through the same persistent connection.
-            # 连接已失效：保持未连接，下个 tick 检测 is_connected=False 后自动重连。
-            # 不要在这里 close 共享连接——主页轮询也复用同一个持久化连接。
-            self._set_status(disconnected=True)
 
     def _log_style(self) -> str:
         try:
@@ -691,17 +680,3 @@ class ClusterMonitorInterface(QWidget):
             " QTextEdit:hover { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
         )
 
-    def _set_status(
-        self, *, connected: bool = False, connecting: bool = False, disconnected: bool = False
-    ) -> None:
-        if connecting:
-            text = tr("cm_status_connecting", "正在连接服务器…")
-            color = "#1E90FF"
-        elif connected:
-            text = tr("cm_status_connected", "已连接（每秒刷新）")
-            color = "#2E8B57"
-        else:
-            text = tr("cm_status_disconnected", "未连接（每秒自动重连）")
-            color = "#E08A00"
-        self._status_label.setText(text)
-        self._status_label.setStyleSheet(f"font-weight: bold; color: {color};")
