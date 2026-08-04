@@ -76,6 +76,20 @@ class Ww3toolRootEnvTest(unittest.TestCase):
             )
         self.assertEqual(out, "[]")
 
+    def test_translations_reads_real_file_from_env_root(self):
+        # 正向用例：WW3TOOL_ROOT 下有 public/languages/en.json 时应真实读到。
+        with tempfile.TemporaryDirectory() as tmp:
+            langs = Path(tmp) / "public" / "languages"
+            langs.mkdir(parents=True)
+            (langs / "en.json").write_text('{"key_hello": "hello"}', encoding="utf-8")
+            out = _run(
+                tmp,
+                "import sys; sys.path.insert(0, %r);\n"
+                "from workflows.support.translations import _load_language;\n"
+                "print(_load_language('en').get('key_hello'))" % SRC,
+            )
+        self.assertEqual(out, "hello")
+
 
 class Ww3toolRootInferTest(unittest.TestCase):
     """未设置 WW3TOOL_ROOT 时，各处应回退到仓库布局推断（与以往一致）。"""

@@ -116,7 +116,15 @@ def _run_worker(
 
     [EN] Launch the ``grid_visualization.worker`` subprocess and parse its ``WW3TOOL_VIZ`` protocol output.
     """
-    src_dir = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parents[3])
+    # 原 parents[3] 在本文件层级（…/infrastructure/adapters/）等于 src/，
+    # env 分支同样指向 WW3TOOL_ROOT/src，使 `-m workflows.*` 可导入。
+    # [EN] parents[3] at this depth equals src/; the env branch points to
+    # WW3TOOL_ROOT/src so `-m workflows.*` stays importable.
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        src_dir = Path(env_root).expanduser().resolve() / "src"
+    else:
+        src_dir = Path(__file__).resolve().parents[3]
     env = os.environ.copy()
     previous = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(src_dir) + (os.pathsep + previous if previous else "")

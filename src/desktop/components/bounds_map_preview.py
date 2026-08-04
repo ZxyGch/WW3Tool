@@ -11,7 +11,7 @@ from PyQt6.QtGui import QColor, QPainterPath, QRegion
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import QSizePolicy
 
-from ._repo_root import repo_root
+from .._repo_root import repo_root
 from .globe_picker_dialog import MapWebEngineView, current_map_language, current_map_type
 
 
