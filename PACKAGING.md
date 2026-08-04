@@ -73,8 +73,11 @@ formula 会把运行所需资源（meshgen / public / params.yml 模板）连同
 | --- | --- | --- | --- | --- |
 | curl \| bash | 一条命令 | 自动（~/.ww3tool） | 随仓库 | 不需要 |
 | pip | 一条命令 | 需手动 clone | 不包含 | 需要 |
-| brew | 一条命令 | 自动（Cellar） | 随包 | 不需要 |
+| brew | tap + trust + install | 自动（Cellar） | 随包 | 不需要 |
 | install.sh | 一条命令 | 已 clone | 随仓库 | 不需要 |
+
+> **通用要求**：Python 3.9+（curl/pip 方式使用系统 `python3`；brew 方式使用
+> Homebrew 的 `python@3.12`）。首次运行会自动建 venv 装依赖，需几分钟与网络。
 
 ---
 
@@ -169,22 +172,18 @@ mcp/.venv/bin/python mcp/tests/smoke_test.py
 
 ## 四、发布清单（把"给其他人用"变成现实）
 
-仓库已指向 https://github.com/ZxyGch/WW3Tool（默认分支 `master`）。
-当前 formula 的 `url` 使用 master tarball 并已填入真实 `sha256`，
-`brew install ./Formula/ww3tool.rb` 现在即可用。正式发布前：
+仓库已指向 https://github.com/ZxyGch/WW3Tool（默认分支 `master`），并已发布
+`v0.1.0` tag；Homebrew tap（`ZxyGch/homebrew-ww3tool`）的 formula 已指向该 tag
+并填入真实 `sha256`。**以后每次发版：**
 
-1. **推送代码**：`git push origin master`（确保已配好远程）。
-2. **打 tag**（建议每次发布递增版本号）：
+1. **打 tag 并推送**（tag 是稳定锚点，日常 push 不影响已发布的 formula）：
    ```bash
-   git tag v0.1.0 && git push --tags
-   curl -sL https://github.com/ZxyGch/WW3Tool/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
+   git tag v0.1.1 && git push origin v0.1.1
+   curl -sL https://github.com/ZxyGch/WW3Tool/archive/refs/tags/v0.1.1.tar.gz | shasum -a 256
    ```
-   把 `Formula/ww3tool.rb` 的 `url` 换成 tag 地址、`sha256` 换成新值。
+2. **更新 tap 仓库** `ZxyGch/homebrew-ww3tool` 的 `ww3tool.rb`：
+   把 `url` 换成新 tag、`sha256` 换成新值，推送。
 3. **可选**：发布到 PyPI（`pip install ww3tool`）。
-   Homebrew tap 已建好（`ZxyGch/homebrew-ww3tool`）——每次更新 WW3Tool
-   后重算 master tarball 的 sha256（`curl -sL
-   https://github.com/ZxyGch/WW3Tool/archive/refs/heads/master.tar.gz | shasum -a 256`），
-   更新 tap 仓库的 `ww3tool.rb` 并推送。
 
 ---
 
