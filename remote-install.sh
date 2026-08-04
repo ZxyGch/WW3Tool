@@ -1,53 +1,55 @@
 #!/usr/bin/env bash
-# WW3Tool 一键安装脚本（远程安装，自包含 —— 从 raw URL 获取后直接执行）。
+# WW3Tool one-line installer (self-contained; safe to pipe from a raw URL).
 #
-# 用法：
+# Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/remote-install.sh | bash
 #
-# 可覆盖的环境变量：
-#   WW3TOOL_REPO_URL    仓库 git 地址（默认 https://github.com/ZxyGch/WW3Tool.git）
-#   WW3TOOL_INSTALL_DIR 安装目录（默认 $HOME/.ww3tool）
-#   WW3TOOL_BIN_DIR     命令链接目录（默认自动选择 ~/.local/bin 或 /usr/local/bin）
+# Optional environment overrides:
+#   WW3TOOL_REPO_URL    Repo git URL (default: https://github.com/ZxyGch/WW3Tool.git)
+#   WW3TOOL_INSTALL_DIR Install directory (default: $HOME/.ww3tool)
+#   WW3TOOL_BIN_DIR     Directory for the ww3tool command symlink
+#                       (default: auto-pick ~/.local/bin or /usr/local/bin)
 #
-# 安装内容：浅克隆仓库到安装目录，并把仓库内的 ww3tool 入口软链到 PATH。
-# 首次运行 ww3tool 时，run.py 会自动创建虚拟环境并安装依赖。
+# What it does: shallow-clones the repo into the install directory and symlinks
+# the bundled ww3tool entry script into PATH. On first run, run.py creates a
+# virtual environment and installs dependencies automatically.
 set -euo pipefail
 
-# 仓库地址（可用环境变量 WW3TOOL_REPO_URL 覆盖）。
+# Repo URL (override with WW3TOOL_REPO_URL).
 REPO_URL="${WW3TOOL_REPO_URL:-https://github.com/ZxyGch/WW3Tool.git}"
 INSTALL_DIR="${WW3TOOL_INSTALL_DIR:-$HOME/.ww3tool}"
 BIN_DIR="${WW3TOOL_BIN_DIR:-}"
-echo "==> WW3Tool 一键安装"
-echo "    仓库:   $REPO_URL"
-echo "    安装到: $INSTALL_DIR"
+echo "==> WW3Tool installer"
+echo "    repo:    $REPO_URL"
+echo "    install: $INSTALL_DIR"
 
 if ! command -v git >/dev/null 2>&1; then
-  echo "错误: 需要 git 命令（macOS 自带；Linux: sudo apt install git 等）" >&2
+  echo "Error: 'git' is required (preinstalled on macOS; on Linux: sudo apt install git, etc.)" >&2
   exit 1
 fi
 
 if [ -e "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
-  echo "错误: 安装目录 $INSTALL_DIR 已存在但不是 WW3Tool 仓库（缺少 .git）。" >&2
-  echo "      请删除或换用 WW3TOOL_INSTALL_DIR 指定其他目录。" >&2
+  echo "Error: $INSTALL_DIR exists but is not a WW3Tool repo (missing .git)." >&2
+  echo "       Remove it or set WW3TOOL_INSTALL_DIR to another directory." >&2
   exit 1
 fi
 
 if [ ! -d "$INSTALL_DIR/.git" ]; then
-  echo "==> 克隆仓库（浅克隆）..."
+  echo "==> Cloning repository (shallow)..."
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 else
-  echo "==> 更新已有安装..."
+  echo "==> Updating existing installation..."
   if ! git -C "$INSTALL_DIR" pull --ff-only; then
-    echo "警告: 更新失败（可能有本地改动）。请手动处理 $INSTALL_DIR。" >&2
+    echo "Warning: update failed (local changes?). Please handle $INSTALL_DIR manually." >&2
   fi
 fi
 
 if [ ! -x "$INSTALL_DIR/ww3tool" ]; then
-  echo "错误: 仓库中未找到可执行的 ww3tool 入口脚本" >&2
+  echo "Error: executable 'ww3tool' entry script not found in the repository" >&2
   exit 1
 fi
 
-# 选择命令链接目录
+# Pick the directory for the command symlink.
 if [ -z "$BIN_DIR" ]; then
   if [ -d "$HOME/.local/bin" ] || echo "$PATH" | tr ':' '\n' | grep -qxF "$HOME/.local/bin" >/dev/null 2>&1; then
     BIN_DIR="$HOME/.local/bin"
@@ -60,10 +62,10 @@ fi
 mkdir -p "$BIN_DIR"
 ln -sf "$INSTALL_DIR/ww3tool" "$BIN_DIR/ww3tool"
 
-echo "==> 完成。"
-echo "    命令: $BIN_DIR/ww3tool"
-echo "    首次运行 ww3tool 会自动创建虚拟环境并安装依赖（需几分钟）。"
+echo "==> Done."
+echo "    command: $BIN_DIR/ww3tool"
+echo "    First run creates a virtual environment and installs dependencies (a few minutes)."
 if ! echo "$PATH" | tr ':' '\n' | grep -qxF "$BIN_DIR" >/dev/null 2>&1; then
-  echo "    提示: $BIN_DIR 不在 PATH 中，请先执行: export PATH=\"$BIN_DIR:\$PATH\""
+  echo "    Note: $BIN_DIR is not in PATH. Run: export PATH=\"$BIN_DIR:\$PATH\""
 fi
-echo "    验证: ww3tool --help"
+echo "    Verify: ww3tool --help"

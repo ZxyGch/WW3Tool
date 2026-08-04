@@ -1,5 +1,15 @@
 # WW3Tool Documentation
 
+## Quick Install (one line)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/remote-install.sh | bash
+```
+
+Clones the repo to `~/.ww3tool`, links the `ww3tool` command into your PATH, and installs dependencies automatically on first run (a few minutes, once). Requires `git` and Python 3.9+.
+
+Homebrew users (macOS / Linux): `brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
+
 ## 1. Project Overview
 
 ![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
