@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ww3tool"
-version = "0.1.0"
+version = "0.1.1"
 description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
 readme = "PACKAGING.md"
 requires-python = ">=3.9"
@@ -30,6 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 gui = [
     "PyQt6",
+    "PyQt6-WebEngine",
     "PyQt6-Fluent-Widgets",
 ]
 dev = [
