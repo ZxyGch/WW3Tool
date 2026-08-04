@@ -63,6 +63,7 @@ from ..components.section_title import create_section_title
 from .settings_window import SettingsInterface
 from .plot_window import PlotInterface
 from .tools_window import ToolsInterface, delete_all_under, delete_run_artifacts_under
+from .cluster_monitor import ClusterMonitorInterface
 from ..qt_callback_dispatcher import QtCallbackDispatcher
 from ..steps import CalculationStepPanel, ForcingStepPanel, GridStepPanel, WW3StepPanel
 from ..view_models.forcing_step import ForcingStepState, ForcingStepViewModel
@@ -434,6 +435,23 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             selectable=True,
             position=NavigationItemPosition.TOP,
         )
+        # [EN] Cluster monitor page (cloud icon below Plot): auto-connect + 1s refresh.
+        # 集群监控页（云朵图标，位于绘图下方）：自动连接 + 每秒刷新。
+        self._cluster_monitor_interface = ClusterMonitorInterface(
+            self,
+            remote_vm=self._remote_vm,
+            runner=self._runner,
+            get_config=self._build_poll_config,
+        )
+        cluster_monitor_item = self.addSubInterface(
+            self._cluster_monitor_interface,
+            FluentIcon.CLOUD,
+            tr("cluster_monitor", "集群监控"),
+            NavigationItemPosition.TOP,
+        )
+        cluster_monitor_item.clicked.connect(
+            lambda *_: self._cluster_monitor_interface.start_monitoring()
+        )
         self.navigationInterface.addItem(
             routeKey="tools",
             icon=self._navigation_icon("DEVELOPER_TOOLS", "BROOM", "COMMAND_PROMPT", "APPLICATION"),
@@ -781,7 +799,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             inject_ntfy=self._server_inject_ntfy,
             watch_job_ntfy=self._server_watch_ntfy_job,
             node_status=self._server_node_status,
-            cluster_jobs_log=self._server_cluster_jobs_log,
             cancel=self._server_cancel,
             log=self._append_log,
         )
@@ -3073,18 +3090,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return
         data = getattr(result, "data", None)
         if isinstance(data, dict):
-            cpu_data = data.get("cpu", []) or []
             idle_data = data.get("idle", []) or []
             partition_data = data.get("partitions", []) or []
             partition_mem = data.get("partition_mem", {}) or {}
-            queue_lines = data.get("queue", []) or []
 
             def apply_status() -> None:
-                self._server_connect_panel.update_cpu_table(cpu_data)
                 self._server_connect_panel.update_partition_memory(partition_mem)
                 self._server_connect_panel.update_idle_resources(idle_data)
                 self._server_connect_panel.replace_cpu_options_if_changed(partition_data)
-                self._server_connect_panel.update_queue_table(queue_lines)
                 self._server_connect_panel.apply_suggested_slurm_mem()
 
             self._preserve_steps_scroll(apply_status)
@@ -3255,9 +3268,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _server_node_status(self) -> None:
         self._run_job(self._remote_vm.node_status)
-
-    def _server_cluster_jobs_log(self) -> None:
-        self._run_job(self._remote_vm.cluster_jobs_log)
 
     def _server_clear(self) -> None:
         remote_dir = self._server_ops_panel.remote_dir() if hasattr(self, "_server_ops_panel") else ""

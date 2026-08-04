@@ -41,17 +41,6 @@ from workflows.support.translations import tr
 _TITLE_KEY = "step6_title"
 _TITLE_DEFAULT = "第五步：连接服务器"
 
-# [EN] ── Task state mapping ────────────────────────────────────────────────────────
-# ── 任务状态映射 ────────────────────────────────────────────────────────
-_STATE_MAP = {
-    "RUNNING": ("queue_status_running", "运行中"),
-    "PENDING": ("queue_status_pending", "等待中"),
-    "COMPLETING": ("queue_status_completing", "完成中"),
-    "CONFIGURING": ("queue_status_configuring", "配置中"),
-    "SUSPENDED": ("queue_status_suspended", "挂起"),
-}
-_ACTIVE_STATES = {"RUNNING", "PENDING", "COMPLETING", "CONFIGURING", "SUSPENDED"}
-
 
 class ServerConnectPanel:
     # [EN] Connect to server + cluster jobs + task queue + cancel task.
@@ -69,7 +58,6 @@ class ServerConnectPanel:
         inject_ntfy: Callable[[], None],
         watch_job_ntfy: Callable[[], None],
         node_status: Callable[[], None],
-        cluster_jobs_log: Callable[[], None],
         cancel: Callable[[], None],
         log: Callable[[str], None] | None = None,
     ) -> None:
@@ -77,11 +65,7 @@ class ServerConnectPanel:
         self._combo_style = combo_style
         self._log = log or (lambda _message: None)
         self._slurm_mem_user_edited = False
-        self._cpu_signature: tuple = ()
         self._idle_signature: tuple = ()
-        self._queue_signature: tuple = ()
-        self._queue_structure_signature: tuple = ()
-        self._queue_task_tables: list[EdgeAlignedTableWidget] = []
         self._idle_rows: list[dict] = []
         self._partition_mem_mb: dict[str, int] = {}
         self.fields: dict[str, LineEdit] = {}
@@ -100,64 +84,6 @@ class ServerConnectPanel:
         self.connect_button = create_button(tr("step6_connect", "连接服务器"), connect)
         layout.addWidget(self.connect_button)
 
-        # [EN] ── Cluster jobs title ────────────────────────────────────────────
-        # ── 集群作业标题 ────────────────────────────────────────────
-        self._cpu_title = self._build_section_title(
-            tr("step6_cluster_jobs", "集群作业")
-        )
-        layout.addWidget(self._cpu_title)
-
-        # [EN] ── Cluster jobs table ────────────────────────────────────────────
-        # ── 集群作业表格 ────────────────────────────────────────────
-        self._cpu_table = EdgeAlignedTableWidget()
-        self._cpu_table.setColumnCount(4)
-        self._cpu_table.setHorizontalHeaderLabels(
-            [tr("cluster_col_user", "用户"), tr("cluster_col_cpus", "CPU数"),
-             tr("cluster_col_nodes", "节点"), tr("cluster_col_elapsed", "时间")]
-        )
-        self._cpu_table.horizontalHeader().setVisible(False)
-        self._cpu_table.verticalHeader().setVisible(False)
-        self._cpu_table.setBorderVisible(False)
-        self._cpu_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._cpu_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._cpu_table.setWordWrap(False)
-        hdr = self._cpu_table.horizontalHeader()
-        hdr.setStretchLastSection(False)
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setMinimumSectionSize(42)
-        vhdr = self._cpu_table.verticalHeader()
-        vhdr.setVisible(False)
-        vhdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self._cpu_table.setContentsMargins(0, 0, 0, 0)
-        self._cpu_table.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
-        self._cpu_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._cpu_table.setRowCount(0)
-        self._cpu_table.setVisible(False)
-        layout.addWidget(self._cpu_table)
-
-        # [EN] ── Task queue title ────────────────────────────────────────────────
-        # ── 任务队列标题 ────────────────────────────────────────────────
-        self._queue_title = self._build_section_title(
-            tr("step6_queue_ranking", "任务队列 占用排行")
-        )
-        layout.addWidget(self._queue_title)
-
-        # [EN] ── Task queue container (dynamically add cards)────────────────────────────────
-        # ── 任务队列容器（动态添加卡片）────────────────────────────────
-        self._queue_container = QWidget()
-        self._queue_container.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
-        self._queue_layout = QVBoxLayout(self._queue_container)
-        self._queue_layout.setContentsMargins(0, 0, 0, 0)
-        self._queue_layout.setSpacing(8)
-        self._queue_container.setVisible(False)
-        layout.addWidget(self._queue_container)
 
         # [EN] ── Cancel task section ────────────────────────────────────────────────
         # ── 取消任务区域 ────────────────────────────────────────────────
@@ -262,11 +188,6 @@ class ServerConnectPanel:
             node_status,
         )
         confirm_slurm_layout.addWidget(self.node_status_button)
-        self.cluster_jobs_log_button = create_button(
-            tr("step6_cluster_jobs_log", "查看集群任务（他人）"),
-            cluster_jobs_log,
-        )
-        confirm_slurm_layout.addWidget(self.cluster_jobs_log_button)
         layout.addWidget(self._confirm_slurm_widget)
 
         self._group.viewLayout.addLayout(layout)
@@ -290,8 +211,7 @@ class ServerConnectPanel:
         except Exception:
             pass
         self.connect_button.setVisible(not connected)
-        self._cancel_widget.setVisible(False)  # [EN] Visibility controlled by update_queue_table
-        # 由 update_queue_table 控制显隐
+        self._cancel_widget.setVisible(connected)
         self._idle_title.setVisible(connected)
         self._idle_table.setVisible(connected)
         self._slurm_title.setVisible(connected)
@@ -300,72 +220,7 @@ class ServerConnectPanel:
         if connected and self._idle_table.rowCount() == 0:
             self.update_idle_resources([])
         if not connected:
-            self._hide_cpu_and_queue()
-
-    def update_cpu_table(self, rows: list) -> None:
-        # [EN] Update cluster jobs table. rows: [[user, cpus, nodes, elapsed], ...]
-        """更新集群作业表格。rows: [[user, cpus, nodes, elapsed], ...]"""
-        valid = []
-        for row in rows:
-            parts = [str(p) for p in row] if isinstance(row, (list, tuple)) else str(row).split()
-            if len(parts) >= 4:
-                valid.append(parts[:4])
-        signature = tuple(tuple(parts) for parts in valid)
-        if signature == self._cpu_signature:
-            return
-        self._cpu_signature = signature
-        if not valid:
-            self._cpu_table.setRowCount(0)
-            self._cpu_title.setVisible(False)
-            self._cpu_table.setVisible(False)
-            return
-
-        self._cpu_table.setUpdatesEnabled(False)
-        # [EN] Manual header row (row 0) + data rows, matching original style
-        # 手动表头行（第 0 行）+ 数据行，与原有风格一致
-        try:
-            header_labels = [
-                tr("cluster_col_user", "用户"),
-                tr("cluster_col_cpus", "核数"),
-                tr("cluster_col_nodes", "节点"),
-                tr("cluster_col_elapsed", "时间"),
-            ]
-            self._cpu_table.setRowCount(len(valid) + 1)
-            for col, text in enumerate(header_labels):
-                item = QTableWidgetItem(text)
-                # [EN] User header left-aligned, others centered
-                # User 表头靠左，其余居中
-                if col == 0:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                    )
-                else:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
-                    )
-                self._cpu_table.setItem(0, col, item)
-
-            # [EN] Column alignment: User(left), CPUs(center), Nodes(center), Time(right)
-            # 列对齐：用户(左), CPU数(居中), 节点(居中), 时间(右)
-            aligns = [
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
-                Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-            ]
-            for i, parts in enumerate(valid, start=1):
-                for col, (text, align) in enumerate(zip(parts, aligns)):
-                    item = QTableWidgetItem(str(text))
-                    item.setTextAlignment(align)
-                    self._cpu_table.setItem(i, col, item)
-
-            self._cpu_table.expand_to_contents(minimum_height=60, extra_height=6)
-            self._cpu_table.resizeColumnToContents(3)
-            self._cpu_table.setColumnWidth(3, max(self._cpu_table.columnWidth(3), 112))
-        finally:
-            self._cpu_table.setUpdatesEnabled(True)
-        self._cpu_title.setVisible(True)
-        self._cpu_table.setVisible(True)
+            self._hide_idle_and_slurm()
 
     def update_idle_resources(self, rows: list) -> None:
         """Update idle resource table. rows: [{cpu, node, nodes, cores, max_cores_per_node}, ...]."""
@@ -632,62 +487,6 @@ class ServerConnectPanel:
             self.cpu_combo.setCurrentText(deduped[0])
         self._apply_suggested_slurm_mem()
 
-    def update_queue_table(self, lines: list) -> None:
-        # [EN] Update task queue display. lines: squeue output lines.
-        """更新任务队列显示。lines: squeue 输出行列表。"""
-        tasks = self._parse_squeue_lines(lines)
-        signature = tuple(
-            (
-                task.get("jobid", ""),
-                task.get("partition", ""),
-                task.get("name", ""),
-                task.get("state", ""),
-                task.get("time", ""),
-                task.get("nodes", ""),
-                task.get("cpus", ""),
-                task.get("nodelist", ""),
-            )
-            for task in tasks
-        )
-        structure_signature = tuple(
-            (
-                task.get("jobid", ""),
-                task.get("partition", ""),
-                task.get("name", ""),
-                task.get("state", ""),
-                task.get("nodes", ""),
-                task.get("cpus", ""),
-                task.get("nodelist", ""),
-            )
-            for task in tasks
-        )
-        if signature == self._queue_signature:
-            return
-        if structure_signature == self._queue_structure_signature:
-            self._update_queue_card_values(tasks)
-            self._queue_signature = signature
-            return
-        self._queue_signature = signature
-        self._queue_structure_signature = structure_signature
-        if not tasks:
-            self._clear_queue_display()
-            self._queue_title.setVisible(False)
-            self._queue_container.setVisible(False)
-            self._cancel_widget.setVisible(False)
-            return
-
-        # [EN] squeue is a snapshot. Rebuild from the latest snapshot so cancel/add
-        # races cannot leave stale cards or separators in the layout.
-        # squeue 是快照。每次按最新快照重建，避免取消/新增交错时残留旧卡片或分隔线。
-        self._queue_container.setUpdatesEnabled(False)
-        try:
-            self._rebuild_queue_cards(tasks)
-            self._queue_title.setVisible(True)
-            self._queue_container.setVisible(True)
-            self._cancel_widget.setVisible(True)
-        finally:
-            self._queue_container.setUpdatesEnabled(True)
-
     # [EN] ── Internal methods ──────────────────────────────────────────────────────────
     # ── 内部方法 ──────────────────────────────────────────────────────────
 
@@ -713,25 +512,15 @@ class ServerConnectPanel:
         h.addWidget(line_r, 1)
         return container
 
-    def _hide_cpu_and_queue(self) -> None:
-        self._cpu_title.setVisible(False)
-        self._cpu_table.setVisible(False)
-        self._cpu_table.setRowCount(0)
-        self._queue_title.setVisible(False)
-        self._queue_container.setVisible(False)
-        self._clear_queue_display()
+    def _hide_idle_and_slurm(self) -> None:
         self._idle_title.setVisible(False)
         self._idle_table.setVisible(False)
+        self._idle_table.setRowCount(0)
+        self._idle_rows = []
+        self._idle_signature = ()
         self._slurm_title.setVisible(False)
         self._slurm_form.setVisible(False)
         self._confirm_slurm_widget.setVisible(False)
-        self._idle_table.setRowCount(0)
-        self._idle_rows = []
-        self._cpu_signature = ()
-        self._idle_signature = ()
-        self._queue_signature = ()
-        self._queue_structure_signature = ()
-        self._queue_task_tables = []
 
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -784,114 +573,6 @@ class ServerConnectPanel:
         combo.addItems(next_values)
         combo.setCurrentText(selected)
 
-    def _parse_squeue_lines(self, lines: list) -> list[dict]:
-        # [EN] Parse squeue lines, return list of task dicts.
-        """解析 squeue 行，返回任务字典列表。"""
-        tasks = []
-        for ln in lines:
-            if not ln or not ln.strip():
-                continue
-            parts = ln.split()
-            if len(parts) < 8:
-                continue
-            state = parts[3]
-            if state not in _ACTIVE_STATES:
-                continue
-            state_key, state_default = _STATE_MAP.get(state, (None, state))
-            state_text = tr(state_key, state_default) if state_key else state
-            tasks.append(
-                {
-                    "jobid": parts[0],
-                    "partition": parts[1],
-                    "name": parts[2],
-                    "state": state_text,
-                    "time": parts[4],
-                    "nodes": parts[5],
-                    "cpus": parts[6],
-                    "nodelist": " ".join(parts[7:]),
-                }
-            )
-        return tasks
-
-    def _rebuild_queue_cards(self, tasks: list[dict]) -> None:
-        self._clear_queue_display()
-        self._queue_task_tables = []
-        for idx, task in enumerate(tasks):
-            card = self._create_task_card(task)
-            self._queue_task_tables.append(card)
-            self._queue_layout.addWidget(card)
-            if idx < len(tasks) - 1:
-                sep = QFrame()
-                sep.setFrameShape(QFrame.Shape.HLine)
-                sep.setFixedHeight(1)
-                sep.setStyleSheet("background-color: rgba(128,128,128,0.3);")
-                self._queue_layout.addWidget(sep)
-
-    def _create_task_card(self, task: dict) -> EdgeAlignedTableWidget:
-        fields = [
-            (tr("queue_jobid", "JobID:"), task.get("jobid", "")),
-            (tr("queue_job_name", "作业名:"), task.get("name", "")),
-            (tr("queue_status", "状态:"), task.get("state", "")),
-            (tr("queue_runtime", "已运行:"), task.get("time", "")),
-            (tr("queue_cpu", "分区:"), task.get("partition", "")),
-            (tr("queue_node_num", "节点数:"), task.get("nodes", "")),
-            (tr("queue_cpus", "核数:"), task.get("cpus", "")),
-            (tr("queue_node_list", "节点列表:"), task.get("nodelist", "")),
-        ]
-        table = EdgeAlignedTableWidget()
-        table.setColumnCount(2)
-        table.setRowCount(len(fields))
-        table.horizontalHeader().setVisible(False)
-        table.verticalHeader().setVisible(False)
-        table.setBorderVisible(False)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setWordWrap(True)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        hdr = table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hdr.setStretchLastSection(True)
-
-        for row, (label, value) in enumerate(fields):
-            lbl_item = QTableWidgetItem(label)
-            lbl_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-            val_item = QTableWidgetItem(str(value))
-            val_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            table.setItem(row, 0, lbl_item)
-            table.setItem(row, 1, val_item)
-
-        table.expand_to_contents(minimum_height=80, extra_height=10)
-        return table
-
-    def _update_queue_card_values(self, tasks: list[dict]) -> None:
-        if len(tasks) != len(self._queue_task_tables):
-            self._rebuild_queue_cards(tasks)
-            return
-        for table, task in zip(self._queue_task_tables, tasks):
-            values = [
-                task.get("jobid", ""),
-                task.get("name", ""),
-                task.get("state", ""),
-                task.get("time", ""),
-                task.get("partition", ""),
-                task.get("nodes", ""),
-                task.get("cpus", ""),
-                task.get("nodelist", ""),
-            ]
-            table.setUpdatesEnabled(False)
-            try:
-                for row, value in enumerate(values):
-                    item = table.item(row, 1)
-                    if item is not None and item.text() != str(value):
-                        item.setText(str(value))
-            finally:
-                table.setUpdatesEnabled(True)
-
     @staticmethod
     def _without_stealing_focus(fn, *args, **kwargs) -> None:
         app = QApplication.instance()
@@ -905,13 +586,3 @@ class ServerConnectPanel:
                 focus_before.setFocus()
             except RuntimeError:
                 pass
-
-    def _clear_queue_display(self) -> None:
-        while self._queue_layout.count() > 0:
-            item = self._queue_layout.takeAt(0)
-            if item:
-                w = item.widget()
-                if w:
-                    w.setParent(None)
-                    w.deleteLater()
-        self._queue_task_tables = []

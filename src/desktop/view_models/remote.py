@@ -160,11 +160,6 @@ class RemoteViewModel:
 
         return run_node_status(config, log=self._log, client=self._ensure_client(config))
 
-    def cluster_jobs_log(self, config: PipelineConfig):
-        from workflows.application.remote_ops import run_cluster_jobs_log
-
-        return run_cluster_jobs_log(config, log=self._log, client=self._ensure_client(config))
-
     def submit(self, config: PipelineConfig, *, script: str = "server.sh"):
         from workflows.application.remote_ops import run_submit
 
