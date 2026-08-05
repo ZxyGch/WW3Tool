@@ -359,13 +359,13 @@ class OthersJobsTable(QWidget):
 
     # 最小可读宽度（px）：包含 Fluent 表格的文本留白，避免短文本也显示为省略号。
     _COL_MIN_WIDTH = {
-        1: 80,   # JobID
-        2: 84,   # 分区
-        3: 104,  # 作业名
-        4: 88,   # 状态
-        5: 104,  # 运行时间
-        6: 64,   # 节点
-        7: 64,   # 核数
+        1: 64,   # JobID
+        2: 64,   # 分区
+        3: 84,   # 作业名
+        4: 76,   # 状态
+        5: 92,   # 运行时间
+        6: 56,   # 节点
+        7: 56,   # 核数
     }
 
     _HEADERS = [
@@ -625,14 +625,14 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽 = 内容渲染宽 + 8px（内容完整优先，不做压缩/加宽）：
+        """列宽 = 内容渲染宽 + 12px（内容完整优先，不分配剩余宽度）：
         - 总宽不足表格宽：右侧留表格空列区（表格控件本身仍占满容器）
         - 总宽超出表格宽：横向滚动按需出现（内容完整可看）
-        用户列 = 用户名渲染宽 + 8px，下限 50px。
+        用户列 = 用户名渲染宽 + 12px，下限 64px。
         数据刷新与窗口 resize 后都会调用。
         """
         fm = QFontMetrics(getFont(13))  # 与 delegate 渲染字体一致，避免测宽偏差
-        pad = 24
+        pad = 12
         targets: dict = {}
         for col in range(1, 8):
             w = 0
@@ -640,14 +640,14 @@ class OthersJobsTable(QWidget):
                 it = table.item(r, col)
                 if it is not None:
                     w = max(w, fm.horizontalAdvance(it.text()))
-            targets[col] = max(w + pad, table.sizeHintForColumn(col) + 12, OthersJobsTable._COL_MIN_WIDTH[col])
-        # 用户列：按用户名渲染宽和委托 size hint 计算，下限 72px。
+            targets[col] = max(w + pad, OthersJobsTable._COL_MIN_WIDTH[col])
+        # 用户列：按用户名渲染宽计算，下限 64px。
         uw = 0
         for r in range(table.rowCount()):
             it = table.item(r, 0)
             if it is not None:
                 uw = max(uw, fm.horizontalAdvance(it.text()))
-        user_w = max(uw + pad, table.sizeHintForColumn(0) + 12, 72)
+        user_w = max(uw + pad, 64)
         avail = max(table.viewport().width(), table.width())
         if avail < 200:
             # 表格尚未布局（数据可能早于布局到达，如 SSH 异步数据）：
@@ -667,18 +667,6 @@ class OthersJobsTable(QWidget):
                 Qt.ScrollBarPolicy.ScrollBarAsNeeded
             )
         else:
-            # 铺满：剩余宽度按内容比例分给其他 7 列
-            # （内容长的列多分、短的少分；每列宽度始终 ≥ 内容宽，
-            #  内容完整显示，表格整体铺满右侧无空列区；用户列保持贴合用户名）
-            remaining = avail - total
-            base = sum(targets.values())
-            if base > 0:
-                given = 0
-                for col in range(1, 8):
-                    share = int(remaining * targets[col] / base)
-                    targets[col] += share
-                    given += share
-                targets[7] += remaining - given
             for col in range(1, 8):
                 table.setColumnWidth(col, targets[col])
             table.setColumnWidth(0, user_w)
