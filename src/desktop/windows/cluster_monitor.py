@@ -468,6 +468,22 @@ class OthersJobsTable(QWidget):
         self._update_table(self._others_table, others, "others")
         self._update_table(self._mine_table, mine, "mine")
         self._refresh_card_height()
+        # 数据更新后立即通知窗口重算右侧高度/列宽，不依赖外部调用时机
+        # (避免 viewport 未就绪/回调链路中断时列表保持内容高)
+        self._notify_parent_height_refresh()
+
+    def _notify_parent_height_refresh(self) -> None:
+        """向上查找 ClusterMonitorInterface 并触发右侧高度重算(幂等)。"""
+        w: QWidget = self.parentWidget()
+        while w is not None:
+            refresh = getattr(w, "_refresh_others_height", None)
+            if refresh is not None:
+                try:
+                    refresh()
+                except Exception:
+                    pass
+                return
+            w = w.parentWidget()
 
     def _update_table(self, table: EdgeAlignedTableWidget, tasks: list, key: str) -> None:
         rows = [
@@ -569,6 +585,14 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
+        # 列宽总和小于表格宽度时,把剩余宽度给用户列(到 45% 上限),
+        # 填满表格避免右侧大片空白(Interactive 列宽模式下列宽和不跟表格宽)
+        if total < avail:
+            room_user = int(avail * 0.45) - user_w
+            if room_user > 0:
+                add = min(avail - total, room_user)
+                if add > 0:
+                    table.setColumnWidth(0, user_w + add)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
@@ -785,6 +809,10 @@ class ClusterMonitorInterface(QWidget):
         op = self._others_jobs_panel
         right_scroll = self._splitter.widget(1)
         viewport_h = right_scroll.viewport().height()
+        # 布局未就绪时 viewport 可能为 0/极小：用页面高度兜底，
+        # 避免把列表高度算成内容高(列表"缩"成几行)
+        if viewport_h < 100:
+            viewport_h = max(self.height(), 320)
         # 右侧布局 6:1：日志区占 1/7 可用高度
         log_area = max(80, viewport_h // 7)
         avail = max(200, viewport_h - log_area - 12)
@@ -795,8 +823,6 @@ class ClusterMonitorInterface(QWidget):
             )
         ot_avail = avail - _CARD_EXTRA - mine_area
         ot = op._others_table
-        # 内容总高（行数×行高），不能直接用 ot.height()——它可能已被压缩过
-        content_h = sum(ot.rowHeight(r) for r in range(ot.rowCount())) + 6
         # 列表占满 6:1 可用空间：窗口拉高列表随之展开（内容多时内部滚动）
         new_h = max(ot_avail, 80)
         if abs(new_h - ot.height()) > 1:
@@ -840,6 +866,9 @@ class ClusterMonitorInterface(QWidget):
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
         self.start_monitoring()
+        # 页面每次显示都重算右侧列表高度/列宽，弥补首次布局未就绪的场景
+        self._refresh_splitter_height()
+        self._refresh_others_height()
 
     def hideEvent(self, event) -> None:  # noqa: N802
         super().hideEvent(event)
