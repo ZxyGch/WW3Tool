@@ -667,7 +667,18 @@ class OthersJobsTable(QWidget):
                 Qt.ScrollBarPolicy.ScrollBarAsNeeded
             )
         else:
-            # 总宽不足表格宽 → 列宽贴合内容（不加宽），右侧留表格空列区
+            # 铺满：剩余宽度按内容比例分给其他 7 列
+            # （内容长的列多分、短的少分；每列宽度始终 ≥ 内容宽，
+            #  内容完整显示，表格整体铺满右侧无空列区；用户列保持贴合用户名）
+            remaining = avail - total
+            base = sum(targets.values())
+            if base > 0:
+                given = 0
+                for col in range(1, 8):
+                    share = int(remaining * targets[col] / base)
+                    targets[col] += share
+                    given += share
+                targets[7] += remaining - given
             for col in range(1, 8):
                 table.setColumnWidth(col, targets[col])
             table.setColumnWidth(0, user_w)
