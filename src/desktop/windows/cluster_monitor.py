@@ -833,6 +833,7 @@ class ClusterMonitorInterface(QWidget):
         self.setStyleSheet(
             "QWidget#cluster_monitor_interface { background: transparent; border: none; }"
         )
+        self.setAutoFillBackground(False)
         self._remote_vm = remote_vm
         self._runner = runner
         self._get_config = get_config or (lambda: None)
@@ -846,6 +847,7 @@ class ClusterMonitorInterface(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setStyleSheet(
             """
+            QSplitter { background: transparent; border: none; }
             QSplitter::handle:horizontal {
                 background-color: #64AADE;
                 border-width: 2px;
@@ -886,6 +888,11 @@ class ClusterMonitorInterface(QWidget):
         left_scroll.viewport().setAutoFillBackground(False)
         left_scroll.viewport().setStyleSheet("background: transparent;")
         left_content = QWidget()
+        left_content.setObjectName("cluster_monitor_left_content")
+        left_content.setStyleSheet(
+            "QWidget#cluster_monitor_left_content { background: transparent; }"
+        )
+        left_content.setAutoFillBackground(False)
         left_content_layout = QVBoxLayout(left_content)
         left_content_layout.setContentsMargins(0, 0, 0, 0)
         left_content_layout.setSpacing(10)
@@ -908,6 +915,11 @@ class ClusterMonitorInterface(QWidget):
 
         # ── 右侧：他人任务 + 本人任务 + 日志（可滚动）────────────────────
         right_container = QWidget()
+        right_container.setObjectName("cluster_monitor_right_content")
+        right_container.setStyleSheet(
+            "QWidget#cluster_monitor_right_content { background: transparent; }"
+        )
+        right_container.setAutoFillBackground(False)
         right_layout = QVBoxLayout(right_container)
         right_layout.setContentsMargins(5, 1, 10, 11)
         right_layout.setSpacing(6)
@@ -1005,6 +1017,11 @@ class ClusterMonitorInterface(QWidget):
         page_scroll.viewport().setAutoFillBackground(False)
         page_scroll.viewport().setStyleSheet("background: transparent;")
         page_container = QWidget()
+        page_container.setObjectName("cluster_monitor_page_content")
+        page_container.setStyleSheet(
+            "QWidget#cluster_monitor_page_content { background: transparent; }"
+        )
+        page_container.setAutoFillBackground(False)
         page_layout = QVBoxLayout(page_container)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.addWidget(splitter, 1)  # splitter 占满整个页面高度
