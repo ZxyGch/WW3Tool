@@ -657,19 +657,33 @@ class OthersJobsTable(QWidget):
             table.setColumnWidth(0, user_w)
             QTimer.singleShot(0, lambda: self._apply_col_widths(table))
             return
-        for col in range(1, 8):
-            table.setColumnWidth(col, targets[col])
-        table.setColumnWidth(0, user_w)
-        # 内容总宽超出表格宽 → 横向滚动按需出现（内容完整优先）；
-        # 未超出 → 关闭横向滚动，右侧留表格空列区
         total = user_w + sum(targets.values())
-        if total > avail:
-            table.scrollDelagate.setHorizontalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            )
-        else:
+        if total < avail:
+            # 铺满：剩余宽度按内容比例分给其他 7 列
+            # （内容长的列多分、短的少分，视觉上每列仍贴合内容，
+            # 表格整体铺满右侧无空列区；用户列保持贴合用户名，不分剩余）
+            remaining = avail - total
+            base = sum(targets.values())
+            if base > 0:
+                given = 0
+                for col in range(1, 8):
+                    share = int(remaining * targets[col] / base)
+                    targets[col] += share
+                    given += share
+                targets[7] += remaining - given
+            for col in range(1, 8):
+                table.setColumnWidth(col, targets[col])
+            table.setColumnWidth(0, user_w)
             table.scrollDelagate.setHorizontalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+        elif total > avail:
+            # 内容总宽超出表格宽 → 横向滚动按需出现（内容完整优先）
+            for col in range(1, 8):
+                table.setColumnWidth(col, targets[col])
+            table.setColumnWidth(0, user_w)
+            table.scrollDelagate.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
             )
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
@@ -842,8 +856,10 @@ class ClusterMonitorInterface(QWidget):
 
         splitter.addWidget(left)
         splitter.addWidget(right)
-        splitter.setStretchFactor(0, 33)
-        splitter.setStretchFactor(1, 67)
+        # 任务列表是主视图：左侧资源区 25%、右侧任务/日志区 75%
+        # （表格更宽，长作业名/用户名也能完整显示）
+        splitter.setStretchFactor(0, 25)
+        splitter.setStretchFactor(1, 75)
         # splitter 高度占满页面：表格空行区在表格内部，左右内容超高各自滚动
         splitter.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -871,7 +887,7 @@ class ClusterMonitorInterface(QWidget):
 
         def _apply_sizes() -> None:
             try:
-                splitter.setSizes([400, 800])
+                splitter.setSizes([325, 975])
                 self._refresh_others_height()
             except RuntimeError:
                 pass
