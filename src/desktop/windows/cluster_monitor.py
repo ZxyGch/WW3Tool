@@ -357,15 +357,15 @@ class OthersJobsTable(QWidget):
     # 任务多时表格限高、内部滚动，避免把页面拉成“巨大背景”
     _TABLE_MAX_HEIGHT = 360
 
-    # 非用户列最小可读宽度（px）：内容很短时也不缩成细条
+    # 最小可读宽度（px）：包含 Fluent 表格的文本留白，避免短文本也显示为省略号。
     _COL_MIN_WIDTH = {
-        1: 60,   # JobID
-        2: 50,   # 分区
-        3: 80,   # 作业名
-        4: 50,   # 状态
-        5: 65,   # 运行时间
-        6: 45,   # 节点
-        7: 40,   # 核数
+        1: 80,   # JobID
+        2: 84,   # 分区
+        3: 104,  # 作业名
+        4: 88,   # 状态
+        5: 104,  # 运行时间
+        6: 64,   # 节点
+        7: 64,   # 核数
     }
 
     _HEADERS = [
@@ -632,7 +632,7 @@ class OthersJobsTable(QWidget):
         数据刷新与窗口 resize 后都会调用。
         """
         fm = QFontMetrics(getFont(13))  # 与 delegate 渲染字体一致，避免测宽偏差
-        pad = 8
+        pad = 24
         targets: dict = {}
         for col in range(1, 8):
             w = 0
@@ -640,14 +640,14 @@ class OthersJobsTable(QWidget):
                 it = table.item(r, col)
                 if it is not None:
                     w = max(w, fm.horizontalAdvance(it.text()))
-            targets[col] = max(w + pad, OthersJobsTable._COL_MIN_WIDTH[col])
-        # 用户列：贴合用户名渲染宽 + 8px，下限 50px
+            targets[col] = max(w + pad, table.sizeHintForColumn(col) + 12, OthersJobsTable._COL_MIN_WIDTH[col])
+        # 用户列：按用户名渲染宽和委托 size hint 计算，下限 72px。
         uw = 0
         for r in range(table.rowCount()):
             it = table.item(r, 0)
             if it is not None:
                 uw = max(uw, fm.horizontalAdvance(it.text()))
-        user_w = max(uw + 8, 50)
+        user_w = max(uw + pad, table.sizeHintForColumn(0) + 12, 72)
         avail = max(table.viewport().width(), table.width())
         if avail < 200:
             # 表格尚未布局（数据可能早于布局到达，如 SSH 异步数据）：

@@ -854,11 +854,11 @@ def run_node_status(
             c.close()
 
 
-_SQUEUE_ALL_USERS_CMD = "squeue -a -h -o '%i|%u|%P|%j|%T|%M|%D|%C|%R' -S i"
+_SQUEUE_ALL_USERS_CMD = "squeue -a -h -o '%.32i|%.48u|%.48P|%.128j|%.32T|%.32M|%.16D|%.16C|%.256R' -S i"
 # 部分集群 squeue -a 仍只返回当前用户；sacct -a 可看到全部用户 RUNNING/PENDING 作业。
 _SACCT_ACTIVE_CMD = (
     "sacct -a -s RUNNING,PENDING -P -n "
-    "--format=JobID,User,Partition,JobName,State,Elapsed,AllocNodes,AllocCPUS,NodeList"
+    "--format=JobID%32,User%48,Partition%48,JobName%128,State%32,Elapsed%32,AllocNodes%16,AllocCPUS%16,NodeList%256"
 )
 _SQUEUE_STATE_LABELS = {
     "RUNNING": ("queue_status_running", "运行中"),
