@@ -59,7 +59,7 @@ def _section_title(parent: QWidget, text: str) -> QWidget:
     """带两侧分隔线的区块标题（样式同主页第五步）。"""
     container = QWidget(parent)
     h = QHBoxLayout(container)
-    h.setContentsMargins(0, 10, 0, 6)
+    h.setContentsMargins(0, 6, 0, 4)
     h.setSpacing(10)
     line_l = QFrame()
     line_l.setFrameShape(QFrame.Shape.HLine)
@@ -117,7 +117,7 @@ class ClusterJobsTable(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self._table.setRowCount(0)
-        self._table.expand_to_contents(extra_height=6)
+        self._table.expand_to_contents(extra_height=6, max_row_height=32)
         self._card, card_layout = create_header_card(
             self, tr("cm_cluster_jobs", "集群作业（所有用户）")
         )
@@ -159,7 +159,7 @@ class ClusterJobsTable(QWidget):
         self._signature = value_sig
         if not valid:
             self._table.setRowCount(0)
-            self._table.expand_to_contents(extra_height=6)
+            self._table.expand_to_contents(extra_height=6, max_row_height=32)
             self._refresh_card_height()
             return
         # [EN] Structure signature excludes the ever-changing elapsed column.
@@ -200,7 +200,7 @@ class ClusterJobsTable(QWidget):
                     item = QTableWidgetItem(str(text))
                     item.setTextAlignment(align)
                     self._table.setItem(i, col, item)
-            self._table.expand_to_contents(minimum_height=60, extra_height=6)
+            self._table.expand_to_contents(minimum_height=60, extra_height=6, max_row_height=32)
             self._table.resizeColumnToContents(3)
             self._table.setColumnWidth(3, max(self._table.columnWidth(3), 112))
             self._refresh_card_height()
@@ -249,7 +249,7 @@ class IdleResourcesTable(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self._table.setRowCount(0)
-        self._table.expand_to_contents(extra_height=6)
+        self._table.expand_to_contents(extra_height=6, max_row_height=32)
         self._card, card_layout = create_header_card(
             self, tr("cm_idle_resources", "空闲资源")
         )
@@ -312,7 +312,7 @@ class IdleResourcesTable(QWidget):
         try:
             if not valid:
                 self._table.setRowCount(0)
-                self._table.expand_to_contents(extra_height=6)
+                self._table.expand_to_contents(extra_height=6, max_row_height=32)
                 self._refresh_card_height()
                 return
             header_labels = [
@@ -342,7 +342,7 @@ class IdleResourcesTable(QWidget):
                     item = QTableWidgetItem(str(value))
                     item.setTextAlignment(align)
                     self._table.setItem(row_index, col, item)
-            self._table.expand_to_contents(minimum_height=52, extra_height=6)
+            self._table.expand_to_contents(minimum_height=52, extra_height=6, max_row_height=32)
             self._refresh_card_height()
         finally:
             self._table.setUpdatesEnabled(True)
@@ -436,7 +436,7 @@ class OthersJobsTable(QWidget):
             table.scrollDelagate.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         table.setRowCount(0)
         # 空表/数据表都按内容定高（不参与拉伸），避免空表格铺满卡片
-        table.expand_to_contents(extra_height=6)
+        table.expand_to_contents(extra_height=6, max_row_height=32)
         return table
 
     def update_others_jobs(self, jobs: list, me: str) -> None:
@@ -474,7 +474,7 @@ class OthersJobsTable(QWidget):
         setattr(self, sig_attr, value_sig)
         if not rows:
             table.setRowCount(0)
-            table.expand_to_contents(extra_height=6)
+            table.expand_to_contents(extra_height=6, max_row_height=32)
             table.scrollDelagate.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
@@ -514,7 +514,7 @@ class OthersJobsTable(QWidget):
                     table.setItem(i, col, item)
         finally:
             table.setUpdatesEnabled(True)
-        table.expand_to_contents(extra_height=6)
+        table.expand_to_contents(extra_height=6, max_row_height=32)
         # 任务多时表格限高、内部滚动；内容少时按内容定高
         max_h = (
             OthersJobsTable._TABLE_MAX_HEIGHT
