@@ -568,10 +568,11 @@ class OthersJobsTable(QWidget):
             table.resizeColumnToContents(col)
             if table.columnWidth(col) > mx:
                 table.setColumnWidth(col, mx)
-        # 用户列：完整显示用户名，但不超过表格 45%（避免把其他列挤没）
+        # 用户列：完整显示用户名（内容适配），至少 100px、不超过表格 45%
         table.resizeColumnToContents(0)
         avail = max(table.viewport().width(), table.width())
-        user_w = min(max(table.columnWidth(0), 140), int(avail * 0.45))
+        user_content = table.columnWidth(0)
+        user_w = min(max(user_content, 100), int(avail * 0.45))
         # 总宽超过表格时循环压缩（每列保留最小可见 42px），避免横向滚动
         total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         for _ in range(8):
@@ -585,14 +586,14 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 列宽总和小于表格宽度时,把剩余宽度给用户列(到 45% 上限),
-        # 填满表格避免右侧大片空白(Interactive 列宽模式下列宽和不跟表格宽)
+        # 列宽总和小于表格宽度时,剩余宽度给用户列但设上限(内容宽+40、
+        # 不低于 100、不超过表格 45%)——填表防空白,同时用户列不与用户名
+        # 长度严重脱节(不无脑吸收全部剩余)
         if total < avail:
-            room_user = int(avail * 0.45) - user_w
-            if room_user > 0:
-                add = min(avail - total, room_user)
-                if add > 0:
-                    table.setColumnWidth(0, user_w + add)
+            user_cap = min(max(user_content + 40, 100), int(avail * 0.45))
+            add = max(min(avail - total, user_cap - user_w), 0)
+            if add > 0:
+                table.setColumnWidth(0, user_w + add)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
