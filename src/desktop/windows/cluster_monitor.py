@@ -562,24 +562,23 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽占满表格：用户列贴合用户名；其余列 = 内容宽 + 按内容宽比例
-        分摊剩余宽度（内容长的列多分、短的少分），列宽和恰好等于表格宽度，
-        右侧不留空；数据刷新与窗口 resize 后都会调用。
+        """列宽贴合内容：每列 = max(数据内容宽, 表头宽) + 边距，列间不互摊；
+        总宽超出表格时按比例压缩（避免横向滚动），不超时右侧留表格空列区
+        （空列区是表格底色，不是列间距）。数据刷新与窗口 resize 后都会调用。
         """
         fm = table.fontMetrics()
         pad = 12
-        content = {}
+        targets: dict = {}
         for col in range(1, 8):
             w = 0
-            for r in range(1, table.rowCount()):
+            for r in range(table.rowCount()):  # 含表头行（第 0 行），表头不被省略
                 it = table.item(r, col)
                 if it is not None:
                     w = max(w, fm.horizontalAdvance(it.text()))
-            mn = OthersJobsTable._COL_MIN_WIDTH[col]
-            content[col] = max(w + pad, mn)
-        # 用户列：贴合用户名渲染宽 + 8px，下限 50px，绝不再吸收剩余宽度
+            targets[col] = max(w + pad, OthersJobsTable._COL_MIN_WIDTH[col])
+        # 用户列：贴合用户名渲染宽 + 8px，下限 50px，不吸收剩余宽度
         uw = 0
-        for r in range(1, table.rowCount()):
+        for r in range(table.rowCount()):
             it = table.item(r, 0)
             if it is not None:
                 uw = max(uw, fm.horizontalAdvance(it.text()))
@@ -597,27 +596,17 @@ class OthersJobsTable(QWidget):
             QTimer.singleShot(0, lambda: self._apply_col_widths(table))
         user_w = min(max(uw + 8, 50), int(avail * 0.45))
         if avail >= 200:
-            total = user_w + sum(content.values())
-            if total < avail:
-                # 剩余宽度按各列内容宽比例分给其余 7 列（内容长的多分、
-                # 短的少分），保证列宽和 = 表格宽，右侧不留空
-                remaining = avail - total
-                base = sum(content.values())
-                for col in range(1, 8):
-                    content[col] += int(remaining * content[col] / base)
-                # 舍入余量给最后一列，使总和恰好等于表格宽
-                content[7] += avail - (user_w + sum(content.values()))
             # 总宽超过表格时循环压缩（每列保留最小可见宽），避免横向滚动
             for _ in range(8):
-                total = user_w + sum(content.values())
+                total = user_w + sum(targets.values())
                 if total <= avail:
                     break
                 scale = max(avail / total, 0.0)
                 user_w = max(int(user_w * scale), 42)
                 for col in range(1, 8):
-                    content[col] = max(int(content[col] * scale), 42)
+                    targets[col] = max(int(targets[col] * scale), 42)
         for col in range(1, 8):
-            table.setColumnWidth(col, content[col])
+            table.setColumnWidth(col, targets[col])
         table.setColumnWidth(0, user_w)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
@@ -754,6 +743,8 @@ class ClusterMonitorInterface(QWidget):
         log_card.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
+        # 日志区固定高度：内容多时内部滚动，不被 6:1 布局拉伸变高
+        log_card.setFixedHeight(_LOG_CARD_HEIGHT)
         log_layout.setSpacing(4)
         log_layout.addWidget(self._log)
         log_card.headerView.setVisible(False)
@@ -762,6 +753,8 @@ class ClusterMonitorInterface(QWidget):
         log_card.viewLayout.addLayout(log_layout)
         # 右侧布局 6:1：任务列表占 6 份、日志区占 1 份（日志内部滚动）
         right_layout.addWidget(log_card, 1)
+        # 卡片紧凑顶部对齐，下方留页面底色（与左侧对称）
+        right_layout.addStretch(1)
         right_scroll = _ContentSizedScrollArea()
         right_scroll.setWidgetResizable(True)
         right_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -819,7 +812,6 @@ class ClusterMonitorInterface(QWidget):
         def _apply_sizes() -> None:
             try:
                 splitter.setSizes([400, 800])
-                self._refresh_splitter_height()
                 self._refresh_others_height()
             except RuntimeError:
                 pass
@@ -827,52 +819,33 @@ class ClusterMonitorInterface(QWidget):
         QTimer.singleShot(0, _apply_sizes)
 
     def _refresh_splitter_height(self) -> None:
-        """splitter 填满页面高度：窗口拉高时右侧可用空间变大，任务列表随之展开。"""
+        """splitter 高度跟随内容：数据更新后内容变高，若 splitter 停在旧高度
+        会撑出滚动条，故按左右两侧内容高度重算（下方余量留给页面底色）。"""
         if not hasattr(self, "_splitter"):
             return
-        self._splitter.setFixedHeight(max(320, self.height()))
+        ls = self._splitter.widget(0)
+        rs = self._splitter.widget(1)
+        h = max(ls.sizeHint().height(), rs.sizeHint().height())
+        self._splitter.setFixedHeight(max(h, 320))
 
     def _refresh_others_height(self) -> None:
-        """列表高度 = min(内容高, 6:1 可用空间-日志区)：窗口拉高列表展开，日志区固定比例。"""
+        """数据/宽度变化后刷新卡片高度与列宽。
+
+        表格高度跟随内容（紧凑），不再强制拉高到 6:1——拉高会在表格内产生
+        大片空行、把 My Jobs 标题推到下方，且内容不超出时也会撑出滚动条。
+        """
         if not hasattr(self, "_splitter"):
             return
+        self._refresh_splitter_height()
         op = self._others_jobs_panel
-        right_scroll = self._splitter.widget(1)
-        viewport_h = right_scroll.viewport().height()
-        # 布局未就绪时 viewport 可能为 0/极小：用页面高度兜底，
-        # 避免把列表高度算成内容高(列表"缩"成几行)
-        if viewport_h < 100:
-            viewport_h = max(self.height(), 320)
-        # 右侧布局 6:1：日志区占 1/7 可用高度
-        log_area = max(80, viewport_h // 7)
-        avail = max(200, viewport_h - log_area - 12)
-        mine_area = 0
-        if op._mine_table.isVisible():
-            mine_area = (
-                op._my_jobs_title.sizeHint().height() + 4 + op._mine_table.height()
-            )
-        ot_avail = avail - _CARD_EXTRA - mine_area
-        ot = op._others_table
-        # 列表占满 6:1 可用空间：窗口拉高列表随之展开（内容多时内部滚动）
-        new_h = max(ot_avail, 80)
-        if abs(new_h - ot.height()) > 1:
-            ot.setFixedHeight(new_h)
-            op._refresh_card_height()
+        op._refresh_card_height()
         # 窗口宽度变化后重算列宽（窄窗口按比例压缩，避免横向滚动/列消失）
-        op._apply_col_widths(ot)
+        op._apply_col_widths(op._others_table)
         if op._mine_table.isVisible():
             op._apply_col_widths(op._mine_table)
-            ot.scrollDelagate.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            )
-        else:
-            ot.scrollDelagate.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-            )
 
     def resizeEvent(self, e) -> None:
         super().resizeEvent(e)
-        self._refresh_splitter_height()
         self._refresh_others_height()
 
     # ── 对外接口 ──────────────────────────────────────────────────────────────────
@@ -896,8 +869,7 @@ class ClusterMonitorInterface(QWidget):
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
         self.start_monitoring()
-        # 页面每次显示都重算右侧列表高度/列宽，弥补首次布局未就绪的场景
-        self._refresh_splitter_height()
+        # 页面每次显示都重算右侧列表列宽，弥补首次布局未就绪的场景
         self._refresh_others_height()
 
     def hideEvent(self, event) -> None:  # noqa: N802
@@ -971,7 +943,6 @@ class ClusterMonitorInterface(QWidget):
             self._cluster_jobs_panel.update_cluster_jobs(data.get("cpu", []) or [])
             self._idle_panel.update_idle(data.get("idle", []) or [])
         self._others_jobs_panel.update_others_jobs(jobs or [], me or "")
-        self._refresh_splitter_height()
         self._refresh_others_height()
 
     def _log_style(self) -> str:
