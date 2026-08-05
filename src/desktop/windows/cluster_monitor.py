@@ -32,6 +32,7 @@ from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
 from qfluentwidgets import LineEdit, PrimaryPushButton, PushButton
 from qfluentwidgets.common.style_sheet import setCustomStyleSheet
+from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
 from workflows.application.remote_ops import (
     _acquire,
     _fetch_cluster_active_jobs,
@@ -939,6 +940,11 @@ class ClusterMonitorInterface(QWidget):
         except Exception:
             pass
         self._log.setStyleSheet(self._log_style())
+        # 日志框使用主页同类的 Fluent 浮动细滚动条；仅接管 QTextEdit，
+        # 外层页面滚动仍保持原有行为。
+        self._log_scroll_delegate = SmoothScrollDelegate(self._log)
+        self._log.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._log.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         log_card, log_layout = create_header_card(right_container, "")
         # 同右卡：宽/高显式 Expanding，日志区高度 = 内容区 1/6（布局分配）
         log_card.setSizePolicy(
