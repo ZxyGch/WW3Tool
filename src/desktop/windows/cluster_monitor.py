@@ -160,7 +160,7 @@ class TaskActionsCard(QWidget):
 
     def set_persistent_listener_active(self, active: bool) -> None:
         self.persistent_button.setText(
-            tr("step6_ntfy_send_test", "发送测试通知")
+            tr("step6_ntfy_listener_running", "常驻 ntfy 监听已启动")
             if active
             else tr("step6_inject_ntfy", "常驻 ntfy 监听")
         )
@@ -1077,6 +1077,10 @@ class ClusterMonitorInterface(QWidget):
 
     def set_persistent_listener_active(self, active: bool) -> None:
         self._task_actions_panel.set_persistent_listener_active(active)
+
+    def append_log(self, message: str) -> None:
+        """向集群监听页面的日志区域追加一条远程操作日志。"""
+        self._append_log(message)
 
     def _append_log(self, message: str) -> None:
         try:

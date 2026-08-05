@@ -507,18 +507,6 @@ log "mode=${NTFY_MODE}"
 log "label=${NTFY_LABEL}"
 log "topic=${NTFY_TOPIC}"
 
-# Startup connectivity test: send a test notification so the user knows
-# the watcher is alive and curl can reach ntfy.sh from this host.
-log "sending startup test notification..."
-if send_ntfy "watcher started" "Mode: ${NTFY_MODE}
-Topic: ${NTFY_TOPIC}
-Jobs: ${NTFY_JOBS:-auto-detect}
-Started: ${started_at}"; then
-    log "startup notification sent OK"
-else
-    log "WARNING: startup notification FAILED — check network/DNS from this host to ${NTFY_SERVER}"
-fi
-
 if [ "$NTFY_MODE" = "all" ]; then
     run_all_mode
 else

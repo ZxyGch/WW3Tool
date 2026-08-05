@@ -122,6 +122,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             on_state_change=self._render_pipeline_state,
             parent=self,
         )
+        self._remote_updates = QtCallbackDispatcher(
+            on_log=self._append_remote_log,
+            on_state_change=lambda _state: None,
+            parent=self,
+        )
         self._forcing_vm = ForcingStepViewModel(
             on_log=self._forcing_updates.post_log,
             on_state_change=self._forcing_updates.post_state,
@@ -131,7 +136,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             on_state_change=self._pipeline_updates.post_state,
         )
         self._plot_vm = PlotViewModel(on_log=self._pipeline_updates.post_log)
-        self._remote_vm = RemoteViewModel(on_log=self._pipeline_updates.post_log)
+        self._remote_vm = RemoteViewModel(on_log=self._remote_updates.post_log)
         self._local_vm = LocalRunViewModel(on_log=self._pipeline_updates.post_log)
         self._paths: dict[str, LineEdit] = {}
         self._paths["workdir"] = LineEdit(self)
@@ -3180,6 +3185,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 + "\n"
                 + tr("ntfy_info_action_injected", "已注入 watcher 并发送启动通知")
             )
+        elif action == "already_running":
+            title = tr("ntfy_info_title_running", "📡 ntfy 监听已在运行")
+            content = (
+                tr("ntfy_info_topic", "Topic: {topic}").format(topic=topic)
+                + "\n"
+                + tr("ntfy_info_subscribe", "订阅链接: {url}").format(url=url)
+                + "\n"
+                + tr("ntfy_info_action_running", "监听进程已在运行，未重复发送测试通知")
+            )
         else:
             title = tr("ntfy_info_title_test", "📡 ntfy 测试通知已发送")
             content = (
@@ -3497,6 +3511,13 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._log.setTextCursor(cursor)
         if not had_log_focus:
             self._log.clearFocus()
+
+    def _append_remote_log(self, message: str) -> None:
+        """将远程操作日志同时显示在主页与集群监听页。"""
+        self._append_log(message)
+        monitor = getattr(self, "_cluster_monitor_interface", None)
+        if monitor is not None:
+            monitor.append_log(message)
 
     def _render_forcing_state(self, state: ForcingStepState) -> None:
         if self._busy and state.is_running:
