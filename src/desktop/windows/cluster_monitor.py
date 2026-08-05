@@ -75,6 +75,9 @@ def _section_title(parent: QWidget, text: str) -> QWidget:
     h.addWidget(line_l, 1)
     h.addWidget(label)
     h.addWidget(line_r, 1)
+    # 固定为内容固有高度：默认 Preferred 策略会在卡片布局里被拉伸，
+    # 造成标题上下出现大间距
+    container.setFixedHeight(container.sizeHint().height())
     return container
 
 
