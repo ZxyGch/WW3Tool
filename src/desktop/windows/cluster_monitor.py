@@ -602,9 +602,29 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 列宽 = 内容适配，不再加宽任何列：内容占满各自列宽，列间无多余间距。
-        # 表格组件本身占满右侧容器（宽度 Expanding），右侧剩余为表格空列区。
-        # 如需调整单列宽度，改 _COL_MIN_WIDTH / _COL_MAX_WIDTH 对应键值。
+        # 铺满：剩余宽度按各列内容渲染宽度成比例分配（内容长的列多分、短的少分），
+        # 用户列不再吸收剩余。视觉上每列宽度与内容成比例，列间不出现大空隙。
+        total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
+        if total < avail:
+            remaining = avail - total
+            # 权重 = 各列最大内容渲染宽（QFontMetrics 实测，不依赖 sizeHint 缓存）
+            fm = table.fontMetrics()
+            weights = []
+            for col in range(1, 8):
+                w = 0
+                for r in range(table.rowCount()):
+                    it = table.item(r, col)
+                    if it is not None:
+                        w = max(w, fm.horizontalAdvance(it.text()))
+                weights.append(max(w + 24, 1))  # 含 cell padding；空列至少 1 防除零
+            wsum = sum(weights)
+            if wsum > 0:
+                added = 0
+                for col in range(1, 7):
+                    add = int(remaining * weights[col - 1] / wsum)
+                    table.setColumnWidth(col, table.columnWidth(col) + add)
+                    added += add
+                table.setColumnWidth(7, table.columnWidth(7) + (remaining - added))
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
