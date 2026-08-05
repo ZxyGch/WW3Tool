@@ -11,7 +11,7 @@ Auto-connects on open and auto-reconnects every second when SSH drops.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QSize, QTimer, Qt
 from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import (
     QFrame,
@@ -38,6 +38,22 @@ from workflows.application.remote_ops import (
 )
 from workflows.support.logging import CoreLogger
 from workflows.support.translations import tr
+
+# 卡片固定开销：头部(48) + 分隔线(1) + viewLayout 上下边距(10+12) + 边框(2)。
+# HeaderCardWidget 的 sizeHint 不反映内容高度，需显式按内容设置卡片高度。
+_CARD_EXTRA = 48 + 1 + 10 + 12 + 2
+
+
+class _ContentSizedScrollArea(NoHScrollArea):
+    """QScrollArea 的 sizeHint 默认是视口建议（≈(256,192)），布局据此分配高度
+    会导致内容被压缩/溢出。这里让 sizeHint 反映所承载内容的实际大小。"""
+
+    def sizeHint(self) -> QSize:
+        widget = self.widget()
+        if widget is not None:
+            return widget.sizeHint() + QSize(0, 2 * self.frameWidth())
+        return super().sizeHint()
+
 
 def _section_title(parent: QWidget, text: str) -> QWidget:
     """带两侧分隔线的区块标题（样式同主页第五步）。"""
@@ -98,6 +114,7 @@ class ClusterJobsTable(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self._table.setRowCount(0)
+        self._table.expand_to_contents(extra_height=6)
         self._card, card_layout = create_header_card(
             self, tr("cm_cluster_jobs", "集群作业（所有用户）")
         )
@@ -112,6 +129,19 @@ class ClusterJobsTable(QWidget):
         outer.addWidget(self._card)
         self._signature: tuple = ()
         self._struct_signature: tuple = ()
+        self._refresh_card_height()
+
+    def _refresh_card_height(self) -> None:
+        """卡片高度跟随表格内容，避免表格溢出卡片（HeaderCardWidget sizeHint 失真）。"""
+        self._card.setFixedHeight(self._table.height() + _CARD_EXTRA)
+        # 内容高度变化后显式激活祖先布局：QScrollArea 的 widget 高度由
+        # setWidgetResizable 管理，不激活时 sizeHint 变化不会向上传播
+        w: QWidget = self
+        while w is not None:
+            lay = w.layout()
+            if lay is not None:
+                lay.activate()
+            w = w.parentWidget()
 
     def update_cluster_jobs(self, rows: list) -> None:
         """rows: [[user, cpus, nodes, elapsed], ...]"""
@@ -126,6 +156,8 @@ class ClusterJobsTable(QWidget):
         self._signature = value_sig
         if not valid:
             self._table.setRowCount(0)
+            self._table.expand_to_contents(extra_height=6)
+            self._refresh_card_height()
             return
         # [EN] Structure signature excludes the ever-changing elapsed column.
         # 结构签名不含每秒变化的 elapsed 列：结构不变时只更新该列，避免整表重建。
@@ -168,6 +200,7 @@ class ClusterJobsTable(QWidget):
             self._table.expand_to_contents(minimum_height=60, extra_height=6)
             self._table.resizeColumnToContents(3)
             self._table.setColumnWidth(3, max(self._table.columnWidth(3), 112))
+            self._refresh_card_height()
         finally:
             self._table.setUpdatesEnabled(True)
 
@@ -212,6 +245,8 @@ class IdleResourcesTable(QWidget):
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
+        self._table.setRowCount(0)
+        self._table.expand_to_contents(extra_height=6)
         self._card, card_layout = create_header_card(
             self, tr("cm_idle_resources", "空闲资源")
         )
@@ -224,6 +259,19 @@ class IdleResourcesTable(QWidget):
         outer.addWidget(self._card)
         self._signature: tuple = ()
         self._rows: list[dict] = []
+        self._refresh_card_height()
+
+    def _refresh_card_height(self) -> None:
+        """卡片高度跟随表格内容，避免表格溢出卡片（HeaderCardWidget sizeHint 失真）。"""
+        self._card.setFixedHeight(self._table.height() + _CARD_EXTRA)
+        # 内容高度变化后显式激活祖先布局：QScrollArea 的 widget 高度由
+        # setWidgetResizable 管理，不激活时 sizeHint 变化不会向上传播
+        w: QWidget = self
+        while w is not None:
+            lay = w.layout()
+            if lay is not None:
+                lay.activate()
+            w = w.parentWidget()
 
     def update_idle(self, rows: list) -> None:
         valid = []
@@ -261,6 +309,8 @@ class IdleResourcesTable(QWidget):
         try:
             if not valid:
                 self._table.setRowCount(0)
+                self._table.expand_to_contents(extra_height=6)
+                self._refresh_card_height()
                 return
             header_labels = [
                 tr("idle_col_cpu", "分区"),
@@ -290,12 +340,17 @@ class IdleResourcesTable(QWidget):
                     item.setTextAlignment(align)
                     self._table.setItem(row_index, col, item)
             self._table.expand_to_contents(minimum_height=52, extra_height=6)
+            self._refresh_card_height()
         finally:
             self._table.setUpdatesEnabled(True)
 
 
 class OthersJobsTable(QWidget):
     """其他用户/本人任务详细表格（结构化数据，非文本日志）。"""
+
+    # 任务多时表格限高、内部滚动，避免把页面拉成“巨大背景”
+    _TABLE_MAX_HEIGHT = 360
+    _MINE_MAX_HEIGHT = 200
 
     _HEADERS = [
         ("cm_job_col_user", "用户"),
@@ -312,8 +367,8 @@ class OthersJobsTable(QWidget):
         super().__init__(parent)
         self._card, card_layout = create_header_card(self, "")
         card_layout.setSpacing(4)
-        self._others_table = self._make_table()
-        card_layout.addWidget(self._others_table, 1)
+        self._others_table = self._make_table(expand_v=False)
+        card_layout.addWidget(self._others_table)
         self._my_jobs_title = _section_title(self, tr("cm_my_jobs", "本人任务"))
         card_layout.addWidget(self._my_jobs_title)
         self._mine_table = self._make_table(expand_v=False)
@@ -330,6 +385,21 @@ class OthersJobsTable(QWidget):
         self._others_struct: tuple = ()
         self._mine_sig: tuple = ()
         self._mine_struct: tuple = ()
+        self._refresh_card_height()
+
+    def _refresh_card_height(self) -> None:
+        """卡片高度跟随表格内容（HeaderCardWidget 的 sizeHint 不反映内容）。"""
+        h = _CARD_EXTRA + self._others_table.height()
+        if self._mine_table.isVisible():
+            h += self._my_jobs_title.height() + 4 + self._mine_table.height()
+        self._card.setFixedHeight(h)
+        # 内容高度变化后显式激活祖先布局（同 ClusterJobsTable）
+        w: QWidget = self
+        while w is not None:
+            lay = w.layout()
+            if lay is not None:
+                lay.activate()
+            w = w.parentWidget()
 
     @staticmethod
     def _make_table(expand_v: bool = True) -> EdgeAlignedTableWidget:
@@ -360,6 +430,8 @@ class OthersJobsTable(QWidget):
         if expand_v:
             table.scrollDelagate.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         table.setRowCount(0)
+        # 空表/数据表都按内容定高（不参与拉伸），避免空表格铺满卡片
+        table.expand_to_contents(extra_height=6)
         return table
 
     def update_others_jobs(self, jobs: list, me: str) -> None:
@@ -373,6 +445,7 @@ class OthersJobsTable(QWidget):
         self._mine_table.setVisible(has_mine)
         self._update_table(self._others_table, others, "others")
         self._update_table(self._mine_table, mine, "mine")
+        self._refresh_card_height()
 
     def _update_table(self, table: EdgeAlignedTableWidget, tasks: list, key: str) -> None:
         rows = [
@@ -396,6 +469,11 @@ class OthersJobsTable(QWidget):
         setattr(self, sig_attr, value_sig)
         if not rows:
             table.setRowCount(0)
+            table.expand_to_contents(extra_height=6)
+            table.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self._refresh_card_height()
             return
         if struct_sig == getattr(self, struct_attr):
             self._update_times(table, rows)
@@ -431,6 +509,23 @@ class OthersJobsTable(QWidget):
                     table.setItem(i, col, item)
         finally:
             table.setUpdatesEnabled(True)
+        table.expand_to_contents(extra_height=6)
+        # 任务多时表格限高、内部滚动；内容少时按内容定高
+        max_h = (
+            OthersJobsTable._TABLE_MAX_HEIGHT
+            if key == "others"
+            else OthersJobsTable._MINE_MAX_HEIGHT
+        )
+        if table.height() > max_h:
+            table.setFixedHeight(max_h)
+            table.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+        else:
+            table.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+        self._refresh_card_height()
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
@@ -491,7 +586,7 @@ class ClusterMonitorInterface(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 5, 10)
         left_layout.setSpacing(0)
-        left_scroll = NoHScrollArea()
+        left_scroll = _ContentSizedScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.Shape.NoFrame)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -526,13 +621,13 @@ class ClusterMonitorInterface(QWidget):
         left_scroll.setWidget(left_content)
         left_layout.addWidget(left_scroll)
 
-        # ── 右侧：状态行 + 集群任务列表(4/5，上) + 日志(1/5，下)────────────────────
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
+        # ── 右侧：他人任务 + 本人任务 + 日志（可滚动）────────────────────
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
         right_layout.setContentsMargins(5, 1, 10, 11)
         right_layout.setSpacing(6)
-        self._others_jobs_panel = OthersJobsTable(right)
-        right_layout.addWidget(self._others_jobs_panel, 4)
+        self._others_jobs_panel = OthersJobsTable(right_container)
+        right_layout.addWidget(self._others_jobs_panel)
         self._log = QTextEdit()
         mono_font = QFont(self.font())
         fallback_monos = [
@@ -559,31 +654,90 @@ class ClusterMonitorInterface(QWidget):
         except Exception:
             pass
         self._log.setStyleSheet(self._log_style())
-        log_card, log_layout = create_header_card(right, "")
+        # 日志区限高，内部滚动；避免日志把页面撑成“巨大背景”
+        self._log.setMaximumHeight(180)
+        log_card, log_layout = create_header_card(right_container, "")
         log_layout.setSpacing(4)
         log_layout.addWidget(self._log)
         log_card.headerView.setVisible(False)
         log_card.separator.setVisible(False)
         log_card.viewLayout.setContentsMargins(11, 10, 11, 12)
         log_card.viewLayout.addLayout(log_layout)
-        right_layout.addWidget(log_card, 1)
+        right_layout.addWidget(log_card)
+        right_layout.addStretch(1)
+        right_scroll = _ContentSizedScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        right_scroll.setStyleSheet(
+            """
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+                margin: 0px;
+                padding: 0px;
+            }
+            QScrollArea > QWidget > QWidget {
+                margin: 0px;
+                padding: 0px;
+            }
+            """
+        )
+        right_scroll.viewport().setAutoFillBackground(False)
+        right_scroll.viewport().setStyleSheet("background: transparent;")
+        right_scroll.setWidget(right_container)
+        right = right_scroll
 
         splitter.addWidget(left)
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 33)
         splitter.setStretchFactor(1, 67)
+        # 卡片高度紧凑（不拉伸），由内部滚动容器承载超高内容；
+        # 卡片外露出窗口底色，避免空表格被拉满铺成“巨大背景”。
+        splitter.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
+        )
+        page_scroll = _ContentSizedScrollArea()
+        page_scroll.setWidgetResizable(True)
+        page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        page_scroll.setStyleSheet(
+            "QScrollArea { background-color: transparent; border: none; }"
+        )
+        page_scroll.viewport().setAutoFillBackground(False)
+        page_scroll.viewport().setStyleSheet("background: transparent;")
+        page_container = QWidget()
+        page_layout = QVBoxLayout(page_container)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.addWidget(splitter)
+        page_layout.addStretch(1)  # 卡片顶部对齐，下方留窗口底色
+        page_scroll.setWidget(page_container)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(splitter)
+        outer.addWidget(page_scroll)
         self._splitter = splitter
 
         def _apply_sizes() -> None:
             try:
                 splitter.setSizes([400, 800])
+                self._refresh_splitter_height()
             except RuntimeError:
                 pass
 
         QTimer.singleShot(0, _apply_sizes)
+
+    def _refresh_splitter_height(self) -> None:
+        """splitter 高度跟随内容：至少保证日志可见，且不超过页面可用高度。"""
+        if not hasattr(self, "_splitter"):
+            return
+        sp = self._splitter
+        content_h = max(
+            sp.widget(0).sizeHint().height(),
+            sp.widget(1).sizeHint().height(),
+        )
+        h = max(560, content_h)
+        avail = max(320, self.height())
+        sp.setFixedHeight(min(h, avail))
 
     # ── 对外接口 ──────────────────────────────────────────────────────────────────
 
@@ -678,6 +832,7 @@ class ClusterMonitorInterface(QWidget):
             self._cluster_jobs_panel.update_cluster_jobs(data.get("cpu", []) or [])
             self._idle_panel.update_idle(data.get("idle", []) or [])
         self._others_jobs_panel.update_others_jobs(jobs or [], me or "")
+        self._refresh_splitter_height()
 
     def _log_style(self) -> str:
         try:
