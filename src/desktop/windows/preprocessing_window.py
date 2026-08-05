@@ -3185,15 +3185,6 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 + "\n"
                 + tr("ntfy_info_action_injected", "已注入 watcher 并发送启动通知")
             )
-        elif action == "already_running":
-            title = tr("ntfy_info_title_running", "📡 ntfy 监听已在运行")
-            content = (
-                tr("ntfy_info_topic", "Topic: {topic}").format(topic=topic)
-                + "\n"
-                + tr("ntfy_info_subscribe", "订阅链接: {url}").format(url=url)
-                + "\n"
-                + tr("ntfy_info_action_running", "监听进程已在运行，未重复发送测试通知")
-            )
         else:
             title = tr("ntfy_info_title_test", "📡 ntfy 测试通知已发送")
             content = (

@@ -190,11 +190,13 @@ class RemoteViewModel:
         return run_send_ntfy_test(config, log=self._log, client=self._ensure_client(config))
 
     def ntfy_smart_action(self, config: PipelineConfig):
-        # [EN] Smart action: check watcher status first; inject only when absent.
-        """智能操作：检查 watcher 状态；仅在未运行时注入。"""
+        # [EN] Smart action: check watcher status; inject when absent, otherwise
+        # send a test notification through the already-running listener.
+        """智能操作：检查 watcher 状态；未运行时注入，已运行时发送测试通知。"""
         from workflows.application.remote_ops import (
             run_check_ntfy_status,
             run_inject_ntfy_listener,
+            run_send_ntfy_test,
         )
 
         client = self._ensure_client(config)
@@ -204,11 +206,15 @@ class RemoteViewModel:
         status_data = getattr(status, "data", {}) or {}
         was_running = status_data.get("running", False)
         if was_running:
-            self._log("ℹ️ ntfy watcher 已在运行，未重复注入或发送测试通知。")
-            status_data["action"] = "already_running"
-            status_data["was_running"] = True
-            status.data = status_data
-            return status
+            # [EN] Listener already running: do NOT re-inject, but still send a
+            # test notification so the user can verify the notification chain.
+            self._log("──")
+            result = run_send_ntfy_test(config, log=self._log, client=client)
+            data = getattr(result, "data", None) or {}
+            data["action"] = "test"
+            data["was_running"] = True
+            result.data = data
+            return result
 
         self._log("──")
         result = run_inject_ntfy_listener(config, log=self._log, client=client)
