@@ -647,39 +647,56 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """按 Fluent 委托的真实 size hint 设置列宽。
+        """统一两张任务表的内容列宽，并在宽度充足时铺满右侧区域。
 
-        ``QFontMetrics`` 只会得到文字本身的宽度，未包含 Qt/Fluent
-        在单元格内预留的边距，导致有空白时文字仍显示省略号。
-        ``sizeHintForColumn`` 已包含该组件的最终绘制空间，因此能在
-        保持列紧凑的同时完整显示表头和内容。
+        真实 size hint 保证 Fluent 单元格文字不被截断；剩余宽度只分配给
+        信息密度较高的列，使上下表对齐并避免右侧留下大片空白。
         """
-        targets = {
-            col: max(table.sizeHintForColumn(col), OthersJobsTable._COL_MIN_WIDTH[col])
-            for col in range(1, 8)
-        }
-        user_w = max(table.sizeHintForColumn(0), 64)
+        tables = [
+            candidate
+            for candidate in (self._others_table, self._mine_table)
+            if candidate.isVisible() and candidate.rowCount() > 0
+        ]
+        if table not in tables:
+            tables.append(table)
 
-        def apply_widths() -> None:
-            table.setColumnWidth(0, user_w)
-            for col in range(1, 8):
-                table.setColumnWidth(col, targets[col])
+        targets: dict[int, int] = {}
+        for col in range(8):
+            content_width = max(candidate.sizeHintForColumn(col) for candidate in tables)
+            minimum = 64 if col == 0 else OthersJobsTable._COL_MIN_WIDTH[col]
+            targets[col] = max(content_width, minimum)
 
-        avail = max(table.viewport().width(), table.width())
+        avail = min(
+            max(candidate.viewport().width(), candidate.width())
+            for candidate in tables
+        )
         if avail < 200:
-            # SSH 数据可能早于布局到达；先按真实内容宽度设置，布局完成后重算。
-            apply_widths()
             QTimer.singleShot(0, lambda: self._apply_col_widths(table))
             return
 
-        apply_widths()
-        total = user_w + sum(targets.values())
-        table.scrollDelagate.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            if total > avail
-            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        total = sum(targets.values())
+        fits = total <= avail
+        if fits:
+            # 节点/核数保持紧凑；把多余空间集中给可读性更受益的文字列。
+            weights = {0: 1.25, 1: 0.75, 2: 1.0, 3: 2.25, 4: 1.0, 5: 1.25}
+            remaining = avail - total
+            weight_total = sum(weights.values())
+            assigned = 0
+            for col, weight in weights.items():
+                extra = int(remaining * weight / weight_total)
+                targets[col] += extra
+                assigned += extra
+            targets[3] += remaining - assigned
 
+        policy = (
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            if fits
+            else Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        for candidate in tables:
+            for col in range(8):
+                candidate.setColumnWidth(col, targets[col])
+            candidate.scrollDelagate.setHorizontalScrollBarPolicy(policy)
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
         try:
