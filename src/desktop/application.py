@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
@@ -59,6 +60,16 @@ def main(argv: list[str] | None = None) -> int:
         pass
 
     arguments = [sys.argv[0], *(argv if argv is not None else sys.argv[1:])]
+    # Windows 无 GPU 环境（远程桌面 / 云主机）下 QtWebEngine 的 Chromium GPU
+    # 进程会初始化失败，拖垮整个窗口渲染（白屏）。默认强制 ANGLE + SwiftShader
+    # 软件渲染；用户已自定义 QTWEBENGINE_CHROMIUM_FLAGS 时尊重其设置。
+    # [EN] On Windows GPU-less environments (RDP / cloud VMs) the QtWebEngine
+    # Chromium GPU process fails and blanks the whole window. Default to
+    # ANGLE + SwiftShader software rendering unless the user set their own flags.
+    if sys.platform == "win32" and not os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS"):
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+            "--disable-gpu --use-gl=angle --use-angle=swiftshader"
+        )
     app = QApplication(arguments)
     from .branding import load_logo_icon, apply_window_logo
 

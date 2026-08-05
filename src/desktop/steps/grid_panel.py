@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Callable
 
 from PyQt6.QtCore import Qt
@@ -217,9 +218,23 @@ class GridStepPanel:
         self.outer_grid_title = section_title(tr("step1_level0_params", "level0（最粗）网格参数"))
         self.outer_grid_title.hide()
         layout.addWidget(self.outer_grid_title)
-        self.bounds_preview = BoundsMapPreview(parent)
+        # 无 GPU / WebEngine 不可用环境（如 Windows 远程桌面、云主机）下，
+        # 地图预览会在启动时拉起 Chromium GPU 进程导致整窗白屏。
+        # WW3TOOL_NO_MAP=1 时用占位标签替代，完全不初始化 WebEngine。
+        # [EN] On GPU-less environments (RDP / cloud VMs) the map preview
+        # spawns Chromium at startup and can blank the whole window.
+        # WW3TOOL_NO_MAP=1 replaces the preview with a placeholder label
+        # and skips WebEngine initialization entirely.
+        if os.environ.get("WW3TOOL_NO_MAP") == "1":
+            placeholder = QLabel(tr("step1_map_preview_disabled", "地图预览已禁用（WW3TOOL_NO_MAP=1），请使用“选择地图区域”打开完整地图"))
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            placeholder.setFixedHeight(210)
+            placeholder.setStyleSheet("color: rgba(128, 128, 128, 0.8); border: 1px dashed rgba(128,128,128,0.4); border-radius: 6px;")
+            self.bounds_preview = placeholder
+        else:
+            self.bounds_preview = BoundsMapPreview(parent)
+            self.bounds_preview.expand_requested.connect(self._open_globe_picker)
         layout.addWidget(self.bounds_preview)
-        self.bounds_preview.expand_requested.connect(self._open_globe_picker)
         outer_grid = QGridLayout()
         outer_grid.setSpacing(10)
         outer_grid.setColumnStretch(1, 1)
@@ -635,7 +650,9 @@ class GridStepPanel:
                     "label": level["label"],
                 }
             )
-        self.bounds_preview.replace_bound_fields(bindings)
+        # 占位模式（WW3TOOL_NO_MAP=1）下 bounds_preview 是 QLabel，无地图方法
+        if hasattr(self.bounds_preview, "replace_bound_fields"):
+            self.bounds_preview.replace_bound_fields(bindings)
 
     def outer_lon_lat(self) -> tuple[list[float], list[float]] | None:
         """Return level0 lon/lat as float lists, or None when invalid."""
