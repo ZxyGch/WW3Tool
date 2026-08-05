@@ -43,6 +43,10 @@ from workflows.support.translations import tr
 # HeaderCardWidget 的 sizeHint 不反映内容高度，需显式按内容设置卡片高度。
 _CARD_EXTRA = 48 + 1 + 10 + 12 + 2
 
+# 日志卡固定高度：log 内容区 180 + 头部 48 + 分隔线 1 + viewLayout 边距 22 + 边框 2。
+# 固定日志区高度，窗口拉高时高度留给任务列表。
+_LOG_CARD_HEIGHT = 180 + 48 + 1 + 10 + 12 + 2
+
 
 class _ContentSizedScrollArea(NoHScrollArea):
     """QScrollArea 的 sizeHint 默认是视口建议（≈(256,192)），布局据此分配高度
@@ -515,14 +519,10 @@ class OthersJobsTable(QWidget):
         finally:
             table.setUpdatesEnabled(True)
         table.expand_to_contents(extra_height=6, max_row_height=32)
-        # 任务多时表格限高、内部滚动；内容少时按内容定高
-        max_h = (
-            OthersJobsTable._TABLE_MAX_HEIGHT
-            if key == "others"
-            else OthersJobsTable._MINE_MAX_HEIGHT
-        )
-        if table.height() > max_h:
-            table.setFixedHeight(max_h)
+        # others 列表不在此限高：高度由 _refresh_others_height 按可用空间动态决定
+        # （窗口拉高时展开显示更多任务）；mine 区保持紧凑，限高内部滚动
+        if key == "mine" and table.height() > OthersJobsTable._MINE_MAX_HEIGHT:
+            table.setFixedHeight(OthersJobsTable._MINE_MAX_HEIGHT)
             table.scrollDelagate.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAsNeeded
             )
@@ -668,6 +668,8 @@ class ClusterMonitorInterface(QWidget):
         log_card.separator.setVisible(False)
         log_card.viewLayout.setContentsMargins(11, 10, 11, 12)
         log_card.viewLayout.addLayout(log_layout)
+        # 日志区固定高度：窗口拉高时高度留给任务列表，日志区不再膨胀
+        log_card.setFixedHeight(_LOG_CARD_HEIGHT)
         right_layout.addWidget(log_card)
         right_layout.addStretch(1)
         right_scroll = _ContentSizedScrollArea()
@@ -726,23 +728,50 @@ class ClusterMonitorInterface(QWidget):
             try:
                 splitter.setSizes([400, 800])
                 self._refresh_splitter_height()
+                self._refresh_others_height()
             except RuntimeError:
                 pass
 
         QTimer.singleShot(0, _apply_sizes)
 
     def _refresh_splitter_height(self) -> None:
-        """splitter 高度跟随内容：至少保证日志可见，且不超过页面可用高度。"""
+        """splitter 填满页面高度：窗口拉高时右侧可用空间变大，任务列表随之展开。"""
         if not hasattr(self, "_splitter"):
             return
-        sp = self._splitter
-        content_h = max(
-            sp.widget(0).sizeHint().height(),
-            sp.widget(1).sizeHint().height(),
-        )
-        h = max(560, content_h)
-        avail = max(320, self.height())
-        sp.setFixedHeight(min(h, avail))
+        self._splitter.setFixedHeight(max(320, self.height()))
+
+    def _refresh_others_height(self) -> None:
+        """others 列表高度 = min(内容高, 可用空间-日志区)：窗口拉高列表展开，日志区固定。"""
+        if not hasattr(self, "_splitter"):
+            return
+        op = self._others_jobs_panel
+        right_scroll = self._splitter.widget(1)
+        avail = max(200, right_scroll.viewport().height() - _LOG_CARD_HEIGHT - 12)
+        mine_area = 0
+        if op._mine_table.isVisible():
+            mine_area = (
+                op._my_jobs_title.sizeHint().height() + 4 + op._mine_table.height()
+            )
+        ot_avail = avail - _CARD_EXTRA - mine_area
+        ot = op._others_table
+        # 内容总高（行数×行高），不能直接用 ot.height()——它可能已被压缩过
+        content_h = sum(ot.rowHeight(r) for r in range(ot.rowCount())) + 6
+        new_h = min(content_h, max(ot_avail, 80))
+        if abs(new_h - ot.height()) > 1:
+            ot.setFixedHeight(new_h)
+            op._refresh_card_height()
+            ot.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+        else:
+            ot.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        self._refresh_splitter_height()
+        self._refresh_others_height()
 
     # ── 对外接口 ──────────────────────────────────────────────────────────────────
 
@@ -838,6 +867,7 @@ class ClusterMonitorInterface(QWidget):
             self._idle_panel.update_idle(data.get("idle", []) or [])
         self._others_jobs_panel.update_others_jobs(jobs or [], me or "")
         self._refresh_splitter_height()
+        self._refresh_others_height()
 
     def _log_style(self) -> str:
         try:
