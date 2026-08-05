@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
-from qfluentwidgets import addStyleSheet
+from qfluentwidgets.common.style_sheet import addStyleSheet
 from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
 from workflows.application.remote_ops import (
     _acquire,
