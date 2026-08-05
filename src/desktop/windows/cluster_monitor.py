@@ -359,6 +359,18 @@ class OthersJobsTable(QWidget):
     # 任务多时表格限高、内部滚动，避免把页面拉成“巨大背景”
     _TABLE_MAX_HEIGHT = 360
 
+    # 非用户列最大宽度（px）：长内容（作业名/分区等）不挤占用户列；
+    # 用户列（第 0 列）Stretch 展开宽度、完整显示用户名
+    _COL_MAX_WIDTH = {
+        1: 60,   # JobID
+        2: 60,   # 分区
+        3: 90,   # 作业名
+        4: 50,   # 状态
+        5: 70,   # 运行时间
+        6: 45,   # 节点
+        7: 45,   # 核数
+    }
+
     _HEADERS = [
         ("cm_job_col_user", "用户"),
         ("cm_job_col_jobid", "JobID"),
@@ -426,9 +438,10 @@ class OthersJobsTable(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
-        for col in range(8):
-            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        # 用户列（第 0 列）Stretch 展开宽度，不被其他列挤压
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in range(1, 8):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         hdr.setMinimumSectionSize(42)
         table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         vpolicy = QSizePolicy.Policy.Expanding if expand_v else QSizePolicy.Policy.Maximum
@@ -516,6 +529,11 @@ class OthersJobsTable(QWidget):
                     item = QTableWidgetItem(str(text))
                     item.setTextAlignment(align)
                     table.setItem(i, col, item)
+            # 非用户列宽度 = min(内容宽, 上限)，把剩余宽度留给用户列（Stretch）
+            for col, mx in OthersJobsTable._COL_MAX_WIDTH.items():
+                table.resizeColumnToContents(col)
+                if table.columnWidth(col) > mx:
+                    table.setColumnWidth(col, mx)
         finally:
             table.setUpdatesEnabled(True)
         table.expand_to_contents(extra_height=6, max_row_height=32)
