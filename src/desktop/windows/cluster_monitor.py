@@ -43,9 +43,9 @@ from workflows.support.translations import tr
 # HeaderCardWidget 的 sizeHint 不反映内容高度，需显式按内容设置卡片高度。
 _CARD_EXTRA = 48 + 1 + 10 + 12 + 2
 
-# 日志卡固定高度：log 内容区 180 + 头部 48 + 分隔线 1 + viewLayout 边距 22 + 边框 2。
-# 固定日志区高度，窗口拉高时高度留给任务列表。
-_LOG_CARD_HEIGHT = 180 + 48 + 1 + 10 + 12 + 2
+# 日志卡最大高度：log 内容区 100（约 4-5 行）+ 头部 48 + 分隔线 1 + viewLayout 边距 22 + 边框 2。
+# 自适应：内容少时卡片矮，内容多时不超过此值；窗口拉高时高度留给任务列表。
+_LOG_CARD_HEIGHT = 100 + 48 + 1 + 10 + 12 + 2
 
 
 class _ContentSizedScrollArea(NoHScrollArea):
@@ -632,7 +632,7 @@ class ClusterMonitorInterface(QWidget):
         right_layout.setContentsMargins(5, 1, 10, 11)
         right_layout.setSpacing(6)
         self._others_jobs_panel = OthersJobsTable(right_container)
-        right_layout.addWidget(self._others_jobs_panel)
+        right_layout.addWidget(self._others_jobs_panel, 5)
         self._log = QTextEdit()
         mono_font = QFont(self.font())
         fallback_monos = [
@@ -659,8 +659,6 @@ class ClusterMonitorInterface(QWidget):
         except Exception:
             pass
         self._log.setStyleSheet(self._log_style())
-        # 日志区限高，内部滚动；避免日志把页面撑成“巨大背景”
-        self._log.setMaximumHeight(180)
         log_card, log_layout = create_header_card(right_container, "")
         log_layout.setSpacing(4)
         log_layout.addWidget(self._log)
@@ -668,10 +666,8 @@ class ClusterMonitorInterface(QWidget):
         log_card.separator.setVisible(False)
         log_card.viewLayout.setContentsMargins(11, 10, 11, 12)
         log_card.viewLayout.addLayout(log_layout)
-        # 日志区固定高度：窗口拉高时高度留给任务列表，日志区不再膨胀
-        log_card.setFixedHeight(_LOG_CARD_HEIGHT)
-        right_layout.addWidget(log_card)
-        right_layout.addStretch(1)
+        # 右侧布局 5:1：任务列表占 5 份，日志区占 1 份（日志内部滚动）
+        right_layout.addWidget(log_card, 1)
         right_scroll = _ContentSizedScrollArea()
         right_scroll.setWidgetResizable(True)
         right_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -746,7 +742,10 @@ class ClusterMonitorInterface(QWidget):
             return
         op = self._others_jobs_panel
         right_scroll = self._splitter.widget(1)
-        avail = max(200, right_scroll.viewport().height() - _LOG_CARD_HEIGHT - 12)
+        viewport_h = right_scroll.viewport().height()
+        # 右侧布局 5:1：日志区占 1/6 可用高度
+        log_area = max(80, viewport_h // 6)
+        avail = max(200, viewport_h - log_area - 12)
         mine_area = 0
         if op._mine_table.isVisible():
             mine_area = (
