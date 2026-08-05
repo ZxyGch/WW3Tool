@@ -438,8 +438,8 @@ class OthersJobsTable(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
-        # 用户列（第 0 列）Stretch 展开宽度，不被其他列挤压
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        # 用户列（第 0 列）Interactive：宽度由 _update_table 按内容/上限设置
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         for col in range(1, 8):
             hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         hdr.setMinimumSectionSize(42)
@@ -529,11 +529,8 @@ class OthersJobsTable(QWidget):
                     item = QTableWidgetItem(str(text))
                     item.setTextAlignment(align)
                     table.setItem(i, col, item)
-            # 非用户列宽度 = min(内容宽, 上限)，把剩余宽度留给用户列（Stretch）
-            for col, mx in OthersJobsTable._COL_MAX_WIDTH.items():
-                table.resizeColumnToContents(col)
-                if table.columnWidth(col) > mx:
-                    table.setColumnWidth(col, mx)
+            # 列宽分配（其他列上限 / 用户列展开 / 超宽压缩）
+            self._apply_col_widths(table)
         finally:
             table.setUpdatesEnabled(True)
         table.expand_to_contents(extra_height=6, max_row_height=32)
@@ -543,6 +540,35 @@ class OthersJobsTable(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self._refresh_card_height()
+
+    def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
+        """列宽分配：其他列上限、用户列展开（≤45% 表格）、总宽超限按比例压缩。
+
+        数据刷新与窗口 resize 后都会调用，保证窄窗口不出现横向滚动、
+        用户列不把其他列挤没。
+        """
+        # 其他列宽度 = min(内容宽, 上限)——长内容不挤占用户列
+        for col, mx in OthersJobsTable._COL_MAX_WIDTH.items():
+            table.resizeColumnToContents(col)
+            if table.columnWidth(col) > mx:
+                table.setColumnWidth(col, mx)
+        # 用户列：完整显示用户名，但不超过表格 45%（避免把其他列挤没）
+        table.resizeColumnToContents(0)
+        avail = max(table.viewport().width(), table.width())
+        user_w = min(max(table.columnWidth(0), 140), int(avail * 0.45))
+        # 总宽超过表格时循环压缩（每列保留最小可见 42px），避免横向滚动
+        total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
+        for _ in range(8):
+            if total <= avail:
+                break
+            scale = max(avail / total, 0.0)
+            user_w = max(int(user_w * scale), 42)
+            for col in range(1, 8):
+                table.setColumnWidth(
+                    col, max(int(table.columnWidth(col) * scale), 42)
+                )
+            total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
+        table.setColumnWidth(0, user_w)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
@@ -770,10 +796,15 @@ class ClusterMonitorInterface(QWidget):
         ot = op._others_table
         # 内容总高（行数×行高），不能直接用 ot.height()——它可能已被压缩过
         content_h = sum(ot.rowHeight(r) for r in range(ot.rowCount())) + 6
-        new_h = min(content_h, max(ot_avail, 80))
+        # 列表占满 6:1 可用空间：窗口拉高列表随之展开（内容多时内部滚动）
+        new_h = max(ot_avail, 80)
         if abs(new_h - ot.height()) > 1:
             ot.setFixedHeight(new_h)
             op._refresh_card_height()
+        # 窗口宽度变化后重算列宽（窄窗口按比例压缩，避免横向滚动/列消失）
+        op._apply_col_widths(ot)
+        if op._mine_table.isVisible():
+            op._apply_col_widths(op._mine_table)
             ot.scrollDelagate.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAsNeeded
             )
