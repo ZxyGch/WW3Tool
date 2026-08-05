@@ -112,16 +112,17 @@ class TaskActionsCard(QWidget):
         self.job_edit.setPlaceholderText(tr("enter_jobid_placeholder", "SLURM 任务号"))
         self.job_edit.setClearButtonEnabled(True)
 
+        layout.addWidget(self.job_edit)
+
         action_row = QHBoxLayout()
         action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(8)
-        action_row.addWidget(self.job_edit, 1)
         self.watch_button = PushButton(tr("step6_watch_job_ntfy", "监听此任务"))
         self.watch_button.clicked.connect(self._watch_current_job)
-        action_row.addWidget(self.watch_button)
+        action_row.addWidget(self.watch_button, 1)
         self.cancel_button = PushButton(tr("cancel_task", "取消任务"))
         self.cancel_button.clicked.connect(self._cancel_current_job)
-        action_row.addWidget(self.cancel_button)
+        action_row.addWidget(self.cancel_button, 1)
         layout.addLayout(action_row)
 
         self.persistent_button = PrimaryPushButton(
@@ -144,7 +145,7 @@ class TaskActionsCard(QWidget):
             self.watch_button.sizeHint().height(),
             self.persistent_button.sizeHint().height(),
         )
-        self._card.setFixedHeight(_CARD_EXTRA + 2 * row_height + 8)
+        self._card.setFixedHeight(_CARD_EXTRA + 3 * row_height + 16)
 
     def job_id(self) -> str:
         return self.job_edit.text().strip()
@@ -1174,4 +1175,3 @@ class ClusterMonitorInterface(QWidget):
             " QTextEdit:focus { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
             " QTextEdit:hover { border: 0.5px solid #D0D0D0 !important; padding-left: 2px; }"
         )
-
