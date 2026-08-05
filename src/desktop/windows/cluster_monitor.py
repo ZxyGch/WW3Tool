@@ -597,7 +597,15 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 不再把剩余宽度分摊给各列：列宽 = 内容适配，右侧剩余为表格空列区
+        # 剩余宽度只分给其他 7 列（用户列保持贴合用户名长度）：
+        # 表格整体占满右侧，同时用户列宽度 = 用户名渲染宽度，不被加宽
+        if total < avail:
+            remaining = avail - total
+            per, extra = divmod(remaining, 7)
+            if per > 0 or extra > 0:
+                for col in range(1, 8):
+                    table.setColumnWidth(col, table.columnWidth(col) + per)
+                table.setColumnWidth(7, table.columnWidth(7) + extra)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
