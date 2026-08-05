@@ -371,6 +371,17 @@ class OthersJobsTable(QWidget):
         7: 45,   # 核数
     }
 
+    # 非用户列最小可读宽度（px）：内容很短时也不缩成细条
+    _COL_MIN_WIDTH = {
+        1: 60,   # JobID
+        2: 50,   # 分区
+        3: 80,   # 作业名
+        4: 50,   # 状态
+        5: 65,   # 运行时间
+        6: 45,   # 节点
+        7: 40,   # 核数
+    }
+
     _HEADERS = [
         ("cm_job_col_user", "用户"),
         ("cm_job_col_jobid", "JobID"),
@@ -563,16 +574,16 @@ class OthersJobsTable(QWidget):
         数据刷新与窗口 resize 后都会调用，保证窄窗口不出现横向滚动、
         用户列不把其他列挤没。
         """
-        # 其他列宽度 = min(内容宽, 上限)——长内容不挤占用户列
+        # 其他列宽度 = min(max(内容宽, 最小可读宽), 上限)——长内容不挤占用户列
         for col, mx in OthersJobsTable._COL_MAX_WIDTH.items():
             table.resizeColumnToContents(col)
-            if table.columnWidth(col) > mx:
-                table.setColumnWidth(col, mx)
-        # 用户列：完整显示用户名（内容适配），至少 100px、不超过表格 45%
+            mn = OthersJobsTable._COL_MIN_WIDTH[col]
+            table.setColumnWidth(col, min(max(table.columnWidth(col), mn), mx))
+        # 用户列：严格按用户名渲染宽度（resizeColumnToContents 实测值），
+        # 只给 8px 边距、下限 50px，绝不再吸收任何剩余宽度
         table.resizeColumnToContents(0)
         avail = max(table.viewport().width(), table.width())
-        user_content = table.columnWidth(0)
-        user_w = min(max(user_content, 100), int(avail * 0.45))
+        user_w = min(max(table.columnWidth(0) + 8, 50), int(avail * 0.45))
         # 总宽超过表格时循环压缩（每列保留最小可见 42px），避免横向滚动
         total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         for _ in range(8):
@@ -586,16 +597,7 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 列宽总和小于表格宽度时,剩余宽度平均分摊给全部 8 列——
-        # 表格整体展开填满右侧,用户列只分摊 1/8 剩余,不会明显宽于
-        # 其他列,也不会和用户名长度严重脱节
-        if total < avail:
-            remaining = avail - total
-            per, extra = divmod(remaining, 8)
-            if per > 0 or extra > 0:
-                for col in range(8):
-                    table.setColumnWidth(col, table.columnWidth(col) + per)
-                table.setColumnWidth(7, table.columnWidth(7) + extra)
+        # 不再把剩余宽度分摊给各列：列宽 = 内容适配，右侧剩余为表格空列区
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
