@@ -391,7 +391,9 @@ class OthersJobsTable(QWidget):
         """卡片高度跟随表格内容（HeaderCardWidget 的 sizeHint 不反映内容）。"""
         h = _CARD_EXTRA + self._others_table.height()
         if self._mine_table.isVisible():
-            h += self._my_jobs_title.height() + 4 + self._mine_table.height()
+            # 用标题的固有高度（sizeHint），不能用当前 height()——
+            # 标题在卡片布局里会被拉伸，用拉伸后的值计算会造成高度逐次累积
+            h += self._my_jobs_title.sizeHint().height() + 4 + self._mine_table.height()
         self._card.setFixedHeight(h)
         # 内容高度变化后显式激活祖先布局（同 ClusterJobsTable）
         w: QWidget = self
