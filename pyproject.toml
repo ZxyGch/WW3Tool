@@ -1,5 +1,83 @@
-# 元数据、依赖、包布局与资源打包全部在 setup.py 中定义（构建期需先暂存资源）。
-# [EN] All metadata / layout / packaging config lives in setup.py.
+# WW3Tool 打包配置（原 setup.py 已合并进 run.py 的构建后端）。
+#
+# [build-system] build-backend = "run"：pip / `python3 -m build` 构建时把
+# run.py 当作构建后端 import——构建 wheel/sdist 前先暂存运行资源
+# （params.yml / public 子集 / meshgen 瘦身子集）进 src/ww3tool_resources/，
+# 再转交 setuptools.build_meta。backend-path 让隔离构建环境能 import 仓库根的 run 模块。
+#
+# [EN] WW3Tool packaging config (setup.py merged into run.py's build backend).
+# [build-system] build-backend = "run" lets pip / `python3 -m build` import
+# run.py as the build backend: it stages runtime resources into
+# src/ww3tool_resources/ before delegating to setuptools.build_meta.
+# backend-path makes the isolated build env able to import the root run module.
+
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+build-backend = "run"
+backend-path = ["."]
+
+[project]
+name = "ww3tool"
+version = "0.1.2"
+description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
+readme = "public/packaging/PYPI_README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "netCDF4",
+    "pandas",
+    "matplotlib",
+    "cartopy",
+    "Pillow",
+    "scipy",
+    "scikit-image",
+    "opencv-python",
+    "paramiko",
+    "requests",
+    "PyYAML",
+    "pyfiglet",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PyQt6",
+    "PyQt6-WebEngine",
+    "PyQt6-Fluent-Widgets",
+]
+dev = ["pytest"]
+
+[project.scripts]
+ww3tool = "run:main"
+
+[tool.setuptools]
+py-modules = ["run"]
+packages = [
+    "ww3tool_resources",
+    "workflows",
+    "workflows.support",
+    "workflows.application",
+    "workflows.infrastructure",
+    "workflows.domain",
+    "workflows.interfaces",
+    "workflows.infrastructure.plot",
+    "workflows.infrastructure.forcing",
+    "workflows.infrastructure.ww3",
+    "workflows.infrastructure.local",
+    "workflows.infrastructure.adapters",
+    "workflows.infrastructure.grid_visualization",
+    "workflows.infrastructure.remote",
+    "desktop",
+    "desktop.view_models",
+    "desktop.components",
+    "desktop.steps",
+    "desktop.windows",
+]
+include-package-data = false
+
+[tool.setuptools.package-dir]
+ww3tool_resources = "src/ww3tool_resources"
+workflows = "src/workflows"
+desktop = "src/desktop"
+
+[tool.setuptools.package-data]
+ww3tool_resources = ["**/*"]

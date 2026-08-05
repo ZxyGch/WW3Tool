@@ -146,6 +146,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import sysconfig
@@ -546,6 +547,169 @@ def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None, mode: 
         raise RuntimeError(
             "Still unimportable after installation: " + ", ".join(_missing_requirements(required))
         )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 打包构建后端（原 setup.py，已合并进本文件）
+#
+# pyproject.toml 的 [build-system] 声明 build-backend = "run"，因此 pip /
+# `python3 -m build` 构建 wheel/sdist 时会把本模块当作构建后端 import：
+# 构建前先暂存运行资源（params.yml / public 子集 / meshgen 瘦身子集 /
+# src/requirements.txt）进 src/ww3tool_resources/ 包，再转交 setuptools。
+# 本段所有内容仅在“被当作构建后端调用”时执行，普通运行入口不受影响。
+#
+# [EN] Packaging build backend (formerly setup.py, merged into this file).
+# pyproject.toml declares build-backend = "run", so pip / `python3 -m build`
+# import this module as the build backend: stage runtime resources
+# (params.yml / public subset / meshgen slim subset / src/requirements.txt)
+# into src/ww3tool_resources/ before delegating to setuptools. Nothing here
+# runs during normal application startup.
+# ──────────────────────────────────────────────────────────────────────
+
+_BUILD_STAGE = ROOT / "src" / "ww3tool_resources"
+_BUILD_SKIP_DIRS = {"__pycache__", ".venv"}
+_BUILD_MESHGEN_SKIP_TOP = {"__pycache__", ".venv", "cache", "reference_data"}
+_BUILD_MAX_NONPY_BYTES = 1_000_000  # meshgen 中 >1MB 的非 .py 文件视为数据/文档，不进包
+
+# 资源包的 __init__.py 壳（rmtree 重建时写入，保证包可导入）。
+# [EN] The __init__.py shell re-created after the stage dir is wiped.
+_BUILD_INIT_PY = '''"""WW3Tool runtime resources (pip install layout).
+
+Build-time staged resources (params.yml / public / meshgen / requirements).
+"""
+
+from pathlib import Path
+
+__all__ = ["resource_root", "is_packaged_root"]
+
+
+def resource_root() -> Path:
+    """Return this resource package's root directory."""
+    return Path(__file__).resolve().parent
+
+
+def is_packaged_root() -> bool:
+    """True when this package carries the staged resources."""
+    return (Path(__file__).resolve().parent / "params.yml").is_file()
+'''
+
+
+def _build_walk_copy(src_root: Path, rel_dir: str, skip_top: set[str] | None = None) -> None:
+    src = src_root / rel_dir
+    if not src.is_dir():
+        return
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [d for d in dirnames if d not in _BUILD_SKIP_DIRS]
+        if skip_top and dirpath == str(src):
+            dirnames[:] = [d for d in dirnames if d not in skip_top]
+        for fn in filenames:
+            if fn == ".DS_Store":
+                continue
+            p = Path(dirpath) / fn
+            try:
+                if p.stat().st_size > _BUILD_MAX_NONPY_BYTES and p.suffix != ".py":
+                    continue
+            except OSError:
+                continue
+            tgt = _BUILD_STAGE / rel_dir / p.relative_to(src)
+            tgt.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, tgt)
+
+
+def _stage_packaging_resources() -> None:
+    """将运行资源暂存进 src/ww3tool_resources/（构建 wheel/sdist 前调用）。
+
+    [EN] Stage runtime resources into src/ww3tool_resources/ (called before
+    building the wheel/sdist).
+    """
+    # 非仓库根（例如从 sdist 解压后资源已在包内）时直接跳过，保持幂等。
+    if not ROOT.joinpath("params.yml").is_file():
+        return
+    if _BUILD_STAGE.is_dir():
+        shutil.rmtree(_BUILD_STAGE)
+    _BUILD_STAGE.mkdir(parents=True, exist_ok=True)
+    (_BUILD_STAGE / "__init__.py").write_text(_BUILD_INIT_PY, encoding="utf-8")
+
+    shutil.copy2(ROOT / "params.yml", _BUILD_STAGE / "params.yml")
+    req_src = ROOT / "src" / "requirements.txt"
+    if req_src.is_file():
+        tgt = _BUILD_STAGE / "src" / "requirements.txt"
+        tgt.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(req_src, tgt)
+
+    for rel in (
+        "public/languages",
+        "public/7.14_nml",
+        "public/6.07_nml",
+        "public/globe_picker",
+        "public/scripts",
+    ):
+        _build_walk_copy(ROOT, rel)
+
+    # public/resource 只取 logo.png（README 媒体图等不进包）
+    logo = ROOT / "public" / "resource" / "logo.png"
+    if logo.is_file():
+        tgt = _BUILD_STAGE / "public" / "resource" / "logo.png"
+        tgt.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(logo, tgt)
+
+    _build_walk_copy(ROOT, "meshgen", skip_top=_BUILD_MESHGEN_SKIP_TOP)
+
+
+def _build_meta():
+    """Lazily import setuptools.build_meta (only available in build envs)."""
+    from setuptools import build_meta
+
+    return build_meta
+
+
+def build_wheel(
+    wheel_directory: str,
+    config_settings: dict | None = None,
+    metadata_directory: str | None = None,
+) -> str:
+    _stage_packaging_resources()
+    return _build_meta().build_wheel(wheel_directory, config_settings, metadata_directory)
+
+
+def prepare_metadata_for_build_wheel(
+    metadata_directory: str, config_settings: dict | None = None
+) -> str:
+    _stage_packaging_resources()
+    return _build_meta().prepare_metadata_for_build_wheel(metadata_directory, config_settings)
+
+
+def build_sdist(sdist_directory: str, config_settings: dict | None = None) -> str:
+    _stage_packaging_resources()
+    return _build_meta().build_sdist(sdist_directory, config_settings)
+
+
+def build_editable(
+    wheel_directory: str,
+    config_settings: dict | None = None,
+    metadata_directory: str | None = None,
+) -> str:
+    _stage_packaging_resources()
+    return _build_meta().build_editable(wheel_directory, config_settings, metadata_directory)
+
+
+def prepare_metadata_for_build_editable(
+    metadata_directory: str, config_settings: dict | None = None
+) -> str:
+    _stage_packaging_resources()
+    return _build_meta().prepare_metadata_for_build_editable(metadata_directory, config_settings)
+
+
+def get_requires_for_build_wheel(config_settings: dict | None = None) -> list[str]:
+    return _build_meta().get_requires_for_build_wheel(config_settings)
+
+
+def get_requires_for_build_sdist(config_settings: dict | None = None) -> list[str]:
+    return _build_meta().get_requires_for_build_sdist(config_settings)
+
+
+def get_requires_for_build_editable(config_settings: dict | None = None) -> list[str]:
+    return _build_meta().get_requires_for_build_editable(config_settings)
 
 
 if __name__ == "__main__":
