@@ -396,6 +396,11 @@ class OthersJobsTable(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._card, card_layout = create_header_card(self, "")
+        # 卡片宽度显式 Expanding：确保跟随 right_container 宽度被拉伸铺满，
+        # 避免布局时序下 card 按内容 sizeHint 收缩（列表只剩内容宽、右侧留白）。
+        self._card.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         card_layout.setSpacing(4)
         self._others_table = self._make_table(expand_v=False)
         card_layout.addWidget(self._others_table)
@@ -597,15 +602,9 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 剩余宽度只分给其他 7 列（用户列保持贴合用户名长度）：
-        # 表格整体占满右侧，同时用户列宽度 = 用户名渲染宽度，不被加宽
-        if total < avail:
-            remaining = avail - total
-            per, extra = divmod(remaining, 7)
-            if per > 0 or extra > 0:
-                for col in range(1, 8):
-                    table.setColumnWidth(col, table.columnWidth(col) + per)
-                table.setColumnWidth(7, table.columnWidth(7) + extra)
+        # 列宽 = 内容适配，不再加宽任何列：内容占满各自列宽，列间无多余间距。
+        # 表格组件本身占满右侧容器（宽度 Expanding），右侧剩余为表格空列区。
+        # 如需调整单列宽度，改 _COL_MIN_WIDTH / _COL_MAX_WIDTH 对应键值。
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
@@ -737,6 +736,10 @@ class ClusterMonitorInterface(QWidget):
             pass
         self._log.setStyleSheet(self._log_style())
         log_card, log_layout = create_header_card(right_container, "")
+        # 同右卡：宽度显式 Expanding，保证日志区与任务列表同宽铺满容器
+        log_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         log_layout.setSpacing(4)
         log_layout.addWidget(self._log)
         log_card.headerView.setVisible(False)
