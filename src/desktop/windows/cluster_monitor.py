@@ -32,7 +32,6 @@ from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
 from qfluentwidgets import LineEdit, PrimaryPushButton, PushButton
 from qfluentwidgets.common.style_sheet import setCustomStyleSheet
-from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
 from workflows.application.remote_ops import (
     _acquire,
     _fetch_cluster_active_jobs,
@@ -974,8 +973,8 @@ class ClusterMonitorInterface(QWidget):
         )
         right_scroll.viewport().setAutoFillBackground(False)
         right_scroll.viewport().setStyleSheet("background: transparent;")
-        # 与主页日志区一致的悬浮细滚动条（qfluentwidgets SmoothScrollBar）
-        SmoothScrollDelegate(right_scroll)
+        # 与主页日志区一致：原生滚动条（主页日志 QTextEdit 未挂 SmoothScrollDelegate，
+        # 这里也不挂，避免右侧出现 qfluentwidgets 胶囊浮动条与主页样式不一致）
         right_scroll.setWidget(right_container)
         right = right_scroll
 
