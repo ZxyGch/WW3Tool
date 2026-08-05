@@ -388,11 +388,14 @@ class OthersJobsTable(QWidget):
         )
         card_layout.setSpacing(4)
         self._others_table = self._make_table(expand_v=True)
-        card_layout.addWidget(self._others_table, 1)
+        card_layout.addWidget(self._others_table)
         self._my_jobs_title = _section_title(self, tr("cm_my_jobs", "本人任务"))
         card_layout.addWidget(self._my_jobs_title)
         self._mine_table = self._make_table(expand_v=False)
         card_layout.addWidget(self._mine_table, 0)
+        # 底部弹簧吸收剩余空间：上方（others 表 / My Jobs）保持紧凑排列，
+        # 避免 QVBoxLayout 把多余空间分散到各 item 之间（造成大间距）
+        card_layout.addStretch(1)
         # 隐藏标题行，仅保留卡片背景（与左侧卡片同款）
         self._card.headerView.setVisible(False)
         self._card.separator.setVisible(False)
@@ -447,6 +450,12 @@ class OthersJobsTable(QWidget):
         if expand_v:
             table.scrollDelagate.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         table.setRowCount(0)
+        # 统一行高 32px：内容高计算与渲染一致（qfluentwidgets 默认行高 ~39px，
+        # 会造成“内容高算小、实际渲染更高”而出现无谓滚动条）
+        table.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Fixed
+        )
+        table.verticalHeader().setDefaultSectionSize(32)
         return table
 
     def update_others_jobs(self, jobs: list, me: str) -> None:
@@ -503,6 +512,12 @@ class OthersJobsTable(QWidget):
             table.scrollDelagate.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
+            if key == "others":
+                # 空表也紧凑：高度 = 表头 + 边距，My Jobs 紧跟其后
+                table.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+                )
+                table.setFixedHeight(33)
             self._refresh_card_height()
             return
         if struct_sig == getattr(self, struct_attr):
@@ -541,16 +556,79 @@ class OthersJobsTable(QWidget):
             self._apply_col_widths(table)
         finally:
             table.setUpdatesEnabled(True)
-        if key == "mine":
+        if key == "others":
+            # 内容少时高度=内容高（紧凑，My Jobs 紧跟其后）；
+            # 内容多时高度=可用区域高，表内滚动（高度由 _fit_others_height 计算）
+            # 第 0 行是表头数据行（QHeaderView 已隐藏），行高统一 32
+            content_h = table.rowCount() * 32 + 6
+            table.setProperty("_content_h", content_h)
+            QTimer.singleShot(0, self._fit_others_height)
+        else:
             # My Jobs 保持内容高（不撑满 5:1 区域），避免表格内大块空行区
+            table.setMaximumHeight(16777215)
             table.expand_to_contents(extra_height=6, max_row_height=32)
         self._refresh_card_height()
 
+    def _fit_others_height(self) -> None:
+        """others 表高度 = min(内容高, 可用区域高)：
+        内容少时紧凑（My Jobs 紧跟其后，无大间距）；
+        内容多时取可用高度并在表内滚动（不撑大页面）。"""
+        if not hasattr(self, "_card"):
+            return
+        ot = self._others_table
+        content_h = int(ot.property("_content_h") or 0)
+        # 先激活祖先布局，保证 card_layout.geometry() 是最终几何
+        w: QWidget = self
+        while w is not None:
+            lay = w.layout()
+            if lay is not None:
+                lay.activate()
+            w = w.parentWidget()
+        avail = 300
+        vl = self._card.viewLayout
+        if vl.count():
+            lay = vl.itemAt(0).layout()
+            if lay is not None:
+                title_h = (
+                    self._my_jobs_title.sizeHint().height()
+                    if self._my_jobs_title.isVisible()
+                    else 0
+                )
+                mt_h = (
+                    self._mine_table.sizeHint().height()
+                    if self._mine_table.isVisible()
+                    else 0
+                )
+                avail = (
+                    lay.geometry().height()
+                    - title_h
+                    - mt_h
+                    - lay.spacing() * 3
+                )
+        h = max(min(content_h, avail), 40) if content_h > 0 else 40
+        # 高度策略 Maximum：不参与剩余空间争抢（Expanding 会把受限后的
+        # 多余空间分散到各 item 之间，造成“My Jobs 上方大间距”）；
+        # 高度由 setFixedHeight 精确控制。
+        ot.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        ot.setFixedHeight(h)
+        if content_h > h:
+            ot.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+        else:
+            ot.scrollDelagate.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+        self._refresh_card_height()
+
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽贴合内容，剩余宽度均摊给 8 列（右侧无空列区）：
-        每列 = max(数据内容宽, 表头宽) + 边距，用户列 = 用户名渲染宽 + 8px；
-        列宽和不足表格宽时把剩余均摊给各列（每列略加宽，视觉仍贴合内容）；
-        超出表格宽时按比例压缩（每列保底 42px，避免横向滚动）。
+        """列宽严格贴合内容：每列 = max(数据内容宽, 表头宽) + 边距，
+        用户列 = 用户名渲染宽 + 8px；不做均摊加宽（列间无多余间距）。
+        总宽超出表格时按比例压缩（每列保底 42px，避免横向滚动）；
+        不足时右侧保留表格空列区（表格底色，非列间距）。
+        数据刷新与窗口 resize 后都会调用。
         """
         fm = table.fontMetrics()
         pad = 12
@@ -591,16 +669,6 @@ class OthersJobsTable(QWidget):
                 user_w = max(int(user_w * scale), 42)
                 for col in range(1, 8):
                     targets[col] = max(int(targets[col] * scale), 42)
-            # 总宽不足表格宽时：剩余均摊给 8 列，右侧无空列区，每列略加宽
-            total = user_w + sum(targets.values())
-            if total < avail:
-                per, extra = divmod(avail - total, 8)
-                if per > 0 or extra > 0:
-                    user_w += per
-                    for col in range(1, 8):
-                        targets[col] += per
-                    # 余数给最后一列，保证列宽和 = 表格宽
-                    targets[7] += extra
         for col in range(1, 8):
             table.setColumnWidth(col, targets[col])
         table.setColumnWidth(0, user_w)
