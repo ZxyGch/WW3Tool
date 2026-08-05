@@ -1,6 +1,13 @@
 # WW3Tool Documentation
 
-## Quick Install (one line)
+## Quick Install (one line, same command on every platform)
+
+```bash
+pip install ww3tool          # then: ww3tool --help
+# Desktop GUI: pip install "ww3tool[gui]"
+```
+
+Alternative one-liners (self-contained clone installs):
 
 ```bash
 # macOS / Linux (bash)

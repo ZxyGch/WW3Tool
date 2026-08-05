@@ -156,7 +156,34 @@ from pathlib import Path
 # 仓库形态（默认）从脚本位置推导，行为与以前完全一致。
 # [EN] WW3TOOL_ROOT env wins: in pip/brew installs it points to the repo holding
 # meshgen/public; in the repo layout (default) we infer from __file__ as before.
-ROOT = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parent)
+def _resolve_root() -> Path:
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    # 仓库形态：从本文件向上找到含 params.yml 与 run.py 的仓库根
+    # [EN] Repo layout: walk up to the dir holding both params.yml and run.py.
+    _d = Path(__file__).resolve().parent
+    while True:
+        if (_d / "params.yml").is_file() and (_d / "run.py").is_file():
+            return _d
+        if _d.parent == _d:
+            break
+        _d = _d.parent
+    # 装包形态：site-packages 里的 ww3tool_resources 自带全部运行资源
+    # （params.yml / public / meshgen），此时它就是资源根。
+    # [EN] Packaged install: ww3tool_resources ships the runtime resources.
+    try:
+        import ww3tool_resources
+
+        pkg_root = Path(ww3tool_resources.__file__).resolve().parent
+        if (pkg_root / "params.yml").is_file():
+            return pkg_root
+    except Exception:
+        pass
+    return Path(__file__).resolve().parent  # 兜底：原仓库推断
+
+
+ROOT = _resolve_root()
 ENTRY_SCRIPT = ROOT / "run.py"
 REQUIREMENTS_FILE = ROOT / "src" / "requirements.txt"
 VENV_DIR = ROOT / ".venv"

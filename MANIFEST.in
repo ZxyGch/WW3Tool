@@ -1,0 +1,4 @@
+# sdist 收集暂存后的资源包（setup.py 构建期填充）与文档
+recursive-include src/ww3tool_resources *
+include public/packaging/PACKAGING.md
+include README.md

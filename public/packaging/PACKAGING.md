@@ -35,24 +35,18 @@ Windows 上生成 `ww3tool.cmd` 包装器，调用 `python` 运行 `run.py`）�
 首次运行自动建 venv 装依赖。
 可覆盖：`WW3TOOL_REPO_URL`、`WW3TOOL_INSTALL_DIR`、`WW3TOOL_BIN_DIR`。
 
-### 2. pip install
+### 2. pip install（所有平台同一条指令）
 
 ```bash
-pip install git+https://github.com/ZxyGch/WW3Tool.git
-# 或发布到 PyPI / 内网源后：pip install ww3tool
+pip install ww3tool
 # 需要桌面 GUI 时：pip install "ww3tool[gui]"
+# 尚未发布到 PyPI 时（直接装 GitHub 主干）：pip install git+https://github.com/ZxyGch/WW3Tool.git
 ```
 
-安装后 `ww3tool` 命令直接可用。**注意**：pip 只装 Python 代码；网格生成
-（`meshgen/`）、翻译、`params.yml` 模板等仓库资源需要指向一个仓库目录：
-
-```bash
-export WW3TOOL_ROOT=/path/to/WW3Tool   # 指向 clone 的仓库根
-ww3tool workdir my_workdir
-```
-
-不设置 `WW3TOOL_ROOT` 时，`workdir` 等需要模板的命令会报缺模板错误
-（其余轻量命令正常）。仓库形态（源码里直接跑 `python3 run.py`）无需设置。
+安装后 `ww3tool` 命令直接可用。**wheel 自包含**：params.yml 模板、翻译
+（public/languages）、namelist 模板（public/6.07_nml、7.14_nml）、网格生成器
+（meshgen 瘦身子集）、依赖清单全部打进包，无需 clone 仓库、无需设置
+`WW3TOOL_ROOT`。首次运行会自动建 venv 并安装依赖（需几分钟与网络）。
 
 ### 3. Homebrew
 
@@ -81,15 +75,15 @@ formula 会把运行所需资源（meshgen / public / params.yml 模板）连同
 
 | 方式 | 命令 | 需 clone 仓库 | 资源(meshgen等) | WW3TOOL_ROOT |
 | --- | --- | --- | --- | --- |
+| **pip** | **一条指令，三平台相同** | 不需要 | 随包 | 不需要 |
 | curl \| bash | 一条命令（macOS/Linux） | 自动（~/.ww3tool） | 随仓库 | 不需要 |
 | irm \| iex | 一条命令（Windows） | 自动（~/.ww3tool） | 随仓库 | 不需要 |
-| pip | 一条命令 | 需手动 clone | 不包含 | 需要 |
 | brew | tap + trust + install | 自动（Cellar） | 随包 | 不需要 |
 | install.sh | 一条命令 | 已 clone | 随仓库 | 不需要 |
 
-> **通用要求**：Python 3.9+（curl/pip 方式使用系统 `python3`；Windows 的
-> irm/iex 方式使用 `python` 或 `py -3`；brew 方式使用 Homebrew 的
-> `python@3.12`）。首次运行会自动建 venv 装依赖，需几分钟与网络。
+> **通用要求**：Python 3.9+（pip 方式随 Python 自带；curl/pip 方式使用系统
+> `python3`；Windows 的 irm/iex 方式使用 `python` 或 `py -3`；brew 方式使用
+> Homebrew 的 `python@3.12`）。首次运行会自动建 venv 装依赖，需几分钟与网络。
 
 ---
 
@@ -195,7 +189,17 @@ public/packaging/mcp/.venv/bin/python public/packaging/mcp/tests/smoke_test.py
    ```
 2. **更新 tap 仓库** `ZxyGch/homebrew-ww3tool` 的 `ww3tool.rb`：
    把 `url` 换成新 tag、`sha256` 换成新值，推送。
-3. **可选**：发布到 PyPI（`pip install ww3tool`）。
+3. **发布到 PyPI**（让 `pip install ww3tool` 在**所有平台**可用）：
+   ```bash
+   python3 -m pip install --upgrade build twine
+   python3 -m build            # 生成 dist/ww3tool-<ver>.tar.gz + .whl
+   TWINE_USERNAME=__token__ TWINE_PASSWORD=<PyPI API token> \
+     python3 -m twine upload dist/*
+   ```
+   > PyPI API token：https://pypi.org/manage/account/token/（先注册账号并验证邮箱）。
+   > wheel 自包含运行资源（meshgen 瘦身子集 / public 子集 / params.yml），
+   > 安装后无需 `WW3TOOL_ROOT`。上传前先在干净 venv 验证：
+   > `python3 -m venv /tmp/t && /tmp/t/bin/pip install dist/ww3tool-*.whl && /tmp/t/bin/ww3tool --help`。
 
 ---
 

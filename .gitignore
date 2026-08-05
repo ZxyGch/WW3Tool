@@ -34,3 +34,8 @@ WW3/
 build/
 *.egg-info/
 .reasonix/
+
+# pip 打包暂存目录(仅保留 __init__.py 壳,构建时由 setup.py 填充)
+src/ww3tool_resources/*
+!src/ww3tool_resources/__init__.py
+dist/

@@ -1,6 +1,13 @@
 # WW3Tool  文档
 
-## 快速安装（一行命令）
+## 快速安装（一行命令，所有平台相同）
+
+```bash
+pip install ww3tool          # 之后：ww3tool --help
+# 桌面 GUI：pip install "ww3tool[gui]"
+```
+
+其他一行安装方式（自包含 clone 安装）：
 
 ```bash
 # macOS / Linux（bash）

@@ -78,7 +78,34 @@ def _configured_language() -> str:
 
 
 def _load_language(language: str) -> dict[str, str]:
-    root = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parents[3])
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        root = Path(env_root).expanduser().resolve()
+    else:
+        root = None
+        # 仓库形态：从本文件向上找到含 params.yml 与 run.py 的仓库根
+        # [EN] Repo layout: walk up to the dir holding both params.yml and run.py.
+        _d = Path(__file__).resolve().parent
+        while True:
+            if (_d / "params.yml").is_file() and (_d / "run.py").is_file():
+                root = _d
+                break
+            if _d.parent == _d:
+                break
+            _d = _d.parent
+        if root is None:
+            # 装包形态：site-packages 里的 ww3tool_resources 自带语言文件
+            # [EN] Packaged install: ww3tool_resources ships the language files.
+            try:
+                import ww3tool_resources
+
+                pkg_root = Path(ww3tool_resources.__file__).resolve().parent
+                if (pkg_root / "params.yml").is_file():
+                    root = pkg_root
+            except Exception:
+                pass
+        if root is None:
+            root = Path(__file__).resolve().parents[3]
     path = root / "public" / "languages" / f"{language}.json"
     if not path.is_file() and language != "zh_CN":
         path = root / "public" / "languages" / "zh_CN.json"

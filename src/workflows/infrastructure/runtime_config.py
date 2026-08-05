@@ -41,7 +41,28 @@ def _infer_project_root() -> str:
     env_root = os.environ.get("WW3TOOL_ROOT")
     if env_root:
         return os.path.normpath(env_root)
-    return os.path.dirname(os.path.dirname(os.path.dirname(BASE_DIR)))
+    # 仓库形态：从本文件向上找到含 params.yml 与 run.py 的仓库根
+    # [EN] Repo layout: walk up to the dir holding both params.yml and run.py.
+    from pathlib import Path as _Path
+
+    _d = _Path(BASE_DIR)
+    while True:
+        if (_d / "params.yml").is_file() and (_d / "run.py").is_file():
+            return str(_d)
+        if _d.parent == _d:
+            break
+        _d = _d.parent
+    # 装包形态：site-packages 里的 ww3tool_resources 自带全部运行资源
+    # [EN] Packaged install: ww3tool_resources ships the runtime resources.
+    try:
+        import ww3tool_resources
+
+        pkg_root = _Path(ww3tool_resources.__file__).resolve().parent
+        if (pkg_root / "params.yml").is_file():
+            return str(pkg_root)
+    except Exception:
+        pass
+    return os.path.dirname(os.path.dirname(os.path.dirname(BASE_DIR)))  # 兜底：原仓库推断
 
 
 PROJECT_ROOT = _infer_project_root()

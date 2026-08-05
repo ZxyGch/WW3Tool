@@ -124,7 +124,32 @@ def _run_worker(
     if env_root:
         src_dir = Path(env_root).expanduser().resolve() / "src"
     else:
-        src_dir = Path(__file__).resolve().parents[3]
+        # 仓库形态：从本文件向上找到仓库根，src 即其子目录
+        # [EN] Repo layout: walk up to the repo root, src is its subdir.
+        _d = Path(__file__).resolve().parent
+        _root = None
+        while True:
+            if (_d / "params.yml").is_file() and (_d / "run.py").is_file():
+                _root = _d
+                break
+            if _d.parent == _d:
+                break
+            _d = _d.parent
+        if _root is not None:
+            src_dir = _root / "src"
+        else:
+            # 装包形态：workflows 已装在 site-packages，PYTHONPATH 指向资源包根即可。
+            # [EN] Packaged install: workflows already lives in site-packages.
+            try:
+                import ww3tool_resources
+
+                pkg_root = Path(ww3tool_resources.__file__).resolve().parent
+                if (pkg_root / "params.yml").is_file():
+                    src_dir = pkg_root
+                else:
+                    src_dir = Path(__file__).resolve().parents[3]
+            except Exception:
+                src_dir = Path(__file__).resolve().parents[3]
     env = os.environ.copy()
     previous = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(src_dir) + (os.pathsep + previous if previous else "")

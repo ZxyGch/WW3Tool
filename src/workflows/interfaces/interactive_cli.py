@@ -140,7 +140,26 @@ def _repo_root_path() -> Path:
     env_root = os.environ.get("WW3TOOL_ROOT")
     if env_root:
         return Path(env_root).expanduser().resolve()
-    return Path(__file__).resolve().parents[3]
+    # 仓库形态：从本文件向上找到含 params.yml 与 run.py 的仓库根
+    # [EN] Repo layout: walk up to the dir holding both params.yml and run.py.
+    _d = Path(__file__).resolve().parent
+    while True:
+        if (_d / "params.yml").is_file() and (_d / "run.py").is_file():
+            return _d
+        if _d.parent == _d:
+            break
+        _d = _d.parent
+    # 装包形态：site-packages 里的 ww3tool_resources 自带全部运行资源
+    # [EN] Packaged install: ww3tool_resources ships the runtime resources.
+    try:
+        import ww3tool_resources
+
+        pkg_root = Path(ww3tool_resources.__file__).resolve().parent
+        if (pkg_root / "params.yml").is_file():
+            return pkg_root
+    except Exception:
+        pass
+    return Path(__file__).resolve().parents[3]  # 兜底：原仓库推断
 
 
 def _is_root_params(path: Path) -> bool:
@@ -1811,7 +1830,34 @@ def _find_default_params() -> Optional[str]:
     """
     # interactive_cli.py 位于 src/workflows/interfaces/
     # [EN] interactive_cli.py is located at src/workflows/interfaces/
-    root = Path(os.environ.get("WW3TOOL_ROOT") or Path(__file__).resolve().parents[3])
+    env_root = os.environ.get("WW3TOOL_ROOT")
+    if env_root:
+        root = Path(env_root).expanduser().resolve()
+    else:
+        root = None
+        # 仓库形态：从本文件向上找到含 params.yml 与 run.py 的仓库根
+        # [EN] Repo layout: walk up to the dir holding both params.yml and run.py.
+        _d = Path(__file__).resolve().parent
+        while True:
+            if (_d / "params.yml").is_file() and (_d / "run.py").is_file():
+                root = _d
+                break
+            if _d.parent == _d:
+                break
+            _d = _d.parent
+        if root is None:
+            # 装包形态：site-packages 里的 ww3tool_resources 自带全部运行资源
+            # [EN] Packaged install: ww3tool_resources ships the runtime resources.
+            try:
+                import ww3tool_resources
+
+                pkg_root = Path(ww3tool_resources.__file__).resolve().parent
+                if (pkg_root / "params.yml").is_file():
+                    root = pkg_root
+            except Exception:
+                pass
+        if root is None:
+            root = Path(__file__).resolve().parents[3]
     default = root / "params.yml"
     if not default.is_file():
         return None
