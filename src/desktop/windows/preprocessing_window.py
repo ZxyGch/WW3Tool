@@ -442,6 +442,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             remote_vm=self._remote_vm,
             runner=self._runner,
             get_config=self._build_poll_config,
+            cancel_job=self._server_cancel,
+            watch_job=self._server_watch_ntfy_job,
+            persistent_listener=self._server_inject_ntfy,
         )
         cluster_monitor_item = self.addSubInterface(
             self._cluster_monitor_interface,
@@ -796,10 +799,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             combo_style=self._combo_style,
             connect=self._server_connect,
             confirm_slurm=self._server_confirm_slurm,
-            inject_ntfy=self._server_inject_ntfy,
-            watch_job_ntfy=self._server_watch_ntfy_job,
             node_status=self._server_node_status,
-            cancel=self._server_cancel,
             log=self._append_log,
         )
         self._st_combo = self._server_connect_panel.st_combo
@@ -3011,8 +3011,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _server_queue(self) -> None:
         self._run_job(self._remote_vm.queue_status)
 
-    def _server_cancel(self) -> None:
-        job_id = self._server_connect_panel.job_id()
+    def _server_cancel(self, job_id: str = "") -> None:
+        job_id = str(job_id).strip()
         if not job_id:
             self._show_error(tr("step5_cancel_empty_jobid", "请填写要取消的任务 ID"))
             return
@@ -3164,9 +3164,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not getattr(result, "success", False):
             self._update_ntfy_button_text()
             return
-        self._server_connect_panel.inject_ntfy_button.setText(
-            tr("step6_ntfy_send_test", "发送测试通知")
-        )
+        self._cluster_monitor_interface.set_persistent_listener_active(True)
         data = getattr(result, "data", None) or {}
         topic = data.get("topic", "")
         action = data.get("action", "")
@@ -3243,19 +3241,14 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 client=self._remote_vm._client,
             )
             data = getattr(status_result, "data", {}) or {}
-            if data.get("running"):
-                self._server_connect_panel.inject_ntfy_button.setText(
-                    tr("step6_ntfy_send_test", "发送测试通知")
-                )
-            else:
-                self._server_connect_panel.inject_ntfy_button.setText(
-                    tr("step6_inject_ntfy", "常驻 ntfy 监听")
-                )
+            self._cluster_monitor_interface.set_persistent_listener_active(
+                bool(data.get("running"))
+            )
         except Exception:
             pass
 
-    def _server_watch_ntfy_job(self) -> None:
-        job_id = self._server_connect_panel.job_id()
+    def _server_watch_ntfy_job(self, job_id: str = "") -> None:
+        job_id = str(job_id).strip()
         if not job_id:
             self._show_error(tr("step6_watch_job_empty", "请填写要监听的任务 ID"))
             return

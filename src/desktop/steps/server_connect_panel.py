@@ -43,8 +43,8 @@ _TITLE_DEFAULT = "第五步：连接服务器"
 
 
 class ServerConnectPanel:
-    # [EN] Connect to server + cluster jobs + task queue + cancel task.
-    """连接服务器 + 集群作业 + 任务队列 + 取消任务。"""
+    # [EN] Connect to server + cluster jobs + task queue.
+    """连接服务器 + 集群作业 + 任务队列。"""
 
     def __init__(
         self,
@@ -55,10 +55,7 @@ class ServerConnectPanel:
         combo_style: Callable[[], str],
         connect: Callable[[], None],
         confirm_slurm: Callable[[], None],
-        inject_ntfy: Callable[[], None],
-        watch_job_ntfy: Callable[[], None],
         node_status: Callable[[], None],
-        cancel: Callable[[], None],
         log: Callable[[str], None] | None = None,
     ) -> None:
         self._input_style = input_style
@@ -85,19 +82,6 @@ class ServerConnectPanel:
         layout.addWidget(self.connect_button)
 
 
-        # [EN] ── Cancel task section ────────────────────────────────────────────────
-        # ── 取消任务区域 ────────────────────────────────────────────────
-        self._cancel_widget = QWidget()
-        cancel_row = QHBoxLayout(self._cancel_widget)
-        cancel_row.setContentsMargins(0, 10, 0, 0)
-        cancel_row.setSpacing(8)
-        self.job_edit = LineEdit()
-        self.job_edit.setStyleSheet(input_style())
-        self.job_edit.setPlaceholderText(tr("enter_jobid_placeholder", "SLURM 任务号"))
-        cancel_row.addWidget(self.job_edit, 1)
-        cancel_row.addWidget(create_button(tr("step6_watch_job_ntfy", "监听此任务"), watch_job_ntfy))
-        cancel_row.addWidget(create_button(tr("cancel_task", "取消任务"), cancel))
-        layout.addWidget(self._cancel_widget)
 
         self._idle_title = self._build_section_title(
             tr("step6_idle_resources", "空闲资源")
@@ -178,11 +162,6 @@ class ServerConnectPanel:
             self._apply_recommended_slurm_config,
         )
         confirm_slurm_layout.addWidget(self.recommend_slurm_button)
-        self.inject_ntfy_button = create_button(
-            tr("step6_inject_ntfy", "常驻 ntfy 监听"),
-            inject_ntfy,
-        )
-        confirm_slurm_layout.addWidget(self.inject_ntfy_button)
         self.node_status_button = create_button(
             tr("step6_node_status", "查看节点状态"),
             node_status,
@@ -197,9 +176,6 @@ class ServerConnectPanel:
     # [EN] ── Public API ──────────────────────────────────────────────────────────
     # ── 公共接口 ──────────────────────────────────────────────────────────
 
-    def job_id(self) -> str:
-        return self.job_edit.text().strip()
-
     def set_connected(self, connected: bool) -> None:
         status = (
             tr("step6_connected", "[已连接]")
@@ -211,7 +187,6 @@ class ServerConnectPanel:
         except Exception:
             pass
         self.connect_button.setVisible(not connected)
-        self._cancel_widget.setVisible(connected)
         self._idle_title.setVisible(connected)
         self._idle_table.setVisible(connected)
         self._slurm_title.setVisible(connected)

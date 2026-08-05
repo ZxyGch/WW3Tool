@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
+from qfluentwidgets import LineEdit, PrimaryPushButton, PushButton
 from qfluentwidgets.common.style_sheet import setCustomStyleSheet
 from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
 from workflows.application.remote_ops import (
@@ -83,6 +84,97 @@ def _section_title(parent: QWidget, text: str) -> QWidget:
     container.setFixedHeight(container.sizeHint().height())
     return container
 
+
+class TaskActionsCard(QWidget):
+    """集群监听页中的任务取消与 ntfy 监听操作卡片。"""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        *,
+        cancel_job=None,
+        watch_job=None,
+        persistent_listener=None,
+    ) -> None:
+        super().__init__(parent)
+        self._cancel_job = cancel_job
+        self._watch_job = watch_job
+        self._persistent_listener = persistent_listener
+
+        self._card, layout = create_header_card(
+            self, tr("cm_task_actions", "任务操作")
+        )
+        self._card.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        layout.setSpacing(8)
+        self.job_edit = LineEdit()
+        self.job_edit.setPlaceholderText(tr("enter_jobid_placeholder", "SLURM 任务号"))
+        self.job_edit.setClearButtonEnabled(True)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
+        action_row.addWidget(self.job_edit, 1)
+        self.watch_button = PushButton(tr("step6_watch_job_ntfy", "监听此任务"))
+        self.watch_button.clicked.connect(self._watch_current_job)
+        action_row.addWidget(self.watch_button)
+        self.cancel_button = PushButton(tr("cancel_task", "取消任务"))
+        self.cancel_button.clicked.connect(self._cancel_current_job)
+        action_row.addWidget(self.cancel_button)
+        layout.addLayout(action_row)
+
+        self.persistent_button = PrimaryPushButton(
+            tr("step6_inject_ntfy", "常驻 ntfy 监听")
+        )
+        self.persistent_button.clicked.connect(self._run_persistent_listener)
+        layout.addWidget(self.persistent_button)
+        self._card.viewLayout.setContentsMargins(11, 10, 11, 12)
+        self._card.viewLayout.addLayout(layout)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._card)
+        self.set_connected(False)
+        QTimer.singleShot(0, self._fit_height)
+
+    def _fit_height(self) -> None:
+        row_height = max(
+            self.job_edit.sizeHint().height(),
+            self.watch_button.sizeHint().height(),
+            self.persistent_button.sizeHint().height(),
+        )
+        self._card.setFixedHeight(_CARD_EXTRA + 2 * row_height + 8)
+
+    def job_id(self) -> str:
+        return self.job_edit.text().strip()
+
+    def set_connected(self, connected: bool) -> None:
+        self.job_edit.setEnabled(bool(connected))
+        self.watch_button.setEnabled(bool(connected) and self._watch_job is not None)
+        self.cancel_button.setEnabled(bool(connected) and self._cancel_job is not None)
+        self.persistent_button.setEnabled(
+            bool(connected) and self._persistent_listener is not None
+        )
+
+    def set_persistent_listener_active(self, active: bool) -> None:
+        self.persistent_button.setText(
+            tr("step6_ntfy_send_test", "发送测试通知")
+            if active
+            else tr("step6_inject_ntfy", "常驻 ntfy 监听")
+        )
+
+    def _watch_current_job(self) -> None:
+        if self._watch_job is not None:
+            self._watch_job(self.job_id())
+
+    def _cancel_current_job(self) -> None:
+        if self._cancel_job is not None:
+            self._cancel_job(self.job_id())
+
+    def _run_persistent_listener(self) -> None:
+        if self._persistent_listener is not None:
+            self._persistent_listener()
 
 class ClusterJobsTable(QWidget):
     """集群任务列表（所有用户，sacct -a）。"""
@@ -730,6 +822,9 @@ class ClusterMonitorInterface(QWidget):
         remote_vm=None,
         runner=None,
         get_config=None,
+        cancel_job=None,
+        watch_job=None,
+        persistent_listener=None,
         log=None,
     ) -> None:
         super().__init__(parent)
@@ -740,6 +835,9 @@ class ClusterMonitorInterface(QWidget):
         self._remote_vm = remote_vm
         self._runner = runner
         self._get_config = get_config or (lambda: None)
+        self._cancel_job = cancel_job
+        self._watch_job = watch_job
+        self._persistent_listener = persistent_listener
         self._busy = False
         self._reconnecting = False
         self._timer: QTimer | None = None
@@ -792,10 +890,17 @@ class ClusterMonitorInterface(QWidget):
         left_content_layout.setSpacing(10)
         self._cluster_jobs_panel = ClusterJobsTable(left_content)
         self._idle_panel = IdleResourcesTable(left_content)
+        self._task_actions_panel = TaskActionsCard(
+            left_content,
+            cancel_job=self._cancel_job,
+            watch_job=self._watch_job,
+            persistent_listener=self._persistent_listener,
+        )
         # 卡片保持内容紧凑高度，下方留给页面底色（与主页一致）；
         # 不要用 stretch 拉高卡片——会把表格强制拉伸出大片空白。
         left_content_layout.addWidget(self._cluster_jobs_panel)
         left_content_layout.addWidget(self._idle_panel)
+        left_content_layout.addWidget(self._task_actions_panel)
         left_content_layout.addStretch(1)
         left_scroll.setWidget(left_content)
         left_layout.addWidget(left_scroll, 1)
@@ -969,6 +1074,9 @@ class ClusterMonitorInterface(QWidget):
         super().hideEvent(event)
         self.stop_monitoring()
 
+    def set_persistent_listener_active(self, active: bool) -> None:
+        self._task_actions_panel.set_persistent_listener_active(active)
+
     def _append_log(self, message: str) -> None:
         try:
             self._log.append(str(message))
@@ -986,8 +1094,10 @@ class ClusterMonitorInterface(QWidget):
         if cfg is None:
             return
         if not self._remote_vm.is_connected:
+            self._task_actions_panel.set_connected(False)
             self._try_connect(cfg)
             return
+        self._task_actions_panel.set_connected(True)
         self._busy = True
         persistent = self._remote_vm._client
 
@@ -1018,7 +1128,9 @@ class ClusterMonitorInterface(QWidget):
 
     def _on_connect_done(self, result: object) -> None:
         self._reconnecting = False
-        if bool(getattr(result, "success", False)):
+        connected = bool(getattr(result, "success", False))
+        self._task_actions_panel.set_connected(connected)
+        if connected:
             self._append_log(tr("cm_reconnect_ok", "✔ 已连接服务器"))
         else:
             error = getattr(result, "error", None) or tr("connect_failed", "连接失败")

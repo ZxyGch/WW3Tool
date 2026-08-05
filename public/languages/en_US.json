@@ -2665,6 +2665,7 @@
   "download_failed": "❌ Download failed: {path} - {error}",
   "cm_others_jobs": "Other Users' Jobs (Detail)",
   "cm_my_jobs": "My Jobs",
+  "cm_task_actions": "Task Actions",
   "cm_job_col_user": "User",
   "cm_job_col_jobid": "JobID",
   "cm_job_col_partition": "Partition",

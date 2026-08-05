@@ -2664,6 +2664,7 @@
   "download_failed": "❌ 下载失败：{path} - {error}",
   "cm_others_jobs": "其他用户任务（详细）",
   "cm_my_jobs": "本人任务",
+  "cm_task_actions": "任务操作",
   "cm_job_col_user": "用户",
   "cm_job_col_jobid": "JobID",
   "cm_job_col_partition": "分区",
