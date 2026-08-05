@@ -112,7 +112,7 @@ class ClusterJobsTable(QWidget):
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setMinimumSectionSize(42)
+        hdr.setMinimumSectionSize(1)
         vhdr = self._table.verticalHeader()
         vhdr.setVisible(False)
         vhdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
@@ -437,11 +437,11 @@ class OthersJobsTable(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
-        # 用户列（第 0 列）Interactive：宽度由 _update_table 按内容/上限设置
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        # 列宽完全由 _apply_col_widths 控制，避免布局后回退到最小值。
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         for col in range(1, 8):
-            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-        hdr.setMinimumSectionSize(42)
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+        hdr.setMinimumSectionSize(1)
         table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         vpolicy = QSizePolicy.Policy.Expanding if expand_v else QSizePolicy.Policy.Maximum
         table.setSizePolicy(QSizePolicy.Policy.Expanding, vpolicy)
@@ -473,7 +473,25 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
         # 数据更新后立即通知窗口重算右侧高度/列宽，不依赖外部调用时机
         # (避免 viewport 未就绪/回调链路中断时列表保持内容高)
+        self._schedule_column_layout()
         self._notify_parent_height_refresh()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._schedule_column_layout()
+
+    def _schedule_column_layout(self) -> None:
+        """在 Qt 完成当前布局后，再按最终 viewport 宽度设置列宽。"""
+        if getattr(self, "_column_layout_pending", False):
+            return
+        self._column_layout_pending = True
+        QTimer.singleShot(0, self._apply_columns_after_layout)
+
+    def _apply_columns_after_layout(self) -> None:
+        self._column_layout_pending = False
+        for table in (self._others_table, self._mine_table):
+            if table.isVisible() and table.rowCount() > 0:
+                self._apply_col_widths(table)
 
     def _notify_parent_height_refresh(self) -> None:
         """向上查找 ClusterMonitorInterface 并触发右侧高度重算(幂等)。"""
