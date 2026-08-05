@@ -108,7 +108,7 @@ def _stage_resources() -> None:
 
 _stage_resources()
 
-_readme = _ROOT / "public" / "packaging" / "PACKAGING.md"
+_readme = _ROOT / "public" / "packaging" / "PYPI_README.md"
 
 setup(
     name="ww3tool",
