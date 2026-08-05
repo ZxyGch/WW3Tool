@@ -626,6 +626,7 @@ class ClusterMonitorInterface(QWidget):
 
         # ── 左侧：个人任务队列 + 空闲资源（两张卡片，可滚动）──────────────────────
         left = QWidget()
+        left.setStyleSheet("background: transparent;")
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 5, 10)
         left_layout.setSpacing(0)
@@ -662,7 +663,7 @@ class ClusterMonitorInterface(QWidget):
         left_content_layout.addWidget(self._idle_panel)
         left_content_layout.addStretch(1)
         left_scroll.setWidget(left_content)
-        left_layout.addWidget(left_scroll)
+        left_layout.addWidget(left_scroll, 1)
 
         # ── 右侧：他人任务 + 本人任务 + 日志（可滚动）────────────────────
         right_container = QWidget()
