@@ -359,18 +359,6 @@ class OthersJobsTable(QWidget):
     # 任务多时表格限高、内部滚动，避免把页面拉成“巨大背景”
     _TABLE_MAX_HEIGHT = 360
 
-    # 非用户列最大宽度（px）：长内容（作业名/分区等）不挤占用户列；
-    # 用户列（第 0 列）Stretch 展开宽度、完整显示用户名
-    _COL_MAX_WIDTH = {
-        1: 60,   # JobID
-        2: 60,   # 分区
-        3: 90,   # 作业名
-        4: 50,   # 状态
-        5: 70,   # 运行时间
-        6: 45,   # 节点
-        7: 45,   # 核数
-    }
-
     # 非用户列最小可读宽度（px）：内容很短时也不缩成细条
     _COL_MIN_WIDTH = {
         1: 60,   # JobID
@@ -574,22 +562,31 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽分配：其他列上限、用户列展开（≤45% 表格）、总宽超限按比例压缩。
+        """列宽贴合内容：每列 = 数据最大文本渲染宽 + 少量边距，右侧留白。
 
-        数据刷新与窗口 resize 后都会调用，保证窄窗口不出现横向滚动、
-        用户列不把其他列挤没。
+        数据刷新与窗口 resize 后都会调用；用 QFontMetrics 直接量数据行
+        （跳过隐藏的表头行 row 0），内容完整显示、列间紧凑；
+        表格右侧的多余宽度留白，不再分摊给任何列。
         """
-        # 其他列宽度 = min(max(内容宽, 最小可读宽), 上限)——长内容不挤占用户列
-        for col, mx in OthersJobsTable._COL_MAX_WIDTH.items():
-            table.resizeColumnToContents(col)
+        fm = table.fontMetrics()
+        pad = 12
+        for col in range(1, 8):
+            w = 0
+            for r in range(1, table.rowCount()):
+                it = table.item(r, col)
+                if it is not None:
+                    w = max(w, fm.horizontalAdvance(it.text()))
             mn = OthersJobsTable._COL_MIN_WIDTH[col]
-            table.setColumnWidth(col, min(max(table.columnWidth(col), mn), mx))
-        # 用户列：严格按用户名渲染宽度（resizeColumnToContents 实测值），
-        # 只给 8px 边距、下限 50px，绝不再吸收任何剩余宽度
-        table.resizeColumnToContents(0)
+            table.setColumnWidth(col, max(w + pad, mn))
+        # 用户列：贴合用户名渲染宽 + 8px，下限 50px，绝不再吸收剩余宽度
+        uw = 0
+        for r in range(1, table.rowCount()):
+            it = table.item(r, 0)
+            if it is not None:
+                uw = max(uw, fm.horizontalAdvance(it.text()))
         avail = max(table.viewport().width(), table.width())
-        user_w = min(max(table.columnWidth(0) + 8, 50), int(avail * 0.45))
-        # 总宽超过表格时循环压缩（每列保留最小可见 42px），避免横向滚动
+        user_w = min(max(uw + 8, 50), int(avail * 0.45))
+        # 总宽超过表格时循环压缩（每列保留最小可见宽），避免横向滚动
         total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         for _ in range(8):
             if total <= avail:
@@ -602,29 +599,6 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 铺满：剩余宽度按各列内容渲染宽度成比例分配（内容长的列多分、短的少分），
-        # 用户列不再吸收剩余。视觉上每列宽度与内容成比例，列间不出现大空隙。
-        total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
-        if total < avail:
-            remaining = avail - total
-            # 权重 = 各列最大内容渲染宽（QFontMetrics 实测，不依赖 sizeHint 缓存）
-            fm = table.fontMetrics()
-            weights = []
-            for col in range(1, 8):
-                w = 0
-                for r in range(table.rowCount()):
-                    it = table.item(r, col)
-                    if it is not None:
-                        w = max(w, fm.horizontalAdvance(it.text()))
-                weights.append(max(w + 24, 1))  # 含 cell padding；空列至少 1 防除零
-            wsum = sum(weights)
-            if wsum > 0:
-                added = 0
-                for col in range(1, 7):
-                    add = int(remaining * weights[col - 1] / wsum)
-                    table.setColumnWidth(col, table.columnWidth(col) + add)
-                    added += add
-                table.setColumnWidth(7, table.columnWidth(7) + (remaining - added))
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
