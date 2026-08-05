@@ -355,7 +355,8 @@ class OthersJobsTable(QWidget):
         vpolicy = QSizePolicy.Policy.Expanding if expand_v else QSizePolicy.Policy.Maximum
         table.setSizePolicy(QSizePolicy.Policy.Expanding, vpolicy)
         # qfluentwidgets 用自定义浮动滚动条接管原生滚动条（原生恒 AlwaysOff），
-        # 需经 SmoothScrollDelegate 开启滚动显示
+        # 需经 SmoothScrollDelegate 开启滚动显示；横向始终关闭。
+        table.scrollDelagate.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         if expand_v:
             table.scrollDelagate.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         table.setRowCount(0)
@@ -517,9 +518,11 @@ class ClusterMonitorInterface(QWidget):
         left_content_layout.setSpacing(10)
         self._cluster_jobs_panel = ClusterJobsTable(left_content)
         self._idle_panel = IdleResourcesTable(left_content)
-        # 卡片按比例拉伸占满整个左侧高度，避免卡片下方露出窗口底色（与右侧卡片对称）
-        left_content_layout.addWidget(self._cluster_jobs_panel, 3)
-        left_content_layout.addWidget(self._idle_panel, 2)
+        # 卡片保持内容紧凑高度，下方留给页面底色（与主页一致）；
+        # 不要用 stretch 拉高卡片——会把表格强制拉伸出大片空白。
+        left_content_layout.addWidget(self._cluster_jobs_panel)
+        left_content_layout.addWidget(self._idle_panel)
+        left_content_layout.addStretch(1)
         left_scroll.setWidget(left_content)
         left_layout.addWidget(left_scroll)
 
