@@ -11,6 +11,7 @@ opencv-python
 paramiko
 PyQt6
 PyQt6-Fluent-Widgets
+PyQt6-WebEngine
 requests
 PyYAML
 pyfiglet

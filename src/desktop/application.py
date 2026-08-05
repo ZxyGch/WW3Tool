@@ -25,19 +25,30 @@ def create_window():
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 桌面 GUI 硬性依赖：PyQt6 + QtWebEngineCore（globe_picker 在模块顶层 import 它，
+    # 缺失会在 import 链深处裸抛 ModuleNotFoundError）。统一在这里做友好检查。
+    # [EN] Desktop requires PyQt6 + QtWebEngineCore (imported at module top by
+    # globe_picker); check here so users get an install hint instead of a raw traceback.
+    try:
+        import PyQt6.QtCore  # noqa: F401
+        from PyQt6.QtWidgets import QApplication  # noqa: F401
+        import PyQt6.QtWebEngineCore  # noqa: F401
+    except ImportError as exc:
+        missing = getattr(exc, "name", "") or str(exc)
+        print(
+            f"无法启动桌面界面：缺少 GUI 依赖（{missing}）。\n"
+            "请安装 GUI 扩展后重试：\n"
+            "  pip install \"ww3tool[gui]\"                         # pip 安装形态\n"
+            "  python3 -m pip install -r src/requirements.txt      # 仓库形态\n"
+            "（如果只是用命令行，无需 GUI：ww3tool --help / ww3tool shell）",
+            file=sys.stderr,
+        )
+        return 1
+
     # [EN] Must set AA_ShareOpenGLContexts before QApplication for QWebEngineView.
-    import PyQt6.QtCore
     PyQt6.QtCore.QCoreApplication.setAttribute(
         PyQt6.QtCore.Qt.ApplicationAttribute.AA_ShareOpenGLContexts
     )
-
-    try:
-        from PyQt6.QtWidgets import QApplication
-    except ImportError as exc:
-        raise SystemExit(
-            "无法启动桌面界面：请先安装 PyQt6 依赖 "
-            "(python3 -m pip install -r src/requirements.txt)"
-        ) from exc
 
     # [EN] Validate root params.yml paths at startup (same as CLI/shell).
     # Incompatible or non-existent paths are auto-corrected before any config is loaded.
