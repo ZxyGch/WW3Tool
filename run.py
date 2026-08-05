@@ -216,6 +216,7 @@ _CORE_REQUIRED_IMPORTS = {
 _GUI_REQUIRED_IMPORTS = {
     "PyQt6": "PyQt6.QtWidgets",
     "PyQt6-Fluent-Widgets": "qfluentwidgets",
+    "PyQt6-WebEngine": "PyQt6.QtWebEngineCore",
 }
 
 # 向后兼容：完整依赖表
