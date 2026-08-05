@@ -46,9 +46,6 @@ _CARD_EXTRA = 48 + 1 + 10 + 12 + 2
 
 # 日志卡最大高度：log 内容区 100（约 4-5 行）+ 头部 48 + 分隔线 1 + viewLayout 边距 22 + 边框 2。
 # 自适应：内容少时卡片矮，内容多时不超过此值；窗口拉高时高度留给任务列表。
-_LOG_CARD_HEIGHT = 100 + 48 + 1 + 10 + 12 + 2
-
-
 class _ContentSizedScrollArea(NoHScrollArea):
     """QScrollArea 的 sizeHint 默认是视口建议（≈(256,192)），布局据此分配高度
     会导致内容被压缩/溢出。这里让 sizeHint 反映所承载内容的实际大小。"""
@@ -384,14 +381,14 @@ class OthersJobsTable(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._card, card_layout = create_header_card(self, "")
-        # 卡片宽度显式 Expanding：确保跟随 right_container 宽度被拉伸铺满，
-        # 避免布局时序下 card 按内容 sizeHint 收缩（列表只剩内容宽、右侧留白）。
+        # 卡片宽/高显式 Expanding：占满右侧 5:1 区域，表格空行区在表格内部
+        # （标准表格样式），不再按内容收缩成内容宽/内容高。
         self._card.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         card_layout.setSpacing(4)
-        self._others_table = self._make_table(expand_v=False)
-        card_layout.addWidget(self._others_table)
+        self._others_table = self._make_table(expand_v=True)
+        card_layout.addWidget(self._others_table, 1)
         self._my_jobs_title = _section_title(self, tr("cm_my_jobs", "本人任务"))
         card_layout.addWidget(self._my_jobs_title)
         self._mine_table = self._make_table(expand_v=False)
@@ -411,14 +408,8 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _refresh_card_height(self) -> None:
-        """卡片高度跟随表格内容（HeaderCardWidget 的 sizeHint 不反映内容）。"""
-        h = _CARD_EXTRA + self._others_table.height()
-        if self._mine_table.isVisible():
-            # 用标题的固有高度（sizeHint），不能用当前 height()——
-            # 标题在卡片布局里会被拉伸，用拉伸后的值计算会造成高度逐次累积
-            h += self._my_jobs_title.sizeHint().height() + 4 + self._mine_table.height()
-        self._card.setFixedHeight(h)
-        # 内容高度变化后显式激活祖先布局（同 ClusterJobsTable）
+        """卡片高度交给布局撑满（不再按内容 setFixedHeight）：
+        表格占满 5:1 区域高度，空行区在表格内部。"""
         w: QWidget = self
         while w is not None:
             lay = w.layout()
@@ -456,8 +447,6 @@ class OthersJobsTable(QWidget):
         if expand_v:
             table.scrollDelagate.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         table.setRowCount(0)
-        # 空表/数据表都按内容定高（不参与拉伸），避免空表格铺满卡片
-        table.expand_to_contents(extra_height=6, max_row_height=32)
         return table
 
     def update_others_jobs(self, jobs: list, me: str) -> None:
@@ -511,7 +500,6 @@ class OthersJobsTable(QWidget):
         setattr(self, sig_attr, value_sig)
         if not rows:
             table.setRowCount(0)
-            table.expand_to_contents(extra_height=6, max_row_height=32)
             table.scrollDelagate.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
@@ -553,18 +541,16 @@ class OthersJobsTable(QWidget):
             self._apply_col_widths(table)
         finally:
             table.setUpdatesEnabled(True)
-        table.expand_to_contents(extra_height=6, max_row_height=32)
-        # 表格完全展开（内容全高显示），不设内部滚动限制；
-        # 右侧内容超高时由 right_scroll 整区滚动
-        table.scrollDelagate.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        if key == "mine":
+            # My Jobs 保持内容高（不撑满 5:1 区域），避免表格内大块空行区
+            table.expand_to_contents(extra_height=6, max_row_height=32)
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽贴合内容：每列 = max(数据内容宽, 表头宽) + 边距，列间不互摊；
-        总宽超出表格时按比例压缩（避免横向滚动），不超时右侧留表格空列区
-        （空列区是表格底色，不是列间距）。数据刷新与窗口 resize 后都会调用。
+        """列宽贴合内容，剩余宽度均摊给 8 列（右侧无空列区）：
+        每列 = max(数据内容宽, 表头宽) + 边距，用户列 = 用户名渲染宽 + 8px；
+        列宽和不足表格宽时把剩余均摊给各列（每列略加宽，视觉仍贴合内容）；
+        超出表格宽时按比例压缩（每列保底 42px，避免横向滚动）。
         """
         fm = table.fontMetrics()
         pad = 12
@@ -594,9 +580,9 @@ class OthersJobsTable(QWidget):
             # 布局未就绪时延迟重算一次：等布局完成后按真实宽度再算列宽，
             # 保证用户不改变窗口宽度时列宽也能修正到位
             QTimer.singleShot(0, lambda: self._apply_col_widths(table))
-        user_w = min(max(uw + 8, 50), int(avail * 0.45))
+        user_w = max(uw + 8, 50)
         if avail >= 200:
-            # 总宽超过表格时循环压缩（每列保留最小可见宽），避免横向滚动
+            # 总宽超出表格时循环压缩（每列保留最小可见宽），避免横向滚动
             for _ in range(8):
                 total = user_w + sum(targets.values())
                 if total <= avail:
@@ -605,6 +591,16 @@ class OthersJobsTable(QWidget):
                 user_w = max(int(user_w * scale), 42)
                 for col in range(1, 8):
                     targets[col] = max(int(targets[col] * scale), 42)
+            # 总宽不足表格宽时：剩余均摊给 8 列，右侧无空列区，每列略加宽
+            total = user_w + sum(targets.values())
+            if total < avail:
+                per, extra = divmod(avail - total, 8)
+                if per > 0 or extra > 0:
+                    user_w += per
+                    for col in range(1, 8):
+                        targets[col] += per
+                    # 余数给最后一列，保证列宽和 = 表格宽
+                    targets[7] += extra
         for col in range(1, 8):
             table.setColumnWidth(col, targets[col])
         table.setColumnWidth(0, user_w)
@@ -710,8 +706,8 @@ class ClusterMonitorInterface(QWidget):
         right_layout.setContentsMargins(5, 1, 10, 11)
         right_layout.setSpacing(6)
         self._others_jobs_panel = OthersJobsTable(right_container)
-        # 右侧布局 6:1：任务列表占 6 份、日志区占 1 份
-        right_layout.addWidget(self._others_jobs_panel, 6)
+        # 右侧布局 5:1：任务列表占 5 份、日志区占 1 份（日志 = 内容区 1/6）
+        right_layout.addWidget(self._others_jobs_panel, 5)
         self._log = QTextEdit()
         mono_font = QFont(self.font())
         fallback_monos = [
@@ -739,22 +735,18 @@ class ClusterMonitorInterface(QWidget):
             pass
         self._log.setStyleSheet(self._log_style())
         log_card, log_layout = create_header_card(right_container, "")
-        # 同右卡：宽度显式 Expanding，保证日志区与任务列表同宽铺满容器
+        # 同右卡：宽/高显式 Expanding，日志区高度 = 内容区 1/6（布局分配）
         log_card.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        # 日志区固定高度：内容多时内部滚动，不被 6:1 布局拉伸变高
-        log_card.setFixedHeight(_LOG_CARD_HEIGHT)
         log_layout.setSpacing(4)
         log_layout.addWidget(self._log)
         log_card.headerView.setVisible(False)
         log_card.separator.setVisible(False)
         log_card.viewLayout.setContentsMargins(11, 10, 11, 12)
         log_card.viewLayout.addLayout(log_layout)
-        # 右侧布局 6:1：任务列表占 6 份、日志区占 1 份（日志内部滚动）
+        # 右侧布局 5:1：任务列表占 5 份、日志区占 1 份（日志内部滚动）
         right_layout.addWidget(log_card, 1)
-        # 卡片紧凑顶部对齐，下方留页面底色（与左侧对称）
-        right_layout.addStretch(1)
         right_scroll = _ContentSizedScrollArea()
         right_scroll.setWidgetResizable(True)
         right_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -785,13 +777,15 @@ class ClusterMonitorInterface(QWidget):
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 33)
         splitter.setStretchFactor(1, 67)
-        # 卡片高度紧凑（不拉伸），由内部滚动容器承载超高内容；
-        # 卡片外露出窗口底色，避免空表格被拉满铺成“巨大背景”。
+        # splitter 高度占满页面：表格空行区在表格内部，左右内容超高各自滚动
         splitter.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         page_scroll = _ContentSizedScrollArea()
         page_scroll.setWidgetResizable(True)
+        page_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         page_scroll.setFrameShape(QFrame.Shape.NoFrame)
         page_scroll.setStyleSheet(
             "QScrollArea { background-color: transparent; border: none; }"
@@ -801,8 +795,7 @@ class ClusterMonitorInterface(QWidget):
         page_container = QWidget()
         page_layout = QVBoxLayout(page_container)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.addWidget(splitter)
-        page_layout.addStretch(1)  # 卡片顶部对齐，下方留窗口底色
+        page_layout.addWidget(splitter, 1)  # splitter 占满整个页面高度
         page_scroll.setWidget(page_container)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -819,14 +812,13 @@ class ClusterMonitorInterface(QWidget):
         QTimer.singleShot(0, _apply_sizes)
 
     def _refresh_splitter_height(self) -> None:
-        """splitter 高度跟随内容：数据更新后内容变高，若 splitter 停在旧高度
-        会撑出滚动条，故按左右两侧内容高度重算（下方余量留给页面底色）。"""
+        """splitter 高度由页面布局撑满窗口（不再按内容 setFixedHeight）：
+        表格空行区在表格内部，内容超高由左右滚动区各自滚动。"""
         if not hasattr(self, "_splitter"):
             return
-        ls = self._splitter.widget(0)
-        rs = self._splitter.widget(1)
-        h = max(ls.sizeHint().height(), rs.sizeHint().height())
-        self._splitter.setFixedHeight(max(h, 320))
+        lay = self.layout()
+        if lay is not None:
+            lay.activate()
 
     def _refresh_others_height(self) -> None:
         """数据/宽度变化后刷新卡片高度与列宽。
