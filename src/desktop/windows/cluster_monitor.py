@@ -678,7 +678,7 @@ class OthersJobsTable(QWidget):
         fits = total <= avail
         if fits:
             # 节点/核数保持紧凑；把多余空间集中给可读性更受益的文字列。
-            weights = {0: 1.25, 1: 0.75, 2: 1.0, 3: 2.25, 4: 1.0, 5: 1.25}
+            weights = {1: 0.75, 2: 1.0, 3: 2.75, 4: 1.0, 5: 1.5}
             remaining = avail - total
             weight_total = sum(weights.values())
             assigned = 0
