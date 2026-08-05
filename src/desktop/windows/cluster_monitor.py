@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
-from qfluentwidgets.common.style_sheet import addStyleSheet
+from qfluentwidgets.common.style_sheet import setCustomStyleSheet
 from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
 from workflows.application.remote_ops import (
     _acquire,
@@ -436,7 +436,8 @@ class OthersJobsTable(QWidget):
         table.setWordWrap(False)
         # 收紧 Fluent 默认的水平内边距；列宽由 sizeHintForColumn 计算，
         # 文字仍完整显示，同时避免八列因为累积留白而无谓横向滚动。
-        addStyleSheet(table, "QTableView::item { padding-left: 2px; padding-right: 2px; }")
+        compact_item_qss = "QTableView::item { padding-left: 2px; padding-right: 2px; }"
+        setCustomStyleSheet(table, compact_item_qss, compact_item_qss)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
