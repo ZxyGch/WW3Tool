@@ -96,10 +96,15 @@ Set-Content -Path $Wrapper -Value $CmdContent -Encoding ASCII
 Write-Host "==> Done."
 Write-Host "    command: $Wrapper"
 Write-Host "    First run creates a virtual environment and installs dependencies (a few minutes)."
-if ($env:PATH -split ";" | Where-Object { $_ -eq $BinDir }) {
-    Write-Host "    Note: $BinDir is already in PATH."
+
+# Register BIN_DIR in the user-level PATH so `ww3tool` works as a command in a
+# new terminal, no manual step required.
+$UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if (-not $UserPath) { $UserPath = "" }
+if (-not ($UserPath -split ";" | Where-Object { $_ -eq $BinDir })) {
+    [Environment]::SetEnvironmentVariable('Path', ($UserPath.TrimEnd(';') + ';' + $BinDir), 'User')
+    Write-Host "    Added $BinDir to your user PATH (effective in a new terminal)."
 } else {
-    Write-Host "    Note: add $BinDir to your PATH (user scope), then open a new terminal:"
-    Write-Host "      [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ';$BinDir', 'User')"
+    Write-Host "    Note: $BinDir is already in your user PATH."
 }
-Write-Host "    Verify: ww3tool --help"
+Write-Host "    Verify (open a NEW terminal first): ww3tool --help"
