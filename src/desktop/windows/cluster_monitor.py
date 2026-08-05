@@ -586,14 +586,16 @@ class OthersJobsTable(QWidget):
                 )
             total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
         table.setColumnWidth(0, user_w)
-        # 列宽总和小于表格宽度时,剩余宽度给用户列但设上限(内容宽+40、
-        # 不低于 100、不超过表格 45%)——填表防空白,同时用户列不与用户名
-        # 长度严重脱节(不无脑吸收全部剩余)
+        # 列宽总和小于表格宽度时,剩余宽度平均分摊给全部 8 列——
+        # 表格整体展开填满右侧,用户列只分摊 1/8 剩余,不会明显宽于
+        # 其他列,也不会和用户名长度严重脱节
         if total < avail:
-            user_cap = min(max(user_content + 40, 100), int(avail * 0.45))
-            add = max(min(avail - total, user_cap - user_w), 0)
-            if add > 0:
-                table.setColumnWidth(0, user_w + add)
+            remaining = avail - total
+            per, extra = divmod(remaining, 8)
+            if per > 0 or extra > 0:
+                for col in range(8):
+                    table.setColumnWidth(col, table.columnWidth(col) + per)
+                table.setColumnWidth(7, table.columnWidth(7) + extra)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
