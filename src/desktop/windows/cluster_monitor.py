@@ -105,6 +105,8 @@ class ClusterJobsTable(QWidget):
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setWordWrap(False)
+        compact_item_qss = "QTableView::item { padding-left: 2px; padding-right: 2px; }"
+        setCustomStyleSheet(self._table, compact_item_qss, compact_item_qss)
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = self._table.horizontalHeader()
         hdr.setStretchLastSection(False)
@@ -115,7 +117,8 @@ class ClusterJobsTable(QWidget):
         hdr.setMinimumSectionSize(42)
         vhdr = self._table.verticalHeader()
         vhdr.setVisible(False)
-        vhdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        vhdr.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        vhdr.setDefaultSectionSize(32)
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -242,12 +245,17 @@ class IdleResourcesTable(QWidget):
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setWordWrap(False)
+        compact_item_qss = "QTableView::item { padding-left: 2px; padding-right: 2px; }"
+        setCustomStyleSheet(self._table, compact_item_qss, compact_item_qss)
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         idle_hdr = self._table.horizontalHeader()
         idle_hdr.setStretchLastSection(False)
         for col in range(3):
             idle_hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         idle_hdr.setMinimumSectionSize(36)
+        idle_vhdr = self._table.verticalHeader()
+        idle_vhdr.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        idle_vhdr.setDefaultSectionSize(32)
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
