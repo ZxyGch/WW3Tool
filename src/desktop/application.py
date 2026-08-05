@@ -37,9 +37,9 @@ def main(argv: list[str] | None = None) -> int:
         missing = getattr(exc, "name", "") or str(exc)
         print(
             f"无法启动桌面界面：缺少 GUI 依赖（{missing}）。\n"
-            "请安装 GUI 扩展后重试：\n"
-            "  pip install \"ww3tool[gui]\"                         # pip 安装形态\n"
-            "  python3 -m pip install -r src/requirements.txt      # 仓库形态\n"
+            "请重新安装或升级 ww3tool（0.1.3 起 GUI 依赖已内置）：\n"
+            "  pip install --upgrade ww3tool                     # pip 安装形态\n"
+            "  python3 -m pip install -r src/requirements.txt    # 仓库形态\n"
             "（如果只是用命令行，无需 GUI：ww3tool --help / ww3tool shell）",
             file=sys.stderr,
         )

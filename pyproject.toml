@@ -18,7 +18,7 @@ backend-path = ["."]
 
 [project]
 name = "ww3tool"
-version = "0.1.2"
+version = "0.1.3"
 description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
 readme = "public/packaging/PYPI_README.md"
 requires-python = ">=3.9"
@@ -36,14 +36,19 @@ dependencies = [
     "requests",
     "PyYAML",
     "pyfiglet",
-]
-
-[project.optional-dependencies]
-gui = [
+    # GUI 桌面依赖并入主依赖：pip install ww3tool 一次装齐全部包
+    # （桌面界面、WebEngine globe picker、Fluent 组件）。
+    # [EN] GUI desktop deps merged into the main deps so a plain
+    # `pip install ww3tool` installs everything.
     "PyQt6",
     "PyQt6-WebEngine",
     "PyQt6-Fluent-Widgets",
 ]
+
+[project.optional-dependencies]
+# 保留空 gui extra 兼容旧命令（pip install "ww3tool[gui]" 仍可用）。
+# [EN] Keep an empty gui extra so legacy install commands still work.
+gui = []
 dev = ["pytest"]
 
 [project.scripts]
