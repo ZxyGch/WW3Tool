@@ -17,12 +17,22 @@
 
 ### 1. 一键脚本（推荐给其他人）
 
+macOS / Linux（bash）：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/remote-install.sh | bash
 ```
 
-自动完成：浅克隆仓库到 `~/.ww3tool` → 把 `ww3tool` 命令软链到 PATH
-（优先 `~/.local/bin`，其次 `/usr/local/bin`）→ 首次运行自动建 venv 装依赖。
+Windows（PowerShell 5.1+ / PowerShell 7+）：
+
+```powershell
+irm https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/install.ps1 | iex
+```
+
+自动完成：浅克隆仓库到 `~/.ww3tool`（Windows 为 `%USERPROFILE%\.ww3tool`）→
+把 `ww3tool` 命令放入 PATH（优先 `~/.local/bin`，其次 `/usr/local/bin`；
+Windows 上生成 `ww3tool.cmd` 包装器，调用 `python` 运行 `run.py`）→
+首次运行自动建 venv 装依赖。
 可覆盖：`WW3TOOL_REPO_URL`、`WW3TOOL_INSTALL_DIR`、`WW3TOOL_BIN_DIR`。
 
 ### 2. pip install
@@ -71,13 +81,15 @@ formula 会把运行所需资源（meshgen / public / params.yml 模板）连同
 
 | 方式 | 命令 | 需 clone 仓库 | 资源(meshgen等) | WW3TOOL_ROOT |
 | --- | --- | --- | --- | --- |
-| curl \| bash | 一条命令 | 自动（~/.ww3tool） | 随仓库 | 不需要 |
+| curl \| bash | 一条命令（macOS/Linux） | 自动（~/.ww3tool） | 随仓库 | 不需要 |
+| irm \| iex | 一条命令（Windows） | 自动（~/.ww3tool） | 随仓库 | 不需要 |
 | pip | 一条命令 | 需手动 clone | 不包含 | 需要 |
 | brew | tap + trust + install | 自动（Cellar） | 随包 | 不需要 |
 | install.sh | 一条命令 | 已 clone | 随仓库 | 不需要 |
 
-> **通用要求**：Python 3.9+（curl/pip 方式使用系统 `python3`；brew 方式使用
-> Homebrew 的 `python@3.12`）。首次运行会自动建 venv 装依赖，需几分钟与网络。
+> **通用要求**：Python 3.9+（curl/pip 方式使用系统 `python3`；Windows 的
+> irm/iex 方式使用 `python` 或 `py -3`；brew 方式使用 Homebrew 的
+> `python@3.12`）。首次运行会自动建 venv 装依赖，需几分钟与网络。
 
 ---
 

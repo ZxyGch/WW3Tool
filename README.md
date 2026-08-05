@@ -3,7 +3,13 @@
 ## Quick Install (one line)
 
 ```bash
+# macOS / Linux (bash)
 curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/remote-install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell 5.1+ / PowerShell 7+)
+irm https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/install.ps1 | iex
 ```
 
 Homebrew users (macOS / Linux): `brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
