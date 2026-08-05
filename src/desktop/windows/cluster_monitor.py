@@ -648,16 +648,16 @@ class OthersJobsTable(QWidget):
                 uw = max(uw, fm.horizontalAdvance(it.text()))
         avail = max(table.viewport().width(), table.width())
         if avail < 200:
-            # 表格尚未布局（数据可能早于布局到达）：向上取最近有宽度的
-            # 父容器作为参考宽度，避免把列宽压成 42px 的“压缩值”。
-            p = table.parentWidget()
-            while p is not None and p.width() < 200:
-                p = p.parentWidget()
-            if p is not None:
-                avail = p.width()
-            # 布局未就绪时延迟重算一次：等布局完成后按真实宽度再算列宽，
-            # 保证用户不改变窗口宽度时列宽也能修正到位
+            # 表格尚未布局（数据可能早于布局到达，如 SSH 异步数据）：
+            # 先按内容贴合设置列宽（不压缩、不分配剩余），保证内容完整显示；
+            # 再延迟到布局完成后按真实宽度重算（铺满右侧、无空列区）。
+            # 绝不能在此用父容器/窗口宽度分配——列宽和会超过表格实际宽度，
+            # 横向滚动又被禁用，右侧列会被直接裁掉（内容“消失”）。
+            for col in range(1, 8):
+                table.setColumnWidth(col, targets[col])
+            table.setColumnWidth(0, max(uw + 8, 50))
             QTimer.singleShot(0, lambda: self._apply_col_widths(table))
+            return
         user_w = max(uw + 8, 50)
         if avail >= 200:
             # 总宽超出表格时循环压缩（每列保留最小可见宽），避免横向滚动
@@ -669,6 +669,20 @@ class OthersJobsTable(QWidget):
                 user_w = max(int(user_w * scale), 42)
                 for col in range(1, 8):
                     targets[col] = max(int(targets[col] * scale), 42)
+            # 总宽不足表格宽时：剩余按内容比例分给其他 7 列
+            # （内容长的列多分、短的少分，视觉上每列仍贴合内容，
+            # 表格整体铺满右侧无空列区；用户列保持贴合用户名，不分剩余）
+            total = user_w + sum(targets.values())
+            if total < avail:
+                remaining = avail - total
+                base = sum(targets.values())
+                if base > 0:
+                    given = 0
+                    for col in range(1, 8):
+                        share = int(remaining * targets[col] / base)
+                        targets[col] += share
+                        given += share
+                    targets[7] += remaining - given
         for col in range(1, 8):
             table.setColumnWidth(col, targets[col])
         table.setColumnWidth(0, user_w)
