@@ -562,14 +562,13 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽贴合内容：每列 = 数据最大文本渲染宽 + 少量边距，右侧留白。
-
-        数据刷新与窗口 resize 后都会调用；用 QFontMetrics 直接量数据行
-        （跳过隐藏的表头行 row 0），内容完整显示、列间紧凑；
-        表格右侧的多余宽度留白，不再分摊给任何列。
+        """列宽占满表格：用户列贴合用户名；其余列 = 内容宽 + 按内容宽比例
+        分摊剩余宽度（内容长的列多分、短的少分），列宽和恰好等于表格宽度，
+        右侧不留空；数据刷新与窗口 resize 后都会调用。
         """
         fm = table.fontMetrics()
         pad = 12
+        content = {}
         for col in range(1, 8):
             w = 0
             for r in range(1, table.rowCount()):
@@ -577,7 +576,7 @@ class OthersJobsTable(QWidget):
                 if it is not None:
                     w = max(w, fm.horizontalAdvance(it.text()))
             mn = OthersJobsTable._COL_MIN_WIDTH[col]
-            table.setColumnWidth(col, max(w + pad, mn))
+            content[col] = max(w + pad, mn)
         # 用户列：贴合用户名渲染宽 + 8px，下限 50px，绝不再吸收剩余宽度
         uw = 0
         for r in range(1, table.rowCount()):
@@ -585,19 +584,40 @@ class OthersJobsTable(QWidget):
             if it is not None:
                 uw = max(uw, fm.horizontalAdvance(it.text()))
         avail = max(table.viewport().width(), table.width())
+        if avail < 200:
+            # 表格尚未布局（数据可能早于布局到达）：向上取最近有宽度的
+            # 父容器作为参考宽度，避免把列宽压成 42px 的“压缩值”。
+            p = table.parentWidget()
+            while p is not None and p.width() < 200:
+                p = p.parentWidget()
+            if p is not None:
+                avail = p.width()
+            # 布局未就绪时延迟重算一次：等布局完成后按真实宽度再算列宽，
+            # 保证用户不改变窗口宽度时列宽也能修正到位
+            QTimer.singleShot(0, lambda: self._apply_col_widths(table))
         user_w = min(max(uw + 8, 50), int(avail * 0.45))
-        # 总宽超过表格时循环压缩（每列保留最小可见宽），避免横向滚动
-        total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
-        for _ in range(8):
-            if total <= avail:
-                break
-            scale = max(avail / total, 0.0)
-            user_w = max(int(user_w * scale), 42)
-            for col in range(1, 8):
-                table.setColumnWidth(
-                    col, max(int(table.columnWidth(col) * scale), 42)
-                )
-            total = user_w + sum(table.columnWidth(c) for c in range(1, 8))
+        if avail >= 200:
+            total = user_w + sum(content.values())
+            if total < avail:
+                # 剩余宽度按各列内容宽比例分给其余 7 列（内容长的多分、
+                # 短的少分），保证列宽和 = 表格宽，右侧不留空
+                remaining = avail - total
+                base = sum(content.values())
+                for col in range(1, 8):
+                    content[col] += int(remaining * content[col] / base)
+                # 舍入余量给最后一列，使总和恰好等于表格宽
+                content[7] += avail - (user_w + sum(content.values()))
+            # 总宽超过表格时循环压缩（每列保留最小可见宽），避免横向滚动
+            for _ in range(8):
+                total = user_w + sum(content.values())
+                if total <= avail:
+                    break
+                scale = max(avail / total, 0.0)
+                user_w = max(int(user_w * scale), 42)
+                for col in range(1, 8):
+                    content[col] = max(int(content[col] * scale), 42)
+        for col in range(1, 8):
+            table.setColumnWidth(col, content[col])
         table.setColumnWidth(0, user_w)
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
