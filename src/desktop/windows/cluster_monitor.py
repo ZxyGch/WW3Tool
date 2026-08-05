@@ -12,7 +12,7 @@ Auto-connects on open and auto-reconnects every second when SSH drops.
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, QTimer, Qt
-from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -31,6 +31,7 @@ from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
 from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
+from qfluentwidgets import getFont
 from workflows.application.remote_ops import (
     _acquire,
     _fetch_cluster_active_jobs,
@@ -624,14 +625,14 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
-        """列宽严格贴合内容：每列 = max(数据内容宽, 表头宽) + 边距，
-        用户列 = 用户名渲染宽 + 8px；不做均摊加宽（列间无多余间距）。
-        总宽超出表格时按比例压缩（每列保底 42px，避免横向滚动）；
-        不足时右侧保留表格空列区（表格底色，非列间距）。
+        """列宽 = 内容渲染宽 + 8px（内容完整优先，不做压缩/加宽）：
+        - 总宽不足表格宽：右侧留表格空列区（表格控件本身仍占满容器）
+        - 总宽超出表格宽：横向滚动按需出现（内容完整可看）
+        用户列 = 用户名渲染宽 + 8px，下限 50px。
         数据刷新与窗口 resize 后都会调用。
         """
-        fm = table.fontMetrics()
-        pad = 12
+        fm = QFontMetrics(getFont(13))  # 与 delegate 渲染字体一致，避免测宽偏差
+        pad = 8
         targets: dict = {}
         for col in range(1, 8):
             w = 0
@@ -640,52 +641,36 @@ class OthersJobsTable(QWidget):
                 if it is not None:
                     w = max(w, fm.horizontalAdvance(it.text()))
             targets[col] = max(w + pad, OthersJobsTable._COL_MIN_WIDTH[col])
-        # 用户列：贴合用户名渲染宽 + 8px，下限 50px，不吸收剩余宽度
+        # 用户列：贴合用户名渲染宽 + 8px，下限 50px
         uw = 0
         for r in range(table.rowCount()):
             it = table.item(r, 0)
             if it is not None:
                 uw = max(uw, fm.horizontalAdvance(it.text()))
+        user_w = max(uw + 8, 50)
         avail = max(table.viewport().width(), table.width())
         if avail < 200:
             # 表格尚未布局（数据可能早于布局到达，如 SSH 异步数据）：
-            # 先按内容贴合设置列宽（不压缩、不分配剩余），保证内容完整显示；
-            # 再延迟到布局完成后按真实宽度重算（铺满右侧、无空列区）。
-            # 绝不能在此用父容器/窗口宽度分配——列宽和会超过表格实际宽度，
-            # 横向滚动又被禁用，右侧列会被直接裁掉（内容“消失”）。
+            # 先按内容贴合设置列宽，保证内容完整显示；布局完成后重算。
             for col in range(1, 8):
                 table.setColumnWidth(col, targets[col])
-            table.setColumnWidth(0, max(uw + 8, 50))
+            table.setColumnWidth(0, user_w)
             QTimer.singleShot(0, lambda: self._apply_col_widths(table))
             return
-        user_w = max(uw + 8, 50)
-        if avail >= 200:
-            # 总宽超出表格时循环压缩（每列保留最小可见宽），避免横向滚动
-            for _ in range(8):
-                total = user_w + sum(targets.values())
-                if total <= avail:
-                    break
-                scale = max(avail / total, 0.0)
-                user_w = max(int(user_w * scale), 42)
-                for col in range(1, 8):
-                    targets[col] = max(int(targets[col] * scale), 42)
-            # 总宽不足表格宽时：剩余按内容比例分给其他 7 列
-            # （内容长的列多分、短的少分，视觉上每列仍贴合内容，
-            # 表格整体铺满右侧无空列区；用户列保持贴合用户名，不分剩余）
-            total = user_w + sum(targets.values())
-            if total < avail:
-                remaining = avail - total
-                base = sum(targets.values())
-                if base > 0:
-                    given = 0
-                    for col in range(1, 8):
-                        share = int(remaining * targets[col] / base)
-                        targets[col] += share
-                        given += share
-                    targets[7] += remaining - given
         for col in range(1, 8):
             table.setColumnWidth(col, targets[col])
         table.setColumnWidth(0, user_w)
+        # 内容总宽超出表格宽 → 横向滚动按需出现（内容完整优先）；
+        # 未超出 → 关闭横向滚动，右侧留表格空列区
+        total = user_w + sum(targets.values())
+        if total > avail:
+            table.scrollDelagate.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+        else:
+            table.scrollDelagate.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
 
     def _update_times(self, table: EdgeAlignedTableWidget, rows: list) -> None:
         table.setUpdatesEnabled(False)
