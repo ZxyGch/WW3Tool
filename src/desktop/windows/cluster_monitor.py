@@ -433,6 +433,9 @@ class OthersJobsTable(QWidget):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setWordWrap(False)
+        # 收紧 Fluent 默认的水平内边距；列宽由 sizeHintForColumn 计算，
+        # 文字仍完整显示，同时避免八列因为累积留白而无谓横向滚动。
+        table.setStyleSheet("QTableView::item { padding-left: 2px; padding-right: 2px; }")
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
