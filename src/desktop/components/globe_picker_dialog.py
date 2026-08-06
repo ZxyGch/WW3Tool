@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qframelesswindow import FramelessWindow
 from qframelesswindow.webengine import FramelessWebEngineView
 
 from .._repo_root import repo_root
@@ -53,7 +54,23 @@ class MapWebEngineView(FramelessWebEngineView):
     """Send trackpad pinch gestures to the map without scaling the web page."""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        # qframelesswindow 的 FramelessWebEngineView.__init__ 会对 self.window()
+        # 调用 updateFrameless()（内部 setWindowFlags(...)），而 Qt 对可见顶层
+        # 窗口修改 windowFlags 会隐式隐藏该窗口。本视图作为主窗口的子控件嵌入时，
+        # self.window() 指向宿主主窗口 —— 创建地图预览/取点器会静默隐藏主窗口
+        # （表现为启动约 200ms 后窗口"闪退"）。创建期间先挂到临时普通宿主下，
+        # 让库代码跳过对宿主主窗口的 frameless 操作，随后再挂回真实父控件。
+        real_parent = parent
+        temp_host = None
+        if real_parent is not None and isinstance(real_parent.window(), FramelessWindow):
+            temp_host = QWidget()
+            parent = temp_host
+        try:
+            super().__init__(parent)
+        finally:
+            if temp_host is not None:
+                self.setParent(real_parent)
+                temp_host.deleteLater()
         self.installEventFilter(self)
         self._install_child_event_filters()
 
@@ -375,9 +392,8 @@ class GlobePickerDialog(QWidget):
         host = self.parentWidget()
         if host is None:
             return
-        update_frameless = getattr(host, "updateFrameless", None)
-        if callable(update_frameless):
-            update_frameless()
+        # 注意：不能调用 host.updateFrameless() —— 它对可见顶层窗口执行
+        # setWindowFlags(...) 会隐式隐藏主窗口（启动/取点时"闪退"的根源）。
         set_system_buttons = getattr(host, "setSystemTitleBarButtonVisible", None)
         if callable(set_system_buttons):
             set_system_buttons(False)

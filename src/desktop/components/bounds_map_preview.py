@@ -235,9 +235,8 @@ class BoundsMapPreview(MapWebEngineView):
         host = self.window()
         if host is self:
             return
-        update_frameless = getattr(host, "updateFrameless", None)
-        if callable(update_frameless):
-            update_frameless()
+        # 注意：不能调用 host.updateFrameless() —— 它对可见顶层窗口执行
+        # setWindowFlags(...) 会隐式隐藏主窗口（启动约 200ms 后"闪退"的根源）。
         set_system_buttons = getattr(host, "setSystemTitleBarButtonVisible", None)
         if callable(set_system_buttons):
             set_system_buttons(False)
