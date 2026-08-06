@@ -23,7 +23,15 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QTextBlockFormat, QTextCursor
+from PyQt6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QFontDatabase,
+    QTextBlockFormat,
+    QTextCharFormat,
+    QTextCursor,
+)
 from qfluentwidgets import (
     ComboBox,
     FluentIcon,
@@ -3071,32 +3079,31 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if result is None or not isinstance(result, tuple) or len(result) != 2:
             return
         jobs, me = result
-        jobs = jobs or []
-        me = str(me or "")
-        mine = [j for j in jobs if str(j.get("user", "")) == me]
-        self._append_log(self._format_jobs_log(jobs))
-        self._append_log(
-            tr(
-                "queue_log_summary",
-                "任务队列：共 {total} 个任务（本人 {mine} 个）",
-            ).format(total=len(jobs), mine=len(mine))
+        text = self._format_jobs_log(jobs or [], me or "")
+        # 等宽字体 + CJK 宽度对齐，保证表头与内容逐列对齐
+        fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        char_fmt = QTextCharFormat()
+        char_fmt.setFont(fixed)
+        self._append_log(text, char_format=char_fmt)
+
+    @staticmethod
+    def _disp_width(s: str) -> int:
+        """字符串显示宽度：CJK 全角字符按 2 个半角宽度计算。"""
+        import unicodedata
+
+        return sum(
+            2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+            for ch in s
         )
 
     @staticmethod
-    def _format_jobs_log(jobs: list) -> str:
-        """把结构化任务列表格式化为对齐的文本日志（列与集群监控页一致）。"""
-        if not jobs:
-            return tr("queue_log_empty", "📋 任务队列为空（当前没有运行中的任务）")
-        headers = [
-            tr("cm_job_col_user", "用户"),
-            tr("cm_job_col_jobid", "JobID"),
-            tr("cm_job_col_partition", "分区"),
-            tr("cm_job_col_name", "作业名"),
-            tr("cm_job_col_state", "状态"),
-            tr("cm_job_col_time", "运行时间"),
-            tr("cm_job_col_nodes", "节点"),
-            tr("cm_job_col_cpus", "核数"),
-        ]
+    def _pad(s: str, width: int) -> str:
+        """按显示宽度右补空格，保证 CJK 混排时逐列对齐。"""
+        return s + " " * max(0, width - PreprocessingWindow._disp_width(s))
+
+    @staticmethod
+    def _format_jobs_section(rows: list, headers: list) -> str:
+        """格式化一个任务分区（表头 + 分隔线 + 数据行，显示宽度对齐）。"""
         rows = [
             [
                 str(j.get("user", "")),
@@ -3108,22 +3115,65 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 str(j.get("nodes", "")),
                 str(j.get("cpus", "")),
             ]
-            for j in jobs
+            for j in rows
         ]
         widths = [
-            max(len(headers[i]), *(len(r[i]) for r in rows)) for i in range(8)
+            max(
+                PreprocessingWindow._disp_width(headers[i]),
+                *(PreprocessingWindow._disp_width(r[i]) for r in rows),
+            )
+            for i in range(8)
         ]
         line = "  ".join(
-            h.ljust(widths[i]) for i, h in enumerate(headers)
+            PreprocessingWindow._pad(h, widths[i]) for i, h in enumerate(headers)
         )
         sep = "  ".join("-" * w for w in widths)
         body = "\n".join(
-            "  ".join(c.ljust(widths[i]) for i, c in enumerate(r)) for r in rows
+            "  ".join(
+                PreprocessingWindow._pad(c, widths[i]) for i, c in enumerate(r)
+            )
+            for r in rows
         )
-        return tr(
-            "queue_log_title",
-            "📋 任务队列（所有用户）：\n{line}\n{sep}\n{body}",
-        ).format(line=line, sep=sep, body=body)
+        return "{line}\n{sep}\n{body}".format(line=line, sep=sep, body=body)
+
+    @staticmethod
+    def _format_jobs_log(jobs: list, me: str) -> str:
+        """把结构化任务列表格式化为对齐文本日志，本人任务单独分区显示。"""
+        jobs = jobs or []
+        me = str(me or "")
+        others = [j for j in jobs if str(j.get("user", "")) != me]
+        mine = [j for j in jobs if str(j.get("user", "")) == me]
+        headers = [
+            tr("cm_job_col_user", "用户"),
+            tr("cm_job_col_jobid", "JobID"),
+            tr("cm_job_col_partition", "分区"),
+            tr("cm_job_col_name", "作业名"),
+            tr("cm_job_col_state", "状态"),
+            tr("cm_job_col_time", "运行时间"),
+            tr("cm_job_col_nodes", "节点"),
+            tr("cm_job_col_cpus", "核数"),
+        ]
+        if not others and not mine:
+            return tr("queue_log_empty", "📋 任务队列为空（当前没有运行中的任务）")
+        parts = [
+            tr(
+                "queue_log_title",
+                "📋 任务队列（共 {total} 个任务，本人 {mine} 个）",
+            ).format(total=len(jobs), mine=len(mine))
+        ]
+        if others:
+            parts.append("")
+            parts.append(
+                tr("queue_log_others", "【其他用户任务】")
+            )
+            parts.append(
+                PreprocessingWindow._format_jobs_section(others, headers)
+            )
+        if mine:
+            parts.append("")
+            parts.append(tr("queue_log_mine", "【本人任务】"))
+            parts.append(PreprocessingWindow._format_jobs_section(mine, headers))
+        return "\n".join(parts)
 
     def _server_cancel(self, job_id: str = "") -> None:
         job_id = str(job_id).strip()
@@ -3588,8 +3638,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         fmt.setBottomMargin(bottom_margin)
         return fmt
 
-    def _append_log(self, message: str) -> None:
-        """以段落方式追加纯文本，确保每行应用统一行距。"""
+    def _append_log(self, message: str, char_format: object = None) -> None:
+        """以段落方式追加纯文本，确保每行应用统一行距。
+
+        char_format: 可选的 QTextCharFormat（如等宽字体），用于任务队列等
+        需要对齐的表格日志。
+        """
         text = str(message)
         had_log_focus = self._log.hasFocus()
         cursor = self._log.textCursor()
@@ -3606,7 +3660,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             else:
                 cursor.insertBlock(fmt)
             if part:
-                cursor.insertText(part)
+                if char_format is not None:
+                    cursor.insertText(part, char_format)
+                else:
+                    cursor.insertText(part)
 
         self._log.setTextCursor(cursor)
         if not had_log_focus:
