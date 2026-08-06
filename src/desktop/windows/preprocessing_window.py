@@ -120,6 +120,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         apply_window_logo(self)
         self._base_title = tr("app_title", "海浪模式 WAVEWATCH III 可视化运行软件")
         self.setWindowTitle(self._base_title)
+        if sys.platform == "darwin":
+            # macOS 上 apply_window_logo() 的 setWindowIcon 与 setWindowTitle 可能
+            # 重建 NSWindow，使系统原生标题栏重新出现；updateFrameless() 在 macOS
+            # 实现中只通过 objc 隐藏标题栏（不调用 setWindowFlags，不会像 Windows
+            # 那样隐式隐藏窗口），这里重新执行以保持无边框。Windows 上不可调用。
+            try:
+                self.updateFrameless()
+            except Exception:
+                pass
         _lang = _load_runtime_config().get("LANGUAGE", "zh_CN")
         _width = 1300 if str(_lang).startswith("en") else 1200
         self.resize(_width, 760)

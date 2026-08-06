@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -391,6 +392,15 @@ class GlobePickerDialog(QWidget):
     def _restore_host_frameless(self) -> None:
         host = self.parentWidget()
         if host is None:
+            return
+        if sys.platform == "darwin":
+            # macOS 上必须调用 host.updateFrameless()：其实现只通过 objc 操作
+            # NSWindow 隐藏系统标题栏（不调用 setWindowFlags），安全且必要。
+            # temp_host 方案跳过了 WebEngine 构造时的 updateFrameless，若 NSWindow
+            # 被重建（设置图标/标题等），系统原生标题栏会重新出现，只能在此恢复。
+            restore = getattr(host, "updateFrameless", None)
+            if callable(restore):
+                restore()
             return
         # 注意：不能调用 host.updateFrameless() —— 它对可见顶层窗口执行
         # setWindowFlags(...) 会隐式隐藏主窗口（启动/取点时"闪退"的根源）。

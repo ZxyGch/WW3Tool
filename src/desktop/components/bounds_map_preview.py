@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import pyqtSignal, QRectF, QTimer, QUrl, QUrlQuery
@@ -235,7 +236,16 @@ class BoundsMapPreview(MapWebEngineView):
         host = self.window()
         if host is self:
             return
-        # 注意：不能调用 host.updateFrameless() —— 它对可见顶层窗口执行
+        if sys.platform == "darwin":
+            # macOS 上必须调用 updateFrameless()：其实现只通过 objc 操作 NSWindow
+            # 隐藏系统标题栏（不调用 setWindowFlags），安全且必要。temp_host 方案
+            # 跳过了 WebEngine 构造时的 updateFrameless，若 NSWindow 因设置图标/标题
+            # 等被重建，系统原生标题栏会重新出现，只能在这里恢复隐藏。
+            restore = getattr(host, "updateFrameless", None)
+            if callable(restore):
+                restore()
+            return
+        # 注意：Windows 上不能调用 host.updateFrameless() —— 它对可见顶层窗口执行
         # setWindowFlags(...) 会隐式隐藏主窗口（启动约 200ms 后"闪退"的根源）。
         set_system_buttons = getattr(host, "setSystemTitleBarButtonVisible", None)
         if callable(set_system_buttons):
