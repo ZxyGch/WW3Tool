@@ -2416,7 +2416,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         ]
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env["PYTHONIOENCODING"] = "utf-8"
         self._pipeline_updates.post_log(
             tr("step1_grid_subprocess_start", "▶ 已在独立进程中启动网格生成，界面可继续响应")
         )
@@ -2428,6 +2428,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
         except OSError as exc:
