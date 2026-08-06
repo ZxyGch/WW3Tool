@@ -106,6 +106,15 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         setTheme(_theme_map.get(_saved_theme, Theme.AUTO))
         setThemeColor(QColor(0, 120, 212))
         super().__init__()
+        # 窗口背景保持不透明（Win11 样式深色窗口）。FluentWindow 默认启用
+        # Mica/亚克力半透明效果，这里显式禁用，避免窗口出现透明/模糊背景。
+        try:
+            if sys.platform == "win32":
+                self.setMicaEffectEnabled(False)
+                self.windowEffect.removeBackgroundEffect(self.winId())
+                self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        except Exception:  # 背景效果禁用失败不应影响窗口启动
+            pass
         from ..branding import apply_window_logo
 
         apply_window_logo(self)
