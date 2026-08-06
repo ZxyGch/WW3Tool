@@ -115,6 +115,14 @@ upload() {
     echo "✅ 上传完成: https://pypi.org/project/ww3tool/$VERSION/"
 }
 
+# 发布完成后清理构建产物,保持工作区整洁
+# [EN] Clean build artifacts after a release to keep the workspace tidy.
+cleanup() {
+    echo "🧹 清理构建产物 ..."
+    rm -rf build dist ww3tool.egg-info
+    echo "✅ 已清理 build/ dist/ ww3tool.egg-info"
+}
+
 case "$MODE" in
     --build)
         ensure_tools
@@ -133,6 +141,7 @@ case "$MODE" in
         build
         check
         upload
+        cleanup
         ;;
 esac
 
