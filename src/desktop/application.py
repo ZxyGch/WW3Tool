@@ -60,9 +60,23 @@ def main(argv: list[str] | None = None) -> int:
     if not _gui_imports_ok():
         _auto_install_gui()
         if not _gui_imports_ok():
+            # 包已装但 import 仍失败（通常是 Windows DLL 加载问题）：
+            # 打印真实异常细节，便于定位（缺 VC++ 运行库 / 版本冲突等）。
+            # [EN] Packages installed but import still fails (usually a Windows
+            # DLL loading issue): print the real exception for diagnosis.
+            import traceback
+
+            print("导入 QtWebEngineCore 失败，详细错误：", file=sys.stderr)
+            try:
+                import PyQt6.QtWebEngineCore  # noqa: F401
+            except ImportError:
+                traceback.print_exc()
             print(
-                "无法启动桌面界面：缺少 GUI 依赖。自动安装失败，请手动执行：\n"
-                "  pip install --upgrade PyQt6 PyQt6-WebEngine PyQt6-Fluent-Widgets\n"
+                "\n无法启动桌面界面：GUI 依赖已安装但加载失败（见上方错误）。\n"
+                "Windows 常见原因与解决：\n"
+                "  1. 缺 Microsoft Visual C++ 运行库：\n"
+                "     下载安装 https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                "  2. 或重装 Qt 组件：pip install --force-reinstall PyQt6-WebEngine PyQt6\n"
                 "（如果只是用命令行，无需 GUI：ww3tool --help / ww3tool shell）",
                 file=sys.stderr,
             )
