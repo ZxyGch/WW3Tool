@@ -61,26 +61,27 @@ def main(argv: list[str] | None = None) -> int:
         _auto_install_gui()
         if not _gui_imports_ok():
             # 包已装但 import 仍失败（通常是 Windows DLL 加载问题）：
-            # 打印真实异常细节，便于定位（缺 VC++ 运行库 / 版本冲突等）。
+            # **不再退出**——自动降级为"无地图模式"继续启动（等价 WW3TOOL_NO_MAP=1），
+            # 其余功能全部正常，用户不需要任何额外步骤就能打开。
             # [EN] Packages installed but import still fails (usually a Windows
-            # DLL loading issue): print the real exception for diagnosis.
+            # DLL issue): do NOT exit — degrade to no-map mode and keep
+            # launching, so the app still opens with zero extra steps.
             import traceback
 
-            print("导入 QtWebEngineCore 失败，详细错误：", file=sys.stderr)
+            print("⚠️ QtWebEngineCore 加载失败，已自动切换到无地图模式（地图预览禁用，其余功能正常）。", file=sys.stderr)
+            print("   详细错误：", file=sys.stderr)
             try:
                 import PyQt6.QtWebEngineCore  # noqa: F401
             except ImportError:
                 traceback.print_exc()
             print(
-                "\n无法启动桌面界面：GUI 依赖已安装但加载失败（见上方错误）。\n"
-                "Windows 常见原因与解决：\n"
-                "  1. 缺 Microsoft Visual C++ 运行库：\n"
-                "     下载安装 https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
-                "  2. 或重装 Qt 组件：pip install --force-reinstall PyQt6-WebEngine PyQt6\n"
-                "（如果只是用命令行，无需 GUI：ww3tool --help / ww3tool shell）",
+                "   想恢复地图功能（Windows 常见原因）：\n"
+                "     安装 Microsoft Visual C++ 运行库：\n"
+                "     https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                "     或重装：python -m pip install --force-reinstall PyQt6-WebEngine PyQt6",
                 file=sys.stderr,
             )
-            return 1
+            os.environ["WW3TOOL_NO_MAP"] = "1"
 
     # [EN] Must set AA_ShareOpenGLContexts before QApplication for QWebEngineView.
     PyQt6.QtCore.QCoreApplication.setAttribute(
