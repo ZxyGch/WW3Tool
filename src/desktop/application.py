@@ -83,6 +83,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             os.environ["WW3TOOL_NO_MAP"] = "1"
 
+    # PyQt6 已在 _gui_imports_ok() 中验证可用，但那是嵌套函数内的局部导入，
+    # 不会进入 main() 作用域。这里必须重新导入，供下方 setAttribute 与
+    # QApplication 使用，否则会报 UnboundLocalError。
+    # [EN] PyQt6 was only imported inside _gui_imports_ok() (function-local);
+    # re-import it in main()'s scope for setAttribute and QApplication.
+    import PyQt6.QtCore  # noqa: F401
+    from PyQt6.QtWidgets import QApplication
+
     # [EN] Must set AA_ShareOpenGLContexts before QApplication for QWebEngineView.
     PyQt6.QtCore.QCoreApplication.setAttribute(
         PyQt6.QtCore.Qt.ApplicationAttribute.AA_ShareOpenGLContexts
