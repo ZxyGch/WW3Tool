@@ -94,7 +94,24 @@ check() {
 
 upload() {
     echo "🚀 上传 PyPI ..."
-    "$PY" -m twine upload dist/*
+    # 网络代理可能抖动断连:逐文件上传,失败自动重试(最多 6 次)
+    for f in dist/*; do
+        local ok=0
+        for i in 1 2 3 4 5 6; do
+            if "$PY" -m twine upload "$f" >/tmp/ww3tool_upload.log 2>&1; then
+                ok=1
+                break
+            fi
+            echo "  上传 $(basename "$f") 第 ${i} 次失败,10 秒后重试 ..." >&2
+            sleep 10
+        done
+        if [ "$ok" != "1" ]; then
+            echo "❌ 上传失败: $(basename "$f")" >&2
+            tail -5 /tmp/ww3tool_upload.log >&2
+            exit 1
+        fi
+        echo "  ✅ $(basename "$f")"
+    done
     echo "✅ 上传完成: https://pypi.org/project/ww3tool/$VERSION/"
 }
 
