@@ -3030,7 +3030,52 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._start_server_polling()
 
     def _server_queue(self) -> None:
-        self._run_job(self._remote_vm.queue_status)
+        """查看任务队列：拉取集群上所有用户的任务，以表格弹窗展示。
+
+        [EN] View job queue: fetch all users' jobs and show them in a table dialog
+        (same list logic as the cluster monitor page right side).
+        """
+        if self._busy:
+            return
+        cfg = self._build_poll_config()
+        if cfg is None:
+            self._show_error(
+                tr("queue_need_config", "请先完成前面步骤的配置，再查看任务队列")
+            )
+            return
+        self._set_busy(True)
+        persistent = self._remote_vm._client
+
+        from workflows.application.remote_ops import (
+            _acquire,
+            _fetch_cluster_active_jobs,
+            _resolve_remote_username,
+        )
+        from workflows.support.logging import CoreLogger
+
+        def collect() -> tuple:
+            try:
+                c, _owns = _acquire(cfg, persistent)
+                me = _resolve_remote_username(cfg, c)
+                jobs, _source = _fetch_cluster_active_jobs(
+                    c, CoreLogger(callback=lambda _m: None)
+                )
+                return jobs, me
+            except Exception:
+                return [], ""
+
+        self._runner.run(collect, self._on_queue_collected)
+
+    def _on_queue_collected(self, result: object) -> None:
+        self._set_busy(False)
+        if result is None or not isinstance(result, tuple) or len(result) != 2:
+            return
+        jobs, me = result
+        from ..components.jobs_queue_dialog import JobsQueueDialog
+
+        dialog = JobsQueueDialog(self)
+        dialog.set_jobs(jobs or [], me or "")
+        dialog.exec()
 
     def _server_cancel(self, job_id: str = "") -> None:
         job_id = str(job_id).strip()
