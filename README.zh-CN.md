@@ -1,13 +1,12 @@
 # WW3Tool  文档
 
-## 快速安装（一行命令，所有平台相同）
+## 快速安装
 
 ```bash
-pip install ww3tool          # 之后：ww3tool --help
-# 桌面 GUI：pip install "ww3tool[gui]"
+pip install ww3tool        
 ```
 
-其他一行安装方式（自包含 clone 安装）：
+其他一行安装方式：
 
 ```bash
 # macOS / Linux（bash）
@@ -18,8 +17,6 @@ curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packag
 # Windows（PowerShell 5.1+ / PowerShell 7+）
 irm https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/install.ps1 | iex
 ```
-
-Homebrew 用户（macOS / Linux）：`brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
 
 ## 1. 项目定位
 

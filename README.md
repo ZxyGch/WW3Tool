@@ -1,13 +1,12 @@
 # WW3Tool Documentation
 
-## Quick Install (one line, same command on every platform)
+## Quick Install
 
 ```bash
-pip install ww3tool          # then: ww3tool --help
-# Desktop GUI: pip install "ww3tool[gui]"
+pip install ww3tool         
 ```
 
-Alternative one-liners (self-contained clone installs):
+Alternative one-liners:
 
 ```bash
 # macOS / Linux (bash)
@@ -19,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packag
 irm https://raw.githubusercontent.com/ZxyGch/WW3Tool/master/public/packaging/install.ps1 | iex
 ```
 
-Homebrew users (macOS / Linux): `brew tap ZxyGch/ww3tool && brew trust zxygch/ww3tool && brew install ww3tool`
+
 
 ## 1. Project Overview
 

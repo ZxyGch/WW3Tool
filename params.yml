@@ -381,7 +381,7 @@ paths:
 #   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
 desktop:
-  language: zh_CN
+  language: en_US
   theme: AUTO
   map_type: administrative
   run_mode: server
