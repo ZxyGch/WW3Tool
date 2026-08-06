@@ -651,7 +651,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if section == "forcing":
             self._sync_forcing_options_from_runtime()
         if section == "map_type" and hasattr(self, "_grid_panel"):
-            self._grid_panel.bounds_preview.reload_map_type()
+            preview = getattr(self._grid_panel.bounds_preview, "reload_map_type", None)
+            if callable(preview):
+                preview()
 
     def _refresh_home_st_and_output_options(self, config: dict) -> None:
         st_names = self._server_st_names(config)
@@ -1999,8 +2001,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         regions, labels = regions_and_labels
         from ..components.globe_picker_dialog import GlobePickerDialog
 
-        self._grid_panel.bounds_preview.refresh()
-        display_regions = self._grid_panel.bounds_preview.regions()
+        preview_widget = self._grid_panel.bounds_preview
+        if hasattr(preview_widget, "refresh") and callable(preview_widget.refresh):
+            preview_widget.refresh()
+        display_regions = (
+            preview_widget.regions() if hasattr(preview_widget, "regions") else []
+        )
         display_regions.extend([
             {
                 "label": label,
