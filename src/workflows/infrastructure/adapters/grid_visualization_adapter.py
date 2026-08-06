@@ -151,6 +151,12 @@ def _run_worker(
             except Exception:
                 src_dir = Path(__file__).resolve().parents[3]
     env = os.environ.copy()
+    # 子进程 stdout 必须按 UTF-8 输出，否则中文/`…` 等字符在中文 Windows
+    # (cp936) 下会被 GBK 编码，父进程按 UTF-8 解码时产生 � 乱码。
+    # [EN] Force UTF-8 stdout in the child, otherwise non-ASCII chars get
+    # GBK-encoded on zh-CN Windows and turn into U+FFFD after UTF-8 decode.
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"
     previous = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(src_dir) + (os.pathsep + previous if previous else "")
     command = [
