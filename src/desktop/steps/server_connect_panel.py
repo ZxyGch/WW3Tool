@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets.common.style_sheet import setCustomStyleSheet
 
 from ..components import styles
 from ..components.combo_box import left_align_combo_text
@@ -106,8 +107,8 @@ class ServerConnectPanel:
             [
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
-                tr("idle_col_cores", "可用核数"),
-                tr("idle_col_free_memory", "节点空闲内存"),
+                tr("idle_col_cores", "核数"),
+                tr("idle_col_free_memory", "内存"),
             ]
         )
         self._idle_table.horizontalHeader().setVisible(False)
@@ -116,15 +117,20 @@ class ServerConnectPanel:
         self._idle_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._idle_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._idle_table.setWordWrap(False)
+        compact_item_qss = "QTableView::item { padding-left: 2px; padding-right: 2px; }"
+        setCustomStyleSheet(self._idle_table, compact_item_qss, compact_item_qss)
+        self._idle_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         idle_hdr = self._idle_table.horizontalHeader()
         idle_hdr.setStretchLastSection(False)
         for col in range(4):
             idle_hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         idle_hdr.setMinimumSectionSize(36)
+        idle_vhdr = self._idle_table.verticalHeader()
+        idle_vhdr.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        idle_vhdr.setDefaultSectionSize(32)
         self._idle_table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        self._idle_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(self._idle_table)
 
         self._slurm_title = self._build_section_title(
@@ -263,8 +269,8 @@ class ServerConnectPanel:
             header_labels = [
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
-                tr("idle_col_cores", "可用核数"),
-                tr("idle_col_free_memory", "节点空闲内存"),
+                tr("idle_col_cores", "核数"),
+                tr("idle_col_free_memory", "内存"),
             ]
             self._idle_table.setRowCount(len(valid) + 1)
             for col, text in enumerate(header_labels):
@@ -295,7 +301,9 @@ class ServerConnectPanel:
                     item = QTableWidgetItem(str(value))
                     item.setTextAlignment(align)
                     self._idle_table.setItem(row_index, col, item)
-            self._idle_table.expand_to_contents(minimum_height=52, extra_height=6)
+            self._idle_table.expand_to_contents(
+                minimum_height=52, extra_height=6, max_row_height=32
+            )
         finally:
             self._idle_table.setUpdatesEnabled(True)
         self._apply_suggested_slurm_mem()

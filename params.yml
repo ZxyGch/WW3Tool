@@ -1,28 +1,29 @@
 # ────────────────────────────────────────────────────────────────────
-# workdir:
-#   path              Path string (work directory: intermediate files, WW3 namelists,
-#                     forcing inputs, model output and post-processing results all go
-#                     here). Quote paths containing spaces/special chars, e.g. "/my dir/ws".
-#   default_workspace Path string. Default parent folder for new work directories; the
-#                     `workdir <name>` command creates under here when given a bare name.
-#                     Empty/missing → falls back to workSpace/.
+# Working directory: all intermediate files, WW3 namelists, forcing
+# inputs, model output and post-processing results are stored here.
+#   path – absolute or relative path to the work directory.
+#   default_workspace – default parent folder for new work directories; the
+#                       `workdir <name>` command creates under here when given
+#                       a bare name. Empty/missing → falls back to workSpace.
 # ────────────────────────────────────────────────────────────────────
 workdir:
   path: /Users/zxy/ocean/Paper/WW3Tool/workSpace/new
   default_workspace: /Users/zxy/ocean/Paper/WW3Tool/workSpace
 # ────────────────────────────────────────────────────────────────────
-# grid: (grid generation settings; quote strings, especially those starting with a
-#        digit or containing dots/spaces)
-#   mesh_type           String enum, must be quoted: 'structured' | 'smc' | 'unstructured'
-#   grid_type           String enum, must be quoted: 'normal' (single domain) | 'nested' (two-level refinement)
-#   gridgen_version     String enum, must be quoted: 'Python' | 'MATLAB'
-#   reference_data_path Path string (bathymetry/coastline data bundle); null = auto-detect
-#   lon                 Array of numbers, exactly 2 floats: [west, east] in degrees, unquoted
-#   lat                 Array of numbers, exactly 2 floats: [south, north] in degrees, unquoted
-#   structured.nested.levels Array (coarse -> fine); each element is a dict:
-#                      { dx: number, dy: number, lon: [w,e], lat: [s,n] }
-#                      dx/dy in degrees; level0 is coarsest (bounds default to grid.lon/lat);
-#                      finer levels have smaller dx and lie inside the previous one (2-99 levels).
+# Grid generation settings (structured / SMC / unstructured).
+#   mesh_type – grid topology: 'structured' | 'smc' | 'unstructured'.
+#   grid_type – 'normal' (single domain) or 'nested' (two-level
+#               refinement with inner high-resolution patch).
+#   gridgen_version – grid generator back-end ('Python' or 'MATLAB').
+#   reference_data_path – path to bathymetry / coastline data bundle;
+#                          null = auto-detect from project defaults.
+#   lon       – [west, east] longitude bounds of the main domain (deg).
+#   lat       – [south, north] latitude bounds of the main domain (deg).
+#   structured.nested.levels – ordered list (coarse -> fine) of nested
+#               grid levels; each with dx/dy (deg) and own lon/lat bounds.
+#               level0 is coarsest (bounds default to grid.lon/lat); each
+#               finer level has smaller dx and lies inside the previous
+#               one (2 to 99 levels).
 # ────────────────────────────────────────────────────────────────────
 grid:
   mesh_type: structured
@@ -35,16 +36,16 @@ grid:
   lat:
   - 10.0
   - 30.0
-  # structured: (used only when mesh_type: structured; numbers unquoted)
-  #   bathymetry          String enum: 'GEBCO' | 'ETOP1' | 'ETOP2'
-  #   coastline_precision String enum: 'full' | 'high' | 'inter' | 'low' | 'coarse'
-  #   min_dist            Number (int/float): min distance filter between adjacent grid points (km)
-  #   cut_off             Number: land-sea mask cut-off; 0 = keep all sea points
-  #   lim_bathy           Number (0-1): depth-based cell inclusion threshold (fraction of cell wet)
-  #   lim_val             Number (0-1): masking threshold for cell classification
-  #   split_lim           Number: split-cell limit; 0 = disabled
-  #   lake_tol            Number (int): minimum lake area (cells) to keep; smaller lakes are filled
-  #   nested.nested_contraction_coefficient Number (float, >=1): nested level boundary shrink ratio (GUI helper)
+  # Structured grid options:
+  #   bathymetry       – GEBCO | ETOP1 | ETOP2
+  #   coastline_precision – full | high | inter | low | coarse
+  #   min_dist         – minimum distance filter between adjacent grid points (km).
+  #   cut_off          – land-sea mask cut-off: 0 = keep all sea points.
+  #   lim_bathy        – depth-based cell inclusion threshold (fraction of cell wet).
+  #   lim_val          – masking threshold for cell classification (0–1).
+  #   split_lim        – split-cell limit: 0 = disabled.
+  #   lake_tol         – minimum lake area (cells) to keep; smaller lakes are filled.
+  #   nested.nested_contraction_coefficient – nested level boundary shrink ratio (≥ 1, GUI helper).
   structured:
     nested:
       nested_contraction_coefficient: 1.3
@@ -73,26 +74,18 @@ grid:
     lim_val: 0.5
     split_lim: 0
     lake_tol: 50
-  # smc: (spherical multi-cell grid; used only when mesh_type: smc; numbers unquoted)
-  #   bathymetry          String enum: 'ETOP1' | 'ETOP2' | 'GEBCO'
-  #   bathy_convention    String enum, must be quoted: 'elevation' (positive up) | 'depth' (positive down)
-  #   n_levels            Number (int): number of cell-size refinement levels
-  #   wlevel              Number (int): water-level reference index
-  #   depmin              Number (int): cells shallower than this depth (m) are excluded
-  #   dshalw              Number: shallow-water depth threshold for extra refinement (m), can be negative
-  #   generate_boundary_cells Boolean (true/false, unquoted): create open-boundary ghost cells
-  #   msea                Number (int): minimum cell count across straits
-  #   options.input       Dict: low-level input pre-processing (auto-flip, tolerances)
-  #     auto_flip_lat / auto_flip_lon  Boolean
-  #     coord_spacing_rtol / coord_spacing_atol  Number (float): coordinate spacing tolerances
-  #     nan_fill_value    Number (float): NaN fill value
-  #   options.grid        Dict: grid identity & projection
-  #     name              String
-  #     global / arctic   Boolean
-  #     glb_arc_lat       Number (float): arctic projection reference latitude
-  #     origin.lon0 / origin.lat0  Number (float): projection origin lon/lat
-  #   options.output      Dict: output file naming
-  #     file_prefix       String (may be empty string '')
+  # SMC (Spherical Multi-Cell) grid options:
+  #   bathymetry       – ETOPO1 | ETOPO2 | GEBCO
+  #   bathy_convention – 'elevation' (positive up) or 'depth' (positive down).
+  #   n_levels         – number of cell-size refinement levels.
+  #   wlevel           – water-level reference index.
+  #   depmin           – minimum depth below which cells are excluded (m).
+  #   dshalw           – shallow-water depth threshold for extra refinement (m).
+  #   generate_boundary_cells – whether to create open-boundary ghost cells.
+  #   msea             – minimum cell count across straits.
+  #   options.input    – low-level input pre-processing (auto-flip, tolerances).
+  #   options.grid     – grid identity & projection (global, arctic, origin).
+  #   options.output   – output file naming and formatting.
   smc:
     bathymetry: ETOPO2
     bathy_convention: elevation
@@ -119,18 +112,18 @@ grid:
           lat0: -90.0
       output:
         file_prefix: ''
-  # unstructured: (triangular unstructured grid; used only when mesh_type: unstructured)
-  #   hmax / hmin / hshr  Number (float, km): max spacing in deep water / global min spacing / target nearshore spacing
-  #   nwav                Number (int): wavelengths per element (resolution metric)
-  #   dhdx                Number (float): rate of spacing change with depth gradient
-  #   deep_ocean_threshold_m Number (int, m): hmax applies beyond this depth
-  #   margin_deg          Number (float, deg): buffer margin around domain boundary
-  #   edge_segments       Number (int): segments along coastlines
-  #   options.data        Dict: optional mask / exclusion file
-  #     mask_file         Path string (may be empty string '')
-  #   options.command_line_args  Dict: extra JIGSAW CLI flags (values may be numbers, e.g. black_sea: 3)
-  #   options.regional    Dict: stereographic projection centre
-  #     stereo_lon / stereo_lat  Number (float, deg)
+  # Unstructured (triangular) grid spacing parameters:
+  #   hmax  – maximum element spacing in deep water (km).
+  #   hmin  – minimum allowed spacing everywhere (km).
+  #   hshr  – target spacing near shorelines (km).
+  #   nwav  – number of wavelengths per element for resolution.
+  #   dhdx  – rate of spacing change with depth gradient.
+  #   deep_ocean_threshold_m – depth (m) above which hmax applies.
+  #   margin_deg       – buffer margin around domain boundary (degrees).
+  #   edge_segments    – number of segments along coastlines.
+  #   options.data     – optional mask / exclusion file.
+  #   options.command_line_args – extra JIGSAW CLI flags.
+  #   options.regional – stereographic projection centre (stereo_lon/lat).
   unstructured:
     hmax: 100
     hmin: 2
@@ -149,15 +142,17 @@ grid:
         stereo_lon: 120.0
         stereo_lat: 20.0
 # ────────────────────────────────────────────────────────────────────
-# forcing: (forcing NetCDF files; quote paths containing spaces/special chars; null = field not provided)
-#   wind              Path string or null: 10-m wind (U10/V10)
-#   current           Path string or null: surface current (UCUR/VCUR)
-#   level             Path string or null: sea-surface elevation anomaly (LEV)
-#   ice               Path string or null: sea-ice concentration (IC1/IC5)
-#   process_mode      String enum, must be quoted: 'copy' (copy complete files into workdir) | 'move' (move originals)
-#   crop_time_range   Array of 2 date strings (YYYYMMDD, must be quoted): [start, end]; [] = no crop
-#   crop_bbox         Array of 4 numbers: [west, east, south, north]; [] = no crop
-#   auto_associate    Boolean (true/false, unquoted): true = auto-match forcing vars by filename keyword
+# Forcing fields: NetCDF file paths for external driving fields.
+#   wind    – 10-m wind speed / direction (U10, V10).
+#   current – ocean surface current (UCUR, VCUR).
+#   level   – sea-surface elevation anomaly (LEV).
+#   ice     – sea-ice concentration (IC1 / IC5).
+#   process_mode     – 'copy' duplicates complete files into workdir;
+#                      'move' relocates complete originals.
+#   crop_time_range  – optional crop action default, [start_YYYYMMDD, end_YYYYMMDD].
+#   crop_bbox        – optional crop action default, [west, east, south, north].
+#   auto_associate   – when true, automatically match dropped / selected
+#                      files to forcing variables by filename keyword.
 # ────────────────────────────────────────────────────────────────────
 forcing:
   wind: null
@@ -169,38 +164,27 @@ forcing:
   crop_bbox: []
   auto_associate: true
 # ────────────────────────────────────────────────────────────────────
-# calc: (calculation mode)
-#   mode              String enum, must be quoted: 'region' (gridded output over full domain) | 'points' (specific locations only)
-#   points            Array: each element is a [name, lon, lat] triple; name is a string (quoted),
-#                     lon/lat are numbers (float). Example:
-#                       points:
-#                       - ["station1", 121.5, 25.0]
-#   track_points      Array: list of moving-point tracks; each track is a list of [time, lon, lat] waypoints;
-#                     time is a date string (YYYYMMDD or YYYYMMDDHHMM, must be quoted), lon/lat are numbers.
-#                     Example:
-#                       track_points:
-#                       - [["20250101", 121.0, 24.0], ["20250102", 122.0, 25.0]]
+# Calculation mode:
+#   mode – 'region' (gridded output over the full domain) or
+#          'points' (output at specific locations only).
+#   points      – list of [name, lon, lat] triples for point output.
+#   track_points – optional moving-point tracks for Lagrangian output
+#                  (each entry: list of [time, lon, lat] waypoints).
 # ────────────────────────────────────────────────────────────────────
 calc:
   mode: region
   points: []
   track_points: []
 # ────────────────────────────────────────────────────────────────────
-# ww3: (WW3 model run settings)
-#   version           String enum, must be quoted (otherwise YAML parses it as a number): '6.07' | '7.14'
-#                     (reads the public/{version}_nml template directory)
-#   start_date / end_date  Date strings (YYYYMMDD, must be quoted): simulation period
-#   output_step       Number (int, seconds): output step for ww3_shel / ww3_ounp / ww3_ounf
-#   file_split        String enum, must be quoted: 'single' | 'hour' | 'day' | 'month' | 'year'
-#   output_scheme     Dict: output field scheme
-#     standard        String (space-separated field abbreviations, quoted; prefix with <name> for multiple schemes)
-#   restart           Dict: cold/hot start settings; checkpoint stride follows output_step
-#     mode            String enum, must be quoted: 'cold' | 'hot'
-#     restart_time    Date string (YYYYMMDDHHMMSS, quoted) or null
-#     restart_file    Path string or null
-#     restart_step    Number (int, seconds)
-#     pick_latest_checkpoint  Boolean (true/false, unquoted)
-#   namelist          Dict: source-term parameter overrides (SIN4% / SDS4% / SBT1% ...); values are numbers (float, unquoted)
+# WW3 model run settings.
+#   version           – WW3 version: '6.07' or '7.14'
+#                          (reads public/{version}_nml template directory).
+#   start_date / end_date – simulation period (YYYYMMDD).
+#   output_step       – output time step (seconds) for ww3_shel, ww3_ounp, ww3_ounf.
+#   file_split        – output file splitting: single | hour | day | month | year.
+#   output_scheme     – scheme name: space-separated fields; use: <name> when multiple.
+#   restart           – restart / hot-start settings; checkpoint stride follows output_step.
+#   st                – source-term package (ST2 / ST4 / ST6 / ST6A / ST6B).
 # ────────────────────────────────────────────────────────────────────
 ww3:
   version: 7.14
@@ -223,16 +207,17 @@ ww3:
     SDS4%SDSBR: 0.0009
     SBT1%GAMMA: -0.067
 # ────────────────────────────────────────────────────────────────────
-# ww3_grid: (overrides written into ww3_grid.nml at runtime; keys use Fortran namelist
-#            syntax with '%' as sub-key separator; all values are numbers (int/float), unquoted)
-#   SPECTRUM%XFR     Number (float): logarithmic frequency increment ratio (default 1.1)
-#   SPECTRUM%FREQ1   Number (float, Hz): lowest discrete frequency
-#   SPECTRUM%NK      Number (int): number of frequency bins
-#   SPECTRUM%NTH     Number (int): number of directional bins
-#   TIMESTEPS%DTMAX  Number (int, s): maximum overall time-step
-#   TIMESTEPS%DTXY   Number (int, s): spatial propagation time-step
-#   TIMESTEPS%DTKTH  Number (int, s): directional propagation time-step
-#   TIMESTEPS%DTMIN  Number (int, s): minimum (source-term) time-step
+# WW3 grid namelist overrides (written into ww3_grid.nml at runtime).
+# Keys follow the Fortran namelist syntax with '%' as sub-key separator.
+#
+# SPECTRUM%XFR   – logarithmic frequency increment ratio (default 1.1).
+# SPECTRUM%FREQ1 – lowest discrete frequency in Hz.
+# SPECTRUM%NK    – number of frequency bins.
+# SPECTRUM%NTH   – number of directional bins.
+# TIMESTEPS%DTMAX – maximum overall time-step (s).
+# TIMESTEPS%DTXY  – spatial propagation time-step (s).
+# TIMESTEPS%DTKTH – directional propagation time-step (s).
+# TIMESTEPS%DTMIN – minimum (source-term) time-step (s).
 # ────────────────────────────────────────────────────────────────────
 ww3_grid:
   SPECTRUM%XFR: 1.1
@@ -244,17 +229,10 @@ ww3_grid:
   TIMESTEPS%DTKTH: 300
   TIMESTEPS%DTMIN: 15
 # ────────────────────────────────────────────────────────────────────
-# slurm: (HPC cluster job-scheduler settings)
-#   job_name   String or null (#SBATCH -J); null = use workdir name
-#   partition  String: Slurm partition name
-#   nodes      Number (int): number of nodes
-#   cores      Number (int): cores per node
-#   nodelist   String or null: explicit node list
-#   time       String (HH:MM:SS, quoted) or null
-#   mem        String (e.g. '190G', quoted)
-#   server_st  Dict: server-side WW3 executable path mapping
-#     use      String (contains spaces, must be quoted): active scheme name, e.g. '7.14 ST4_RECT'
-#     other keys  Keys like '7.14 ST4' (contain spaces, must be quoted): path string (exe dir)
+# SLURM job-scheduler settings for HPC cluster submissions.
+#   job_name  – Slurm job name (#SBATCH -J); null uses workdir name.
+#   cpu / nodes / cores / nodelist / time / mem – resource request.
+#   server_st – server WW3 binaries: use + name: path (multi-scheme only).
 # ────────────────────────────────────────────────────────────────────
 slurm:
   job_name: null
@@ -285,10 +263,8 @@ slurm:
     7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st4_unst/model/exe
     7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st6_unst/model/exe
 # ────────────────────────────────────────────────────────────────────
-# local_run: (Step 5 local execution settings)
-#   local_st   Dict: local WW3 executable path mapping
-#     use      String (contains spaces, must be quoted): active scheme name, e.g. '7.14 ST2 SMC'
-#     other keys  Keys like '7.14 ST2 SMC' (contain spaces, must be quoted): path string (bin dir)
+# Local WW3 run settings (Step 5 local execution panel).
+#   local_st – local WW3 binaries: use + name: path (multi-scheme only).
 # ────────────────────────────────────────────────────────────────────
 local_run:
   local_st:
@@ -302,17 +278,17 @@ local_run:
     6.07 ST4 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST4_SMC
     6.07 ST6 SMC: /Users/zxy/ocean/Paper/WW3-6.07.1/model/exe_ST6_SMC
 # ────────────────────────────────────────────────────────────────────
-# plot: (post-processing & validation plots; each sub-section is invoked individually
-#        via CLI commands: plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc / plot-wind)
+# Post-processing and validation plot settings.
+# Each sub-section is invoked individually via CLI commands:
+#   plot-wave-maps / plot-spectrum / plot-jason3 / plot-ndbc / plot-wind
 # ────────────────────────────────────────────────────────────────────
 plot:
-  # wave_maps: (wave-height filled-colour maps / contour maps / video)
-  #   time_step_hours     Number (int, hours): temporal sampling interval
-  #   generate_video      Boolean (true/false): create an MP4 animation
-  #   show_land_coastline Boolean: overlay coastline on maps
-  #   dpi                 Number (int) or null (null = auto)
-  #   figsize             Array [width, height] (inches, numbers) or null
-  #   output_folder       Path string or null (null = workdir default)
+  # Wave-height filled-colour maps, contour maps, and video.
+  #   time_step_hours – temporal sampling interval (hours).
+  #   generate_video  – whether to create an MP4 animation.
+  #   show_land_coastline – overlay coastline on maps.
+  #   dpi / figsize   – image resolution and dimensions (null = auto).
+  #   output_folder   – custom output directory (null = workdir default).
   wave_maps:
     time_step_hours: 6
     generate_video: false
@@ -320,20 +296,20 @@ plot:
     dpi: null
     figsize: null
     output_folder: null
-  # spectrum: (2-D directional spectra at specified stations)
-  #   time_step_hours  Number (int, hours)
-  #   energy_threshold Number (float): minimum energy density to display
-  #   plot_mode        String enum or null: 'normalized' | 'actual' (null = actual)
+  # 2-D directional spectrum plots at specified station locations.
+  #   time_step_hours  – temporal sampling interval (hours).
+  #   energy_threshold – minimum energy density to display.
+  #   plot_mode        – 'normalized' or 'actual' (null = actual).
   spectrum:
     time_step_hours: 6
     energy_threshold: 0.01
     plot_mode: null
-  # jason3: (Jason-3 satellite altimeter track matching / validation)
-  #   data_folder       Path string or null: folder with downloaded Jason-3 files
-  #   lon_lat           Array of 4 numbers: [west, east, south, north] matching region
-  #   time_range        Array of 2 date strings (YYYYMMDD, must be quoted)
-  #   max_dist_deg      Number (float, deg): max spatial mismatch for track matching
-  #   time_window_hours Number (float, hours): max temporal mismatch window
+  # Jason-3 satellite altimeter track matching / validation.
+  #   data_folder       – local folder containing downloaded Jason-3 files.
+  #   lon_lat           – [lon_w, lon_e, lat_s, lat_n] matching region.
+  #   time_range        – [start, end] date strings (YYYYMMDD).
+  #   max_dist_deg      – maximum spatial mismatch for track matching (degrees).
+  #   time_window_hours – maximum temporal mismatch window (hours).
   jason3:
     data_folder: null
     lon_lat:
@@ -346,34 +322,33 @@ plot:
     - '20250103'
     max_dist_deg: 0.125
     time_window_hours: 0.5
-  # ndbc: (NDBC buoy observation matching or data download)
-  #   data_folder  Path string or null: folder with NDBC station data
-  #   download     Boolean (true/false): true = auto-download station data from NDBC
-  #   time_range   Array of 2 date strings (YYYYMMDD, must be quoted)
+  # NDBC buoy observation matching or data download.
+  #   data_folder – local folder containing NDBC station data files.
+  #   download    – if true, download station data automatically from NDBC.
+  #   time_range  – [start, end] date strings (YYYYMMDD).
   ndbc:
     data_folder: null
     download: false
     time_range:
     - '20250101'
     - '20250103'
-  # wind_field: (wind-field filled-colour maps with optional arrow/barb overlays)
-  #   time_step_hours  Number (int, hours) or null (null = auto from file)
-  #   flag_type        String enum or null: 'arrow' | 'barb' | 'none'
-  #   flag_density     Number (int) or null: spacing between flag glyphs (stride steps)
+  # Wind-field filled-colour maps with optional arrow / barb overlays.
+  #   time_step_hours – temporal sampling interval (null = auto from file).
+  #   flag_type       – overlay style: 'arrow' / 'barb' / 'none'.
+  #   flag_density    – spacing between flag glyphs (stride steps).
   wind_field:
     time_step_hours: null
     flag_type: null
     flag_density: null
 # ────────────────────────────────────────────────────────────────────
-# server: (remote SSH / SFTP connection settings)
-#   host               String or null: hostname or IP (quoted)
-#   port               Number (int): SSH port (default 22)
-#   user               String or null: login username
-#   password           String or null: password (avoid storing in plain text)
-#   key_file           Path string or null: private key path
-#   ssh_config_host    String: Host alias in ~/.ssh/config (resolved at connect time)
-#   default_remote_dir Path string: remote base directory; workdir name is appended on submission
-#   remote_dir         Path string (read-only, auto-set)
+# Remote server connection settings (SSH / SFTP).
+#   host / port        – hostname or IP and SSH port number.
+#   user               – login username.
+#   password / key_file – password string or path to private key.
+#   ssh_config_host    – Host alias in ~/.ssh/config (resolved at connect time).
+#   default_remote_dir – base directory on the remote side; workdir name
+#                        is appended automatically during submission.
+#   remote_dir         – full resolved remote path (read-only, auto-set).
 # ────────────────────────────────────────────────────────────────────
 server:
   host: null
@@ -385,11 +360,11 @@ server:
   remote_dir: ''
   ssh_config_host: SHOU-TS
 # ────────────────────────────────────────────────────────────────────
-# paths: (external tool & data directory paths)
-#   matlab_path         Path string: MATLAB executable (for grid generators requiring it)
-#   jason_path          Path string: local storage dir for Jason-3 satellite data
-#   ndbc_path           Path string: local storage dir for NDBC buoy data
-#   jason3_download_url String (URL): base URL for Jason-3 data downloads (NCEI)
+# External tool and data directory paths.
+#   matlab_path       – MATLAB executable for grid generators that require it.
+#   jason_path        – local storage directory for Jason-3 satellite data.
+#   ndbc_path         – local storage directory for NDBC buoy data.
+#   jason3_download_url – base URL for Jason-3 data downloads from NCEI.
 # ────────────────────────────────────────────────────────────────────
 paths:
   matlab_path: /Applications/MATLAB_R2024a.app/bin/matlab
@@ -397,16 +372,16 @@ paths:
   ndbc_path: /Users/zxy/ocean/Paper/WW3Tool/ndbc
   jason3_download_url: https://www.ncei.noaa.gov/data/oceans/jason3/
 # ════════════════════════════════════════════════════════════════════
-# desktop: (desktop-only settings, managed by the Settings page; CLI ignores)
-#   language           String enum, must be quoted: 'en_US' | 'zh_CN'
-#   theme              String enum: 'LIGHT' | 'DARK' | 'AUTO'
-#   map_type           String enum: map type (e.g. 'administrative')
-#   run_mode           String enum, must be quoted: 'local' | 'server' | 'both'
-#   recent_workdirs    Array: recently opened work directories (path strings, MRU list)
-#   forcing_field_dir  Path string: last-used forcing file browse directory
+# Desktop-only settings (managed by the Settings page; CLI ignores).
+#   language           – UI locale: 'en_US' or 'zh_CN'.
+#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.
+#   map_type           – default map type used by map views.
+#   run_mode           – 'local' / 'server' / 'both'.
+#   recent_workdirs    – recently opened work directories (MRU list).
+#   forcing_field_dir  – last-used forcing file browse directory.
 # ════════════════════════════════════════════════════════════════════
 desktop:
-  language: en_US
+  language: zh_CN
   theme: AUTO
   map_type: administrative
   run_mode: server

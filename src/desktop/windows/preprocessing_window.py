@@ -464,7 +464,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             routeKey="tools",
             icon=self._navigation_icon("DEVELOPER_TOOLS", "BROOM", "COMMAND_PROMPT", "APPLICATION"),
             text=tr("tools", "工具"),
-            onClick=lambda: self.left_stacked.setCurrentIndex(3),
+            onClick=self._show_tools_page,
             selectable=True,
             position=NavigationItemPosition.TOP,
         )
@@ -472,7 +472,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             routeKey="settings",
             icon=self._navigation_icon("SETTING", "SETTING_FILLED"),
             text=tr("settings", "设置"),
-            onClick=lambda: self.left_stacked.setCurrentIndex(1),
+            onClick=self._show_settings_page,
             selectable=True,
             position=NavigationItemPosition.BOTTOM,
         )
@@ -1018,13 +1018,29 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     def _show_plot_page(self) -> None:
         # [EN] Switch to plot page and auto-detect wind.nc / ww3*.nc in workdir (aligned with src).
         """切换到绘图页，并自动检测工作目录中的 wind.nc / ww3*.nc（对齐 src）。"""
-        if hasattr(self, "left_stacked") and self.left_stacked.count() >= 3:
-            self.left_stacked.setCurrentIndex(2)
+        self._show_main_left_page(2, "plot")
         workdir = getattr(self, "selected_folder", None)
         if not workdir and "workdir" in self._paths:
             workdir = self._paths["workdir"].text().strip() or None
         if hasattr(self, "_plot_interface"):
             self._plot_interface.auto_detect_from_workdir(workdir)
+
+    def _show_settings_page(self) -> None:
+        """切回主界面并显示设置页。"""
+        self._show_main_left_page(1, "settings")
+
+    def _show_tools_page(self) -> None:
+        """切回主界面并显示工具页。"""
+        self._show_main_left_page(3, "tools")
+
+    def _show_main_left_page(self, index: int, route_key: str = "") -> None:
+        """显示主页容器中的指定页面，兼容从集群监控页直接切换。"""
+        if hasattr(self, "_main_interface"):
+            self.switchTo(self._main_interface)
+        if hasattr(self, "left_stacked") and self.left_stacked.count() > index:
+            self.left_stacked.setCurrentIndex(index)
+        if route_key and hasattr(self, "navigationInterface"):
+            self.navigationInterface.setCurrentItem(route_key)
 
     def _restart_for_language_change(self, _code: str) -> None:
         """Rebuild the already-created widgets so translated text becomes visible."""

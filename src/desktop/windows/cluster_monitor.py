@@ -349,8 +349,8 @@ class IdleResourcesTable(QWidget):
             [
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
-                tr("idle_col_cores", "可用核数"),
-                tr("idle_col_free_memory", "节点空闲内存"),
+                tr("idle_col_cores", "核数"),
+                tr("idle_col_free_memory", "内存"),
             ]
         )
         self._table.horizontalHeader().setVisible(False)
@@ -452,8 +452,8 @@ class IdleResourcesTable(QWidget):
             header_labels = [
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
-                tr("idle_col_cores", "可用核数"),
-                tr("idle_col_free_memory", "节点空闲内存"),
+                tr("idle_col_cores", "核数"),
+                tr("idle_col_free_memory", "内存"),
             ]
             self._table.setRowCount(len(valid) + 1)
             for col, text in enumerate(header_labels):
