@@ -3079,70 +3079,22 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if result is None or not isinstance(result, tuple) or len(result) != 2:
             return
         jobs, me = result
-        text = self._format_jobs_log(jobs or [], me or "")
-        # 等宽字体 + CJK 宽度对齐，保证表头与内容逐列对齐
-        fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        char_fmt = QTextCharFormat()
-        char_fmt.setFont(fixed)
-        self._append_log(text, char_format=char_fmt)
+        self._append_queue_table(jobs or [], me or "")
 
-    @staticmethod
-    def _disp_width(s: str) -> int:
-        """字符串显示宽度：CJK 全角字符按 2 个半角宽度计算。"""
-        import unicodedata
+    def _append_queue_table(self, jobs: list, me: str) -> None:
+        """以富文本表格输出任务队列日志。
 
-        return sum(
-            2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
-            for ch in s
-        )
-
-    @staticmethod
-    def _pad(s: str, width: int) -> str:
-        """按显示宽度右补空格，保证 CJK 混排时逐列对齐。"""
-        return s + " " * max(0, width - PreprocessingWindow._disp_width(s))
-
-    @staticmethod
-    def _format_jobs_section(rows: list, headers: list) -> str:
-        """格式化一个任务分区（表头 + 分隔线 + 数据行，显示宽度对齐）。"""
-        rows = [
-            [
-                str(j.get("user", "")),
-                str(j.get("jobid", "")),
-                str(j.get("partition", "")),
-                str(j.get("name", "")),
-                str(j.get("state", "")),
-                str(j.get("time", "")),
-                str(j.get("nodes", "")),
-                str(j.get("cpus", "")),
-            ]
-            for j in rows
-        ]
-        widths = [
-            max(
-                PreprocessingWindow._disp_width(headers[i]),
-                *(PreprocessingWindow._disp_width(r[i]) for r in rows),
-            )
-            for i in range(8)
-        ]
-        line = "  ".join(
-            PreprocessingWindow._pad(h, widths[i]) for i, h in enumerate(headers)
-        )
-        sep = "  ".join("-" * w for w in widths)
-        body = "\n".join(
-            "  ".join(
-                PreprocessingWindow._pad(c, widths[i]) for i, c in enumerate(r)
-            )
-            for r in rows
-        )
-        return "{line}\n{sep}\n{body}".format(line=line, sep=sep, body=body)
-
-    @staticmethod
-    def _format_jobs_log(jobs: list, me: str) -> str:
-        """把结构化任务列表格式化为对齐文本日志，本人任务单独分区显示。"""
-        jobs = jobs or []
+        用 QTextTable 而非空格对齐：列宽由 Qt 统一分配，表头与数据行
+        天然逐列对齐；字号继承日志区字体（与普通日志一致，不会变小）。
+        """
         me = str(me or "")
         others = [j for j in jobs if str(j.get("user", "")) != me]
         mine = [j for j in jobs if str(j.get("user", "")) == me]
+        if not others and not mine:
+            self._append_log(
+                tr("queue_log_empty", "📋 任务队列为空（当前没有运行中的任务）")
+            )
+            return
         headers = [
             tr("cm_job_col_user", "用户"),
             tr("cm_job_col_jobid", "JobID"),
@@ -3153,27 +3105,46 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             tr("cm_job_col_nodes", "节点"),
             tr("cm_job_col_cpus", "核数"),
         ]
-        if not others and not mine:
-            return tr("queue_log_empty", "📋 任务队列为空（当前没有运行中的任务）")
-        parts = [
+        keys = ("user", "jobid", "partition", "name", "state", "time", "nodes", "cpus")
+
+        self._append_log(
             tr(
                 "queue_log_title",
                 "📋 任务队列（共 {total} 个任务，本人 {mine} 个）",
             ).format(total=len(jobs), mine=len(mine))
-        ]
-        if others:
-            parts.append("")
-            parts.append(
-                tr("queue_log_others", "【其他用户任务】")
-            )
-            parts.append(
-                PreprocessingWindow._format_jobs_section(others, headers)
-            )
-        if mine:
-            parts.append("")
-            parts.append(tr("queue_log_mine", "【本人任务】"))
-            parts.append(PreprocessingWindow._format_jobs_section(mine, headers))
-        return "\n".join(parts)
+        )
+
+        bold = QTextCharFormat()
+        bold.setFontWeight(QFont.Weight.DemiBold)
+
+        def add_section(title: str, rows: list) -> None:
+            if not rows:
+                return
+            self._append_log("")
+            self._append_log(title)
+            cursor = self._log.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            table = cursor.insertTable(len(rows) + 1, len(headers))
+            tfmt = table.format()
+            tfmt.setCellPadding(3)
+            tfmt.setBorder(0.5)
+            tfmt.setBorderBrush(QColor(128, 128, 128, 120))
+            table.setFormat(tfmt)
+            for col, h in enumerate(headers):
+                cell = table.cellAt(0, col)
+                cc = cell.firstCursorPosition()
+                cc.setBlockFormat(self._create_log_block_format())
+                cc.insertText(h, bold)
+            for r, job in enumerate(rows, start=1):
+                for col, key in enumerate(keys):
+                    cell = table.cellAt(r, col)
+                    cc = cell.firstCursorPosition()
+                    cc.setBlockFormat(self._create_log_block_format())
+                    cc.insertText(str(job.get(key, "")))
+
+        add_section(tr("queue_log_others", "【其他用户任务】"), others)
+        add_section(tr("queue_log_mine", "【本人任务】"), mine)
+        self._append_log("")
 
     def _server_cancel(self, job_id: str = "") -> None:
         job_id = str(job_id).strip()
@@ -3638,12 +3609,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         fmt.setBottomMargin(bottom_margin)
         return fmt
 
-    def _append_log(self, message: str, char_format: object = None) -> None:
-        """以段落方式追加纯文本，确保每行应用统一行距。
-
-        char_format: 可选的 QTextCharFormat（如等宽字体），用于任务队列等
-        需要对齐的表格日志。
-        """
+    def _append_log(self, message: str) -> None:
+        """以段落方式追加纯文本，确保每行应用统一行距。"""
         text = str(message)
         had_log_focus = self._log.hasFocus()
         cursor = self._log.textCursor()
@@ -3660,10 +3627,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             else:
                 cursor.insertBlock(fmt)
             if part:
-                if char_format is not None:
-                    cursor.insertText(part, char_format)
-                else:
-                    cursor.insertText(part)
+                cursor.insertText(part)
 
         self._log.setTextCursor(cursor)
         if not had_log_focus:
