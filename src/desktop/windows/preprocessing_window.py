@@ -3030,10 +3030,10 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             self._start_server_polling()
 
     def _server_queue(self) -> None:
-        """查看任务队列：拉取集群上所有用户的任务，以表格弹窗展示。
+        """查看任务队列：拉取集群上所有用户的任务，以日志形式输出到日志区。
 
-        [EN] View job queue: fetch all users' jobs and show them in a table dialog
-        (same list logic as the cluster monitor page right side).
+        [EN] View job queue: fetch all users' jobs and print them as text log
+        into the log area (same data logic as the cluster monitor page).
         """
         if self._busy:
             return
@@ -3071,11 +3071,59 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if result is None or not isinstance(result, tuple) or len(result) != 2:
             return
         jobs, me = result
-        from ..components.jobs_queue_dialog import JobsQueueDialog
+        jobs = jobs or []
+        me = str(me or "")
+        mine = [j for j in jobs if str(j.get("user", "")) == me]
+        self._append_log(self._format_jobs_log(jobs))
+        self._append_log(
+            tr(
+                "queue_log_summary",
+                "任务队列：共 {total} 个任务（本人 {mine} 个）",
+            ).format(total=len(jobs), mine=len(mine))
+        )
 
-        dialog = JobsQueueDialog(self)
-        dialog.set_jobs(jobs or [], me or "")
-        dialog.exec()
+    @staticmethod
+    def _format_jobs_log(jobs: list) -> str:
+        """把结构化任务列表格式化为对齐的文本日志（列与集群监控页一致）。"""
+        if not jobs:
+            return tr("queue_log_empty", "📋 任务队列为空（当前没有运行中的任务）")
+        headers = [
+            tr("cm_job_col_user", "用户"),
+            tr("cm_job_col_jobid", "JobID"),
+            tr("cm_job_col_partition", "分区"),
+            tr("cm_job_col_name", "作业名"),
+            tr("cm_job_col_state", "状态"),
+            tr("cm_job_col_time", "运行时间"),
+            tr("cm_job_col_nodes", "节点"),
+            tr("cm_job_col_cpus", "核数"),
+        ]
+        rows = [
+            [
+                str(j.get("user", "")),
+                str(j.get("jobid", "")),
+                str(j.get("partition", "")),
+                str(j.get("name", "")),
+                str(j.get("state", "")),
+                str(j.get("time", "")),
+                str(j.get("nodes", "")),
+                str(j.get("cpus", "")),
+            ]
+            for j in jobs
+        ]
+        widths = [
+            max(len(headers[i]), *(len(r[i]) for r in rows)) for i in range(8)
+        ]
+        line = "  ".join(
+            h.ljust(widths[i]) for i, h in enumerate(headers)
+        )
+        sep = "  ".join("-" * w for w in widths)
+        body = "\n".join(
+            "  ".join(c.ljust(widths[i]) for i, c in enumerate(r)) for r in rows
+        )
+        return tr(
+            "queue_log_title",
+            "📋 任务队列（所有用户）：\n{line}\n{sep}\n{body}",
+        ).format(line=line, sep=sep, body=body)
 
     def _server_cancel(self, job_id: str = "") -> None:
         job_id = str(job_id).strip()
