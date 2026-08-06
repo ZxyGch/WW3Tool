@@ -3126,10 +3126,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             cursor.movePosition(QTextCursor.MoveOperation.End)
             table = cursor.insertTable(len(rows) + 1, len(headers))
             tfmt = table.format()
-            tfmt.setCellPadding(3)
-            tfmt.setCellSpacing(8)
-            tfmt.setBorder(0.5)
-            tfmt.setBorderBrush(QColor(128, 128, 128, 120))
+            tfmt.setCellPadding(4)
+            tfmt.setCellSpacing(10)
+            # 边框要可见(实色、1px):cellSpacing 区域是文档背景色,
+            # 没有可见边框时列间暗带与日志背景融为一体,看起来"没有空隙"
+            tfmt.setBorder(1.0)
+            tfmt.setBorderBrush(QColor(160, 160, 160))
             table.setFormat(tfmt)
             for col, h in enumerate(headers):
                 cell = table.cellAt(0, col)
