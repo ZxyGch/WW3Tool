@@ -870,6 +870,7 @@
   "idle_col_node_names": "Node",
   "idle_col_nodes": "Nodes",
   "idle_col_cores": "Avail. cores",
+  "idle_col_free_memory": "Free memory",
   "step6_queue_ranking": "Task Queue",
   "step5_cpu_table_missing": "❌ CPU table is missing",
   "step5_cpu_no_valid_process": "⚠️ No valid process data",

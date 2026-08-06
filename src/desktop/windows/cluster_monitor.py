@@ -37,6 +37,7 @@ from workflows.application.remote_ops import (
     _acquire,
     _fetch_cluster_active_jobs,
     _resolve_remote_username,
+    format_slurm_memory_mb,
     run_server_status,
 )
 from workflows.support.logging import CoreLogger
@@ -83,6 +84,18 @@ def _section_title(parent: QWidget, text: str) -> QWidget:
     # 造成标题上下出现大间距
     container.setFixedHeight(container.sizeHint().height())
     return container
+
+
+def _idle_memory_text(row: dict) -> str:
+    """Return the available node memory in Slurm's compact unit notation."""
+    for key in ("free_mem_mb", "total_mem_mb"):
+        try:
+            value = int(row.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return format_slurm_memory_mb(value)
+    return "-"
 
 
 class TaskActionsCard(QWidget):
@@ -324,12 +337,13 @@ class IdleResourcesTable(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._table = EdgeAlignedTableWidget()
-        self._table.setColumnCount(3)
+        self._table.setColumnCount(4)
         self._table.setHorizontalHeaderLabels(
             [
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
                 tr("idle_col_cores", "可用核数"),
+                tr("idle_col_free_memory", "节点空闲内存"),
             ]
         )
         self._table.horizontalHeader().setVisible(False)
@@ -343,7 +357,7 @@ class IdleResourcesTable(QWidget):
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         idle_hdr = self._table.horizontalHeader()
         idle_hdr.setStretchLastSection(False)
-        for col in range(3):
+        for col in range(4):
             idle_hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         idle_hdr.setMinimumSectionSize(36)
         idle_vhdr = self._table.verticalHeader()
@@ -402,11 +416,20 @@ class IdleResourcesTable(QWidget):
                     "nodes": nodes,
                     "node_name": node_name,
                     "cores": cores,
+                    "free_mem_mb": row.get("free_mem_mb"),
+                    "total_mem_mb": row.get("total_mem_mb"),
                 }
             )
         valid.sort(key=lambda item: item["cores"], reverse=True)
         signature = tuple(
-            (row["cpu"], row["node_name"], row["cores"]) for row in valid
+            (
+                row["cpu"],
+                row["node_name"],
+                row["cores"],
+                row.get("free_mem_mb"),
+                row.get("total_mem_mb"),
+            )
+            for row in valid
         )
         if signature == self._signature:
             return
@@ -423,13 +446,14 @@ class IdleResourcesTable(QWidget):
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
                 tr("idle_col_cores", "可用核数"),
+                tr("idle_col_free_memory", "节点空闲内存"),
             ]
             self._table.setRowCount(len(valid) + 1)
             for col, text in enumerate(header_labels):
                 item = QTableWidgetItem(text)
                 if col == 0:
                     align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                elif col == 2:
+                elif col in (2, 3):
                     align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 else:
                     align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
@@ -439,9 +463,15 @@ class IdleResourcesTable(QWidget):
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             ]
             for row_index, row in enumerate(valid, start=1):
-                values = [row["cpu"], row.get("node_name", ""), row["cores"]]
+                values = [
+                    row["cpu"],
+                    row.get("node_name", ""),
+                    row["cores"],
+                    _idle_memory_text(row),
+                ]
                 for col, (value, align) in enumerate(zip(values, aligns)):
                     item = QTableWidgetItem(str(value))
                     item.setTextAlignment(align)

@@ -33,6 +33,7 @@ from ..components.table_widget import EdgeAlignedTableWidget
 from ..components.validators import int_validator
 from workflows.domain.config_models import PipelineConfig
 from workflows.application.remote_ops import (
+    format_slurm_memory_mb,
     suggest_slurm_config,
     suggest_slurm_mem_for_partition,
 )
@@ -40,6 +41,18 @@ from workflows.support.translations import tr
 
 _TITLE_KEY = "step6_title"
 _TITLE_DEFAULT = "第五步：连接服务器"
+
+
+def _idle_memory_text(row: dict) -> str:
+    """Return the available node memory in Slurm's compact unit notation."""
+    for key in ("free_mem_mb", "total_mem_mb"):
+        try:
+            value = int(row.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return format_slurm_memory_mb(value)
+    return "-"
 
 
 class ServerConnectPanel:
@@ -88,12 +101,13 @@ class ServerConnectPanel:
         )
         layout.addWidget(self._idle_title)
         self._idle_table = EdgeAlignedTableWidget()
-        self._idle_table.setColumnCount(3)
+        self._idle_table.setColumnCount(4)
         self._idle_table.setHorizontalHeaderLabels(
             [
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
                 tr("idle_col_cores", "可用核数"),
+                tr("idle_col_free_memory", "节点空闲内存"),
             ]
         )
         self._idle_table.horizontalHeader().setVisible(False)
@@ -104,7 +118,7 @@ class ServerConnectPanel:
         self._idle_table.setWordWrap(False)
         idle_hdr = self._idle_table.horizontalHeader()
         idle_hdr.setStretchLastSection(False)
-        for col in range(3):
+        for col in range(4):
             idle_hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         idle_hdr.setMinimumSectionSize(36)
         self._idle_table.setSizePolicy(
@@ -250,13 +264,14 @@ class ServerConnectPanel:
                 tr("idle_col_cpu", "分区"),
                 tr("idle_col_node_names", "节点名"),
                 tr("idle_col_cores", "可用核数"),
+                tr("idle_col_free_memory", "节点空闲内存"),
             ]
             self._idle_table.setRowCount(len(valid) + 1)
             for col, text in enumerate(header_labels):
                 item = QTableWidgetItem(text)
                 if col == 0:
                     align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                elif col == 2:
+                elif col in (2, 3):
                     align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 else:
                     align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
@@ -267,9 +282,15 @@ class ServerConnectPanel:
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             ]
             for row_index, row in enumerate(valid, start=1):
-                values = [row["cpu"], row.get("node_name", ""), row["cores"]]
+                values = [
+                    row["cpu"],
+                    row.get("node_name", ""),
+                    row["cores"],
+                    _idle_memory_text(row),
+                ]
                 for col, (value, align) in enumerate(zip(values, aligns)):
                     item = QTableWidgetItem(str(value))
                     item.setTextAlignment(align)
