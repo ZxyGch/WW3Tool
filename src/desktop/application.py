@@ -27,24 +27,46 @@ def create_window():
 
 def main(argv: list[str] | None = None) -> int:
     # 桌面 GUI 硬性依赖：PyQt6 + QtWebEngineCore（globe_picker 在模块顶层 import 它，
-    # 缺失会在 import 链深处裸抛 ModuleNotFoundError）。统一在这里做友好检查。
-    # [EN] Desktop requires PyQt6 + QtWebEngineCore (imported at module top by
-    # globe_picker); check here so users get an install hint instead of a raw traceback.
-    try:
-        import PyQt6.QtCore  # noqa: F401
-        from PyQt6.QtWidgets import QApplication  # noqa: F401
-        import PyQt6.QtWebEngineCore  # noqa: F401
-    except ImportError as exc:
-        missing = getattr(exc, "name", "") or str(exc)
-        print(
-            f"无法启动桌面界面：缺少 GUI 依赖（{missing}）。\n"
-            "请重新安装或升级 ww3tool（0.1.3 起 GUI 依赖已内置）：\n"
-            "  pip install --upgrade ww3tool                     # pip 安装形态\n"
-            "  python3 -m pip install -r src/requirements.txt    # 仓库形态\n"
-            "（如果只是用命令行，无需 GUI：ww3tool --help / ww3tool shell）",
-            file=sys.stderr,
-        )
-        return 1
+    # 缺失会在 import 链深处裸抛 ModuleNotFoundError）。统一在这里做友好检查，
+    # 并**自动安装**缺失组件（pip 形态），不再要求用户手工补装。
+    # [EN] Desktop requires PyQt6 + QtWebEngineCore. Check here and auto-install
+    # the missing pieces (pip install) instead of asking the user to do it.
+    _GUI_PACKAGES = ("PyQt6", "PyQt6-WebEngine", "PyQt6-Fluent-Widgets")
+
+    def _gui_imports_ok() -> bool:
+        try:
+            import PyQt6.QtCore  # noqa: F401
+            from PyQt6.QtWidgets import QApplication  # noqa: F401
+            import PyQt6.QtWebEngineCore  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    def _auto_install_gui() -> None:
+        """自动安装缺失的 GUI 依赖（用当前解释器的 pip）。"""
+        print("检测到缺少桌面 GUI 依赖，正在自动安装（首次约需下载 200MB，请稍候）...")
+        try:
+            import subprocess
+
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", *_GUI_PACKAGES],
+                check=True,
+                timeout=900,
+            )
+            print("GUI 依赖安装完成。")
+        except Exception as exc:  # noqa: BLE001 - 任何失败都走提示路径
+            print(f"自动安装失败：{exc}", file=sys.stderr)
+
+    if not _gui_imports_ok():
+        _auto_install_gui()
+        if not _gui_imports_ok():
+            print(
+                "无法启动桌面界面：缺少 GUI 依赖。自动安装失败，请手动执行：\n"
+                "  pip install --upgrade PyQt6 PyQt6-WebEngine PyQt6-Fluent-Widgets\n"
+                "（如果只是用命令行，无需 GUI：ww3tool --help / ww3tool shell）",
+                file=sys.stderr,
+            )
+            return 1
 
     # [EN] Must set AA_ShareOpenGLContexts before QApplication for QWebEngineView.
     PyQt6.QtCore.QCoreApplication.setAttribute(
@@ -67,9 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     # Chromium GPU process fails and blanks the whole window. Default to
     # ANGLE + SwiftShader software rendering unless the user set their own flags.
     if sys.platform == "win32" and not os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS"):
-        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
-            "--disable-gpu --use-gl=angle --use-angle=swiftshader"
-        )
+        # 只用 ANGLE + SwiftShader 软件渲染；不要再加 --disable-gpu/--use-gl=angle
+        # （两者与 ANGLE 冲突，Chromium 会告警且仍白屏）。
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--use-angle=swiftshader"
     app = QApplication(arguments)
     from .branding import load_logo_icon, apply_window_logo
 
