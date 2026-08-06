@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qframelesswindow import FramelessWindow
+from qframelesswindow import AcrylicWindow, FramelessWindow
 from qframelesswindow.webengine import FramelessWebEngineView
 
 from .._repo_root import repo_root
@@ -63,6 +64,10 @@ class MapWebEngineView(FramelessWebEngineView):
         real_parent = parent
         temp_host = None
         if real_parent is not None and isinstance(real_parent.window(), FramelessWindow):
+            # 保持 qframelesswindow 库的原始行为：宿主为 AcrylicWindow 时启用
+            # 透明背景，否则 setAcrylicEffect 亚克力效果失效，窗口背景会变黑。
+            if sys.platform == "win32" and isinstance(real_parent.window(), AcrylicWindow):
+                real_parent.window().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             temp_host = QWidget()
             parent = temp_host
         try:
