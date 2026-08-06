@@ -2676,6 +2676,6 @@
   "cm_job_col_name": "Job Name",
   "cm_job_col_state": "State",
   "cm_job_col_time": "Run Time",
-  "cm_job_col_nodes": "Nodes",
+  "cm_job_col_nodes": "Node",
   "cm_job_col_cpus": "Cores"
 }

@@ -98,6 +98,12 @@ def _idle_memory_text(row: dict) -> str:
     return "-"
 
 
+def _job_node_text(task: dict) -> str:
+    """Return the allocated node name instead of the node count."""
+    value = str(task.get("nodelist") or task.get("node") or "").strip()
+    return value if value and value not in {"None", "None assigned"} else "-"
+
+
 class TaskActionsCard(QWidget):
     """集群监听页中的任务取消与 ntfy 监听操作卡片。"""
 
@@ -453,7 +459,7 @@ class IdleResourcesTable(QWidget):
                 item = QTableWidgetItem(text)
                 if col == 0:
                     align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                elif col in (2, 3):
+                elif col == 3:
                     align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 else:
                     align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
@@ -462,7 +468,7 @@ class IdleResourcesTable(QWidget):
             aligns = [
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             ]
             for row_index, row in enumerate(valid, start=1):
@@ -650,7 +656,7 @@ class OthersJobsTable(QWidget):
                 str(t.get("name", "")),
                 str(t.get("state", "")),
                 str(t.get("time", "")),
-                str(t.get("nodes", "")),
+                _job_node_text(t),
                 str(t.get("cpus", "")),
             ]
             for t in tasks
