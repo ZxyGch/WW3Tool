@@ -111,10 +111,19 @@ def main(argv: list[str] | None = None) -> int:
     # [EN] On Windows GPU-less environments (RDP / cloud VMs) the QtWebEngine
     # Chromium GPU process fails and blanks the whole window. Default to
     # ANGLE + SwiftShader software rendering unless the user set their own flags.
-    if sys.platform == "win32" and not os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS"):
+    if sys.platform == "win32":
         # 只用 ANGLE + SwiftShader 软件渲染；不要再加 --disable-gpu/--use-gl=angle
         # （两者与 ANGLE 冲突，Chromium 会告警且仍白屏）。
-        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--use-angle=swiftshader"
+        # 另外禁用 Chromium 沙箱：企业/云主机常被应用控制策略或杀软拦截
+        # QtWebEngineProcess.exe 的沙箱进程，导致 WebEngine 初始化时整个
+        # 进程闪退（native 崩溃，Python try/except 拦不住）。
+        # [EN] Also disable the Chromium sandbox: App Control / AV on managed
+        # Windows hosts often blocks QtWebEngineProcess's sandbox helper, which
+        # hard-crashes the whole app when WebEngine initializes.
+        if not os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS"):
+            os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--use-angle=swiftshader --no-sandbox"
+        if not os.environ.get("QTWEBENGINE_DISABLE_SANDBOX"):
+            os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
     app = QApplication(arguments)
     from .branding import load_logo_icon, apply_window_logo
 
