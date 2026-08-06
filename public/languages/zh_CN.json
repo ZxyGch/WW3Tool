@@ -844,7 +844,7 @@
   "step6_cpu_ranking": "CPU 占用排行",
   "step6_cluster_jobs": "集群作业",
   "cluster_monitor": "集群监控",
-  "cm_cluster_jobs": "集群作业（所有用户）",
+  "cm_cluster_jobs": "集群作业",
   "cm_idle_resources": "空闲资源",
   "cm_status_connected": "已连接（每秒刷新）",
   "cm_status_disconnected": "未连接（每秒自动重连）",
@@ -2676,5 +2676,6 @@
   "cm_job_col_state": "状态",
   "cm_job_col_time": "运行时间",
   "cm_job_col_nodes": "节点",
+  "cm_job_col_nodes_count": "节点数",
   "cm_job_col_cpus": "核数"
 }

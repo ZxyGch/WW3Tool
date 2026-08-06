@@ -197,7 +197,7 @@ class TaskActionsCard(QWidget):
             self._persistent_listener()
 
 class ClusterJobsTable(QWidget):
-    """集群任务列表（所有用户，sacct -a）。"""
+    """集群任务列表（sacct -a）。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -206,8 +206,8 @@ class ClusterJobsTable(QWidget):
         self._table.setHorizontalHeaderLabels(
             [
                 tr("cluster_col_user", "用户"),
-                tr("cluster_col_cpus", "CPU数"),
                 tr("cluster_col_nodes", "节点"),
+                tr("cluster_col_cpus", "CPU数"),
                 tr("cluster_col_elapsed", "时间"),
             ]
         )
@@ -237,7 +237,7 @@ class ClusterJobsTable(QWidget):
         self._table.setRowCount(0)
         self._table.expand_to_contents(extra_height=6, max_row_height=32)
         self._card, card_layout = create_header_card(
-            self, tr("cm_cluster_jobs", "集群作业（所有用户）")
+            self, tr("cm_cluster_jobs", "集群作业")
         )
         card_layout.setSpacing(4)
         card_layout.addWidget(self._table)
@@ -291,8 +291,8 @@ class ClusterJobsTable(QWidget):
         try:
             header_labels = [
                 tr("cluster_col_user", "用户"),
-                tr("cluster_col_cpus", "核数"),
                 tr("cluster_col_nodes", "节点"),
+                tr("cluster_col_cpus", "核数"),
                 tr("cluster_col_elapsed", "时间"),
             ]
             self._table.setRowCount(len(valid) + 1)
@@ -314,7 +314,8 @@ class ClusterJobsTable(QWidget):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             ]
             for i, parts in enumerate(valid, start=1):
-                for col, (text, align) in enumerate(zip(parts, aligns)):
+                display_parts = [parts[0], parts[2], parts[1], parts[3]]
+                for col, (text, align) in enumerate(zip(display_parts, aligns)):
                     item = QTableWidgetItem(str(text))
                     item.setTextAlignment(align)
                     self._table.setItem(i, col, item)
@@ -656,7 +657,7 @@ class OthersJobsTable(QWidget):
                 str(t.get("name", "")),
                 str(t.get("state", "")),
                 str(t.get("time", "")),
-                _job_node_text(t),
+                _job_node_text(t) if key == "mine" else str(t.get("nodes", "")),
                 str(t.get("cpus", "")),
             ]
             for t in tasks
@@ -688,6 +689,8 @@ class OthersJobsTable(QWidget):
         try:
             table.setRowCount(len(rows) + 1)
             for col, (hkey, htext) in enumerate(OthersJobsTable._HEADERS):
+                if col == 6 and key == "others":
+                    hkey, htext = "cm_job_col_nodes_count", "Nodes"
                 item = QTableWidgetItem(tr(hkey, htext))
                 if col == 0:
                     align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter

@@ -855,7 +855,7 @@
   "step6_cpu_ranking": "CPU Usage Ranking",
   "step6_cluster_jobs": "Cluster Jobs",
   "cluster_monitor": "Cluster Monitor",
-  "cm_cluster_jobs": "Cluster Jobs (All Users)",
+  "cm_cluster_jobs": "Cluster Jobs",
   "cm_idle_resources": "Idle Resources",
   "cm_status_connected": "Connected (refreshes every second)",
   "cm_status_disconnected": "Disconnected (auto-reconnect every second)",
@@ -2677,5 +2677,6 @@
   "cm_job_col_state": "State",
   "cm_job_col_time": "Run Time",
   "cm_job_col_nodes": "Node",
+  "cm_job_col_nodes_count": "Nodes",
   "cm_job_col_cpus": "Cores"
 }
