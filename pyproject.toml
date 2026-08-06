@@ -18,7 +18,7 @@ backend-path = ["."]
 
 [project]
 name = "ww3tool"
-version = "0.1.10"
+version = "0.1.11"
 description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
 readme = "public/packaging/PYPI_README.md"
 requires-python = ">=3.9"
@@ -51,11 +51,22 @@ dependencies = [
 gui = []
 dev = ["pytest"]
 
-[project.scripts]
-ww3tool = "run:main"
+# Windows 上不生成 ww3tool.exe（会被 Smart App Control / 应用控制策略拦截），
+# 改为 script-files 提供 ww3tool.cmd（文本脚本不受拦，首次运行自动删除旧 exe）。
+# Unix 用同名的 sh/python 启动脚本（setuptools 会重写 shebang 到安装解释器）。
+# [EN] No console script on Windows: the ww3tool.exe launcher gets blocked by
+# Smart App Control / app control policies. Instead ship ww3tool.cmd via
+# script-files (text scripts are not blocked; it removes the legacy exe on
+# first run). Unix gets a shebang script with the same name.
+# [project.scripts]
+# ww3tool = "run:main"
 
 [tool.setuptools]
 py-modules = ["run"]
+script-files = [
+    "public/packaging/scripts/ww3tool.cmd",
+    "public/packaging/scripts/ww3tool",
+]
 packages = [
     "ww3tool_resources",
     "workflows",

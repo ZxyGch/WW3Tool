@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""WW3Tool launcher (non-Windows).
+
+Invokes the same entry point as the console script; setuptools rewrites the
+shebang to the interpreter the package was installed with.
+"""
+
+import run
+
+raise SystemExit(run.main())
