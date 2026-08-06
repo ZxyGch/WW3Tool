@@ -3127,6 +3127,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             table = cursor.insertTable(len(rows) + 1, len(headers))
             tfmt = table.format()
             tfmt.setCellPadding(3)
+            tfmt.setCellSpacing(8)
             tfmt.setBorder(0.5)
             tfmt.setBorderBrush(QColor(128, 128, 128, 120))
             table.setFormat(tfmt)
