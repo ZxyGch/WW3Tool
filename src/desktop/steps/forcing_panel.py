@@ -225,13 +225,17 @@ class ForcingStepPanel:
         side = max(button.sizeHint().height(), clear_button.sizeHint().height())
         clear_button.setFixedSize(side, side)
         clear_button.setToolTip(tr("step2_clear_forcing_selection", "清除选择"))
-        mapping_button = create_button(tr("step2_variable_mapping", "变量映射"), lambda _checked=False: open_mapping(key))
+        # 铅笔按钮：打开变量映射/服务器路径编辑弹窗，位于清除按钮左侧
+        # [EN] Pencil button: opens the variable mapping / server path dialog,
+        # positioned to the left of the clear button.
+        mapping_button = create_button("✏️", lambda _checked=False: open_mapping(key))
         mapping_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        mapping_button.setToolTip(tr("step2_variable_mapping_tip", "自定义该文件的变量映射（经度/纬度/时间/分量）"))
+        mapping_button.setFixedSize(side, side)
+        mapping_button.setToolTip(tr("step2_variable_mapping_tip", "变量映射与服务器路径（经度/纬度/时间/分量）"))
         grid.addWidget(QLabel(label), row, 0)
         grid.addWidget(button, row, 1)
-        grid.addWidget(clear_button, row, 2)
-        grid.addWidget(mapping_button, row, 3)
+        grid.addWidget(mapping_button, row, 2)
+        grid.addWidget(clear_button, row, 3)
         self.paths[key] = field
         self.path_buttons[key] = button
         self.clear_buttons[key] = clear_button

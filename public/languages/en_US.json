@@ -2697,5 +2697,14 @@
   "cli_help_inspect_forcing": "Inspect NetCDF forcing variable auto-detection (read-only)",
   "cli_help_inspect_forcing_field": "Forcing field type (wind/current/level/ice)",
   "cli_help_inspect_forcing_file": "NetCDF forcing file path",
-  "cli_help_inspect_forcing_workdir": "Optional workdir whose params.yml supplies forcing.custom overrides"
+  "cli_help_inspect_forcing_workdir": "Optional workdir whose params.yml supplies forcing.custom overrides",
+  "forcing_mapping_server_path": "Forcing file path (server):",
+  "forcing_mapping_server_path_placeholder": "e.g. /data/forcing/wind.nc (leave empty to use local file)",
+  "forcing_mapping_candidates": "Available variables:\n{vars}",
+  "forcing_mapping_empty": "Please fill in the server file path or at least one variable mapping; leaving all empty uses auto-detection (requires a local file).",
+  "forcing_mapping_server_set": "server path {path}",
+  "forcing_mapping_vars_set": "variables {mapping}",
+  "forcing_mapping_auto": "all auto-detected",
+  "browse": "Browse",
+  "forcing_remote_missing_vars": "⚠️ {field} uses server path {path} but no variable mapping is set; NML generation will be skipped. Specify component variables in the mapping."
 }

@@ -1,37 +1,36 @@
-"""强迫场变量映射对话框（方案 §9）。
+"""强迫场变量映射/服务器路径对话框（方案 §9 + 服务器路径扩展）。
 
-[EN] Forcing variable mapping dialog (spec §9).
+[EN] Forcing variable mapping / server-path dialog (spec §9 + server-path extension).
 
-按角色显示下拉框（如风场显示经度、纬度、时间、U、V），下拉项显示变量名、
-维度与单位；必需项未完成时禁止确认；确认后把映射写入工作目录
-``params.yml`` 的 ``forcing.custom``。
+样式对齐「创建工作目录」弹窗：``qfluentwidgets.MessageBoxBase``（非系统样式）。
+内容：
+1. 强迫场文件路径（服务器）输入框 —— 填写后本机不再导入/处理该场，
+   服务器端直接使用此路径；
+2. 按角色显示的下拉框（如风场：经度、纬度、时间、U、V），留空表示自动识别；
+3. 确认时校验：路径与变量映射至少填一项。
 
-[EN] Shows one dropdown per role (e.g. wind: longitude, latitude, time, U, V);
-each dropdown entry shows variable name, dimensions, and units. Confirmation is
-disabled until all required roles are filled; on confirm the mapping is written
-to ``forcing.custom`` in the workdir ``params.yml``.
+[EN] Styling matches the "create work directory" dialog:
+``qfluentwidgets.MessageBoxBase`` (not the native style). Contents:
+1. Forcing file path (server) input — when filled, the field is NOT imported
+   or processed locally; the server uses this path directly;
+2. Role-based dropdowns (e.g. wind: longitude, latitude, time, U, V); empty
+   means auto-detection;
+3. Validation on confirm: at least one of path / variable mapping must be set.
 """
 
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QComboBox,
-    QDialog,
-    QDialogButtonBox,
-    QGridLayout,
-    QLabel,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtWidgets import QFileDialog, QGridLayout, QHBoxLayout, QLabel, QWidget
+from qfluentwidgets import InfoBar, LineEdit, MessageBoxBase, PrimaryPushButton
 
 from workflows.support.translations import tr
 from workflows.infrastructure.forcing.forcing_variable_resolver import VariableInfo
 
-# 角色显示顺序与必填性（thickness 可选）
-# [EN] Role display order and requiredness (thickness optional)
+# 角色显示顺序与必填性（thickness 可选；服务器路径场景允许全部留空自动识别）
+# [EN] Role display order (thickness optional; all may be left empty for
+# auto-detection in the server-path scenario)
 _FIELD_ROLES: Dict[str, List[str]] = {
     "wind": ["longitude", "latitude", "time", "u", "v"],
     "current": ["longitude", "latitude", "time", "u", "v"],
@@ -53,10 +52,14 @@ _ROLE_LABELS: Dict[str, str] = {
 _AUTO_TEXT = "（自动识别 / auto-detect）"
 
 
-class ForcingVariableMappingDialog(QDialog):
-    """按角色选择强迫场变量的映射窗口。
+class ForcingVariableMappingDialog(MessageBoxBase):
+    """变量映射 + 服务器路径编辑窗口（qfluentwidgets 样式）。
 
-    [EN] Role-based forcing variable mapping dialog.
+    [EN] Variable mapping + server-path edit dialog (qfluentwidgets style).
+
+    成功后：
+    - ``self.remote_path``：服务器强迫场路径（可为空）
+    - ``self.mapping``：角色 → 变量名（None 表示自动识别）
     """
 
     def __init__(
@@ -66,75 +69,109 @@ class ForcingVariableMappingDialog(QDialog):
         file_path: str,
         variables: Dict[str, VariableInfo],
         current: Optional[dict],
+        remote_path: str = "",
+        input_style: Callable[[], str] = lambda: "",
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle(
+        self._field = field
+        self._roles = _FIELD_ROLES.get(field, [])
+        self._combos: Dict[str, LineEdit] = {}
+        self._current = current or {}
+        self.remote_path: str = ""
+        self.mapping: dict = {}
+        title = QLabel(
             tr("forcing_mapping_title", "变量映射：{field}").format(
                 field={"wind": "风场", "current": "流场", "level": "水位场", "ice": "海冰场"}.get(field, field)
             )
         )
-        self.setMinimumWidth(520)
-        self._field = field
-        self._roles = _FIELD_ROLES.get(field, [])
-        self._combos: Dict[str, QComboBox] = {}
-        self._current = current or {}
+        title.setStyleSheet("font-size: 16px; font-weight: 600;")
+        self.viewLayout.addWidget(title)
+        self._input_style = input_style
+        self._build_body(file_path, remote_path, variables)
+        self.yesButton.setText(tr("confirm", "确定"))
+        self.cancelButton.setText(tr("cancel", "取消"))
 
-        layout = QVBoxLayout(self)
-        hint = QLabel(
-            tr(
-                "forcing_mapping_hint",
-                "为 {field} 选择每个角色对应的变量。留空（自动识别）时将按常见名称与 CF 属性自动判断。",
-            ).format(field=field)
-        )
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        layout.addWidget(QLabel(tr("forcing_mapping_file", "文件：{path}").format(path=file_path)))
-
+    def _build_body(self, file_path: str, remote_path: str, variables: Dict[str, VariableInfo]) -> None:
         grid = QGridLayout()
         grid.setSpacing(8)
-        for row, role in enumerate(self._roles):
-            grid.addWidget(QLabel(_ROLE_LABELS.get(role, role) + "："), row, 0)
-            combo = QComboBox()
-            combo.addItem(_AUTO_TEXT, None)
-            for name in sorted(variables):
-                combo.addItem(variables[name].summary(), name)
+
+        # 文件路径（服务器）：填写后本机不处理，服务器端直接使用
+        # [EN] Server file path: when filled, the field is not processed locally
+        row = 0
+        grid.addWidget(QLabel(tr("forcing_mapping_server_path", "强迫场文件路径（服务器）：")), row, 0)
+        path_row = QHBoxLayout()
+        self.path_edit = LineEdit()
+        self.path_edit.setText(remote_path)
+        self.path_edit.setPlaceholderText(
+            tr("forcing_mapping_server_path_placeholder", "如 /data/forcing/wind.nc（留空则使用本机文件）")
+        )
+        self.path_edit.setStyleSheet(self._input_style())
+        path_row.addWidget(self.path_edit, 1)
+        browse = PrimaryPushButton(tr("browse", "浏览"))
+        browse.clicked.connect(self._browse_path)
+        path_row.addWidget(browse)
+        grid.addLayout(path_row, row, 1)
+        self.viewLayout.addLayout(grid)
+
+        self.viewLayout.addWidget(
+            QLabel(
+                tr(
+                    "forcing_mapping_hint",
+                    "为 {field} 选择每个角色对应的变量；留空（自动识别）时按常见名称与 CF 属性判断。",
+                ).format(field=self._field)
+            )
+        )
+
+        roles_grid = QGridLayout()
+        roles_grid.setSpacing(8)
+        candidates_hint = "\n".join(info.summary() for info in sorted(variables.values(), key=lambda v: v.name))
+        for idx, role in enumerate(self._roles):
+            roles_grid.addWidget(QLabel(_ROLE_LABELS.get(role, role) + "："), idx, 0)
+            combo = LineEdit()
+            combo.setPlaceholderText(_AUTO_TEXT)
+            combo.setStyleSheet(self._input_style())
+            if candidates_hint:
+                combo.setToolTip(tr("forcing_mapping_candidates", "可用变量：\n{vars}").format(vars=candidates_hint))
             saved = self._current.get(role)
             if saved and saved in variables:
-                combo.setCurrentText(variables[saved].summary())
+                combo.setText(saved)
             self._combos[role] = combo
-            grid.addWidget(combo, row, 1)
-        layout.addLayout(grid)
+            roles_grid.addWidget(combo, idx, 1)
+        self.viewLayout.addLayout(roles_grid)
 
-        self._buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        self._buttons.accepted.connect(self._on_accept)
-        self._buttons.rejected.connect(self.reject)
-        layout.addWidget(self._buttons)
-
-    def _on_accept(self) -> None:
-        missing = [
-            role
-            for role in self._roles
-            if role != "thickness" and self._combos[role].currentData() is None
-        ]
-        if missing:
-            from PyQt6.QtWidgets import QMessageBox
-
-            QMessageBox.warning(
-                self,
-                tr("forcing_mapping_incomplete", "映射不完整"),
-                tr(
-                    "forcing_mapping_required_missing",
-                    "以下必需角色尚未指定：{roles}",
-                ).format(roles=", ".join(_ROLE_LABELS.get(r, r) for r in missing)),
+        if file_path:
+            self.viewLayout.addWidget(
+                QLabel(tr("forcing_mapping_file", "本机文件：{path}").format(path=file_path))
             )
-            return
-        self.accept()
 
-    def mapping(self) -> dict:
-        """返回角色 → 变量名（或 None 表示自动识别）的字典。
+    def _browse_path(self) -> None:
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("choose_forcing_file", "选择强迫场文件"),
+            "",
+            tr("file_filter_netcdf_all", "NetCDF 文件 (*.nc *.nc4 *.cdf);;所有文件 (*)"),
+        )
+        if selected:
+            self.path_edit.setText(selected)
 
-        [EN] Return role → variable name (or None for auto-detect).
+    def validate(self) -> bool:
+        """确认校验：路径与变量映射至少填一项。
+
+        [EN] Confirm validation: at least one of path / variable mapping set.
         """
-        return {role: self._combos[role].currentData() for role in self._roles}
+        path = self.path_edit.text().strip()
+        mapping = {role: (edit.text().strip() or None) for role, edit in self._combos.items()}
+        if not path and not any(mapping.values()):
+            InfoBar.warning(
+                title=tr("tip", "提示"),
+                content=tr(
+                    "forcing_mapping_empty",
+                    "请至少填写服务器文件路径或一个变量映射；全部留空将使用自动识别（需本机文件）。",
+                ),
+                duration=3000,
+                parent=self,
+            )
+            return False
+        self.remote_path = path
+        self.mapping = mapping
+        return True

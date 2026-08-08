@@ -278,6 +278,26 @@ def _optional_str(value: Any) -> Optional[str]:
     return str(value).strip() or None
 
 
+def _parse_forcing_remote_paths(value: Any) -> Dict[str, Optional[str]]:
+    """解析 ``forcing.remote_paths``：各场在服务器上的强迫场路径。
+
+    填写后本机不再导入/处理该场（服务器端直接使用此路径）。
+
+    [EN] Parse ``forcing.remote_paths``: per-field forcing path on the server.
+    When set, the field is not imported/processed locally (the server uses the
+    path directly).
+    """
+    if value in (None, ""):
+        return {}
+    remote_raw = _as_dict(value, "forcing.remote_paths")
+    out: Dict[str, Optional[str]] = {}
+    for field_name in ("wind", "current", "level", "ice"):
+        path = _optional_str(remote_raw.get(field_name))
+        if path:
+            out[field_name] = path
+    return out
+
+
 def _process_mode(value: Any) -> str:
     if value is None:
         raise ConfigError("forcing.process_mode 不能为空")
@@ -728,9 +748,15 @@ def _validate_existing_paths(paths: Iterable[Optional[Path]], labels: Iterable[s
             raise ConfigError(tr("cfg_path_not_exists", "{label} 不存在：{path}").format(label=label, path=path))
 
 
-def _validate_wind_path(wind: Optional[Path]) -> None:
-    """校验风场源文件路径：必填且指向存在的文件。"""
+def _validate_wind_path(wind: Optional[Path], *, remote_path: Optional[str] = None) -> None:
+    """校验风场源文件路径：必填且指向存在的文件；配置了服务器路径时允许为空。
+
+    [EN] Validate the wind source path: required and must exist; allowed to be
+    empty when a server path (``forcing.remote_paths.wind``) is configured.
+    """
     if wind is None:
+        if remote_path:
+            return
         raise ConfigError(tr("cfg_wind_path_required", "风场文件路径不能为空"))
     if not wind.is_file():
         raise ConfigError(tr("cfg_wind_path_not_exists", "❌ 风场文件不存在：{path}").format(path=wind))
@@ -896,6 +922,7 @@ def parse_pipeline_config(
         crop_time_range=_string_list(forcing_raw.get("crop_time_range"), "forcing.crop_time_range", expected=2),
         crop_bbox=_float_list(forcing_raw.get("crop_bbox"), "forcing.crop_bbox", expected=4),
         custom=_parse_forcing_custom(forcing_raw.get("custom")),
+        remote_paths=_parse_forcing_remote_paths(forcing_raw.get("remote_paths")),
     )
 
     grid_raw = _as_dict(raw.get("grid"), "grid")
@@ -1252,9 +1279,16 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
         if config.grid.mesh_type == "structured" and config.grid.gridgen_version.lower() != "python":
             raise ConfigError(tr("cfg_structured_python_only", "当前无界面流程的 structured 网格仅支持 grid.gridgen_version=Python"))
         return
-    _validate_wind_path(config.forcing.wind)
+    _validate_wind_path(config.forcing.wind, remote_path=config.forcing.remote_paths.get("wind"))
     _validate_existing_paths(
-        [config.forcing.current, config.forcing.level, config.forcing.ice],
+        [
+            p if p is not None and config.forcing.remote_paths.get(label.split(".")[-1]) is None else None
+            for p, label in (
+                (config.forcing.current, "forcing.current"),
+                (config.forcing.level, "forcing.level"),
+                (config.forcing.ice, "forcing.ice"),
+            )
+        ],
         ["forcing.current", "forcing.level", "forcing.ice"],
     )
     if config.forcing.crop_time_range or config.forcing.crop_bbox:

@@ -88,3 +88,47 @@ def save_manifest_entry(
         return True
     except OSError:
         return False
+
+
+def save_remote_manifest_entry(
+    workdir: str,
+    field: str,
+    remote_path: str,
+    custom: Optional["ForcingVariableOverride"],
+) -> bool:
+    """为「服务器路径」场写入清单项（本机不处理，变量映射来自用户自定义）。
+
+    变量未在 ``custom`` 中填写齐全时返回 ``False``（NML 阶段将提示）。
+
+    [EN] Write a manifest entry for a "server path" field (not processed
+    locally; variable mapping comes from the user's custom overrides). Returns
+    ``False`` when variables are not fully provided in ``custom`` (the NML
+    stage will then prompt).
+    """
+    if not workdir or not remote_path:
+        return False
+    from ...domain.config_models import ForcingVariableOverride
+
+    override = custom or ForcingVariableOverride()
+    if field in ("wind", "current"):
+        components = [override.u, override.v]
+    elif field == "level":
+        components = [override.value]
+    else:
+        components = [override.concentration]
+    components = [c for c in components if c]
+    if not components:
+        return False
+    longitude = override.longitude or "longitude"
+    latitude = override.latitude or "latitude"
+    source_time = override.time or "time"
+    resolved = ResolvedForcingVariables(
+        field=field,
+        longitude=longitude,
+        latitude=latitude,
+        source_time=source_time,
+        output_time="time",
+        components=components,
+        thickness=override.thickness,
+    )
+    return save_manifest_entry(workdir, field, resolved, os.path.basename(remote_path))

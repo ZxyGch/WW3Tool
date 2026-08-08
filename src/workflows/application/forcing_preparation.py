@@ -124,7 +124,28 @@ def prepare_forcing(
     processed_sources: set[str] = set()
     crop_bbox = config.forcing.crop_bbox or None
     for field, path in all_fields:
-        if field not in requested_fields or path is None:
+        if field not in requested_fields:
+            continue
+        # 服务器路径场：本机不处理，直接记录路径并写入 manifest（变量来自 custom）
+        # [EN] Server-path field: not processed locally; record the path and
+        # write a manifest entry (variables come from custom).
+        remote_path = (config.forcing.remote_paths or {}).get(field.value)
+        if remote_path:
+            files.set(field, remote_path)
+            from ..infrastructure.forcing.forcing_manifest import save_remote_manifest_entry
+
+            saved = save_remote_manifest_entry(
+                str(workdir), field.value, remote_path, config.forcing.custom.get(field.value)
+            )
+            if not saved:
+                logger.log(
+                    tr(
+                        "forcing_remote_missing_vars",
+                        "⚠️ {field} 使用了服务器路径 {path}，但未填写变量映射；将跳过 NML 生成。请在变量映射中指定分量变量。",
+                    ).format(field=field.value, path=remote_path)
+                )
+            continue
+        if path is None:
             continue
         source_path = str(Path(path).expanduser().resolve())
         if config.forcing.auto_associate and source_path in processed_sources:

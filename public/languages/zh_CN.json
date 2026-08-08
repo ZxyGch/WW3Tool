@@ -2696,5 +2696,14 @@
   "cli_help_inspect_forcing": "检查强迫场变量自动识别（只读）",
   "cli_help_inspect_forcing_field": "强迫场类型（wind/current/level/ice）",
   "cli_help_inspect_forcing_file": "NetCDF 强迫场文件路径",
-  "cli_help_inspect_forcing_workdir": "可选工作目录，其 params.yml 提供 forcing.custom 覆盖"
+  "cli_help_inspect_forcing_workdir": "可选工作目录，其 params.yml 提供 forcing.custom 覆盖",
+  "forcing_mapping_server_path": "强迫场文件路径（服务器）：",
+  "forcing_mapping_server_path_placeholder": "如 /data/forcing/wind.nc（留空则使用本机文件）",
+  "forcing_mapping_candidates": "可用变量：\n{vars}",
+  "forcing_mapping_empty": "请至少填写服务器文件路径或一个变量映射；全部留空将使用自动识别（需本机文件）。",
+  "forcing_mapping_server_set": "服务器路径 {path}",
+  "forcing_mapping_vars_set": "变量 {mapping}",
+  "forcing_mapping_auto": "全部自动识别",
+  "browse": "浏览",
+  "forcing_remote_missing_vars": "⚠️ {field} 使用了服务器路径 {path}，但未填写变量映射；将跳过 NML 生成。请在变量映射中指定分量变量。"
 }

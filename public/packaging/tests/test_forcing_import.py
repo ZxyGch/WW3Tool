@@ -229,5 +229,105 @@ class ForcingConfigTest(unittest.TestCase):
             _parse_forcing_custom({"wind": {"bad_key": "x"}})
 
 
+class ForcingRemotePathTest(unittest.TestCase):
+    """服务器路径场（本机不处理）测试。"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def _write_params(self, workdir, **forcing_extra):
+        params = os.path.join(self.tmp, "params.yml")
+        lines = [f"workdir:\n  path: {workdir}\n", "forcing:\n  wind: null\n  process_mode: copy\n  auto_associate: false\n"]
+        for key, value in forcing_extra.items():
+            if "\n" in str(value):
+                lines.append(str(value))
+                if not str(value).endswith("\n"):
+                    lines.append("\n")
+            else:
+                lines.append(f"  {key}: {value}\n")
+        with open(params, "w") as f:
+            f.writelines(lines)
+        return params
+
+    def test_remote_paths_parsed(self):
+        from workflows.application.configuration import _parse_forcing_remote_paths
+
+        out = _parse_forcing_remote_paths({"wind": "/data/wind.nc", "current": None, "ice": ""})
+        self.assertEqual(out, {"wind": "/data/wind.nc"})
+        self.assertEqual(_parse_forcing_remote_paths(None), {})
+
+    def test_remote_field_skips_local_import(self):
+        from workflows.application.configuration import load_pipeline_config
+        from workflows.application.preprocessing_workflow import run_prepare_forcing
+        from workflows.domain.forcing_fields import ForcingField
+        from workflows.infrastructure.forcing.forcing_manifest import load_manifest
+
+        workdir = os.path.join(self.tmp, "workdir")
+        params = self._write_params(
+            workdir,
+            custom=(
+                "  custom:\n"
+                "    wind:\n"
+                "      longitude: XLONG\n"
+                "      latitude: XLAT\n"
+                "      time: valid_time\n"
+                "      u: UGRD_10m\n"
+                "      v: VGRD_10m\n"
+            ),
+            remote_paths=(
+                "  remote_paths:\n"
+                "    wind: /data/cluster/wind_global.nc\n"
+            ),
+        )
+        cfg = load_pipeline_config(params)
+        self.assertEqual(cfg.forcing.remote_paths["wind"], "/data/cluster/wind_global.nc")
+        result = run_prepare_forcing(cfg, None, fields=[ForcingField.WIND])
+        self.assertEqual(result.forcing_files.wind, "/data/cluster/wind_global.nc")
+        # 本机不应生成任何强迫场数据文件（仅 manifest 记录）
+        # [EN] No forcing data files are produced locally (manifest only)
+        self.assertEqual([f for f in os.listdir(workdir) if f.endswith(".nc")], [])
+        mani = load_manifest(workdir)
+        self.assertEqual(mani["wind"]["file"], "wind_global.nc")
+        self.assertEqual(mani["wind"]["variables"], ["UGRD_10m", "VGRD_10m"])
+
+    def test_remote_field_without_vars_warns_no_manifest(self):
+        from workflows.application.configuration import load_pipeline_config
+        from workflows.application.preprocessing_workflow import run_prepare_forcing
+        from workflows.domain.forcing_fields import ForcingField
+        from workflows.infrastructure.forcing.forcing_manifest import load_manifest
+
+        workdir = os.path.join(self.tmp, "workdir")
+        params = self._write_params(
+            workdir,
+            remote_paths="  remote_paths:\n    wind: /data/cluster/wind.nc\n",
+        )
+        cfg = load_pipeline_config(params)
+        result = run_prepare_forcing(cfg, None, fields=[ForcingField.WIND])
+        self.assertEqual(result.forcing_files.wind, "/data/cluster/wind.nc")
+        # 变量未填写 → manifest 不生成，NML 阶段会提示
+        self.assertEqual(load_manifest(workdir), {})
+
+    def test_scan_workdir_recovers_remote_field_from_manifest(self):
+        """「仅应用 WW3 参数」路径：scan_forcing_files 从 manifest 恢复远程场。"""
+        from workflows.domain.forcing_fields import ForcingField, Step2Files
+        from workflows.infrastructure.forcing.file_service import FileService
+        from workflows.infrastructure.forcing.forcing_manifest import save_remote_manifest_entry
+        from workflows.domain.config_models import ForcingVariableOverride
+
+        workdir = os.path.join(self.tmp, "workdir")
+        os.makedirs(workdir)
+        save_remote_manifest_entry(
+            workdir,
+            "wind",
+            "/data/cluster/wind_global.nc",
+            ForcingVariableOverride(u="UGRD_10m", v="VGRD_10m"),
+        )
+        files = FileService().scan_forcing_files(workdir, auto_associate=True)
+        self.assertIsNotNone(files.wind)
+        # 本地无文件，但路径被记录（NML 阶段走远程分支）
+        self.assertFalse(os.path.exists(files.wind))
+        self.assertEqual(os.path.basename(files.wind), "wind_global.nc")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -662,6 +662,27 @@ class FileService:
 
             for field, path in found_files.items():
                 files.set(field, path)
+
+            # 服务器路径场：本机无 *.nc 文件，但从 manifest 恢复（供「仅应用 WW3
+            # 参数」等路径生成 NML）。路径记录为 workdir 下的 manifest 文件名，
+            # NML 阶段检测到本地文件不存在时走远程场分支。
+            # [EN] Server-path fields: no local *.nc file, but recovered from the
+            # manifest (so paths like "apply WW3 params only" can still generate
+            # NML). The path is recorded as the manifest filename under workdir;
+            # the NML stage falls back to the remote-field branch when the file
+            # is absent locally.
+            try:
+                from .forcing_manifest import load_manifest
+
+                manifest = load_manifest(selected_folder)
+                for field in field_patterns.keys():
+                    if field in found_files:
+                        continue
+                    entry = manifest.get(field.value) or {}
+                    if entry.get("file") and entry.get("variables"):
+                        files.set(field, os.path.join(selected_folder, entry["file"]))
+            except Exception:
+                pass
         except Exception:
             pass
         return files

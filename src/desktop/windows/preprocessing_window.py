@@ -790,6 +790,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             mode_changed=self._on_forcing_mode_changed,
         )
         self._forcing_custom: dict = {}
+        self._forcing_remote_paths: dict = {}
         self._paths.update(self._forcing_panel.paths)
         self._path_buttons.update(self._forcing_panel.path_buttons)
         self._mode = self._forcing_panel.mode
@@ -971,6 +972,16 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         crop_time = config.forcing.crop_time_range or default_forcing.get("crop_time_range") or None
         crop_bbox = config.forcing.crop_bbox or default_forcing.get("crop_bbox") or None
         self._forcing_panel.set_range_values(time_range=crop_time, bbox=crop_bbox, overwrite_editable=True)
+        # 同步工作目录中已保存的变量映射与服务器路径
+        # [EN] Sync saved variable mappings and server paths from the workdir config
+        self._forcing_custom = {}
+        for field, override in (config.forcing.custom or {}).items():
+            self._forcing_custom[field] = {
+                role: value
+                for role, value in vars(override).items()
+                if value
+            }
+        self._forcing_remote_paths = dict(config.forcing.remote_paths or {})
         self._on_forcing_mode_changed()
 
     def _fill_auto_associated_forcing_slots(self, file_path: str, *, trigger_key: str) -> list[str]:
@@ -1343,46 +1354,61 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
     # [EN] Forcing variable mapping (spec §9)
 
     def _open_variable_mapping(self, key: str) -> None:
-        """打开指定场的变量映射窗口。
+        """打开指定场的变量映射/服务器路径弹窗。
 
-        [EN] Open the variable mapping dialog for a field.
+        [EN] Open the variable mapping / server-path dialog for a field.
         """
         from workflows.infrastructure.forcing.forcing_variable_resolver import inspect_variables
 
         path = self._paths[key].text().strip() if key in self._paths else ""
-        if not path or not self._forcing_path_is_readable(path):
-            self._append_log(
-                tr(
-                    "forcing_mapping_no_file",
-                    "⚠️ 请先为 {field} 选择强迫场文件，再打开变量映射。",
-                ).format(field=key)
-            )
-            return
-        try:
-            variables = inspect_variables(path)
-        except Exception as exc:
-            self._show_error(tr("forcing_read_failed", "读取文件失败：{error}").format(error=exc))
-            return
+        variables = {}
+        if path and self._forcing_path_is_readable(path):
+            try:
+                variables = inspect_variables(path)
+            except Exception as exc:
+                self._show_error(tr("forcing_read_failed", "读取文件失败：{error}").format(error=exc))
+                return
         current = (self._forcing_custom or {}).get(key) or {}
-        dialog = ForcingVariableMappingDialog(self, key, path, variables, current)
+        remote = (self._forcing_remote_paths or {}).get(key) or ""
+        dialog = ForcingVariableMappingDialog(
+            self,
+            key,
+            path,
+            variables,
+            current,
+            remote_path=remote,
+            input_style=self._input_style,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            mapping = dialog.mapping()
             self._forcing_custom = dict(self._forcing_custom or {})
-            self._forcing_custom[key] = mapping
-            self._save_forcing_custom_to_workdir()
-            filled = {k: v for k, v in mapping.items() if v}
+            self._forcing_custom[key] = dialog.mapping
+            self._forcing_remote_paths = dict(self._forcing_remote_paths or {})
+            if dialog.remote_path:
+                self._forcing_remote_paths[key] = dialog.remote_path
+            else:
+                self._forcing_remote_paths.pop(key, None)
+            self._save_forcing_mapping_to_workdir()
+            filled = {k: v for k, v in dialog.mapping.items() if v}
+            msg_parts = []
+            if dialog.remote_path:
+                msg_parts.append(
+                    tr("forcing_mapping_server_set", "服务器路径 {path}").format(path=dialog.remote_path)
+                )
+            if filled:
+                msg_parts.append(
+                    tr("forcing_mapping_vars_set", "变量 {mapping}").format(mapping=filled)
+                )
             self._append_log(
-                tr(
-                    "forcing_mapping_saved",
-                    "✅ 已保存 {field} 变量映射：{mapping}",
-                ).format(field=key, mapping=filled or "全部自动识别")
+                tr("forcing_mapping_saved", "✅ 已保存 {field} 映射：{detail}").format(
+                    field=key, detail="；".join(msg_parts) or tr("forcing_mapping_auto", "全部自动识别")
+                )
             )
 
-    def _save_forcing_custom_to_workdir(self) -> None:
-        """把当前变量映射写入工作目录 params.yml 的 forcing.custom。
+    def _save_forcing_mapping_to_workdir(self) -> None:
+        """把当前变量映射与服务器路径写入工作目录 params.yml。
 
-        [EN] Write the current variable mapping into forcing.custom of the
-        workdir params.yml.
+        [EN] Write the current variable mapping and server paths into the
+        workdir params.yml (forcing.custom / forcing.remote_paths).
         """
         workdir = self._paths["workdir"].text().strip() if "workdir" in self._paths else ""
         if not workdir:
@@ -1399,6 +1425,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 raw = yaml.safe_load(f) or {}
             forcing = dict(raw.get("forcing") or {})
             forcing["custom"] = dict(self._forcing_custom or {})
+            forcing["remote_paths"] = dict(self._forcing_remote_paths or {})
             raw["forcing"] = forcing
             with open(params_path, "w", encoding="utf-8") as f:
                 f.write(_dump_yaml_with_comments(raw, yaml))
@@ -1549,6 +1576,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 crop_time_range=crop_time_range,
                 crop_bbox=crop_bbox,
                 custom=self._forcing_custom or None,
+                remote_paths=self._forcing_remote_paths or None,
             )
         except ConfigError as exc:
             self._show_error(str(exc))

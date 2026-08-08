@@ -485,16 +485,27 @@ class WW3PrncNML(NMLPrimitives):
                 checkbox.setChecked(False)
                 continue
             if not os.path.exists(file_path):
-                self.log(tr("forcing_field_not_found", "{prefix}⚠️ 未找到 {field} 强迫场文件，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
-                checkbox.setChecked(False)
-                continue
+                # 服务器路径场：本机无文件，但 manifest 有记录时仍生成 NML
+                # [EN] Server-path field: file is absent locally, but NML is
+                # still generated when the manifest has an entry.
+                from ...infrastructure.forcing.forcing_manifest import load_manifest
+
+                manifest_entry = load_manifest(target_dir).get(field_key) or {}
+                if not manifest_entry or not manifest_entry.get("variables"):
+                    self.log(tr("forcing_field_not_found", "{prefix}⚠️ 未找到 {field} 强迫场文件，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
+                    checkbox.setChecked(False)
+                    continue
 
             # 确保文件在当前工作目录中（或嵌套网格时在父目录中）
             # 使用绝对路径进行比较，更可靠
+            # 服务器路径场（本地无文件、manifest 有记录）跳过位置检查
+            # [EN] Server-path fields (absent locally, present in manifest)
+            # skip the location check.
             abs_file_path = os.path.abspath(file_path)
             abs_target_dir = os.path.abspath(target_dir)
+            is_remote_field = not os.path.exists(file_path)
 
-            if not use_relative_path:
+            if not is_remote_field and not use_relative_path:
                 # 普通网格模式：文件必须在 target_dir 中
                 try:
                     common_path = os.path.commonpath([abs_file_path, abs_target_dir])
@@ -509,19 +520,24 @@ class WW3PrncNML(NMLPrimitives):
                     continue
             else:
                 # 嵌套网格模式：文件应该在父目录（selected_folder）中
-                parent_dir = os.path.dirname(target_dir) if target_dir != self.selected_folder else self.selected_folder
-                abs_parent_dir = os.path.abspath(parent_dir)
-                try:
-                    common_path = os.path.commonpath([abs_file_path, abs_parent_dir])
-                    if common_path != abs_parent_dir:
+                if is_remote_field:
+                    # 远程场没有本地位置约束
+                    # [EN] Remote fields have no local location constraint
+                    pass
+                else:
+                    parent_dir = os.path.dirname(target_dir) if target_dir != self.selected_folder else self.selected_folder
+                    abs_parent_dir = os.path.abspath(parent_dir)
+                    try:
+                        common_path = os.path.commonpath([abs_file_path, abs_parent_dir])
+                        if common_path != abs_parent_dir:
+                            self.log(tr("forcing_field_not_in_parent", "{prefix}⚠️ {field} 强迫场文件不在父目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
+                            checkbox.setChecked(False)
+                            continue
+                    except ValueError:
+                        # 路径不在同一驱动器上（Windows）或无法比较
                         self.log(tr("forcing_field_not_in_parent", "{prefix}⚠️ {field} 强迫场文件不在父目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
                         checkbox.setChecked(False)
                         continue
-                except ValueError:
-                    # 路径不在同一驱动器上（Windows）或无法比较
-                    self.log(tr("forcing_field_not_in_parent", "{prefix}⚠️ {field} 强迫场文件不在父目录中，跳过生成 {file}").format(prefix=prefix, field=field_key, file=config['output_filename']))
-                    checkbox.setChecked(False)
-                    continue
 
             # 从目标目录中已修改时间的 ww3_prnc.nml 复制
             source_nml_path = os.path.join(target_dir, "ww3_prnc.nml")
@@ -562,6 +578,27 @@ class WW3PrncNML(NMLPrimitives):
                     else:
                         filename = os.path.basename(file_path)
                     resolved = self._load_field_resolution(target_dir, field_key, file_path)
+                    if resolved is not None:
+                        var_names = list(resolved.components)
+                        lon_name = resolved.longitude or None
+                        lat_name = resolved.latitude or None
+                        if resolved.thickness:
+                            has_sithick = True
+                            sithick_var = resolved.thickness
+                    else:
+                        var_names = None
+                elif is_remote_field:
+                    # 服务器路径场：filename 与变量映射来自 manifest
+                    # [EN] Server-path field: filename and variable mapping
+                    # come from the manifest.
+                    remote_file = manifest_entry.get("file") or ""
+                    if remote_file:
+                        filename = f"../{remote_file}" if use_relative_path else remote_file
+                    else:
+                        # manifest 缺 file：无法确定文件名，跳过生成
+                        # [EN] Manifest missing file: filename unknown, skip
+                        var_names = None
+                    resolved = self._load_field_resolution(target_dir, field_key, file_path or "")
                     if resolved is not None:
                         var_names = list(resolved.components)
                         lon_name = resolved.longitude or None

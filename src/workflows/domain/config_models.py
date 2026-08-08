@@ -138,6 +138,7 @@ class ForcingConfig:
     crop_time_range: List[str] = field(default_factory=list)
     crop_bbox: List[float] = field(default_factory=list)
     custom: Dict[str, ForcingVariableOverride] = field(default_factory=dict)
+    remote_paths: Dict[str, Optional[str]] = field(default_factory=dict)
 
 
 @dataclass

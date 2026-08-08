@@ -153,14 +153,6 @@ grid:
 #   crop_bbox        – optional crop action default, [west, east, south, north].
 #   auto_associate   – when true, automatically match dropped / selected
 #                      files to forcing variables by filename keyword.
-#   custom           – per-field variable overrides (optional). Every key is
-#                      optional: filled values are validated exactly; empty
-#                      values fall back to automatic detection. Recognized
-#                      roles per field:
-#                        wind/current: longitude, latitude, time, u, v
-#                        level:        longitude, latitude, time, value
-#                        ice:          longitude, latitude, time,
-#                                      concentration, thickness (optional)
 # ────────────────────────────────────────────────────────────────────
 forcing:
   wind: null
@@ -195,6 +187,17 @@ forcing:
       time: null
       concentration: null
       thickness: null
+#   remote_paths      – optional per-field forcing file path ON THE SERVER.
+#                      When set, the field is NOT imported/processed locally;
+#                      the server uses this path directly (useful when files
+#                      only exist on the cluster).
+#                      服务器上的强迫场路径（可选）。填写后本机不再导入/处理
+#                      该场，服务器端直接使用此路径（适用于文件只在集群上的情况）。
+  remote_paths:
+    wind: null
+    current: null
+    level: null
+    ice: null
 # ────────────────────────────────────────────────────────────────────
 # Calculation mode:
 #   mode – 'region' (gridded output over the full domain) or

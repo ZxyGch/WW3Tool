@@ -60,6 +60,7 @@ class ForcingStepViewModel:
         crop_time_range: list[str] | None = None,
         crop_bbox: list[float] | None = None,
         custom: dict | None = None,
+        remote_paths: dict | None = None,
     ) -> PipelineConfig:
         return parse_pipeline_config(
             {
@@ -74,6 +75,7 @@ class ForcingStepViewModel:
                     "crop_time_range": crop_time_range or [],
                     "crop_bbox": crop_bbox or [],
                     "custom": custom or {},
+                    "remote_paths": remote_paths or {},
                 },
             },
             base_dir=Path.cwd(),
