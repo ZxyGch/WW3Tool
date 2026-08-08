@@ -129,9 +129,23 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 self.updateFrameless()
             except Exception:
                 pass
-        _lang = _load_runtime_config().get("LANGUAGE", "zh_CN")
-        _width = 1300 if str(_lang).startswith("en") else 1200
-        self.resize(_width, 760)
+        _config = _load_runtime_config()
+        # 统一窗口大小（中英文一致）：默认 1300×760（即英文状态下的尺寸），
+        # 用户可在设置页「界面设置」卡片自定义 window_width / window_height。
+        # [EN] Unified window size for zh/en (default 1300x760, i.e. the English
+        # size); users can override via window_width / window_height in the
+        # settings page "Interface settings" card.
+        try:
+            _width = int(_config.get("WINDOW_WIDTH") or 1300)
+        except (TypeError, ValueError):
+            _width = 1300
+        try:
+            _height = int(_config.get("WINDOW_HEIGHT") or 760)
+        except (TypeError, ValueError):
+            _height = 760
+        _width = max(900, min(_width, 3840))
+        _height = max(600, min(_height, 2160))
+        self.resize(_width, _height)
         self._match_legacy_titlebar_buttons()
         self._params_path: Path | None = None
         self._loaded_config: PipelineConfig | None = None

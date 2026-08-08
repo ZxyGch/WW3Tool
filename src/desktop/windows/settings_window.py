@@ -513,6 +513,31 @@ class SettingsInterface(QWidget):
         self._combos["LANGUAGE"].currentTextChanged.connect(self._on_language_changed)
         self._combos["MAP_TYPE"].currentIndexChanged.connect(self._on_map_type_changed)
         self._combos["THEME"].currentIndexChanged.connect(self._on_theme_changed)
+        self._build_window_size_fields(grid, 4)
+
+    def _build_window_size_fields(self, grid: QGridLayout, row: int) -> None:
+        """界面设置卡片内：窗口宽/高两个输入框，同一行（单位像素）。
+
+        [EN] Interface settings card: window width/height inputs on the same row
+        (unit: pixels). Saved to params.yml desktop.window_width / window_height;
+        takes effect at next startup.
+        """
+        for i, (key, default, label_key) in enumerate(
+            (
+                ("WINDOW_WIDTH", "1300", "window_width_label"),
+                ("WINDOW_HEIGHT", "760", "window_height_label"),
+            )
+        ):
+            col = i * 2
+            edit = LineEdit()
+            edit.setStyleSheet(styles.input_style())
+            edit.setValidator(int_validator(1))
+            current = self._config.get(key)
+            edit.setText(str(current) if current not in (None, "") else default)
+            self._expand_field(edit)
+            grid.addWidget(self._label(tr(label_key, "窗口宽度:" if key == "WINDOW_WIDTH" else "窗口高度:")), row, col)
+            grid.addWidget(edit, row, col + 1)
+            self._fields[key] = edit
 
     def _build_run_mode_combo(self, grid: QGridLayout, row: int, col: int) -> None:
         combo = ComboBox()
@@ -1266,7 +1291,14 @@ class SettingsInterface(QWidget):
     def _collect_config(self) -> dict:
         updates: dict = {}
         for key, edit in self._fields.items():
-            updates[key] = edit.text().strip()
+            text = edit.text().strip()
+            if key in ("WINDOW_WIDTH", "WINDOW_HEIGHT"):
+                try:
+                    updates[key] = int(text)
+                except ValueError:
+                    updates[key] = ""
+            else:
+                updates[key] = text
         for key, combo in self._combos.items():
             if key == "SERVER_SSH_CONFIG_HOST":
                 data = combo.itemData(combo.currentIndex())

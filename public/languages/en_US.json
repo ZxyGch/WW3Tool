@@ -2678,5 +2678,7 @@
   "cm_job_col_time": "Run Time",
   "cm_job_col_nodes": "Node",
   "cm_job_col_nodes_count": "Nodes",
-  "cm_job_col_cpus": "Cores"
+  "cm_job_col_cpus": "Cores",
+  "window_width_label": "Window Width:",
+  "window_height_label": "Window Height:"
 }

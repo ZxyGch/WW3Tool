@@ -82,6 +82,8 @@ _DESKTOP_YAML_TO_LEGACY = {
     "theme": "THEME",
     "map_type": "MAP_TYPE",
     "run_mode": "RUN_MODE",
+    "window_width": "WINDOW_WIDTH",
+    "window_height": "WINDOW_HEIGHT",
     "recent_workdirs": "RECENT_WORKDIRS",
     "forcing_field_dir": "FORCING_FIELD_DIR_PATH",
 }

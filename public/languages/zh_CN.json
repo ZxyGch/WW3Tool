@@ -2677,5 +2677,7 @@
   "cm_job_col_time": "运行时间",
   "cm_job_col_nodes": "节点",
   "cm_job_col_nodes_count": "节点数",
-  "cm_job_col_cpus": "核数"
+  "cm_job_col_cpus": "核数",
+  "window_width_label": "窗口宽度:",
+  "window_height_label": "窗口高度:"
 }
