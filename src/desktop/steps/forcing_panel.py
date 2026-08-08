@@ -15,17 +15,58 @@ from workflows.support.translations import tr
 
 
 class _PencilIconButton(IconWidget):
-    """可点击的笔形图标按钮（图标按控件 rect 居中绘制）。
+    """可点击的笔形图标按钮：图标内缩居中绘制（不铺满），带按钮边框/悬停样式。
 
-    [EN] Clickable pencil icon button (icon drawn centered over the widget rect).
+    [EN] Clickable pencil icon button: icon drawn inset and centered (not
+    stretched to fill), with button border / hover styling.
     """
 
     clicked = pyqtSignal()
+
+    def __init__(self, icon, parent=None):
+        # IconWidget 的 @singledispatchmethod __init__ 与子类化冲突,
+        # 直接初始化 QWidget 基类并设置图标
+        # [EN] IconWidget's @singledispatchmethod __init__ conflicts with
+        # subclassing; initialize the QWidget base directly and set the icon.
+        QWidget.__init__(self, parent)
+        self.setIcon(icon)
+        # QWidget 默认不绘制 QSS 背景/边框，需显式开启
+        # [EN] QWidget does not paint QSS background/border by default
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+    def paintEvent(self, event) -> None:
+        from PyQt6.QtGui import QPainter
+        from qfluentwidgets.common.icon import drawIcon
+
+        painter = QPainter(self)
+        painter.setRenderHints(
+            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
+        )
+        # 图标绘制区域内缩 22%，避免铺满控件显得过大
+        # [EN] Inset the icon area by 22% so it does not fill the whole widget
+        margin = max(1, int(self.width() * 0.22))
+        icon_rect = self.rect().adjusted(margin, margin, -margin, -margin)
+        drawIcon(self._icon, painter, icon_rect)
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
             self.clicked.emit()
         super().mouseReleaseEvent(event)
+
+
+_PENCIL_BUTTON_STYLE = """
+QWidget {
+    background-color: rgba(128, 128, 128, 0.08);
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 4px;
+}
+QWidget:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+QWidget:pressed {
+    background-color: rgba(128, 128, 128, 0.3);
+}
+"""
 
 
 class ForcingStepPanel:
@@ -248,6 +289,7 @@ class ForcingStepPanel:
         mapping_button = _PencilIconButton(FluentIcon.PENCIL_INK)
         mapping_button.setFixedSize(side, side)
         mapping_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        mapping_button.setStyleSheet(_PENCIL_BUTTON_STYLE)
         mapping_button.setToolTip(tr("step2_variable_mapping_tip", "变量映射与服务器路径（经度/纬度/时间/分量）"))
         mapping_button.clicked.connect(lambda: open_mapping(key))
         grid.addWidget(QLabel(label), row, 0)
