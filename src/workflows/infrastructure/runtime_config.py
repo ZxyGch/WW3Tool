@@ -803,6 +803,18 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
      "#   crop_bbox        – optional crop action default, [west, east, south, north].\n"
      "#   auto_associate   – when true, automatically match dropped / selected\n"
      "#                      files to forcing variables by filename keyword.\n"
+     "#   custom           – per-field variable overrides (optional). Every key is\n"
+     "#                      optional: filled values are validated exactly; empty\n"
+     "#                      values fall back to automatic detection. Recognized\n"
+     "#                      roles per field:\n"
+     "#                        wind/current: longitude, latitude, time, u, v\n"
+     "#                        level:        longitude, latitude, time, value\n"
+     "#                        ice:          longitude, latitude, time,\n"
+     "#                                      concentration, thickness (optional)\n"
+     "#   remote_paths     – optional per-field forcing file path ON THE SERVER.\n"
+     "#                      When set, the field is NOT imported/processed locally;\n"
+     "#                      the server uses this path directly (useful when files\n"
+     "#                      only exist on the cluster).\n"
      "# ────────────────────────────────────────────────────────────────────"),
     ("grid:",
      "# ────────────────────────────────────────────────────────────────────\n"

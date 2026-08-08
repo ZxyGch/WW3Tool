@@ -4,13 +4,28 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
-from qfluentwidgets import ComboBox, FluentIcon, LineEdit, PrimaryPushButton
+from qfluentwidgets import ComboBox, FluentIcon, IconWidget, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
 from ..components.right_aligned_controls import create_right_aligned_check_box
 from workflows.support.translations import tr
+
+
+class _PencilIconButton(IconWidget):
+    """可点击的笔形图标按钮（图标按控件 rect 居中绘制）。
+
+    [EN] Clickable pencil icon button (icon drawn centered over the widget rect).
+    """
+
+    clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class ForcingStepPanel:
@@ -226,15 +241,15 @@ class ForcingStepPanel:
         clear_button.setFixedSize(side, side)
         clear_button.setToolTip(tr("step2_clear_forcing_selection", "清除选择"))
         # 铅笔按钮：打开变量映射/服务器路径编辑弹窗，位于清除按钮左侧，
-        # 使用框架自带 FluentIcon.PENCIL_INK 图标（与侧边栏同款风格）
+        # 使用框架 FluentIcon.PENCIL_INK 图标，按控件 rect 居中绘制
         # [EN] Pencil button: opens the variable mapping / server path dialog,
         # positioned to the left of the clear button; uses the framework's
-        # FluentIcon.PENCIL_INK icon (same style as the sidebar).
-        mapping_button = create_button("", lambda _checked=False: open_mapping(key))
-        mapping_button.setIcon(FluentIcon.PENCIL_INK.icon())
-        mapping_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        # FluentIcon.PENCIL_INK icon drawn centered over the widget rect.
+        mapping_button = _PencilIconButton(FluentIcon.PENCIL_INK)
         mapping_button.setFixedSize(side, side)
+        mapping_button.setCursor(Qt.CursorShape.PointingHandCursor)
         mapping_button.setToolTip(tr("step2_variable_mapping_tip", "变量映射与服务器路径（经度/纬度/时间/分量）"))
+        mapping_button.clicked.connect(lambda: open_mapping(key))
         grid.addWidget(QLabel(label), row, 0)
         grid.addWidget(button, row, 1)
         grid.addWidget(mapping_button, row, 2)
