@@ -2680,5 +2680,22 @@
   "cm_job_col_nodes_count": "Nodes",
   "cm_job_col_cpus": "Cores",
   "window_width_label": "Window Width:",
-  "window_height_label": "Window Height:"
+  "window_height_label": "Window Height:",
+  "step2_variable_mapping": "Variable Mapping",
+  "step2_variable_mapping_tip": "Customize variable mapping for this file (lon/lat/time/components)",
+  "forcing_mapping_title": "Variable mapping: {field}",
+  "forcing_mapping_hint": "Select the variable for each role of {field}. Leave empty (auto-detect) to match common names and CF attributes.",
+  "forcing_mapping_file": "File: {path}",
+  "forcing_mapping_incomplete": "Incomplete mapping",
+  "forcing_mapping_required_missing": "Required roles not assigned: {roles}",
+  "forcing_mapping_no_file": "⚠️ Please choose a {field} forcing file first, then open variable mapping.",
+  "forcing_mapping_saved": "✅ Saved {field} variable mapping: {mapping}",
+  "forcing_mapping_save_failed": "⚠️ Failed to write variable mapping to workdir: {error}",
+  "forcing_auto_resolve_failed": "⚠️ {field} auto-detection incomplete: {error}. Open \"Variable Mapping\" to assign manually.",
+  "forcing_auto_resolve_error": "⚠️ {field} variable resolution failed: {error}",
+  "forcing_auto_resolve_ok": "✅ {field} variables auto-detected: lon {lon}, lat {lat}, time {time}, vars {vars}",
+  "cli_help_inspect_forcing": "Inspect NetCDF forcing variable auto-detection (read-only)",
+  "cli_help_inspect_forcing_field": "Forcing field type (wind/current/level/ice)",
+  "cli_help_inspect_forcing_file": "NetCDF forcing file path",
+  "cli_help_inspect_forcing_workdir": "Optional workdir whose params.yml supplies forcing.custom overrides"
 }

@@ -13,6 +13,7 @@ from pathlib import Path
 from PyQt6.QtCore import QTimer, QUrl, Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QFrame,
     QLabel,
@@ -66,6 +67,7 @@ from workflows.support.translations import tr
 
 from ..background_runner import BackgroundRunner
 from ..components.forcing_progress_dialog import ForcingProgressDialog
+from ..components.forcing_variable_mapping_dialog import ForcingVariableMappingDialog
 from ..components.image_gallery_drawer import ImageGalleryHost
 from ..components.section_title import create_section_title
 from .settings_window import SettingsInterface
@@ -778,6 +780,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             combo_style=self._combo_style,
             browse_path=self._browse_path,
             clear_path=self._clear_forcing_path,
+            open_mapping=self._open_variable_mapping,
             show_file_info=self._show_forcing_files_info,
             crop_import=self._crop_forcing_import,
             direct_import=self._direct_forcing_import,
@@ -786,6 +789,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             view_map=self._view_forcing_region_map,
             mode_changed=self._on_forcing_mode_changed,
         )
+        self._forcing_custom: dict = {}
         self._paths.update(self._forcing_panel.paths)
         self._path_buttons.update(self._forcing_panel.path_buttons)
         self._mode = self._forcing_panel.mode
@@ -1316,6 +1320,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 # 先同步刷新公共范围，再异步获取文件信息，避免并发访问同一文件
                 self._refresh_forcing_common_ranges(clear_if_empty=False)
                 self._show_selected_forcing_file_info(key, selected)
+                self._auto_resolve_forcing_variables(key, selected)
                 self._append_log(
                     tr(
                         "step2_wait_confirm_import",
@@ -1333,6 +1338,132 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             return self._forcing_vm.report_file_overviews(files)
 
         self._runner.run(task, self._on_forcing_info_done)
+
+    # ── 强迫场变量映射（方案 §9）────────────────────────────────────
+    # [EN] Forcing variable mapping (spec §9)
+
+    def _open_variable_mapping(self, key: str) -> None:
+        """打开指定场的变量映射窗口。
+
+        [EN] Open the variable mapping dialog for a field.
+        """
+        from workflows.infrastructure.forcing.forcing_variable_resolver import inspect_variables
+
+        path = self._paths[key].text().strip() if key in self._paths else ""
+        if not path or not self._forcing_path_is_readable(path):
+            self._append_log(
+                tr(
+                    "forcing_mapping_no_file",
+                    "⚠️ 请先为 {field} 选择强迫场文件，再打开变量映射。",
+                ).format(field=key)
+            )
+            return
+        try:
+            variables = inspect_variables(path)
+        except Exception as exc:
+            self._show_error(tr("forcing_read_failed", "读取文件失败：{error}").format(error=exc))
+            return
+        current = (self._forcing_custom or {}).get(key) or {}
+        dialog = ForcingVariableMappingDialog(self, key, path, variables, current)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            mapping = dialog.mapping()
+            self._forcing_custom = dict(self._forcing_custom or {})
+            self._forcing_custom[key] = mapping
+            self._save_forcing_custom_to_workdir()
+            filled = {k: v for k, v in mapping.items() if v}
+            self._append_log(
+                tr(
+                    "forcing_mapping_saved",
+                    "✅ 已保存 {field} 变量映射：{mapping}",
+                ).format(field=key, mapping=filled or "全部自动识别")
+            )
+
+    def _save_forcing_custom_to_workdir(self) -> None:
+        """把当前变量映射写入工作目录 params.yml 的 forcing.custom。
+
+        [EN] Write the current variable mapping into forcing.custom of the
+        workdir params.yml.
+        """
+        workdir = self._paths["workdir"].text().strip() if "workdir" in self._paths else ""
+        if not workdir:
+            return
+        params_path = os.path.join(workdir, "params.yml")
+        if not os.path.isfile(params_path):
+            return
+        try:
+            from workflows.application.configuration import _import_yaml
+            from workflows.infrastructure.runtime_config import _dump_yaml_with_comments
+
+            yaml = _import_yaml()
+            with open(params_path, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+            forcing = dict(raw.get("forcing") or {})
+            forcing["custom"] = dict(self._forcing_custom or {})
+            raw["forcing"] = forcing
+            with open(params_path, "w", encoding="utf-8") as f:
+                f.write(_dump_yaml_with_comments(raw, yaml))
+        except Exception as exc:
+            self._append_log(
+                tr("forcing_mapping_save_failed", "⚠️ 写入工作目录变量映射失败：{error}").format(error=exc)
+            )
+
+    def _auto_resolve_forcing_variables(self, key: str, path: str) -> None:
+        """选择文件后自动解析变量：成功显示结果，失败/歧义自动打开映射窗口。
+
+        [EN] Auto-resolve variables after file selection: show the result on
+        success; open the mapping dialog on failure/ambiguity.
+        """
+        from workflows.domain.config_models import ForcingVariableOverride
+        from workflows.infrastructure.forcing.forcing_variable_resolver import (
+            ForcingVariableError,
+            resolve_forcing_variables,
+        )
+
+        current = (self._forcing_custom or {}).get(key) or {}
+        override = ForcingVariableOverride(**{k: v for k, v in current.items() if v})
+
+        def task():
+            return resolve_forcing_variables(path, key, override)
+
+        def done(result: object):
+            # BackgroundRunner 把工作线程异常包装成 {"success": False, "error": ...}
+            # [EN] BackgroundRunner wraps worker exceptions as {"success": False, "error": ...}
+            if isinstance(result, dict) and not result.get("success", True):
+                self._append_log(
+                    tr("forcing_auto_resolve_error", "⚠️ {field} 变量解析失败：{error}").format(
+                        field=key, error=result.get("error", "未知错误")
+                    )
+                )
+                self._open_variable_mapping(key)
+            elif isinstance(result, ForcingVariableError):
+                self._append_log(
+                    tr(
+                        "forcing_auto_resolve_failed",
+                        "⚠️ {field} 自动识别未完成：{error}。请打开「变量映射」手动指定。",
+                    ).format(field=key, error=str(result))
+                )
+                self._open_variable_mapping(key)
+            elif isinstance(result, Exception):
+                self._append_log(
+                    tr("forcing_auto_resolve_error", "⚠️ {field} 变量解析失败：{error}").format(
+                        field=key, error=result
+                    )
+                )
+            else:
+                self._append_log(
+                    tr(
+                        "forcing_auto_resolve_ok",
+                        "✅ {field} 变量自动识别成功：经度 {lon}、纬度 {lat}、时间 {time}、分量 {vars}",
+                    ).format(
+                        field=key,
+                        lon=result.longitude,
+                        lat=result.latitude,
+                        time=result.source_time,
+                        vars=", ".join(result.components),
+                    )
+                )
+
+        self._runner.run(task, done)
 
     def _show_forcing_files_info(self) -> None:
         if self._busy:
@@ -1417,6 +1548,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 auto_associate=self._auto_associate.isChecked(),
                 crop_time_range=crop_time_range,
                 crop_bbox=crop_bbox,
+                custom=self._forcing_custom or None,
             )
         except ConfigError as exc:
             self._show_error(str(exc))

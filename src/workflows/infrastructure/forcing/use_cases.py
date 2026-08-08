@@ -28,10 +28,17 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ...domain.forcing_fields import ForcingField, Step2Files
+from ...domain.config_models import ForcingVariableOverride, ResolvedForcingVariables
 from ...support.translations import tr
 
 from .file_path_manager import FilePathManager
 from .file_service import FileService
+from .forcing_manifest import save_manifest_entry
+from .forcing_variable_resolver import (
+    ForcingVariableError,
+    resolve_all_fields,
+    resolve_forcing_variables,
+)
 from .variable_detector import VariableDetector
 
 
@@ -160,6 +167,7 @@ class ImportForcingFileUseCase:
         *,
         crop_time_range: list[str] | tuple[str, str] | None = None,
         crop_bbox: list[float] | tuple[float, float, float, float] | None = None,
+        custom: Optional[ForcingVariableOverride] = None,
     ) -> ForcingImportResult:
         """执行单场或多场（自动关联）导入。
 
@@ -173,6 +181,7 @@ class ImportForcingFileUseCase:
             process_mode: ``copy`` 或 ``move``
             crop_time_range: 本次导入需要裁剪时的时间范围
             crop_bbox: 本次导入需要裁剪时的经纬度范围
+            custom: 用户自定义变量映射；为空时自动识别
 
         [EN] Parameters:
             field: User-selected field type (current/level/ice)
@@ -182,6 +191,7 @@ class ImportForcingFileUseCase:
             process_mode: ``copy`` or ``move``
             crop_time_range: Time range used when this import action crops data
             crop_bbox: lon/lat bounding box used when this import action crops data
+            custom: User custom variable mapping; empty means auto-detection
 
         返回:
             ``ForcingImportResult``，失败时 ``success=False`` 并附带原因
@@ -189,8 +199,30 @@ class ImportForcingFileUseCase:
         [EN] Returns:
             ``ForcingImportResult``; ``success=False`` with reason on failure.
         """
-        inspect_result = self._variable_detector.inspect_forcing_fields(file_path)
-        detected_fields = inspect_result.get("detected", {}) or {}
+        # 统一解析服务：先解析后导入（方案 §4/§6）
+        # [EN] Unified resolver: resolve first, then import (spec §4/§6)
+        try:
+            resolved = resolve_forcing_variables(file_path, field.value, custom)
+        except ForcingVariableError as exc:
+            return ForcingImportResult(
+                success=False,
+                field=field,
+                invalid_reason="variable_mapping",
+                error=str(exc),
+            )
+        except Exception as exc:
+            return ForcingImportResult(
+                success=False,
+                field=field,
+                invalid_reason="read_failed",
+                error=tr("forcing_read_failed", "读取文件失败：{error}").format(error=exc),
+            )
+
+        if auto_associate:
+            all_resolved = resolve_all_fields(file_path, {field.value: custom} if custom else None)
+            detected_fields = {f: True for f in all_resolved}
+        else:
+            detected_fields = {field.value: True}
         if not detected_fields.get(field.value, False):
             return ForcingImportResult(
                 success=False,
@@ -202,7 +234,9 @@ class ImportForcingFileUseCase:
                 ).format(field=field.value),
             )
 
-        fields = inspect_result.get("fields", []) or [field.value]
+        fields = [f for f in ("wind", "current", "level", "ice") if detected_fields.get(f)]
+        if not fields:
+            fields = [field.value]
         if auto_associate:
             target_filename = self._path_manager.generate_forcing_filename(fields, auto_associate=True)
         else:
@@ -240,9 +274,12 @@ class ImportForcingFileUseCase:
                     time_range=crop_time_range,
                     bbox=crop_bbox,
                     remove_source=process_mode == "move",
+                    variables=resolved,
                 )
             else:
-                copied_file = self._file_service.copy_and_fix_forcing_file(file_path, target_file, process_mode)
+                copied_file = self._file_service.copy_and_fix_forcing_file(
+                    file_path, target_file, process_mode, variables=resolved
+                )
             if not copied_file:
                 return ForcingImportResult(
                     success=False,
@@ -255,6 +292,11 @@ class ImportForcingFileUseCase:
         files_patch.set(field, actual_file_path)
         if auto_associate:
             _merge_forcing_files(files_patch, self._auto_associate_use_case.execute(detected_fields, actual_file_path))
+
+        # 持久化解析结果到工作目录 manifest（方案 §7）
+        # [EN] Persist resolution results to the workdir manifest (spec §7)
+        for resolved_field, rv in (all_resolved if auto_associate else {field.value: resolved}).items():
+            save_manifest_entry(selected_folder, resolved_field, rv, os.path.basename(target_file))
 
         display_log_path = os.path.normpath(file_path)
         if field in {ForcingField.CURRENT, ForcingField.ICE} and process_mode == "move" and need_process:

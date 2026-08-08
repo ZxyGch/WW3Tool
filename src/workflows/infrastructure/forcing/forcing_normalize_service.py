@@ -27,7 +27,7 @@ import multiprocessing
 import os
 import traceback
 from concurrent.futures import ProcessPoolExecutor
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import numpy as np
 from netCDF4 import Dataset
@@ -39,27 +39,12 @@ from .forcing_time_metadata import (
     normalize_calendar_for_ww3,
     normalize_time_units_for_ww3,
 )
-
-
-# ── 强迫场变量名候选列表 → 标准名映射 ──────────────────────────────
-# [EN] Forcing variable name candidates → standard name mapping
-
-_WIND_U_CANDIDATES = [
-    "u10", "U10", "wndewd", "WNDEWD", "eastward_wind",
-    "u", "uwnd", "UWND", "uwnd10m", "UWND10M",
-]
-_WIND_V_CANDIDATES = [
-    "v10", "V10", "wndnwd", "WNDNWD", "northward_wind",
-    "v", "vwnd", "VWND", "vwnd10m", "VWND10M",
-]
-_CURRENT_U_CANDIDATES = ["uo", "UO"]
-_CURRENT_V_CANDIDATES = ["vo", "VO"]
-_LEVEL_CANDIDATES = ["zos", "ZOS"]
-_ICE_CANDIDATES = ["siconc", "SICONC"]
-
-_LON_CANDIDATES = ["longitude", "lon", "LONGITUDE", "LON", "Longitude"]
-_LAT_CANDIDATES = ["latitude", "lat", "LATITUDE", "LAT", "Latitude"]
-_TIME_CANDIDATES = ["valid_time", "time", "Time", "TIME", "t", "MT", "mt"]
+from .forcing_variable_resolver import (
+    ForcingVariableError,
+    resolve_all_fields,
+    resolve_forcing_variables,
+)
+from ...domain.config_models import ForcingVariableOverride, ResolvedForcingVariables
 
 
 def _transform_chunks_for_pool(chunks, lat_needs_flip, lat_axis, lon_needs_flip, lon_axis):
@@ -127,52 +112,19 @@ def _get_available_memory_bytes() -> int:
     return 0
 
 
-def _pick_var_name(src_variables, candidates):
-    """从 NetCDF 变量字典中按候选列表顺序匹配第一个存在的变量名。
-
-    [EN] Match the first variable name present in the NetCDF variable dictionary from the candidate list.
-    """
-    for name in candidates:
-        if name in src_variables:
-            return name
-    return None
-
-
-def _detect_forcing_var_map(src_variables) -> Dict[str, Tuple[str, str]]:
-    """检测源文件中的强迫场变量，返回 ``{标准名: (源变量名, 场类型)}`` 映射。
-
-    [EN] Detect forcing variables in source, returning
-    ``{standard_name: (source_name, field_type)}`` mapping.
-    """
-    var_map: Dict[str, Tuple[str, str]] = {}
-
-    u_name = _pick_var_name(src_variables, _WIND_U_CANDIDATES)
-    v_name = _pick_var_name(src_variables, _WIND_V_CANDIDATES)
-    if u_name and v_name:
-        var_map["u10"] = (u_name, "wind")
-        var_map["v10"] = (v_name, "wind")
-
-    cu = _pick_var_name(src_variables, _CURRENT_U_CANDIDATES)
-    cv = _pick_var_name(src_variables, _CURRENT_V_CANDIDATES)
-    if cu and cv:
-        var_map["uo"] = (cu, "current")
-        var_map["vo"] = (cv, "current")
-
-    zos_name = _pick_var_name(src_variables, _LEVEL_CANDIDATES)
-    if zos_name:
-        var_map["zos"] = (zos_name, "level")
-
-    ice_name = _pick_var_name(src_variables, _ICE_CANDIDATES)
-    if ice_name:
-        var_map["siconc"] = (ice_name, "ice")
-
-    return var_map
-
-
 class ForcingNormalizeService:
     """将强迫场 NetCDF 归一化为 WW3 标准布局的服务类。
 
     [EN] Service class for normalizing forcing field NetCDF into the WW3 standard layout.
+
+    自变量映射功能起，不再重命名强迫场/经纬度变量（方案 §6）：数据变量与
+    经纬度变量保留源名；仅时间变量统一为 ``time``（WW3 无 ``FILE%TIME``）。
+    变量识别统一由 ``forcing_variable_resolver`` 完成。
+
+    [EN] Since variable mapping support, forcing/coordinate variables are no
+    longer renamed (spec §6): data and lon/lat variables keep their source
+    names; only the time variable is standardized to ``time`` (WW3 has no
+    ``FILE%TIME``). Identification is delegated to ``forcing_variable_resolver``.
     """
 
     def normalize(
@@ -180,6 +132,7 @@ class ForcingNormalizeService:
         source_file: str,
         output_file: str,
         log: Optional[Callable[[str], None]] = None,
+        variables: Optional[object] = None,
     ) -> bool:
         """读取源文件并写出归一化后的强迫场 NetCDF。
 
@@ -189,9 +142,21 @@ class ForcingNormalizeService:
             source_file: 原始 NetCDF 路径
             output_file: 目标路径
             log: 可选进度/诊断日志回调
+            variables: 解析结果（单个或列表，对应一个或多个强迫场）；
+                为 ``None`` 时调用统一解析服务自动识别全部场
+
+        [EN] Parameters:
+            source_file: Source NetCDF path
+            output_file: Target path
+            log: Optional progress/diagnostic log callback
+            variables: Resolved variables (single or list, for one or more
+                forcing fields); when ``None``, all fields are auto-resolved.
 
         返回:
             成功写入为 ``True``，失败为 ``False``
+
+        [EN] Returns:
+            ``True`` on success, ``False`` on failure.
         """
         if not source_file:
             self._emit(log, tr("log_select_origin_file_first", "❌ 请先选择原始数据文件！"))
@@ -210,16 +175,38 @@ class ForcingNormalizeService:
             with Dataset(source_file, "r") as src:
                 src.set_auto_mask(False)
 
-                lon_name = _pick_var_name(src.variables, _LON_CANDIDATES)
-                lat_name = _pick_var_name(src.variables, _LAT_CANDIDATES)
-                time_name = _pick_var_name(src.variables, _TIME_CANDIDATES)
+                resolved_list = self._collect_resolved_variables(source_file, variables)
+                if not resolved_list:
+                    raise KeyError(
+                        tr(
+                            "forcing_vars_not_found",
+                            "❌ 未检测到可识别的强迫场变量，请在变量映射中手动指定",
+                        )
+                    )
 
-                if not lon_name:
-                    raise KeyError(tr("log_lon_var_not_found", "❌ 未找到经度变量（longitude/lon/Longitude）"))
-                if not lat_name:
-                    raise KeyError(tr("log_lat_var_not_found", "❌ 未找到纬度变量（latitude/lat/Latitude）"))
-                if not time_name:
-                    raise KeyError(tr("log_time_var_not_found", "❌ 未找到时间变量（valid_time/time/MT）"))
+                lon_name = resolved_list[0].longitude
+                lat_name = resolved_list[0].latitude
+                time_name = resolved_list[0].source_time
+                output_time = resolved_list[0].output_time or "time"
+                for _rv in resolved_list:
+                    if (
+                        _rv.longitude != lon_name
+                        or _rv.latitude != lat_name
+                        or _rv.source_time != time_name
+                    ):
+                        raise ValueError(
+                            tr(
+                                "forcing_multi_field_coord_mismatch",
+                                "❌ 同一文件的多个强迫场必须使用相同的经纬度/时间变量",
+                            )
+                        )
+
+                if lon_name not in src.variables:
+                    raise KeyError(tr("log_lon_var_not_found", "❌ 未找到经度变量：{name}").format(name=lon_name))
+                if lat_name not in src.variables:
+                    raise KeyError(tr("log_lat_var_not_found", "❌ 未找到纬度变量：{name}").format(name=lat_name))
+                if time_name not in src.variables:
+                    raise KeyError(tr("log_time_var_not_found", "❌ 未找到时间变量：{name}").format(name=time_name))
 
                 longitude = np.asarray(src.variables[lon_name][:])
                 latitude = np.asarray(src.variables[lat_name][:])
@@ -229,48 +216,37 @@ class ForcingNormalizeService:
                 original_time_units = getattr(time_var_obj, "units", None)
                 original_time_calendar = getattr(time_var_obj, "calendar", "gregorian")
 
-                # 检测强迫场变量
-                # [EN] Detect forcing variables
-                forcing_var_map = _detect_forcing_var_map(src.variables)
-                if not forcing_var_map:
-                    raise KeyError(
-                        tr(
-                            "forcing_vars_not_found",
-                            "❌ 未检测到强迫场变量（u10/v10, uo/vo, zos, siconc）",
-                        )
-                    )
-
-                # 收集所有数据变量的信息
-                # [EN] Collect information for all data variables
+                # 收集所有数据变量（分量 + 可选冰厚）的信息，保留源变量名
+                # [EN] Collect metadata for all data variables (components + optional ice thickness), keeping source names
                 data_var_infos = []
-                for std_name, (src_name, field_type) in forcing_var_map.items():
-                    src_var = src.variables[src_name]
-                    shape = src_var.shape
-                    dims = list(src_var.dimensions) if hasattr(src_var, "dimensions") else None
-                    dtype = src_var.dtype
+                for _rv in resolved_list:
+                    for _comp in list(_rv.components) + ([_rv.thickness] if _rv.thickness else []):
+                        src_var = src.variables[_comp]
+                        shape = src_var.shape
+                        dims = list(src_var.dimensions) if hasattr(src_var, "dimensions") else None
+                        dtype = src_var.dtype
 
-                    def _snapshot_filters(var_obj):
-                        try:
-                            if hasattr(var_obj, "filters"):
-                                result = var_obj.filters()
-                                if isinstance(result, dict):
-                                    return result
+                        def _snapshot_filters(var_obj):
+                            try:
+                                if hasattr(var_obj, "filters"):
+                                    result = var_obj.filters()
+                                    if isinstance(result, dict):
+                                        return result
                                 # [EN] Some netCDF4 versions may return non-dict; convert if possible
-                                if isinstance(result, (list, tuple)):
-                                    return dict(result)
-                        except Exception:
-                            pass
-                        return {}
+                                    if isinstance(result, (list, tuple)):
+                                        return dict(result)
+                            except Exception:
+                                pass
+                            return {}
 
-                    data_var_infos.append({
-                        "std_name": std_name,
-                        "src_name": src_name,
-                        "field_type": field_type,
-                        "shape": shape,
-                        "dims": dims,
-                        "dtype": dtype,
-                        "filters": _snapshot_filters(src_var),
-                    })
+                        data_var_infos.append({
+                            "src_name": _comp,
+                            "field": _rv.field,
+                            "shape": shape,
+                            "dims": dims,
+                            "dtype": dtype,
+                            "filters": _snapshot_filters(src_var),
+                        })
 
                 # 以第一个数据变量为基准确定维度顺序
                 # [EN] Determine dimension order based on the first data variable
@@ -314,9 +290,13 @@ class ForcingNormalizeService:
                             ).format(shape=primary_shape, lat_len=len(latitude), lon_len=len(longitude))
                         )
 
-                # 输出维度顺序
-                # [EN] Output dimension order
-                _std_names_map = {time_dim_idx: "time", lat_dim_idx: "latitude", lon_dim_idx: "longitude"}
+                # 输出维度顺序：时间统一为 time，经纬度保留源坐标变量名
+                # [EN] Output dimension order: time standardized to ``time``, lon/lat keep source names
+                _std_names_map = {
+                    time_dim_idx: output_time,
+                    lat_dim_idx: lat_name,
+                    lon_dim_idx: lon_name,
+                }
                 output_dim_order = [_std_names_map[i] for i in sorted(_std_names_map.keys())]
 
                 lon_dtype = src.variables[lon_name].dtype
@@ -350,13 +330,9 @@ class ForcingNormalizeService:
             latitude = latitude[::-1]
 
         # ── 短路判断 ────────────────────────────────────────────────────
-        # [EN] Short-circuit check
-        needs_rename = (
-            lon_name.lower() != "longitude"
-            or lat_name.lower() != "latitude"
-            or time_name.lower() != "time"
-            or any(std_name != src_name for std_name, (src_name, _field_type) in forcing_var_map.items())
-        )
+        # [EN] Short-circuit check: only time standardization and lat flip
+        # require a rewrite (data/lon/lat variable names are preserved now)
+        needs_rename = time_name.lower() != "time" or lat_needs_flip
 
         time_metadata_issues = audit_time_metadata_for_ww3(source_file, time_name=time_name)
         needs_time_metadata_fix = bool(time_metadata_issues)
@@ -443,7 +419,7 @@ class ForcingNormalizeService:
             target_storage = 16 * 1024 * 1024
             tc = max(1, min(n_time, target_storage // plane_bytes))
             tc = min(tc, 16)
-            size_map = {"time": tc, "latitude": n_lat, "longitude": n_lon}
+            size_map = {output_time: tc, lat_name: n_lat, lon_name: n_lon}
             return tuple(size_map[d] for d in output_dim_order)
 
         def _transform_chunk(chunk, ndim):
@@ -484,32 +460,24 @@ class ForcingNormalizeService:
                     except Exception:
                         pass
 
-                # 创建标准化维度
-                # [EN] Create standardized dimensions
-                dst.createDimension("longitude", n_lon)
-                dst.createDimension("latitude", n_lat)
-                dst.createDimension("time", n_time)
+                # 创建输出维度：经纬度保留源坐标变量名，时间统一为 time
+                # [EN] Create output dimensions: lon/lat keep source names, time standardized
+                dst.createDimension(lon_name, n_lon)
+                dst.createDimension(lat_name, n_lat)
+                dst.createDimension(output_time, n_time)
                 # 复制源文件中其他维度（如 depth 等）
                 # [EN] Copy other dimensions from source (e.g., depth)
                 for dim_name, dim_obj in src.dimensions.items():
-                    std_dim = {"longitude": "longitude", "latitude": "latitude", "time": "time"}.get(
-                        lon_name if dim_name == lon_name else (
-                            lat_name if dim_name == lat_name else (
-                                time_name if dim_name == time_name else dim_name
-                            )
-                        ),
-                        dim_name,
-                    )
-                    if std_dim in ("longitude", "latitude", "time"):
+                    if dim_name in (lon_name, lat_name, time_name, output_time):
                         continue
-                    if std_dim not in dst.dimensions:
-                        dst.createDimension(std_dim, len(dim_obj) if not dim_obj.isunlimited() else None)
+                    if dim_name not in dst.dimensions:
+                        dst.createDimension(dim_name, len(dim_obj) if not dim_obj.isunlimited() else None)
 
-                # 创建坐标变量
-                # [EN] Create coordinate variables
-                lon_var = dst.createVariable("longitude", lon_dtype, ("longitude",))
-                lat_var = dst.createVariable("latitude", lat_dtype, ("latitude",))
-                time_var = dst.createVariable("time", time_dtype, ("time",))
+                # 创建坐标变量（保留源变量名；时间统一为 time）
+                # [EN] Create coordinate variables (source names preserved; time standardized)
+                lon_var = dst.createVariable(lon_name, lon_dtype, (lon_name,))
+                lat_var = dst.createVariable(lat_name, lat_dtype, (lat_name,))
+                time_var = dst.createVariable(output_time, time_dtype, (output_time,))
 
                 # 创建数据变量
                 # [EN] Create data variables
@@ -544,9 +512,19 @@ class ForcingNormalizeService:
                 dst_data_vars = {}
                 for info in data_var_infos:
                     cs = _build_chunksizes(info["dtype"])
-                    dst_data_vars[info["std_name"]] = _create_data_var(
-                        info["std_name"], info["dtype"], info["filters"], cs
+                    dst_data_vars[info["src_name"]] = _create_data_var(
+                        info["src_name"], info["dtype"], info["filters"], cs
                     )
+                    # 保留源变量全部属性（方案 §6：不重命名、保留属性）
+                    # [EN] Preserve all source variable attributes (spec §6)
+                    src_var_obj = src.variables[info["src_name"]]
+                    for attr_name in src_var_obj.ncattrs():
+                        try:
+                            dst_data_vars[info["src_name"]].setncattr(
+                                attr_name, src_var_obj.getncattr(attr_name)
+                            )
+                        except Exception:
+                            pass
 
                 # 写入坐标
                 # [EN] Write coordinates
@@ -573,7 +551,7 @@ class ForcingNormalizeService:
                     for info in data_var_infos:
                         src_var = src.variables[info["src_name"]]
                         data = np.asarray(src_var[:])
-                        dst_data_vars[info["std_name"]][:] = _transform_chunk(data, len(info["shape"]))
+                        dst_data_vars[info["src_name"]][:] = _transform_chunk(data, len(info["shape"]))
 
                 elif use_parallel:
                     self._emit(
@@ -619,14 +597,14 @@ class ForcingNormalizeService:
                                 prev_start, prev_end, prev_future = pending
                                 prev_results = prev_future.result()
                                 for i, info in enumerate(data_var_infos):
-                                    dst_data_vars[info["std_name"]][prev_start:prev_end, :, :] = prev_results[i]
+                                    dst_data_vars[info["src_name"]][prev_start:prev_end, :, :] = prev_results[i]
                             pending = (start, end, future)
 
                         if pending is not None:
                             prev_start, prev_end, prev_future = pending
                             prev_results = prev_future.result()
                             for i, info in enumerate(data_var_infos):
-                                dst_data_vars[info["std_name"]][prev_start:prev_end, :, :] = prev_results[i]
+                                dst_data_vars[info["src_name"]][prev_start:prev_end, :, :] = prev_results[i]
                 else:
                     # 顺序分块
                     # [EN] Sequential chunking
@@ -644,7 +622,7 @@ class ForcingNormalizeService:
                             src_var = src.variables[info["src_name"]]
                             slices = _make_read_slices(info["shape"], start, end)
                             chunk_data = np.asarray(src_var[slices])
-                            dst_data_vars[info["std_name"]][start:end, :, :] = _transform_chunk(
+                            dst_data_vars[info["src_name"]][start:end, :, :] = _transform_chunk(
                                 chunk_data, len(info["shape"])
                             )
 
@@ -659,16 +637,16 @@ class ForcingNormalizeService:
                         continue
                     src_var = src.variables[var_name]
                     try:
-                        # 映射维度名
-                        # [EN] Map dimension names
+                        # 映射维度名（坐标维度映射到输出名；其余保持）
+                        # [EN] Map dimension names (coordinates → output names; others kept)
                         mapped_dims = []
                         for d in src_var.dimensions:
                             if d == lon_name:
-                                mapped_dims.append("longitude")
+                                mapped_dims.append(lon_name)
                             elif d == lat_name:
-                                mapped_dims.append("latitude")
+                                mapped_dims.append(lat_name)
                             elif d == time_name:
-                                mapped_dims.append("time")
+                                mapped_dims.append(output_time)
                             else:
                                 mapped_dims.append(d)
                         mapped_dims = tuple(mapped_dims)
@@ -690,8 +668,8 @@ class ForcingNormalizeService:
                     except Exception:
                         pass
 
-                # ── 设置标准属性 ────────────────────────────────────────
-                # [EN] Set standard attributes
+                # ── 设置坐标与时间标准属性 ──────────────────────────────
+                # [EN] Set standard attributes for coordinates and time
                 lon_var.description = "LONGITUDE, WEST IS NEGATIVE"
                 lon_var.units = "degree_east"
 
@@ -708,24 +686,6 @@ class ForcingNormalizeService:
                 time_var.units = ww3_units
                 time_var.calendar = normalize_calendar_for_ww3(original_time_calendar)
 
-                # 设置强迫场变量属性
-                # [EN] Set forcing variable attributes
-                _VAR_ATTRS = {
-                    "u10": {"description": "10 meters wind speed u", "units": "m/s", "level": "10m"},
-                    "v10": {"description": "10 meters wind speed v", "units": "m/s", "level": "10m"},
-                    "uo": {"description": "sea water x velocity", "units": "m/s"},
-                    "vo": {"description": "sea water y velocity", "units": "m/s"},
-                    "zos": {"description": "sea surface height above geoid", "units": "m"},
-                    "siconc": {"description": "sea ice concentration", "units": "1"},
-                }
-                for std_name, dst_var in dst_data_vars.items():
-                    attrs = _VAR_ATTRS.get(std_name, {})
-                    for k, v in attrs.items():
-                        try:
-                            setattr(dst_var, k, v)
-                        except Exception:
-                            pass
-
             os.replace(temp_output_path, output_file)
             self._emit(
                 log,
@@ -741,6 +701,23 @@ class ForcingNormalizeService:
                 pass
             self._emit(log, tr("log_write_file_failed", "❌ 写入新文件失败") + f": {exc}\n{traceback.format_exc()}")
             return False
+
+    @staticmethod
+    def _collect_resolved_variables(
+        source_file: str,
+        variables: Optional[object],
+    ) -> List[ResolvedForcingVariables]:
+        """把传入的解析结果规范化为列表；为 ``None`` 时自动解析全部场。
+
+        [EN] Normalize passed-in resolution results to a list; when ``None``,
+        auto-resolve all fields.
+        """
+        if variables is None:
+            resolved_map = resolve_all_fields(source_file)
+            return list(resolved_map.values())
+        if isinstance(variables, ResolvedForcingVariables):
+            return [variables]
+        return [v for v in variables if isinstance(v, ResolvedForcingVariables)]
 
     @staticmethod
     def _emit(log: Optional[Callable[[str], None]], message: str) -> None:

@@ -751,17 +751,22 @@ def _coord_slice(values, lo: float, hi: float):
     return slice(min(lower, upper), max(lower, upper) + 1)
 
 
-def _spatial_dim_slices(first_path: str, bbox: Sequence[float]) -> dict[str, slice]:
+def _spatial_dim_slices(first_path: str, bbox: Sequence[float], *, lon_name: Optional[str] = None, lat_name: Optional[str] = None) -> dict[str, slice]:
     """由 bbox=(west, east, south, north) 算出经/纬维度名 → 裁剪切片。
 
     [EN] Compute lon/lat dimension name → crop slice from bbox=(west, east, south, north).
+
+    支持自定义坐标变量名（解析结果优先，回退常见名）。
+
+    [EN] Custom coordinate variable names are honored first (resolution
+    results take precedence over common names).
     """
     nc, _ = _imports()
     west, east, south, north = (float(v) for v in bbox)
     slices: dict[str, slice] = {}
     with nc.Dataset(first_path, "r") as ds:
-        lat = _find_coord(ds, ("latitude", "lat", "y"))
-        lon = _find_coord(ds, ("longitude", "lon", "x"))
+        lat = _find_coord(ds, (lat_name, "latitude", "lat", "y") if lat_name else ("latitude", "lat", "y"))
+        lon = _find_coord(ds, (lon_name, "longitude", "lon", "x") if lon_name else ("longitude", "lon", "x"))
         if lat is None or lon is None:
             raise ValueError(
                 tr("tools_merge_no_lonlat", "文件缺少经纬度坐标，无法按范围裁剪")
@@ -856,7 +861,7 @@ def common_time_range(input_paths: Sequence[str]) -> tuple[str, str]:
     return fmt(lo), fmt(hi)
 
 
-def common_lonlat_box(input_paths: Sequence[str]) -> tuple[float, float, float, float]:
+def common_lonlat_box(input_paths: Sequence[str], *, lon_name: Optional[str] = None, lat_name: Optional[str] = None) -> tuple[float, float, float, float]:
     """所有输入文件经纬度范围的**交集**（最小公共范围），返回 (west, east, south, north)。
 
     [EN] Intersection (smallest common extent) of all input file lon/lat ranges, returned as (west, east, south, north).
@@ -865,8 +870,8 @@ def common_lonlat_box(input_paths: Sequence[str]) -> tuple[float, float, float, 
     west = east = south = north = None
     for path in input_paths:
         with nc.Dataset(path, "r") as ds:
-            lat = _find_coord(ds, ("latitude", "lat", "y"))
-            lon = _find_coord(ds, ("longitude", "lon", "x"))
+            lat = _find_coord(ds, (lat_name, "latitude", "lat", "y") if lat_name else ("latitude", "lat", "y"))
+            lon = _find_coord(ds, (lon_name, "longitude", "lon", "x") if lon_name else ("longitude", "lon", "x"))
             if lat is None or lon is None:
                 continue
             la = np.asarray(lat[:], dtype="float64")
@@ -891,8 +896,16 @@ def merge_forcing_netcdf(
     compress: bool = True,
     time_range: Sequence[str] | None = None,
     bbox: Sequence[float] | None = None,
+    lon_name: Optional[str] = None,
+    lat_name: Optional[str] = None,
 ) -> str:
-    """Validate and merge forcing files, atomically replacing the output on success."""
+    """Validate and merge forcing files, atomically replacing the output on success.
+
+    ``lon_name``/``lat_name``：自定义经纬度变量名（解析结果优先，回退常见名）。
+
+    [EN] ``lon_name``/``lat_name``: custom lon/lat variable names (resolution
+    results take precedence over common names).
+    """
 
     normalized_output = os.path.abspath(output_path)
     normalized_inputs = {os.path.abspath(path) for path in input_paths}
@@ -910,7 +923,7 @@ def merge_forcing_netcdf(
         if t1 < t0:
             raise ValueError(tr("tools_merge_time_order", "时间范围终点早于起点"))
         plan = _apply_time_range(plan, t0, t1)
-    dim_slices = _spatial_dim_slices(plan.groups[0].paths[0], bbox) if bbox is not None else {}
+    dim_slices = _spatial_dim_slices(plan.groups[0].paths[0], bbox, lon_name=lon_name, lat_name=lat_name) if bbox is not None else {}
     if log:
         log(
             tr("tools_merge_plan", "合并方式：{strategy}，共 {steps} 个时间步").format(

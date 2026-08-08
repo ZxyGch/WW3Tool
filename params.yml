@@ -153,6 +153,14 @@ grid:
 #   crop_bbox        – optional crop action default, [west, east, south, north].
 #   auto_associate   – when true, automatically match dropped / selected
 #                      files to forcing variables by filename keyword.
+#   custom           – per-field variable overrides (optional). Every key is
+#                      optional: filled values are validated exactly; empty
+#                      values fall back to automatic detection. Recognized
+#                      roles per field:
+#                        wind/current: longitude, latitude, time, u, v
+#                        level:        longitude, latitude, time, value
+#                        ice:          longitude, latitude, time,
+#                                      concentration, thickness (optional)
 # ────────────────────────────────────────────────────────────────────
 forcing:
   wind: null
@@ -163,6 +171,30 @@ forcing:
   crop_time_range: []
   crop_bbox: []
   auto_associate: true
+  custom:
+    wind:
+      longitude: null
+      latitude: null
+      time: null
+      u: null
+      v: null
+    current:
+      longitude: null
+      latitude: null
+      time: null
+      u: null
+      v: null
+    level:
+      longitude: null
+      latitude: null
+      time: null
+      value: null
+    ice:
+      longitude: null
+      latitude: null
+      time: null
+      concentration: null
+      thickness: null
 # ────────────────────────────────────────────────────────────────────
 # Calculation mode:
 #   mode – 'region' (gridded output over the full domain) or

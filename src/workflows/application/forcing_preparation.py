@@ -131,11 +131,17 @@ def prepare_forcing(
             # 同一文件已被处理过（自动关联），但不同场类型的变量仍需校验
             # [EN] File already processed via auto-association, but variables for
             #     this specific field type must still be validated.
-            if not variable_detector.inspect_forcing_fields(source_path)["detected"].get(field.value, False):
-                raise RuntimeError(
-                    tr("step2_field_missing_vars", "{field} 文件缺少所需变量，请检查 NetCDF 内容")
-                    .format(field=field.value)
+            from ..infrastructure.forcing.forcing_variable_resolver import (
+                ForcingVariableError,
+                resolve_forcing_variables,
+            )
+
+            try:
+                resolve_forcing_variables(
+                    source_path, field.value, config.forcing.custom.get(field.value)
                 )
+            except ForcingVariableError as exc:
+                raise RuntimeError(str(exc)) from exc
             continue
         result = importer.execute(
             field,
@@ -145,6 +151,7 @@ def prepare_forcing(
             config.forcing.process_mode,
             crop_time_range=config.forcing.crop_time_range or None,
             crop_bbox=crop_bbox,
+            custom=config.forcing.custom.get(field.value),
         )
         if not result.success:
             raise RuntimeError(_forcing_import_error_message(result))

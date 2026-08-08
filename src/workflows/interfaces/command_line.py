@@ -214,6 +214,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_forcing = sub.add_parser("prepare-forcing", help=tr("cli_help_prepare_forcing", "[workdir] Run only forcing preparation"))
     p_forcing.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
+    p_inspect = sub.add_parser(
+        "inspect-forcing",
+        help=tr(
+            "cli_help_inspect_forcing",
+            "Inspect NetCDF forcing variable auto-detection (read-only)",
+        ),
+    )
+    p_inspect.add_argument(
+        "field",
+        choices=["wind", "current", "level", "ice"],
+        help=tr("cli_help_inspect_forcing_field", "Forcing field type (wind/current/level/ice)"),
+    )
+    p_inspect.add_argument(
+        "file",
+        metavar="FILE",
+        help=tr("cli_help_inspect_forcing_file", "NetCDF forcing file path"),
+    )
+    p_inspect.add_argument(
+        "-w",
+        "--workdir",
+        default=None,
+        help=tr("cli_help_inspect_forcing_workdir", "Optional workdir whose params.yml supplies forcing.custom overrides"),
+    )
+
     p_merge = sub.add_parser(
         "merge-forcing",
         help=tr(
@@ -524,6 +548,65 @@ def _resolve_reference_data_cli(config, args) -> bool:
     return False
 
 
+def _run_inspect_forcing(args) -> int:
+    """``inspect-forcing`` 只读命令：打印自动识别结果、歧义与可用变量。
+
+    [EN] Read-only ``inspect-forcing`` command: print auto-detection results,
+    ambiguities, and available variables.
+    """
+    from ..domain.config_models import ForcingVariableOverride
+    from ..infrastructure.forcing.forcing_variable_resolver import (
+        ForcingVariableError,
+        inspect_variables,
+        resolve_forcing_variables,
+    )
+
+    custom = None
+    if args.workdir:
+        try:
+            from ..application.configuration import load_pipeline_config
+
+            wd_params = os.path.join(args.workdir, "params.yml")
+            if os.path.isfile(wd_params):
+                cfg = load_pipeline_config(wd_params)
+                custom = cfg.forcing.custom.get(args.field)
+        except Exception as exc:
+            print(f"⚠️ 无法读取工作目录配置（继续使用自动识别）：{exc}")
+
+    print(f"字段类型: {args.field}")
+    print(f"文件: {args.file}")
+    try:
+        variables = inspect_variables(args.file)
+    except Exception as exc:
+        print(f"❌ 无法读取文件：{exc}")
+        return 1
+    print(f"可用变量: {', '.join(sorted(variables)) or '（无）'}")
+    if custom is not None:
+        filled = {k: v for k, v in vars(custom).items() if v}
+        print(f"用户自定义: {filled or '（无，全部自动识别）'}")
+
+    try:
+        resolved = resolve_forcing_variables(args.file, args.field, custom)
+    except ForcingVariableError as exc:
+        print(f"\n❌ 无法解析 {exc.field or args.field} 场：{exc}")
+        if exc.candidates:
+            print("候选变量：")
+            for cand in exc.candidates[:10]:
+                print(f"  - {cand.summary()}")
+        if exc.role and exc.role != "data":
+            print(f"请设置 forcing.custom.{args.field}.{exc.role} 指定该角色。")
+        return 1
+
+    print("\n✅ 自动识别成功：")
+    print(f"  经度:   {resolved.longitude}")
+    print(f"  纬度:   {resolved.latitude}")
+    print(f"  时间:   {resolved.source_time} → 输出 {resolved.output_time}")
+    print(f"  分量:   {', '.join(resolved.components)}")
+    if resolved.thickness:
+        print(f"  冰厚:   {resolved.thickness}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI 主入口：解析命令、加载配置并执行对应用例。
 
@@ -564,6 +647,9 @@ def main(argv: list[str] | None = None) -> int:
             return _run_merge_forcing(
                 args.inputs, args.output, time_range=args.time_range, bbox=args.bbox
             )
+
+        if args.command == "inspect-forcing":
+            return _run_inspect_forcing(args)
 
         # cancel-job: job_id 必填
         # [EN] cancel-job: job_id is required

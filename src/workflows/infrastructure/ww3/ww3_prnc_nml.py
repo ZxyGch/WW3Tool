@@ -129,7 +129,11 @@ class WW3PrncNML(NMLPrimitives):
                 else:
                     forcing_field_type = 'WINDS'
 
-            # 根据强迫场类型确定文件名和变量名
+            # 根据强迫场类型确定文件名和变量名（统一解析服务，方案 §8）
+            # [EN] Determine filename and variable names per field type
+            # (unified resolver, spec §8)
+            lon_name = 'longitude'
+            lat_name = 'latitude'
             if forcing_field_type == 'CURRENTS':
                 # 流场配置
                 filename = "../current_level.nc"  # 默认流场文件名
@@ -154,19 +158,13 @@ class WW3PrncNML(NMLPrimitives):
                             filename = f"../{os.path.basename(current_files[0])}"
                             current_file_path = current_files[0]
 
-                # 从流场文件读取变量名
+                # 从流场文件读取变量映射
                 if current_file_path and os.path.exists(current_file_path):
-                    try:
-                        with Dataset(current_file_path, "r") as ds:
-                            # 检查变量名
-                            if "uo" in ds.variables and "vo" in ds.variables:
-                                var_names = ['uo', 'vo']
-                            elif "UO" in ds.variables and "VO" in ds.variables:
-                                var_names = ['UO', 'VO']
-                            elif "u" in ds.variables and "v" in ds.variables:
-                                var_names = ['u', 'v']
-                    except Exception:
-                        pass
+                    resolved = self._load_field_resolution(self.selected_folder, 'current', current_file_path)
+                    if resolved is not None:
+                        var_names = list(resolved.components)
+                        lon_name = resolved.longitude or lon_name
+                        lat_name = resolved.latitude or lat_name
             else:
                 # 风场配置（默认）
                 filename = "../wind.nc"  # 默认风场文件名
@@ -174,27 +172,23 @@ class WW3PrncNML(NMLPrimitives):
 
                 # 检查选择的风场文件
                 wind_files = glob.glob(os.path.join(self.selected_folder, "*wind*.nc"))
+                wind_file_path = None
                 if wind_files:
                     wind_nc_path = os.path.join(self.selected_folder, "wind.nc")
                     if os.path.exists(wind_nc_path):
                         filename = "../wind.nc"
+                        wind_file_path = wind_nc_path
                     else:
                         filename = f"../{os.path.basename(wind_files[0])}"
+                        wind_file_path = wind_files[0]
 
-                # 从风场文件读取变量名
-                wind_file_path = os.path.join(self.selected_folder, filename.replace("../", ""))
-                if os.path.exists(wind_file_path):
-                    try:
-                        with Dataset(wind_file_path, "r") as ds:
-                            # 检查变量名
-                            if "u10" in ds.variables and "v10" in ds.variables:
-                                var_names = ['u10', 'v10']
-                            elif "wndewd" in ds.variables and "wndnwd" in ds.variables:
-                                var_names = ['wndewd', 'wndnwd']
-                            elif "uwnd" in ds.variables and "vwnd" in ds.variables:
-                                var_names = ['uwnd', 'vwnd']
-                    except Exception:
-                        pass
+                # 从风场文件读取变量映射
+                if wind_file_path and os.path.exists(wind_file_path):
+                    resolved = self._load_field_resolution(self.selected_folder, 'wind', wind_file_path)
+                    if resolved is not None:
+                        var_names = list(resolved.components)
+                        lon_name = resolved.longitude or lon_name
+                        lat_name = resolved.latitude or lat_name
 
             # 处理文件内容
             new_lines = []
@@ -276,12 +270,12 @@ class WW3PrncNML(NMLPrimitives):
                     # 替换 FILE%FILENAME
                     elif "FILE%FILENAME" in line:
                         new_lines.append(f"  FILE%FILENAME      = '{filename}'\n")
-                    # 替换 FILE%LONGITUDE
+                    # 替换 FILE%LONGITUDE（用解析结果中的经度变量名）
                     elif "FILE%LONGITUDE" in line:
-                        new_lines.append(f"  FILE%LONGITUDE     = 'longitude'\n")
+                        new_lines.append(f"  FILE%LONGITUDE     = '{lon_name}'\n")
                     # 替换 FILE%LATITUDE
                     elif "FILE%LATITUDE" in line:
-                        new_lines.append(f"  FILE%LATITUDE      = 'latitude'\n")
+                        new_lines.append(f"  FILE%LATITUDE      = '{lat_name}'\n")
                     else:
                         # 保留其他行（如注释等）
                         new_lines.append(line)
@@ -447,24 +441,23 @@ class WW3PrncNML(NMLPrimitives):
         if not hasattr(self, 'forcing_field_checkboxes'):
             return
 
-        # 定义强迫场配置
+        # 定义强迫场配置（变量名不再内置候选表，统一来自 manifest/解析服务）
+        # [EN] Forcing field configs (variable names now come from the
+        # manifest / resolver service instead of a built-in candidate table)
         forcing_field_configs = {
             'current': {
                 'field_name': 'CURRENTS',
                 'file_attr': 'selected_current_file',
-                'var_candidates': [['uo', 'UO'], ['vo', 'VO']],
                 'output_filename': 'ww3_prnc_current.nml'
             },
             'level': {
                 'field_name': 'WATER_LEVELS',
                 'file_attr': 'selected_level_file',
-                'var_candidates': [['zos', 'ZOS']],
                 'output_filename': 'ww3_prnc_level.nml'
             },
             'ice': {
                 'field_name': 'ICE_CONC',
                 'file_attr': 'selected_ice_file',
-                'var_candidates': [['siconc', 'SICONC']],
                 'output_filename': 'ww3_prnc_ice.nml'
             }
         }
@@ -554,32 +547,44 @@ class WW3PrncNML(NMLPrimitives):
                 sithick_var = None
 
                 # file_path 已经在上面检查过，这里直接使用
+                # 变量映射来自工作目录 manifest；缺失时用统一解析服务重新解析
+                # [EN] Variable mapping comes from the workdir manifest; the
+                # unified resolver is used as fallback when the manifest is missing
+                resolved = None
+                lon_name = None
+                lat_name = None
+                has_sithick = False
+                sithick_var = None
                 if file_path and os.path.exists(file_path):
                     # 设置文件名
                     if use_relative_path:
                         filename = f"../{os.path.basename(file_path)}"
                     else:
                         filename = os.path.basename(file_path)
-                    # 从 NetCDF 文件中读取变量名
-                    var_names = self._get_forcing_field_variables(file_path, config['var_candidates'])
+                    resolved = self._load_field_resolution(target_dir, field_key, file_path)
+                    if resolved is not None:
+                        var_names = list(resolved.components)
+                        lon_name = resolved.longitude or None
+                        lat_name = resolved.latitude or None
+                        if resolved.thickness:
+                            has_sithick = True
+                            sithick_var = resolved.thickness
+                    else:
+                        var_names = None
 
-                    # 如果是冰场，检查是否包含 sithick 变量
-                    if field_key == 'ice':
-                        try:
-                            from netCDF4 import Dataset
-                            with Dataset(file_path, "r") as ds:
-                                if 'sithick' in ds.variables:
-                                    has_sithick = True
-                                    sithick_var = 'sithick'
-                                elif 'SITHICK' in ds.variables:
-                                    has_sithick = True
-                                    sithick_var = 'SITHICK'
-                        except Exception:
-                            pass
-
-                # 如果没有找到变量名，使用默认值（冰场除外）
-                if not var_names and field_key != 'ice':
-                    var_names = [candidates[0] for candidates in config['var_candidates']]  # 使用第一个候选变量名
+                # 找不到解析结果：不生成 NML（校验失败不能继续生成，方案 §5）
+                # [EN] No resolution: do not generate NML (validation failure must
+                # stop generation, spec §5)
+                if not var_names:
+                    if field_key != 'ice':
+                        self.log(
+                            tr(
+                                "forcing_field_unresolved",
+                                "{prefix}⚠️ 无法确定 {field} 强迫场的变量映射（请在变量映射中手动指定），跳过生成 {file}",
+                            ).format(prefix=prefix, field=field_key, file=config['output_filename'])
+                        )
+                        checkbox.setChecked(False)
+                        continue
 
                 # filename 应该已经设置好了，如果还没有（理论上不应该发生），使用默认值
                 if not filename:
@@ -598,7 +603,7 @@ class WW3PrncNML(NMLPrimitives):
                         elif field_key == 'ice':
                             filename = "ice.nc"
 
-                def _write_prnc_file(output_filename, field_name, var_names):
+                def _write_prnc_file(output_filename, field_name, var_names, lon_name=None, lat_name=None):
                     output_path = os.path.join(target_dir, output_filename)
                     shutil.copy2(source_nml_path, output_path)
 
@@ -693,7 +698,14 @@ class WW3PrncNML(NMLPrimitives):
                                     new_lines.append(f"  FILE%VAR({var_index})        = '{var_names[var_index - 1]}'\n")
                                 # 如果索引超出范围，跳过（删除多余的变量行）
                                 continue
-                            # 保留其他行（FILE%LONGITUDE, FILE%LATITUDE 等）
+                            # 替换 FILE%LONGITUDE / FILE%LATITUDE（方案 §8：来自解析结果）
+                            elif "FILE%LONGITUDE" in line and lon_name:
+                                new_lines.append(f"  FILE%LONGITUDE     = '{lon_name}'\n")
+                                continue
+                            elif "FILE%LATITUDE" in line and lat_name:
+                                new_lines.append(f"  FILE%LATITUDE      = '{lat_name}'\n")
+                                continue
+                            # 保留其他行（注释等）
                             else:
                                 new_lines.append(line)
                             continue
@@ -737,8 +749,6 @@ class WW3PrncNML(NMLPrimitives):
                             "var_names": [sithick_var or "sithick"]
                         })
                 else:
-                    if not var_names:
-                        var_names = [candidates[0] for candidates in config['var_candidates']]  # 使用第一个候选变量名
                     tasks.append({
                         "output_filename": config['output_filename'],
                         "field_name": config['field_name'],
@@ -747,11 +757,67 @@ class WW3PrncNML(NMLPrimitives):
 
                 for task in tasks:
                     try:
-                        _write_prnc_file(task["output_filename"], task["field_name"], task["var_names"])
+                        _write_prnc_file(task["output_filename"], task["field_name"], task["var_names"], lon_name=lon_name, lat_name=lat_name)
                     except Exception as e:
                         self.log(tr("file_copy_modify_failed", "❌ 复制并修改 {file} 失败：{error}").format(file=task["output_filename"], error=e))
             except Exception as e:
                 self.log(tr("file_copy_modify_failed", "❌ 复制并修改 {file} 失败：{error}").format(file=config['output_filename'], error=e))
+
+    def _load_field_resolution(self, workdir, field_key, file_path):
+        """获取单个强迫场的变量解析结果（方案 §7/§8）。
+
+        优先读取工作目录 ``forcing_manifest.json``；清单缺失或场不存在时
+        用统一解析服务重新解析（兼容旧工作目录）。
+
+        [EN] Get one field's variable resolution (spec §7/§8). The workdir
+        ``forcing_manifest.json`` is preferred; when missing, the unified
+        resolver re-parses the file (backwards compatible with old workdirs).
+
+        返回:
+            ``ResolvedForcingVariables`` 或 ``None``
+
+        [EN] Returns:
+            ``ResolvedForcingVariables`` or ``None``.
+        """
+        try:
+            from ...domain.config_models import ResolvedForcingVariables
+            from ...infrastructure.forcing.forcing_manifest import load_manifest
+
+            data = load_manifest(workdir)
+            entry = data.get(field_key) if isinstance(data, dict) else None
+            if entry and entry.get("variables"):
+                return ResolvedForcingVariables(
+                    field=field_key,
+                    longitude=entry.get("longitude") or "longitude",
+                    latitude=entry.get("latitude") or "latitude",
+                    source_time="",
+                    output_time=entry.get("time") or "time",
+                    components=list(entry.get("variables", [])),
+                    thickness=entry.get("thickness"),
+                )
+        except Exception:
+            pass
+        try:
+            from ...infrastructure.forcing.forcing_variable_resolver import (
+                ForcingVariableError,
+                resolve_forcing_variables,
+            )
+
+            custom = None
+            try:
+                params_path = os.path.join(workdir, "params.yml")
+                if os.path.isfile(params_path):
+                    from ...application.configuration import load_pipeline_config
+
+                    cfg = load_pipeline_config(params_path)
+                    custom = cfg.forcing.custom.get(field_key)
+            except Exception:
+                pass
+            return resolve_forcing_variables(file_path, field_key, custom)
+        except ForcingVariableError:
+            return None
+        except Exception:
+            return None
 
     def _get_forcing_field_variables(self, file_path, var_candidates):
         """

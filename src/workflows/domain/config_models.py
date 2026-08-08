@@ -53,6 +53,62 @@ class WorkdirConfig:
 
 
 @dataclass
+class ForcingVariableOverride:
+    """单个强迫场的自定义变量名映射（对应 YAML ``forcing.custom.<field>``）。
+
+    每一项独立处理：填写则使用用户值（精确、区分大小写校验），为空则自动识别。
+
+    [EN] Custom variable-name mapping for one forcing field (corresponds to
+    YAML ``forcing.custom.<field>``).
+
+    Each item is handled independently: a filled value is validated exactly
+    (case-sensitive), an empty value falls back to automatic detection.
+
+    角色说明（按场类型取用）：
+    - ``u``/``v``：风场、流场的两个分量
+    - ``value``：水位场分量
+    - ``concentration``/``thickness``：海冰浓度与可选厚度分量
+    """
+
+    longitude: Optional[str] = None
+    latitude: Optional[str] = None
+    time: Optional[str] = None
+    u: Optional[str] = None
+    v: Optional[str] = None
+    value: Optional[str] = None
+    concentration: Optional[str] = None
+    thickness: Optional[str] = None
+
+
+@dataclass
+class ResolvedForcingVariables:
+    """某个强迫场在导入/NML 生成阶段最终使用的变量解析结果。
+
+    由统一解析服务（``forcing_variable_resolver``）生成，可持久化到
+    ``forcing_manifest.json``。
+
+    [EN] Final variable resolution result for one forcing field, produced by
+    the unified resolver service and persistable to ``forcing_manifest.json``.
+
+    属性:
+        field: 场类型（wind/current/level/ice）
+        longitude/latitude: 源文件中的经纬度变量名（保持原名）
+        source_time: 源文件中的时间变量名
+        output_time: 工作目录副本中的时间变量名（WW3 无 FILE%TIME，恒为 ``time``）
+        components: 分量源变量名（如 ``["UGRD_10m", "VGRD_10m"]``）
+        thickness: 海冰厚度变量名，无则为 ``None``
+    """
+
+    field: str
+    longitude: str
+    latitude: str
+    source_time: str
+    output_time: str = "time"
+    components: List[str] = field(default_factory=list)
+    thickness: Optional[str] = None
+
+
+@dataclass
 class ForcingConfig:
     """强迫场源文件与处理选项（对应 YAML ``forcing:`` 段）。
 
@@ -81,6 +137,7 @@ class ForcingConfig:
     auto_associate: Optional[bool] = None
     crop_time_range: List[str] = field(default_factory=list)
     crop_bbox: List[float] = field(default_factory=list)
+    custom: Dict[str, ForcingVariableOverride] = field(default_factory=dict)
 
 
 @dataclass

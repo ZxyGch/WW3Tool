@@ -25,6 +25,7 @@ class ForcingStepPanel:
         combo_style: Callable[[], str],
         browse_path: Callable[[str, bool], None],
         clear_path: Callable[[str], None],
+        open_mapping: Callable[[str], None],
         show_file_info: Callable[[], None],
         crop_import: Callable[[], None],
         direct_import: Callable[[], None],
@@ -37,19 +38,23 @@ class ForcingStepPanel:
         self.paths: dict[str, LineEdit] = {}
         self.path_buttons: dict[str, PrimaryPushButton] = {}
         self.clear_buttons: dict[str, PrimaryPushButton] = {}
+        self.mapping_buttons: dict[str, PrimaryPushButton] = {}
         self.range_fields: dict[str, LineEdit] = {}
         group, layout = create_header_card(parent, tr("step2_title", "第二步：选择强迫场文件"), include_vbox_style=True)
         grid = QGridLayout()
         grid.setSpacing(10)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 0)
+        grid.setColumnStretch(3, 0)
         for row, label, key, button_text in (
             (0, tr("step2_label_wind", "风场："), "wind", tr("step2_choose_wind", "选择风场")),
             (1, tr("step2_label_current", "流场："), "current", tr("step2_choose_current", "选择流场")),
             (2, tr("step2_label_level", "水位场："), "level", tr("step2_choose_level", "选择水位场")),
             (3, tr("step2_label_ice", "海冰场："), "ice", tr("step2_choose_ice", "选择海冰场")),
         ):
-            self._add_path_button_pair(grid, row, label, key, button_text, create_button, browse_path, clear_path)
+            self._add_path_button_pair(
+                grid, row, label, key, button_text, create_button, browse_path, clear_path, open_mapping
+            )
         layout.addLayout(grid)
 
         self.mode = ComboBox(parent)
@@ -204,6 +209,7 @@ class ForcingStepPanel:
         create_button: Callable[[str, Callable[..., object]], PrimaryPushButton],
         browse_path: Callable[[str, bool], None],
         clear_path: Callable[[str], None],
+        open_mapping: Callable[[str], None],
     ) -> None:
         field = LineEdit()
         field.setClearButtonEnabled(True)
@@ -219,12 +225,17 @@ class ForcingStepPanel:
         side = max(button.sizeHint().height(), clear_button.sizeHint().height())
         clear_button.setFixedSize(side, side)
         clear_button.setToolTip(tr("step2_clear_forcing_selection", "清除选择"))
+        mapping_button = create_button(tr("step2_variable_mapping", "变量映射"), lambda _checked=False: open_mapping(key))
+        mapping_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        mapping_button.setToolTip(tr("step2_variable_mapping_tip", "自定义该文件的变量映射（经度/纬度/时间/分量）"))
         grid.addWidget(QLabel(label), row, 0)
         grid.addWidget(button, row, 1)
         grid.addWidget(clear_button, row, 2)
+        grid.addWidget(mapping_button, row, 3)
         self.paths[key] = field
         self.path_buttons[key] = button
         self.clear_buttons[key] = clear_button
+        self.mapping_buttons[key] = mapping_button
 
     def _add_range_pair(
         self,

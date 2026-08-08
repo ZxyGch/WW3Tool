@@ -59,6 +59,7 @@ class ForcingStepViewModel:
         auto_associate: bool = True,
         crop_time_range: list[str] | None = None,
         crop_bbox: list[float] | None = None,
+        custom: dict | None = None,
     ) -> PipelineConfig:
         return parse_pipeline_config(
             {
@@ -72,6 +73,7 @@ class ForcingStepViewModel:
                     "auto_associate": auto_associate,
                     "crop_time_range": crop_time_range or [],
                     "crop_bbox": crop_bbox or [],
+                    "custom": custom or {},
                 },
             },
             base_dir=Path.cwd(),

@@ -468,6 +468,7 @@ class PipelineViewModel:
                         "auto_associate",
                         "crop_time_range",
                         "crop_bbox",
+                        "custom",
                     )
                 }
                 # [EN] Preserve ww3 dates and calc points (case-specific values set by user in form)

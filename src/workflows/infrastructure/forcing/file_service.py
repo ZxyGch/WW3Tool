@@ -417,7 +417,13 @@ class FileService:
                 os.remove(temp_file)
             raise
 
-    def copy_and_fix_forcing_file(self, source_file: str, target_file: str, process_mode: str = "copy") -> Optional[str]:
+    def copy_and_fix_forcing_file(
+        self,
+        source_file: str,
+        target_file: str,
+        process_mode: str = "copy",
+        variables: object = None,
+    ) -> Optional[str]:
         """
         复制或移动强迫场文件到工作目录，并通过 ForcingNormalizeService 单遍标准化。
 
@@ -428,11 +434,13 @@ class FileService:
             source_file: 源文件路径
             target_file: 目标文件路径
             process_mode: 处理方式，"copy" 或 "move"
+            variables: 解析结果（单个或列表）；为 ``None`` 时自动识别
 
         [EN] Parameters:
             source_file: Source file path
             target_file: Target file path
             process_mode: Processing mode, "copy" or "move"
+            variables: Resolution result(s); ``None`` triggers auto-detection.
 
         返回:
             目标文件路径，如果失败返回 None
@@ -445,7 +453,7 @@ class FileService:
             # [EN] If target already exists and is the same as source, normalize directly
             try:
                 if os.path.samefile(source_file, target_file):
-                    ok = self._normalizer.normalize(source_file, target_file, log=self.log)
+                    ok = self._normalizer.normalize(source_file, target_file, log=self.log, variables=variables)
                     return target_file if ok else None
             except OSError:
                 pass
@@ -461,10 +469,10 @@ class FileService:
             else:
                 shutil.copy2(source_file, target_file)
 
-            # 2. 单遍归一化（坐标标准化 + 时间转换 + 纬度翻转 + 变量重命名）
-            # [EN] 2. Single-pass normalization (coord standardization + time conversion
-            #        + lat flip + variable renaming)
-            ok = self._normalizer.normalize(target_file, target_file, log=self.log)
+            # 2. 单遍归一化（坐标标准化 + 时间转换 + 纬度翻转；变量名保留）
+            # [EN] 2. Single-pass normalization (coord standardization + time
+            #        conversion + lat flip; variable names preserved)
+            ok = self._normalizer.normalize(target_file, target_file, log=self.log, variables=variables)
             if not ok:
                 return None
 
@@ -482,6 +490,7 @@ class FileService:
         time_range: list[str] | tuple[str, str] | None = None,
         bbox: list[float] | tuple[float, float, float, float] | None = None,
         remove_source: bool = False,
+        variables: object = None,
     ) -> Optional[str]:
         """裁剪强迫场到工作目录，并执行 WW3 格式标准化。
 
@@ -491,6 +500,9 @@ class FileService:
         replace_target = False
         try:
             from .merge_service import merge_forcing_netcdf
+
+            resolved_lon = getattr(variables, "longitude", None) if variables is not None else None
+            resolved_lat = getattr(variables, "latitude", None) if variables is not None else None
 
             target_dir = os.path.dirname(target_file)
             if target_dir:
@@ -513,10 +525,11 @@ class FileService:
                     lon_west=bbox[0], lon_east=bbox[1], lat_south=bbox[2], lat_north=bbox[3],
                 )
             )
-            # 读取原始强迫场范围
+            # 读取原始强迫场范围（优先使用解析结果中的坐标变量名）
+            # [EN] Read original forcing ranges (resolution coordinate names take precedence)
             from netCDF4 import Dataset
             with Dataset(source_file, "r") as ds:
-                for var_name in ["longitude", "lon", "x"]:
+                for var_name in [resolved_lon] + ["longitude", "lon", "x"] if resolved_lon else ["longitude", "lon", "x"]:
                     if var_name in ds.variables:
                         lon = ds.variables[var_name][:]
                         self.log(
@@ -525,7 +538,7 @@ class FileService:
                             )
                         )
                         break
-                for var_name in ["latitude", "lat", "y"]:
+                for var_name in [resolved_lat] + ["latitude", "lat", "y"] if resolved_lat else ["latitude", "lat", "y"]:
                     if var_name in ds.variables:
                         lat = ds.variables[var_name][:]
                         self.log(
@@ -539,6 +552,8 @@ class FileService:
                 processing_target,
                 time_range=time_range,
                 bbox=bbox,
+                lon_name=resolved_lon,
+                lat_name=resolved_lat,
             )
             def log_normalize_problem(message: str) -> None:
                 text = str(message)
@@ -549,6 +564,7 @@ class FileService:
                 processing_target,
                 processing_target,
                 log=log_normalize_problem,
+                variables=variables,
             )
             if not ok:
                 if replace_target and os.path.exists(processing_target):

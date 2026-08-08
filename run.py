@@ -29,6 +29,8 @@
   prepare-forcing          Step 1：准备强迫场
   merge-forcing <输入.nc> [...] -o <输出.nc> [--time-range ...] [--bbox ...]
                            独立工具：校验并合并强迫场 NetCDF（无需工作目录）
+  inspect-forcing <场> <文件.nc> [-w 工作目录]
+                           只读：打印强迫场变量自动识别结果/歧义/可用变量
   generate-grid            Step 2：生成计算网格
   prepare-ww3              仅生成 WW3 namelist
   recommend-cfl            按 CFL 推荐时间步长并写回配置
@@ -101,7 +103,7 @@ Configuration
   print-params [workdir]   Print params.yml
 
 Preprocessing (all except merge-forcing accept optional [workdir])
-  prepare-forcing / generate-grid / prepare-ww3 / recommend-cfl / recommend-grid
+  prepare-forcing / inspect-forcing / generate-grid / prepare-ww3 / recommend-cfl / recommend-grid
   run-workflow / local-run
   merge-forcing <in.nc> [...] -o <out.nc> [--time-range ...] [--bbox ...]  (standalone)
 

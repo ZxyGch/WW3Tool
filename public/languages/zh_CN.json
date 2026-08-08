@@ -2679,5 +2679,22 @@
   "cm_job_col_nodes_count": "节点数",
   "cm_job_col_cpus": "核数",
   "window_width_label": "窗口宽度:",
-  "window_height_label": "窗口高度:"
+  "window_height_label": "窗口高度:",
+  "step2_variable_mapping": "变量映射",
+  "step2_variable_mapping_tip": "自定义该文件的变量映射（经度/纬度/时间/分量）",
+  "forcing_mapping_title": "变量映射：{field}",
+  "forcing_mapping_hint": "为 {field} 选择每个角色对应的变量。留空（自动识别）时将按常见名称与 CF 属性自动判断。",
+  "forcing_mapping_file": "文件：{path}",
+  "forcing_mapping_incomplete": "映射不完整",
+  "forcing_mapping_required_missing": "以下必需角色尚未指定：{roles}",
+  "forcing_mapping_no_file": "⚠️ 请先为 {field} 选择强迫场文件，再打开变量映射。",
+  "forcing_mapping_saved": "✅ 已保存 {field} 变量映射：{mapping}",
+  "forcing_mapping_save_failed": "⚠️ 写入工作目录变量映射失败：{error}",
+  "forcing_auto_resolve_failed": "⚠️ {field} 自动识别未完成：{error}。请打开「变量映射」手动指定。",
+  "forcing_auto_resolve_error": "⚠️ {field} 变量解析失败：{error}",
+  "forcing_auto_resolve_ok": "✅ {field} 变量自动识别成功：经度 {lon}、纬度 {lat}、时间 {time}、分量 {vars}",
+  "cli_help_inspect_forcing": "检查强迫场变量自动识别（只读）",
+  "cli_help_inspect_forcing_field": "强迫场类型（wind/current/level/ice）",
+  "cli_help_inspect_forcing_file": "NetCDF 强迫场文件路径",
+  "cli_help_inspect_forcing_workdir": "可选工作目录，其 params.yml 提供 forcing.custom 覆盖"
 }

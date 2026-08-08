@@ -51,6 +51,7 @@ from ..support.translations import tr
 from ..domain.config_models import (
     CalcConfig,
     ForcingConfig,
+    ForcingVariableOverride,
     GridConfig,
     GridRegion,
     Jason3Config,
@@ -216,6 +217,65 @@ def _bool_value(value: Any, name: str) -> bool:
     if isinstance(value, str) and value.lower() in {"true", "false"}:
         return value.lower() == "true"
     raise ConfigError(f"{name} 必须是 true 或 false")
+
+
+_FORCING_CUSTOM_ROLES = (
+    "longitude",
+    "latitude",
+    "time",
+    "u",
+    "v",
+    "value",
+    "concentration",
+    "thickness",
+)
+
+
+def _parse_forcing_custom(value: Any) -> Dict[str, ForcingVariableOverride]:
+    """解析 ``forcing.custom`` 段为每场自定义变量映射。
+
+    每个场类型下只允许出现已知角色键；值为空（null/""）等价于未填写
+    （由解析服务自动识别）。
+
+    [EN] Parse the ``forcing.custom`` section into per-field variable overrides.
+    """
+    if value in (None, ""):
+        return {}
+    custom_raw = _as_dict(value, "forcing.custom")
+    custom: Dict[str, ForcingVariableOverride] = {}
+    for field_name in ("wind", "current", "level", "ice"):
+        section = _as_dict(custom_raw.get(field_name), f"forcing.custom.{field_name}")
+        if not section:
+            continue
+        for key in section:
+            if key not in _FORCING_CUSTOM_ROLES:
+                raise ConfigError(
+                    tr(
+                        "cfg_forcing_custom_role",
+                        "forcing.custom.{field} 不允许的键：{key}（可用：{roles}）",
+                    ).format(field=field_name, key=key, roles=", ".join(_FORCING_CUSTOM_ROLES))
+                )
+        custom[field_name] = ForcingVariableOverride(
+            longitude=_optional_str(section.get("longitude")),
+            latitude=_optional_str(section.get("latitude")),
+            time=_optional_str(section.get("time")),
+            u=_optional_str(section.get("u")),
+            v=_optional_str(section.get("v")),
+            value=_optional_str(section.get("value")),
+            concentration=_optional_str(section.get("concentration")),
+            thickness=_optional_str(section.get("thickness")),
+        )
+    return custom
+
+
+def _optional_str(value: Any) -> Optional[str]:
+    """将 YAML 值转为字符串；None/空串返回 None。
+
+    [EN] Convert a YAML value to string; None/empty string becomes None.
+    """
+    if value in (None, ""):
+        return None
+    return str(value).strip() or None
 
 
 def _process_mode(value: Any) -> str:
@@ -835,6 +895,7 @@ def parse_pipeline_config(
         auto_associate=_bool_value(forcing_raw.get("auto_associate"), "forcing.auto_associate"),
         crop_time_range=_string_list(forcing_raw.get("crop_time_range"), "forcing.crop_time_range", expected=2),
         crop_bbox=_float_list(forcing_raw.get("crop_bbox"), "forcing.crop_bbox", expected=4),
+        custom=_parse_forcing_custom(forcing_raw.get("custom")),
     )
 
     grid_raw = _as_dict(raw.get("grid"), "grid")
