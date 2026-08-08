@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
-from qfluentwidgets import ComboBox, LineEdit, PrimaryPushButton
+from qfluentwidgets import ComboBox, FluentIcon, LineEdit, PrimaryPushButton
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
@@ -225,10 +225,13 @@ class ForcingStepPanel:
         side = max(button.sizeHint().height(), clear_button.sizeHint().height())
         clear_button.setFixedSize(side, side)
         clear_button.setToolTip(tr("step2_clear_forcing_selection", "清除选择"))
-        # 铅笔按钮：打开变量映射/服务器路径编辑弹窗，位于清除按钮左侧
+        # 铅笔按钮：打开变量映射/服务器路径编辑弹窗，位于清除按钮左侧，
+        # 使用框架自带 FluentIcon.PENCIL_INK 图标（与侧边栏同款风格）
         # [EN] Pencil button: opens the variable mapping / server path dialog,
-        # positioned to the left of the clear button.
-        mapping_button = create_button("✏️", lambda _checked=False: open_mapping(key))
+        # positioned to the left of the clear button; uses the framework's
+        # FluentIcon.PENCIL_INK icon (same style as the sidebar).
+        mapping_button = create_button("", lambda _checked=False: open_mapping(key))
+        mapping_button.setIcon(FluentIcon.PENCIL_INK.icon())
         mapping_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         mapping_button.setFixedSize(side, side)
         mapping_button.setToolTip(tr("step2_variable_mapping_tip", "变量映射与服务器路径（经度/纬度/时间/分量）"))
