@@ -162,11 +162,15 @@ class ForcingNormalizeTest(unittest.TestCase):
             names = set(ds.variables.keys())
             self.assertIn("UGRD_10m", names)  # 不再重命名为 u10
             self.assertIn("VGRD_10m", names)
-            self.assertIn("XLONG", names)  # 经纬度保留原名
-            self.assertIn("XLAT", names)
+            self.assertIn("longitude", names)  # 坐标统一为 WW3 硬编码名
+            self.assertIn("latitude", names)
+            self.assertNotIn("XLONG", names)
+            self.assertNotIn("XLAT", names)
             self.assertIn("time", names)
             self.assertNotIn("valid_time", names)  # 时间统一为 time
             self.assertNotIn("u10", names)
+            # 数据变量维度顺序固定 (longitude, latitude, time)
+            self.assertEqual(ds.variables["UGRD_10m"].dimensions, ("longitude", "latitude", "time"))
 
     def test_normalize_flips_descending_latitude_keeps_names(self):
         src = os.path.join(self.tmp, "wind_desc.nc")
@@ -177,9 +181,84 @@ class ForcingNormalizeTest(unittest.TestCase):
         self.assertTrue(ok)
         with Dataset(out, "r") as ds:
             self.assertIn("UGRD_10m", ds.variables)
-            self.assertIn("XLAT", ds.variables)
-            lat = ds.variables["XLAT"][:]
+            self.assertIn("latitude", ds.variables)
+            self.assertNotIn("XLAT", ds.variables)
+            lat = ds.variables["latitude"][:]
             self.assertLess(lat[0], lat[-1])  # 翻转后递增
+
+    def test_normalize_transposes_to_ww3_layout(self):
+        """数据从源 (time, lat, lon) 转置为输出 (lon, lat, time)，数值逐点一致。
+
+        [EN] Data is transposed from source (time, lat, lon) to output
+        (lon, lat, time), values match point-by-point.
+        """
+        import numpy as np
+
+        src = os.path.join(self.tmp, "wind_layout.nc")
+        with Dataset(src, "w") as ds:
+            ds.createDimension("XLONG", 4)
+            ds.createDimension("XLAT", 3)
+            ds.createDimension("time", 2)
+            lon = ds.createVariable("XLONG", "f4", ("XLONG",))
+            lat = ds.createVariable("XLAT", "f4", ("XLAT",))
+            t = ds.createVariable("valid_time", "f8", ("time",))
+            t.units = "hours since 2020-01-01 00:00:00"
+            lon.units = "degrees_east"
+            lat.units = "degrees_north"
+            u = ds.createVariable("UGRD_10m", "f4", ("time", "XLAT", "XLONG"))
+            u.standard_name = "eastward_wind"
+            u.units = "m s-1"
+            v = ds.createVariable("VGRD_10m", "f4", ("time", "XLAT", "XLONG"))
+            v.standard_name = "northward_wind"
+            v.units = "m s-1"
+            lon[:] = [100, 102, 104, 106]
+            lat[:] = [20, 22, 24]
+            t[:] = [0, 6]
+            # 非均匀数据：u[t, lat, lon] = t*12 + lat*4 + lon（np.arange(24).reshape(2,3,4)）
+            u[:] = np.arange(24, dtype="f4").reshape(2, 3, 4)
+        r = resolve_forcing_variables(src, "wind")
+        out = os.path.join(self.tmp, "wind_layout_out.nc")
+        ok = ForcingNormalizeService().normalize(src, out, variables=r)
+        self.assertTrue(ok)
+        with Dataset(out, "r") as ds:
+            self.assertEqual(ds.variables["UGRD_10m"].dimensions, ("longitude", "latitude", "time"))
+            data = ds.variables["UGRD_10m"][:]
+            self.assertEqual(data.shape, (4, 3, 2))
+            for t_i in range(2):
+                for la in range(3):
+                    for lo in range(4):
+                        self.assertEqual(data[lo, la, t_i], float(t_i * 12 + la * 4 + lo))
+
+    def test_normalize_360day_calendar_preserved(self):
+        """360_day 日历是 WW3 7.14 原生支持，应保留而非改写。
+
+        [EN] 360_day is natively supported by WW3 7.14 and must be preserved.
+        """
+        src = os.path.join(self.tmp, "wind_360.nc")
+        _make_wind_file(src, with_cf=True)
+        with Dataset(src, "a") as ds:
+            ds.variables["valid_time"].calendar = "360_day"
+        r = resolve_forcing_variables(src, "wind")
+        out = os.path.join(self.tmp, "wind_360_out.nc")
+        ok = ForcingNormalizeService().normalize(src, out, variables=r)
+        self.assertTrue(ok)
+        with Dataset(out, "r") as ds:
+            self.assertEqual(ds.variables["time"].calendar, "360_day")
+
+    def test_normalize_noleap_calendar_rejected(self):
+        """noleap 等日历无法安全转换时间数值，应拒绝导入而非改写。
+
+        [EN] Calendars like noleap cannot be safely converted; the import
+        must be rejected instead of silently rewriting the calendar.
+        """
+        src = os.path.join(self.tmp, "wind_noleap.nc")
+        _make_wind_file(src, with_cf=True)
+        with Dataset(src, "a") as ds:
+            ds.variables["valid_time"].calendar = "noleap"
+        r = resolve_forcing_variables(src, "wind")
+        out = os.path.join(self.tmp, "wind_noleap_out.nc")
+        ok = ForcingNormalizeService().normalize(src, out, variables=r)
+        self.assertFalse(ok)
 
 
 class ForcingManifestTest(unittest.TestCase):

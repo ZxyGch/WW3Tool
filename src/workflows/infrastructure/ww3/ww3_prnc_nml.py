@@ -19,6 +19,9 @@ from ..runtime_config import PUBLIC_DIR, load_config
 from ...support.translations import tr
 from .nml_log_format import Assignment, format_nml_log_message
 from .nml_primitives import NMLPrimitives
+# 归一化输出的坐标变量名（WW3 ww3_prnc 硬编码 longitude/latitude）
+# [EN] Coordinate variable names of the normalized output (ww3_prnc hard-codes longitude/latitude)
+from ..forcing.forcing_normalize_service import _WW3_LON_NAME, _WW3_LAT_NAME
 
 
 class WW3PrncNML(NMLPrimitives):
@@ -270,12 +273,12 @@ class WW3PrncNML(NMLPrimitives):
                     # 替换 FILE%FILENAME
                     elif "FILE%FILENAME" in line:
                         new_lines.append(f"  FILE%FILENAME      = '{filename}'\n")
-                    # 替换 FILE%LONGITUDE（用解析结果中的经度变量名）
+                    # 替换 FILE%LONGITUDE（归一化输出坐标统一为 longitude）
                     elif "FILE%LONGITUDE" in line:
-                        new_lines.append(f"  FILE%LONGITUDE     = '{lon_name}'\n")
-                    # 替换 FILE%LATITUDE
+                        new_lines.append(f"  FILE%LONGITUDE     = '{_WW3_LON_NAME}'\n")
+                    # 替换 FILE%LATITUDE（归一化输出坐标统一为 latitude）
                     elif "FILE%LATITUDE" in line:
-                        new_lines.append(f"  FILE%LATITUDE      = '{lat_name}'\n")
+                        new_lines.append(f"  FILE%LATITUDE      = '{_WW3_LAT_NAME}'\n")
                     else:
                         # 保留其他行（如注释等）
                         new_lines.append(line)
@@ -735,12 +738,12 @@ class WW3PrncNML(NMLPrimitives):
                                     new_lines.append(f"  FILE%VAR({var_index})        = '{var_names[var_index - 1]}'\n")
                                 # 如果索引超出范围，跳过（删除多余的变量行）
                                 continue
-                            # 替换 FILE%LONGITUDE / FILE%LATITUDE（方案 §8：来自解析结果）
-                            elif "FILE%LONGITUDE" in line and lon_name:
-                                new_lines.append(f"  FILE%LONGITUDE     = '{lon_name}'\n")
+                            # 替换 FILE%LONGITUDE / FILE%LATITUDE（归一化输出坐标统一为 longitude/latitude）
+                            elif "FILE%LONGITUDE" in line:
+                                new_lines.append(f"  FILE%LONGITUDE     = '{_WW3_LON_NAME}'\n")
                                 continue
-                            elif "FILE%LATITUDE" in line and lat_name:
-                                new_lines.append(f"  FILE%LATITUDE      = '{lat_name}'\n")
+                            elif "FILE%LATITUDE" in line:
+                                new_lines.append(f"  FILE%LATITUDE      = '{_WW3_LAT_NAME}'\n")
                                 continue
                             # 保留其他行（注释等）
                             else:

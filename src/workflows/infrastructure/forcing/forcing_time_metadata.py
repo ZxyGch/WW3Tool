@@ -26,7 +26,7 @@ from typing import Callable, List, Optional, Sequence
 
 from ...support.translations import tr
 
-_WW3_ALLOWED_CALENDARS = frozenset({"standard", "gregorian"})
+_WW3_ALLOWED_CALENDARS = frozenset({"standard", "gregorian", "360_day"})
 _WW3_TIME_UNITS_RE = re.compile(
     r"^(seconds|minutes|hours|days)\s+since\s+"
     r"\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}:\d{1,2}\s*$",
@@ -157,14 +157,26 @@ def normalize_time_units_for_ww3(units: str) -> str:
 
 
 def normalize_calendar_for_ww3(calendar: Optional[str]) -> str:
-    """把非 WW3 支持的 calendar 映射为 ``gregorian``。
+    """返回 WW3 可直接使用的 calendar 值；不支持的日历返回空串（由调用方拒绝）。
 
-    [EN] Map calendars not supported by WW3 to ``gregorian``.
+    - ``standard`` / ``gregorian`` / ``360_day`` 保留原值（7.14 原生支持 360_day）；
+    - 其余（如 noleap/365_day/julian）无法在不转换时间数值的前提下安全映射，
+      返回空串表示应拒绝导入，而不是静默改写日历属性导致日期错位。
+
+    [EN] Return the calendar value WW3 can consume directly; unsupported
+    calendars return an empty string (the caller should reject them).
+
+    - ``standard`` / ``gregorian`` / ``360_day`` are kept as-is (7.14 natively
+      supports 360_day);
+    - others (e.g. noleap/365_day/julian) cannot be safely remapped without
+      converting the time values, so an empty string is returned to signal that
+      the import should be rejected instead of silently rewriting the calendar
+      attribute and shifting dates.
     """
     value = (calendar or "gregorian").strip().lower()
     if value in _WW3_ALLOWED_CALENDARS:
         return value
-    return "gregorian"
+    return ""
 
 
 def format_time_metadata_issue_logs(

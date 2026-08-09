@@ -46,24 +46,44 @@ from .forcing_variable_resolver import (
 )
 from ...domain.config_models import ForcingVariableOverride, ResolvedForcingVariables
 
+# WW3 ww3_prnc 硬编码的坐标变量名：坐标数组（ALO/ALA）读取不读 namelist，
+# 只从 longitude/lon/Longitude/x/X 与 latitude/lat/Latitude/y/Y 候选名中查找。
+# 因此归一化输出必须使用 longitude/latitude。
+# [EN] Coordinate variable names hard-coded in ww3_prnc: the coordinate arrays
+# (ALO/ALA) are NOT looked up via namelist — only the candidate names
+# longitude/lon/Longitude/x/X and latitude/lat/Latitude/y/Y are tried, so the
+# normalized output must use longitude/latitude.
+_WW3_LON_NAME = "longitude"
+_WW3_LAT_NAME = "latitude"
 
-def _transform_chunks_for_pool(chunks, lat_needs_flip, lat_axis, lon_needs_flip, lon_axis):
-    """多进程池用通用数组变换：纬度/经度翻转并确保 C 连续。
 
-    [EN] Generic array transform for multiprocessing pool: lat/lon flip
-    and ensure C-contiguous.
+def _transpose_to_output(chunk, transpose_axes):
+    """把源数组转置到 WW3 布局 (lon, lat, time)；无法完全对应时不转置。
+
+    [EN] Transpose a source array to the WW3 layout (lon, lat, time);
+    fall back to no-op when the axes do not fully correspond.
+    """
+    chunk = np.asarray(chunk)
+    axes = tuple(a for a in transpose_axes if a is not None and a < chunk.ndim)
+    if len(axes) == chunk.ndim and axes != tuple(range(chunk.ndim)):
+        chunk = np.transpose(chunk, axes)
+    return chunk
+
+
+def _transform_chunks_for_pool(chunks, lat_needs_flip, lat_axis, lon_needs_flip, lon_axis, transpose_axes):
+    """多进程池用通用数组变换：纬度/经度翻转 + 转置到 WW3 布局并确保 C 连续。
+
+    [EN] Generic array transform for multiprocessing pool: lat/lon flip,
+    transpose to the WW3 layout, and ensure C-contiguity.
     """
     results = []
     for chunk in chunks:
         chunk = np.asarray(chunk)
-        changed = False
-        if lat_needs_flip and lat_axis is not None:
+        if lat_needs_flip and lat_axis is not None and lat_axis < chunk.ndim:
             chunk = np.flip(chunk, axis=lat_axis)
-            changed = True
-        if lon_needs_flip and lon_axis is not None:
+        if lon_needs_flip and lon_axis is not None and lon_axis < chunk.ndim:
             chunk = np.flip(chunk, axis=lon_axis)
-            changed = True
-        results.append(np.ascontiguousarray(chunk) if changed else chunk)
+        results.append(np.ascontiguousarray(_transpose_to_output(chunk, transpose_axes)))
     return tuple(results)
 
 
@@ -290,14 +310,16 @@ class ForcingNormalizeService:
                             ).format(shape=primary_shape, lat_len=len(latitude), lon_len=len(longitude))
                         )
 
-                # 输出维度顺序：时间统一为 time，经纬度保留源坐标变量名
-                # [EN] Output dimension order: time standardized to ``time``, lon/lat keep source names
-                _std_names_map = {
-                    time_dim_idx: output_time,
-                    lat_dim_idx: lat_name,
-                    lon_dim_idx: lon_name,
-                }
-                output_dim_order = [_std_names_map[i] for i in sorted(_std_names_map.keys())]
+                # 输出维度顺序固定 (longitude, latitude, time)：
+                # WW3 ww3_prnc 读取数据时 start=(/1,1,ITIME/) count=(/MXM,MYM,1/)，
+                # 要求 time 为最后一维、前两维依次是经度/纬度。
+                # [EN] Output dims fixed to (longitude, latitude, time): ww3_prnc
+                # reads data as start=(/1,1,ITIME/) count=(/MXM,MYM,1/), so time
+                # must be the last axis and the first two axes are lon/lat.
+                output_dim_order = (_WW3_LON_NAME, _WW3_LAT_NAME, output_time)
+                # 源轴 → 输出轴顺序 (lon, lat, time)，用于数据转置
+                # [EN] Source axes ordered as (lon, lat, time), used to transpose data
+                _src_axes = (lon_dim_idx, lat_dim_idx, time_dim_idx)
 
                 lon_dtype = src.variables[lon_name].dtype
                 lat_dtype = src.variables[lat_name].dtype
@@ -419,24 +441,19 @@ class ForcingNormalizeService:
             target_storage = 16 * 1024 * 1024
             tc = max(1, min(n_time, target_storage // plane_bytes))
             tc = min(tc, 16)
-            size_map = {output_time: tc, lat_name: n_lat, lon_name: n_lon}
+            size_map = {output_time: tc, _WW3_LAT_NAME: n_lat, _WW3_LON_NAME: n_lon}
             return tuple(size_map[d] for d in output_dim_order)
 
         def _transform_chunk(chunk, ndim):
-            """本地翻转：对 time-lat-lon 3D 数据翻转 lat/lon 轴。
+            """本地变换：翻转 lat 轴并把数据转置到 (lon, lat, time)。
 
-            [EN] Local flip: flip the lat/lon axes of time-lat-lon 3D data.
+            [EN] Local transform: flip the lat axis and transpose the data
+            to (lon, lat, time).
             """
             chunk = np.asarray(chunk)
-            changed = False
-            if lat_needs_flip and ndim >= 2:
-                # lat 轴在 3D 中通常是 -2
-                # [EN] The lat axis in 3D data is usually the second-to-last axis
-                lat_ax = ndim - 2 if ndim >= 2 else None
-                if lat_ax is not None:
-                    chunk = np.flip(chunk, axis=lat_ax)
-                    changed = True
-            return np.ascontiguousarray(chunk) if changed else chunk
+            if lat_needs_flip and lat_dim_idx is not None and lat_dim_idx < ndim:
+                chunk = np.flip(chunk, axis=lat_dim_idx)
+            return np.ascontiguousarray(_transpose_to_output(chunk, _src_axes))
 
         # ── Phase 2: 写出标准化文件 ─────────────────────────────────────
         # [EN] Phase 2: write normalized file
@@ -460,23 +477,27 @@ class ForcingNormalizeService:
                     except Exception:
                         pass
 
-                # 创建输出维度：经纬度保留源坐标变量名，时间统一为 time
-                # [EN] Create output dimensions: lon/lat keep source names, time standardized
-                dst.createDimension(lon_name, n_lon)
-                dst.createDimension(lat_name, n_lat)
+                # 创建输出维度：坐标统一为 longitude/latitude（WW3 硬编码候选名），
+                # 时间统一为 time
+                # [EN] Create output dimensions: coordinates unified to
+                # longitude/latitude (hard-coded candidate names in ww3_prnc),
+                # time standardized to ``time``
+                dst.createDimension(_WW3_LON_NAME, n_lon)
+                dst.createDimension(_WW3_LAT_NAME, n_lat)
                 dst.createDimension(output_time, n_time)
                 # 复制源文件中其他维度（如 depth 等）
                 # [EN] Copy other dimensions from source (e.g., depth)
                 for dim_name, dim_obj in src.dimensions.items():
-                    if dim_name in (lon_name, lat_name, time_name, output_time):
+                    if dim_name in (lon_name, lat_name, time_name, output_time, _WW3_LON_NAME, _WW3_LAT_NAME):
                         continue
                     if dim_name not in dst.dimensions:
                         dst.createDimension(dim_name, len(dim_obj) if not dim_obj.isunlimited() else None)
 
-                # 创建坐标变量（保留源变量名；时间统一为 time）
-                # [EN] Create coordinate variables (source names preserved; time standardized)
-                lon_var = dst.createVariable(lon_name, lon_dtype, (lon_name,))
-                lat_var = dst.createVariable(lat_name, lat_dtype, (lat_name,))
+                # 创建坐标变量（统一为 longitude/latitude；时间统一为 time）
+                # [EN] Create coordinate variables (unified to longitude/latitude;
+                # time standardized)
+                lon_var = dst.createVariable(_WW3_LON_NAME, lon_dtype, (_WW3_LON_NAME,))
+                lat_var = dst.createVariable(_WW3_LAT_NAME, lat_dtype, (_WW3_LAT_NAME,))
                 time_var = dst.createVariable(output_time, time_dtype, (output_time,))
 
                 # 创建数据变量
@@ -591,20 +612,20 @@ class ForcingNormalizeService:
                                 _transform_chunks_for_pool,
                                 # lon_needs_flip=False (已拒绝)
                                 # [EN] lon_needs_flip=False (descending longitude already rejected)
-                                chunks, lat_needs_flip, lat_ax, False, lon_ax,
+                                chunks, lat_needs_flip, lat_ax, False, lon_ax, _src_axes,
                             )
                             if pending is not None:
                                 prev_start, prev_end, prev_future = pending
                                 prev_results = prev_future.result()
                                 for i, info in enumerate(data_var_infos):
-                                    dst_data_vars[info["src_name"]][prev_start:prev_end, :, :] = prev_results[i]
+                                    dst_data_vars[info["src_name"]][:, :, prev_start:prev_end] = prev_results[i]
                             pending = (start, end, future)
 
                         if pending is not None:
                             prev_start, prev_end, prev_future = pending
                             prev_results = prev_future.result()
                             for i, info in enumerate(data_var_infos):
-                                dst_data_vars[info["src_name"]][prev_start:prev_end, :, :] = prev_results[i]
+                                dst_data_vars[info["src_name"]][:, :, prev_start:prev_end] = prev_results[i]
                 else:
                     # 顺序分块
                     # [EN] Sequential chunking
@@ -622,7 +643,7 @@ class ForcingNormalizeService:
                             src_var = src.variables[info["src_name"]]
                             slices = _make_read_slices(info["shape"], start, end)
                             chunk_data = np.asarray(src_var[slices])
-                            dst_data_vars[info["src_name"]][start:end, :, :] = _transform_chunk(
+                            dst_data_vars[info["src_name"]][:, :, start:end] = _transform_chunk(
                                 chunk_data, len(info["shape"])
                             )
 
@@ -642,9 +663,9 @@ class ForcingNormalizeService:
                         mapped_dims = []
                         for d in src_var.dimensions:
                             if d == lon_name:
-                                mapped_dims.append(lon_name)
+                                mapped_dims.append(_WW3_LON_NAME)
                             elif d == lat_name:
-                                mapped_dims.append(lat_name)
+                                mapped_dims.append(_WW3_LAT_NAME)
                             elif d == time_name:
                                 mapped_dims.append(output_time)
                             else:
@@ -684,7 +705,15 @@ class ForcingNormalizeService:
                         tr("forcing_time_issue_missing_units", "⚠️ time 变量缺少 units 属性")
                     )
                 time_var.units = ww3_units
-                time_var.calendar = normalize_calendar_for_ww3(original_time_calendar)
+                ww3_calendar = normalize_calendar_for_ww3(original_time_calendar)
+                if not ww3_calendar:
+                    raise ValueError(
+                        tr(
+                            "forcing_time_issue_unsupported_calendar",
+                            "⚠️ 不支持的日历类型：{calendar}（WW3 仅支持 standard/gregorian/360_day；noleap 等无法在不转换时间数值的前提下安全导入）",
+                        ).format(calendar=original_time_calendar)
+                    )
+                time_var.calendar = ww3_calendar
 
             os.replace(temp_output_path, output_file)
             self._emit(
