@@ -38,18 +38,54 @@ _FIELD_ROLES: Dict[str, List[str]] = {
     "ice": ["longitude", "latitude", "time", "concentration", "thickness"],
 }
 
-_ROLE_LABELS: Dict[str, str] = {
-    "longitude": "经度 Longitude",
-    "latitude": "纬度 Latitude",
-    "time": "时间 Time",
-    "u": "U 分量",
-    "v": "V 分量",
-    "value": "水位值 Value",
-    "concentration": "海冰浓度 Concentration",
-    "thickness": "海冰厚度 Thickness（可选）",
+# 角色标签：tr key → 中文默认值（语言文件覆盖英文）
+# [EN] Role labels: tr key → Chinese default (language files provide English)
+_ROLE_LABEL_KEYS: Dict[str, str] = {
+    "longitude": "forcing_role_longitude",
+    "latitude": "forcing_role_latitude",
+    "time": "forcing_role_time",
+    "u": "forcing_role_u",
+    "v": "forcing_role_v",
+    "value": "forcing_role_value",
+    "concentration": "forcing_role_concentration",
+    "thickness": "forcing_role_thickness",
 }
 
-_AUTO_TEXT = "（自动识别 / auto-detect）"
+_ROLE_LABEL_DEFAULTS: Dict[str, str] = {
+    "longitude": "经度",
+    "latitude": "纬度",
+    "time": "时间",
+    "u": "U 分量",
+    "v": "V 分量",
+    "value": "水位值",
+    "concentration": "海冰浓度",
+    "thickness": "海冰厚度（可选）",
+}
+
+_FIELD_NAME_DEFAULTS = {
+    "wind": "风场",
+    "current": "流场",
+    "level": "水位场",
+    "ice": "海冰场",
+}
+
+
+def _role_label(role: str) -> str:
+    """按当前语言返回角色标签（中文默认值，语言文件覆盖英文）。
+
+    [EN] Return the role label in the current language (Chinese default;
+    language files provide English).
+    """
+    key = _ROLE_LABEL_KEYS.get(role, role)
+    return tr(key, _ROLE_LABEL_DEFAULTS.get(role, role))
+
+
+def _auto_text() -> str:
+    """按当前语言返回「自动识别」占位文本。
+
+    [EN] Return the "auto-detect" placeholder text in the current language.
+    """
+    return tr("forcing_mapping_auto_text", "（自动识别）")
 
 
 class ForcingVariableMappingDialog(MessageBoxBase):
@@ -81,7 +117,7 @@ class ForcingVariableMappingDialog(MessageBoxBase):
         self.mapping: dict = {}
         title = QLabel(
             tr("forcing_mapping_title", "变量映射：{field}").format(
-                field={"wind": "风场", "current": "流场", "level": "水位场", "ice": "海冰场"}.get(field, field)
+                field=tr(f"step2_field_{field}", _FIELD_NAME_DEFAULTS.get(field, field))
             )
         )
         title.setStyleSheet("font-size: 16px; font-weight: 600;")
@@ -126,9 +162,9 @@ class ForcingVariableMappingDialog(MessageBoxBase):
         roles_grid.setSpacing(8)
         candidates_hint = "\n".join(info.summary() for info in sorted(variables.values(), key=lambda v: v.name))
         for idx, role in enumerate(self._roles):
-            roles_grid.addWidget(QLabel(_ROLE_LABELS.get(role, role) + "："), idx, 0)
+            roles_grid.addWidget(QLabel(_role_label(role) + "："), idx, 0)
             combo = LineEdit()
-            combo.setPlaceholderText(_AUTO_TEXT)
+            combo.setPlaceholderText(_auto_text())
             combo.setStyleSheet(self._input_style())
             if candidates_hint:
                 combo.setToolTip(tr("forcing_mapping_candidates", "可用变量：\n{vars}").format(vars=candidates_hint))

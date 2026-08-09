@@ -2705,5 +2705,14 @@
   "forcing_mapping_vars_set": "变量 {mapping}",
   "forcing_mapping_auto": "全部自动识别",
   "browse": "浏览",
-  "forcing_remote_missing_vars": "⚠️ {field} 使用了服务器路径 {path}，但未填写变量映射；将跳过 NML 生成。请在变量映射中指定分量变量。"
+  "forcing_remote_missing_vars": "⚠️ {field} 使用了服务器路径 {path}，但未填写变量映射；将跳过 NML 生成。请在变量映射中指定分量变量。",
+  "forcing_role_longitude": "经度",
+  "forcing_role_latitude": "纬度",
+  "forcing_role_time": "时间",
+  "forcing_role_u": "U 分量",
+  "forcing_role_v": "V 分量",
+  "forcing_role_value": "水位值",
+  "forcing_role_concentration": "海冰浓度",
+  "forcing_role_thickness": "海冰厚度（可选）",
+  "forcing_mapping_auto_text": "（自动识别）"
 }

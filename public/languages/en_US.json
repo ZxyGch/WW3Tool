@@ -2706,5 +2706,14 @@
   "forcing_mapping_vars_set": "variables {mapping}",
   "forcing_mapping_auto": "all auto-detected",
   "browse": "Browse",
-  "forcing_remote_missing_vars": "⚠️ {field} uses server path {path} but no variable mapping is set; NML generation will be skipped. Specify component variables in the mapping."
+  "forcing_remote_missing_vars": "⚠️ {field} uses server path {path} but no variable mapping is set; NML generation will be skipped. Specify component variables in the mapping.",
+  "forcing_role_longitude": "Longitude",
+  "forcing_role_latitude": "Latitude",
+  "forcing_role_time": "Time",
+  "forcing_role_u": "U component",
+  "forcing_role_v": "V component",
+  "forcing_role_value": "Water level value",
+  "forcing_role_concentration": "Sea-ice concentration",
+  "forcing_role_thickness": "Sea-ice thickness (optional)",
+  "forcing_mapping_auto_text": "(auto-detect)"
 }
