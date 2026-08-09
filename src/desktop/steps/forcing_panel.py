@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
-from qfluentwidgets import ComboBox, FluentIcon, IconWidget, LineEdit, PrimaryPushButton
+from PyQt6.QtCore import Qt, QRect, QSize, pyqtSignal
+from PyQt6.QtGui import QIcon, QPainter
+from PyQt6.QtWidgets import QGridLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from qfluentwidgets import ComboBox, FluentIcon, LineEdit, PrimaryPushButton
+from qfluentwidgets.common.font import setFont
+from qfluentwidgets.common.icon import drawIcon
+from qfluentwidgets.common.style_sheet import FluentStyleSheet
 
 from ..components.combo_box import left_align_combo_text
 from ..components.header_card import create_header_card
@@ -14,59 +18,61 @@ from ..components.right_aligned_controls import create_right_aligned_check_box
 from workflows.support.translations import tr
 
 
-class _PencilIconButton(IconWidget):
-    """可点击的笔形图标按钮：图标内缩居中绘制（不铺满），带按钮边框/悬停样式。
+class _PencilIconButton(PrimaryPushButton):
+    """可点击的笔形图标按钮：复用框架 PrimaryPushButton 样式（与同行按钮一致），
+    图标固定 14px 居中绘制。
 
-    [EN] Clickable pencil icon button: icon drawn inset and centered (not
-    stretched to fill), with button border / hover styling.
+    [EN] Clickable pencil icon button: reuses the framework PrimaryPushButton
+    style (same as sibling buttons), with a fixed 14px centered icon.
     """
 
     clicked = pyqtSignal()
+    _ICON_SIZE = 14
 
-    def __init__(self, icon, parent=None):
-        # IconWidget 的 @singledispatchmethod __init__ 与子类化冲突,
-        # 直接初始化 QWidget 基类并设置图标
-        # [EN] IconWidget's @singledispatchmethod __init__ conflicts with
-        # subclassing; initialize the QWidget base directly and set the icon.
-        QWidget.__init__(self, parent)
-        self.setIcon(icon)
-        # QWidget 默认不绘制 QSS 背景/边框，需显式开启
-        # [EN] QWidget does not paint QSS background/border by default
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    def __init__(self, parent=None):
+        # qfluentwidgets 的 PushButton.__init__ 是 @singledispatchmethod,
+        # 子类 super().__init__ 会递归到自身;这里复刻其默认分支的初始化
+        # [EN] PushButton.__init__ uses @singledispatchmethod; subclass
+        # super().__init__ would recurse into itself. Replicate the default
+        # branch initialization here instead.
+        QPushButton.__init__(self, parent)
+        FluentStyleSheet.BUTTON.apply(self)
+        self.isPressed = False
+        self.isHover = False
+        self.setIconSize(QSize(16, 16))
+        self.setIcon(None)
+        setFont(self)
+        self.setIconSize(QSize(self._ICON_SIZE, self._ICON_SIZE))
 
     def paintEvent(self, event) -> None:
-        from PyQt6.QtGui import QPainter
-        from qfluentwidgets.common.icon import drawIcon
-
+        # 临时置空 _icon，让 super().paintEvent 只绘制框架背景/边框/悬停
+        # （qfluentwidgets PushButton 的图标由 paintEvent 自绘，x 固定 12 靠左）
+        # [EN] Temporarily blank _icon so super().paintEvent only paints the
+        # framework background/border/hover (the framework draws the icon at a
+        # fixed x=12, off-center for empty-text buttons).
+        saved = self._icon
+        self._icon = QIcon()
+        try:
+            super().paintEvent(event)
+        finally:
+            self._icon = saved
         painter = QPainter(self)
         painter.setRenderHints(
             QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
         )
-        # 图标绘制区域内缩 22%，避免铺满控件显得过大
-        # [EN] Inset the icon area by 22% so it does not fill the whole widget
-        margin = max(1, int(self.width() * 0.22))
-        icon_rect = self.rect().adjusted(margin, margin, -margin, -margin)
-        drawIcon(self._icon, painter, icon_rect)
+        size = self._ICON_SIZE
+        icon_rect = QRect(
+            (self.width() - size) // 2,
+            (self.height() - size) // 2,
+            size,
+            size,
+        )
+        drawIcon(saved, painter, icon_rect)
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
             self.clicked.emit()
         super().mouseReleaseEvent(event)
-
-
-_PENCIL_BUTTON_STYLE = """
-QWidget {
-    background-color: rgba(128, 128, 128, 0.08);
-    border: 1px solid rgba(128, 128, 128, 0.35);
-    border-radius: 4px;
-}
-QWidget:hover {
-    background-color: rgba(128, 128, 128, 0.2);
-}
-QWidget:pressed {
-    background-color: rgba(128, 128, 128, 0.3);
-}
-"""
 
 
 class ForcingStepPanel:
@@ -286,10 +292,10 @@ class ForcingStepPanel:
         # [EN] Pencil button: opens the variable mapping / server path dialog,
         # positioned to the left of the clear button; uses the framework's
         # FluentIcon.PENCIL_INK icon drawn centered over the widget rect.
-        mapping_button = _PencilIconButton(FluentIcon.PENCIL_INK)
+        mapping_button = _PencilIconButton()
+        mapping_button.setIcon(FluentIcon.PENCIL_INK)
         mapping_button.setFixedSize(side, side)
         mapping_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        mapping_button.setStyleSheet(_PENCIL_BUTTON_STYLE)
         mapping_button.setToolTip(tr("step2_variable_mapping_tip", "变量映射与服务器路径（经度/纬度/时间/分量）"))
         mapping_button.clicked.connect(lambda: open_mapping(key))
         grid.addWidget(QLabel(label), row, 0)
