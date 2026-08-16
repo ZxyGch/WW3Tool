@@ -187,9 +187,14 @@ def _resolve_root() -> Path:
 
 
 ROOT = _resolve_root()
-ENTRY_SCRIPT = ROOT / "run.py"
+# 装包形态下本文件（run.py）位于 site-packages 根，仓库形态下位于仓库根，
+# 两种形态都用 __file__ 定位，避免资源包内不存在的 run.py。
+ENTRY_SCRIPT = Path(__file__).resolve()
 REQUIREMENTS_FILE = ROOT / "src" / "requirements.txt"
-VENV_DIR = ROOT / ".venv"
+# pip 安装形态：ROOT 是 ww3tool_resources 资源包（含 params.yml 但无 run.py），
+# 此时运行环境就是 pip 安装目标，直接使用当前解释器，禁止在 site-packages 内自建 .venv。
+_PACKAGED_INSTALL = (ROOT / "run.py").is_file() is False
+VENV_DIR = Path(sys.prefix) if _PACKAGED_INSTALL else ROOT / ".venv"
 
 # 无需完整虚拟环境/依赖即可执行的轻量 CLI 子命令。
 # [EN] Lightweight CLI subcommands that don't require the full venv/dependencies.
