@@ -276,6 +276,44 @@ def _normalize_boundaries(bound):
     return processed
 
 
+def _align_boundaries_to_grid(bound, lon_min, lon_max):
+    """Shift coastline polygons into the target grid's longitude branch.
+
+    GSHHS is stored in -180..180, but a grid may be written 0..360, or may
+    cross the dateline — the desktop normalises a 170..-170 box to 170..190,
+    so longitudes above 180 (or below -180) are ordinary input.  Without this
+    step every polygon sits outside such a domain and the run silently
+    produces no coastline at all: no mask cleanup and an all-zero obstruction
+    file.
+
+    Each polygon is offered at its own longitude and one turn either side; the
+    copies whose bounding box overlaps the grid are kept.  A polygon sitting on
+    the grid's seam is therefore kept twice, once from each side, and
+    ``compute_boundary`` clips each copy to the part that is actually inside.
+    A plain -180..180 grid keeps exactly the k=0 copy, i.e. the original list.
+    """
+    lon_min = float(lon_min)
+    lon_max = float(lon_max)
+    aligned = []
+    for poly in bound:
+        if not isinstance(poly, dict):
+            continue
+        west = float(poly.get('west', 0.0))
+        east = float(poly.get('east', 0.0))
+        for turn in (-360.0, 0.0, 360.0):
+            if east + turn < lon_min or west + turn > lon_max:
+                continue
+            if turn == 0.0:
+                aligned.append(poly)
+                continue
+            shifted = poly.copy()
+            shifted['x'] = np.asarray(poly['x'], dtype=float) + turn
+            shifted['west'] = west + turn
+            shifted['east'] = east + turn
+            aligned.append(shifted)
+    return aligned
+
+
 def _params_from_grid_nml(nml_path):
     """
     Map FORTRAN-style grid.nml sections to create_grid ``params`` keys.
@@ -749,8 +787,20 @@ def create_grid(**kwargs):
                     params['opt_poly'] = 0
             # Normalize boundaries for global handling (dateline split, lon range)
             bound = _normalize_boundaries(bound)
+            # Put the polygons in the same longitude branch as the target grid
+            # (a 0~360 or dateline-crossing domain would otherwise see none).
+            grid_lon_min = float(np.min(lon)) - params['dx']
+            grid_lon_max = float(np.max(lon)) + params['dx']
+            before = len(bound)
+            bound = _align_boundaries_to_grid(bound, grid_lon_min, grid_lon_max)
+            if bound_user:
+                bound_user = _align_boundaries_to_grid(bound_user, grid_lon_min, grid_lon_max)
+                Nu = len(bound_user)
             N = len(bound)
             print(f'  Normalized boundary polygons: {N}', flush=True)
+            if N != before:
+                print(f'  Aligned to grid longitudes [{grid_lon_min:.2f}, '
+                      f'{grid_lon_max:.2f}]: {before} -> {N} polygons', flush=True)
         else:
             print(f'  Warning: Boundary file not found: {boundary_file}', flush=True)
             print('  Continuing without boundary data...', flush=True)

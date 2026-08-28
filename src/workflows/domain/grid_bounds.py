@@ -37,15 +37,17 @@ def is_global_bounds(
     *,
     eps: float = 1e-3,
 ) -> bool:
-    """Return True when bounds already match the canonical global domain."""
-    lon_min, lon_max = float(lon[0]), float(lon[1])
+    """Return True when the bounds cover the whole globe.
+
+    The longitude convention does not matter: ``-180~180`` and ``0~360`` are
+    the same domain, and the desktop normalises a dateline-crossing box to an
+    increasing axis that may run past 180 (``170~-170`` becomes ``170~190``).
+    What decides it is whether the longitude span closes a full turn.
+    """
     lat_min, lat_max = float(lat[0]), float(lat[1])
-    return (
-        abs(lon_min - GLOBAL_LON[0]) <= eps
-        and abs(lon_max - GLOBAL_LON[1]) <= eps
-        and abs(lat_min - GLOBAL_LAT[0]) <= eps
-        and abs(lat_max - GLOBAL_LAT[1]) <= eps
-    )
+    if abs(lat_min - GLOBAL_LAT[0]) > eps or abs(lat_max - GLOBAL_LAT[1]) > eps:
+        return False
+    return abs(lon_span_deg(lon) - 360.0) <= eps
 
 
 def is_near_global_bounds(
@@ -102,15 +104,17 @@ def point_in_lon_lat_bounds(
     lat_v = float(lat)
     if lat_v < float(lat_min) - eps or lat_v > float(lat_max) + eps:
         return False
+    # Decide "covers every longitude" from the bounds as given: normalising
+    # first would collapse a 0~360 box to 0~0 and reject everything.
+    if (
+        is_global_bounds((lon_min, lon_max), (lat_min, lat_max), eps=0.05)
+        or is_near_global_bounds((lon_min, lon_max), (lat_min, lat_max))
+        or lon_span_deg((lon_min, lon_max)) >= 300.0
+    ):
+        return True
     lon_v = normalize_longitude(lon)
     west = normalize_longitude(lon_min)
     east = normalize_longitude(lon_max)
-    if (
-        is_global_bounds((west, east), (lat_min, lat_max), eps=0.05)
-        or is_near_global_bounds((west, east), (lat_min, lat_max))
-        or lon_span_deg((west, east)) >= 300.0
-    ):
-        return GLOBAL_LON[0] - eps <= lon_v <= GLOBAL_LON[1] + eps
     if west <= east:
         return west - eps <= lon_v <= east + eps
     return lon_v >= west - eps or lon_v <= east + eps
@@ -152,6 +156,13 @@ def regional_map_extent(
     east = float(max(lon[0], lon[1]))
     south = float(min(lat[0], lat[1]))
     north = float(max(lat[0], lat[1]))
+    # A box written entirely past the seam (the desktop turns 190~230 into
+    # exactly that) is the same box one turn along; bring it back so the
+    # ±180 clamping below still bounds it.
+    if west >= 180.0:
+        west, east = west - 360.0, east - 360.0
+    elif east <= -180.0:
+        west, east = west + 360.0, east + 360.0
     lon_sp = lon_span_deg((west, east))
     lat_sp = abs(north - south)
 
