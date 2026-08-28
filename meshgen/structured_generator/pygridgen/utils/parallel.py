@@ -112,6 +112,285 @@ def describe_cpu_budget():
     return f"{available_cpus()} CPUs (from {source})"
 
 
+
+
+def _self_rss_bytes():
+    """This process's resident size, without depending on psutil."""
+    try:
+        import resource
+    except ImportError:
+        return None
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if not peak:
+        return None
+    # ru_maxrss is bytes on macOS/BSD and kilobytes on Linux.
+    return peak if sys.platform == "darwin" else peak * 1024
+
+
+# Captured while only the interpreter and the numeric libraries are loaded, so
+# it is a fair estimate of what a *spawned* worker needs before it touches any
+# of our data.  Under fork a worker shares those pages instead, and this term
+# does not apply.
+_IMPORT_BASELINE_RSS = _self_rss_bytes() or 0
+
+
+def worker_baseline_bytes():
+    """Memory a fresh worker costs before it is sent anything.
+
+    On spawn platforms (macOS, Windows) that is a whole new interpreter with
+    numpy, scipy and matplotlib re-imported -- in practice the largest
+    per-worker term by far.  Under fork the pages are shared copy-on-write.
+    """
+    import multiprocessing as mp
+
+    try:
+        method = mp.get_start_method(allow_none=False)
+    except (ValueError, RuntimeError):
+        method = "spawn"
+    if method == "fork":
+        return 0
+    return _IMPORT_BASELINE_RSS
+
+
+_MEM_ENV_OVERRIDE = "WW3TOOL_MESHGEN_MEM_MB"
+
+# Of whatever memory we believe we may use, this much is handed to the worker
+# pool.  The rest covers the parent's own arrays, the interpreter, and the
+# fact that every estimate here is a lower bound on real RSS.
+_POOL_MEMORY_SHARE = 0.5
+
+
+def _read_int_file(path):
+    """First integer in *path*, or None. cgroup limits read as 'max' when off."""
+    try:
+        with open(path, "r") as handle:
+            raw = handle.read().strip().split()[0]
+    except (OSError, IndexError):
+        return None
+    if raw in ("max", "-1"):
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    # cgroup v1 writes a sentinel near 2**63 to mean "no limit".
+    return value if 0 < value < (1 << 62) else None
+
+
+def _cgroup_memory_limit():
+    """Memory this container/cgroup may use, minus what it already holds.
+
+    Slurm confines a job with cgroups, so this is the number that decides
+    whether the job gets OOM-killed -- not the size of the node.
+    """
+    for limit_path, usage_path in (
+        ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+        ("/sys/fs/cgroup/memory/memory.limit_in_bytes",
+         "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+    ):
+        limit = _read_int_file(limit_path)
+        if limit is None:
+            continue
+        used = _read_int_file(usage_path) or 0
+        return max(0, limit - used)
+    return None
+
+
+def _slurm_memory_limit():
+    """Bytes Slurm allocated to this task, from the usual MB-valued knobs."""
+    per_node = _int_env("SLURM_MEM_PER_NODE")
+    if per_node is not None:
+        return per_node * (1 << 20)
+    per_cpu = _int_env("SLURM_MEM_PER_CPU")
+    if per_cpu is not None:
+        return per_cpu * available_cpus() * (1 << 20)
+    return None
+
+
+def _sysconf(name):
+    """``os.sysconf`` that returns None instead of raising on absent keys."""
+    try:
+        value = os.sysconf(name)
+    except (ValueError, OSError, AttributeError):
+        return None
+    return value if value and value > 0 else None
+
+
+def _macos_available_memory():
+    """Free + reclaimable memory on macOS, which has no SC_AVPHYS_PAGES."""
+    if sys.platform != "darwin":
+        return None
+    import subprocess
+
+    try:
+        out = subprocess.run(["vm_stat"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    page = _sysconf("SC_PAGE_SIZE") or 4096
+    pages = 0
+    for line in out.splitlines():
+        for label in ("Pages free:", "Pages inactive:", "Pages speculative:"):
+            if line.startswith(label):
+                try:
+                    pages += int(line.split(":")[1].strip().rstrip("."))
+                except (IndexError, ValueError):
+                    pass
+    return pages * page if pages else None
+
+
+def _system_available_memory():
+    """Free physical memory, by whatever route the platform offers.
+
+    Falls back to total physical memory: worse than a real "available"
+    reading, but still far better than assuming the pool can be as wide as
+    the core count.
+    """
+    try:
+        with open("/proc/meminfo", "r") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, IndexError, ValueError):
+        pass
+
+    page = _sysconf("SC_PAGE_SIZE")
+    avail = _sysconf("SC_AVPHYS_PAGES")
+    if page and avail:
+        return page * avail
+
+    mac = _macos_available_memory()
+    if mac:
+        return mac
+
+    total = _sysconf("SC_PHYS_PAGES")
+    if page and total:
+        return page * total
+    return None
+
+
+def available_memory_bytes():
+    """Memory this process may reasonably use, or None if it cannot be told.
+
+    Order matters: an explicit override wins, then the cgroup limit that
+    actually triggers the OOM killer under Slurm, then Slurm's own accounting,
+    and only then the free memory of the machine.
+    """
+    override = _int_env(_MEM_ENV_OVERRIDE)
+    if override is not None:
+        return override * (1 << 20)
+
+    limits = [value for value in (_cgroup_memory_limit(), _slurm_memory_limit())
+              if value is not None]
+    if limits:
+        return min(limits)
+    return _system_available_memory()
+
+
+def describe_memory_budget():
+    """One-line summary of the memory budget (for the log)."""
+    total = available_memory_bytes()
+    if total is None:
+        return "memory budget unknown"
+    source = "system"
+    if _int_env(_MEM_ENV_OVERRIDE) is not None:
+        source = _MEM_ENV_OVERRIDE
+    elif _cgroup_memory_limit() is not None:
+        source = "cgroup"
+    elif _slurm_memory_limit() is not None:
+        source = "Slurm"
+    return f"{total / (1 << 30):.1f} GiB usable (from {source})"
+
+
+def cap_workers_for_memory(n_workers, per_worker_bytes, label=""):
+    """Reduce *n_workers* so the pool fits the memory budget.
+
+    Every worker holds its own copy of what it is sent, so a wide pool is a
+    way to run out of memory on a machine that had plenty for one process.
+    Returns at least 1: with no budget left the caller still has to do the
+    work, just serially.
+    """
+    n_workers = max(1, int(n_workers))
+    if n_workers == 1 or not per_worker_bytes or per_worker_bytes <= 0:
+        return n_workers
+
+    budget = available_memory_bytes()
+    if budget is None:
+        return n_workers
+
+    affordable = int((budget * _POOL_MEMORY_SHARE) // per_worker_bytes)
+    if affordable >= n_workers:
+        return n_workers
+
+    capped = max(1, affordable)
+    where = f" for {label}" if label else ""
+    print(
+        f'  Memory budget{where}: {describe_memory_budget()}, '
+        f'~{per_worker_bytes / (1 << 20):.0f} MiB per worker '
+        f'-> using {capped} of {n_workers} workers.',
+        flush=True,
+    )
+    return capped
+
+
+
+# Grid-proportional cost of a run, measured over 0.16M / 0.64M / 2.56M cell
+# grids: the arrays the parent keeps (bathymetry, mask, obstructions, cell
+# geometry) plus the base bathymetry window.  Deliberately on the high side --
+# the point is to catch "this will never fit", not to predict to the megabyte.
+_BYTES_PER_CELL_ESTIMATE = 320
+
+# Estimates run about 10-15% under measured RSS, and running out of memory is
+# far more expensive than declining to start, so require some slack.
+_MEMORY_SAFETY_MARGIN = 1.25
+
+
+def estimate_peak_bytes(cells, base_bytes=None, n_workers=1, per_worker_bytes=0):
+    """Rough peak RSS of a grid run, in bytes.
+
+    *base_bytes* is what the process already holds (the coastline database
+    dominates it, and it does not depend on the grid); pass the current RSS
+    once the coastline is loaded and the estimate is grounded in fact rather
+    than in a guess about file formats.
+    """
+    if base_bytes is None:
+        base_bytes = _self_rss_bytes() or 0
+    return (int(base_bytes)
+            + int(cells) * _BYTES_PER_CELL_ESTIMATE
+            + max(0, int(n_workers) - 1) * int(per_worker_bytes))
+
+
+def check_memory_plan(cells, base_bytes=None, n_workers=1, per_worker_bytes=0):
+    """Report whether a run of this size is expected to fit.
+
+    Returns ``(fits, message)``.  ``fits`` is True when there is no reason to
+    think it will not -- including when the budget cannot be determined, since
+    refusing to run on an unknown budget would be worse than trying.
+    """
+    need = estimate_peak_bytes(cells, base_bytes, n_workers, per_worker_bytes)
+    budget = available_memory_bytes()
+    gib = float(1 << 30)
+    if budget is None:
+        return True, (f"Estimated peak memory ~{need / gib:.1f} GiB "
+                      f"({cells / 1e6:.2f}M cells); memory budget unknown.")
+
+    summary = (f"Estimated peak memory ~{need / gib:.1f} GiB "
+               f"({cells / 1e6:.2f}M cells, {n_workers} worker(s)); "
+               f"{describe_memory_budget()}.")
+    if need * _MEMORY_SAFETY_MARGIN <= budget:
+        return True, summary
+    return False, (
+        summary + "\n"
+        "  This grid is not expected to fit.  Options, cheapest first:\n"
+        "    - give the job more memory (Slurm: --mem);\n"
+        "    - use a coarser coastline (BOUNDARY='inter' or 'low' instead of\n"
+        "      'full'), which is most of the fixed cost;\n"
+        "    - enlarge DX/DY, or split the domain and generate it in pieces.\n"
+        "  Set WW3TOOL_MESHGEN_MEM_MB to override the budget if this estimate\n"
+        "  is wrong for your machine."
+    )
+
+
 def chunk_ranges(n_items, n_chunks):
     """Split ``range(n_items)`` into at most *n_chunks* contiguous (start, stop)."""
     n_items = int(n_items)

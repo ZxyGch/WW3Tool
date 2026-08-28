@@ -16,10 +16,12 @@ from matplotlib.path import Path
 
 try:
     from ..utils.compute_cellcorner import compute_cellcorner_grid
-    from ..utils.parallel import chunk_ranges, describe_cpu_budget, resolve_workers, run_parallel
+    from ..utils.parallel import (cap_workers_for_memory, chunk_ranges, describe_cpu_budget,
+                                  resolve_workers, run_parallel, worker_baseline_bytes)
 except ImportError:
     from utils.compute_cellcorner import compute_cellcorner_grid
-    from utils.parallel import chunk_ranges, describe_cpu_budget, resolve_workers, run_parallel
+    from utils.parallel import (cap_workers_for_memory, chunk_ranges, describe_cpu_budget,
+                                resolve_workers, run_parallel, worker_baseline_bytes)
 
 # Sample points per cell edge (8x8 grid inside each cell).
 _NSAMP = 8
@@ -30,6 +32,10 @@ _NSAMP = 8
 _MIN_RECT_SIZE = 1e-3
 
 _BAND_STATE = {}
+
+# Per band cell: the seven float64 grids and the is_rect flag that travel
+# with a task, plus the uint64/uint64/int16/bool state the worker builds.
+_BAND_BYTES_PER_CELL = 7 * 8 + 1 + (8 + 8 + 2 + 1)
 
 
 def _cell_geometry(x, y):
@@ -54,45 +60,61 @@ def _cell_geometry(x, y):
     return xmin, xmax, ymin, ymax, is_rect, corners
 
 
-def _sample_points(xmin, xmax, ymin, ymax, is_rect, corners, rows, cols):
-    """Sample points of the given cells, as a ragged (flat values + counts).
+_ALL_BITS = np.uint64(0xFFFFFFFFFFFFFFFF)
+_BIT_INDEX = np.arange(_NSAMP * _NSAMP, dtype=np.uint64)
+_BIT_COL = (_BIT_INDEX % np.uint64(_NSAMP)).astype(np.int64)
+_BIT_ROW = (_BIT_INDEX // np.uint64(_NSAMP)).astype(np.int64)
 
-    Mirrors the per-cell construction it replaces: an ``_NSAMP`` x ``_NSAMP``
-    grid spanning the cell bounding box, keeping only the points inside the
-    cell polygon.
+
+def _popcount(masks):
+    """Bits set per element of a uint64 array."""
+    if hasattr(np, 'bitwise_count'):
+        return np.bitwise_count(masks).astype(np.int64)
+    bytes_view = masks.astype('<u8').view(np.uint8).reshape(-1, 8)
+    return np.unpackbits(bytes_view, axis=1).sum(axis=1).astype(np.int64)
+
+
+def _bit_coords(x0, x1, y0, y1, bits):
+    """Coordinates of sample point *bits* of the cells with the given boxes.
+
+    Same values the ``linspace``-per-cell construction produced, addressed by
+    the flat ``row * _NSAMP + col`` index the bitmasks are keyed on.  The last
+    row and column are pinned to the box edge exactly, as ``linspace`` does.
+    """
+    col = _BIT_COL[bits]
+    row = _BIT_ROW[bits]
+    last = _NSAMP - 1
+    xv = np.where(col == last, x1, x0 + (x1 - x0) / last * col)
+    yv = np.where(row == last, y1, y0 + (y1 - y0) / last * row)
+    return xv, yv
+
+
+def _cell_point_masks(xmin, xmax, ymin, ymax, is_rect, corners, rows, cols):
+    """Which of a cell's ``_NSAMP**2`` sample points fall inside the cell.
+
+    Returned as one uint64 per cell.  A plain rectangle contains its whole
+    sample grid, so only the rare non-rectangular cell needs matplotlib.
     """
     n = len(rows)
+    masks = np.full(n, _ALL_BITS, dtype=np.uint64)
+    if n == 0:
+        return masks
+
+    rect = is_rect[rows, cols]
+    if np.all(rect):
+        return masks
+    if corners is None:
+        raise ValueError('cell corner rings are required for non-rectangular cells')
+
     x0 = xmin[rows, cols]
     x1 = xmax[rows, cols]
     y0 = ymin[rows, cols]
     y1 = ymax[rows, cols]
-
-    # Same values np.linspace(x0, x1, _NSAMP) would produce, done for all cells.
-    steps = np.arange(_NSAMP)
-    xs = x0[:, None] + ((x1 - x0) / (_NSAMP - 1))[:, None] * steps
-    ys = y0[:, None] + ((y1 - y0) / (_NSAMP - 1))[:, None] * steps
-    xs[:, -1] = x1
-    ys[:, -1] = y1
-
-    # meshgrid(xtt, ytt).flatten() ordering: index = row * _NSAMP + col
-    px = np.tile(xs, (1, _NSAMP))
-    py = np.repeat(ys, _NSAMP, axis=1)
-
-    rect = is_rect[rows, cols]
-    counts = np.full(n, _NSAMP * _NSAMP, dtype=np.int64)
-    if np.all(rect):
-        return px.ravel(), py.ravel(), counts
-    if corners is None:
-        raise ValueError('cell corner rings are required for non-rectangular cells')
-
-    out_x = []
-    out_y = []
-    for i in range(n):
-        if rect[i]:
-            out_x.append(px[i])
-            out_y.append(py[i])
-            continue
+    shifts = _BIT_INDEX
+    for i in np.flatnonzero(~rect):
         k, j = rows[i], cols[i]
+        px, py = _bit_coords(x0[i], x1[i], y0[i], y1[i],
+                             np.arange(_NSAMP * _NSAMP))
         ring_x = np.array([corners['c4x'][k, j], corners['c1x'][k, j],
                            corners['c2x'][k, j], corners['c3x'][k, j],
                            corners['c4x'][k, j]])
@@ -100,25 +122,10 @@ def _sample_points(xmin, xmax, ymin, ymax, is_rect, corners, rows, cols):
                            corners['c2y'][k, j], corners['c3y'][k, j],
                            corners['c4y'][k, j]])
         inside = Path(np.column_stack([ring_x, ring_y])).contains_points(
-            np.column_stack([px[i], py[i]]), radius=1e-6)
-        out_x.append(px[i][inside])
-        out_y.append(py[i][inside])
-        counts[i] = int(inside.sum())
-
-    return (np.concatenate(out_x) if n else np.empty(0),
-            np.concatenate(out_y) if n else np.empty(0),
-            counts)
-
-
-def _ragged_indices(offsets, counts):
-    """Flat indices of the concatenated ranges ``[off, off + cnt)``."""
-    total = int(counts.sum())
-    if total == 0:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
-    starts = np.cumsum(counts) - counts
-    owner = np.repeat(np.arange(len(counts)), counts)
-    within = np.arange(total) - np.repeat(starts, counts)
-    return np.repeat(offsets, counts) + within, owner
+            np.column_stack([px, py]), radius=1e-6)
+        masks[i] = np.bitwise_or.reduce(
+            np.where(inside, np.uint64(1) << shifts, np.uint64(0)))
+    return masks
 
 
 def _closed_polygon(bound):
@@ -139,6 +146,13 @@ def _clean_band(task):
     and the polygons, so splitting this way gives exactly the result of the
     single-pass loop.  Only the band's own slice of the grid travels with the
     task; the polygons, which every band needs, come from the pool initializer.
+
+    Per-cell state is two uint64 bitmasks over the cell's sample grid rather
+    than the sample coordinates themselves: 17 bytes a cell instead of the
+    ~1 KB that storing 64 coordinate pairs costs, which is what used to make
+    peak memory scale as a kilobyte per coastal cell.  The coordinates are
+    cheap to recompute from the cell's bounding box for the points that still
+    need testing.
     """
     r0, r1, x, y, band_mask, xmin, xmax, ymin, ymax, is_rect, corners = task
     st = _BAND_STATE
@@ -147,9 +161,13 @@ def _clean_band(task):
     lim = st['lim']
 
     band_mask = band_mask.copy()
-
     n_rows, n_cols = band_mask.shape
-    cell_id = np.full((n_rows, n_cols), -1, dtype=np.int64)
+
+    # Dense over the band, and small: 8 + 8 + 2 + 1 bytes a cell.
+    cell_full = np.zeros((n_rows, n_cols), dtype=np.uint64)   # points inside the cell
+    cell_hit = np.zeros((n_rows, n_cols), dtype=np.uint64)    # points inside some polygon
+    cell_cnt = np.zeros((n_rows, n_cols), dtype=np.int16)
+    cell_seen = np.zeros((n_rows, n_cols), dtype=bool)
 
     # Row / column extents, so a polygon only ever scans the rows and columns
     # its bounding box can reach instead of the whole band.
@@ -157,16 +175,6 @@ def _clean_band(task):
     row_ymax = y.max(axis=1)
     col_xmin = x.min(axis=0)
     col_xmax = x.max(axis=0)
-
-    # Ragged pool of per-cell sample points, grown by doubling.
-    cap = 1 << 12
-    pool_x = np.empty(cap)
-    pool_y = np.empty(cap)
-    pool_hit = np.zeros(cap, dtype=bool)
-    used = 0
-    cell_off = np.empty(0, dtype=np.int64)
-    cell_n = np.empty(0, dtype=np.int64)
-    cell_in = np.empty(0, dtype=np.int64)
 
     for bi, bound in enumerate(bounds):
         west, east, south, north = bboxes[bi]
@@ -195,56 +203,41 @@ def _clean_band(task):
         if poly_path is None:
             continue
 
-        ids = cell_id[rows, cols]
-        fresh = ids < 0
+        fresh = ~cell_seen[rows, cols]
         if np.any(fresh):
             f_rows = rows[fresh]
             f_cols = cols[fresh]
-            new_x, new_y, new_counts = _sample_points(
-                xmin, xmax, ymin, ymax, is_rect, corners, f_rows, f_cols)
+            masks = _cell_point_masks(xmin, xmax, ymin, ymax, is_rect, corners,
+                                      f_rows, f_cols)
+            cell_full[f_rows, f_cols] = masks
+            cell_cnt[f_rows, f_cols] = _popcount(masks)
+            cell_seen[f_rows, f_cols] = True
 
-            need = used + int(new_counts.sum())
-            if need > cap:
-                while cap < need:
-                    cap *= 2
-                pool_x = np.resize(pool_x, cap)
-                pool_y = np.resize(pool_y, cap)
-                grown = np.zeros(cap, dtype=bool)
-                grown[:used] = pool_hit[:used]
-                pool_hit = grown
-            pool_x[used:need] = new_x
-            pool_y[used:need] = new_y
-            pool_hit[used:need] = False
-
-            new_off = used + np.cumsum(new_counts) - new_counts
-            new_ids = len(cell_off) + np.arange(len(f_rows))
-            cell_id[f_rows, f_cols] = new_ids
-            cell_off = np.concatenate([cell_off, new_off])
-            cell_n = np.concatenate([cell_n, new_counts])
-            cell_in = np.concatenate([cell_in, np.zeros(len(f_rows), dtype=np.int64)])
-            used = need
-            ids = cell_id[rows, cols]
-
-        counts = cell_n[ids]
+        counts = cell_cnt[rows, cols]
         alive = counts > 0
         if not np.all(alive):
-            rows, cols, ids, counts = rows[alive], cols[alive], ids[alive], counts[alive]
-            if ids.size == 0:
+            rows, cols, counts = rows[alive], cols[alive], counts[alive]
+            if rows.size == 0:
                 continue
 
-        flat, owner = _ragged_indices(cell_off[ids], counts)
-        untested = ~pool_hit[flat]
-        flat = flat[untested]
-        owner = owner[untested]
+        todo = cell_full[rows, cols] & ~cell_hit[rows, cols]
+        owner, bits = np.nonzero(
+            (todo[:, None] >> _BIT_INDEX) & np.uint64(1))
+        if owner.size:
+            xv, yv = _bit_coords(xmin[rows, cols][owner], xmax[rows, cols][owner],
+                                 ymin[rows, cols][owner], ymax[rows, cols][owner],
+                                 bits)
+            inout = poly_path.contains_points(np.column_stack([xv, yv]), radius=1e-8)
+            if np.any(inout):
+                hit_owner = owner[inout]
+                hit_bits = bits[inout].astype(np.uint64)
+                # Several points of one cell can land in the same polygon, so
+                # OR the per-point bits together per cell before merging.
+                add = np.zeros(len(rows), dtype=np.uint64)
+                np.bitwise_or.at(add, hit_owner, np.uint64(1) << hit_bits)
+                cell_hit[rows, cols] |= add
 
-        if flat.size:
-            inout = poly_path.contains_points(
-                np.column_stack([pool_x[flat], pool_y[flat]]), radius=1e-8)
-            hit_flat = flat[inout]
-            pool_hit[hit_flat] = True
-            cell_in[ids] += np.bincount(owner[inout], minlength=len(ids))
-
-        prop = cell_in[ids] / counts
+        prop = _popcount(cell_hit[rows, cols]) / counts
         drown = (np.round(prop * 10) / 10) >= lim
         if np.any(drown):
             band_mask[rows[drown], cols[drown]] = 0
@@ -289,7 +282,18 @@ def clean_mask(x, y, mask, bound_ingrid, lim, offset, workers=None):
     # start-up (which costs a full interpreter import on spawn platforms).
     n_workers = resolve_workers(Ny * Nx, min_chunk=20_000, requested=workers)
     n_workers = max(1, min(n_workers, Ny // 8 if Ny >= 16 else 1))
-    print(f'  Land-sea mask clean up on {n_workers} worker(s); {describe_cpu_budget()}',
+
+    # Each worker gets its own copy of the polygons, so a wide pool multiplies
+    # the one big thing this stage holds.  Let the memory budget, not the core
+    # count, decide how wide it may be.
+    state_bytes = sum(np.asarray(b['x']).nbytes + np.asarray(b['y']).nbytes
+                      for b in bound_ingrid)
+    band_cells = -(-Ny // max(1, n_workers * 4)) * Nx
+    per_worker = worker_baseline_bytes() + state_bytes + band_cells * _BAND_BYTES_PER_CELL
+    if workers is None:
+        n_workers = cap_workers_for_memory(n_workers, per_worker, 'land-sea mask clean up')
+    print(f'  Land-sea mask clean up on {n_workers} worker(s); {describe_cpu_budget()}; '
+          f'~{per_worker / (1 << 20):.0f} MiB per worker',
           flush=True)
 
     bands = chunk_ranges(Ny, n_workers * 4 if n_workers > 1 else 1)

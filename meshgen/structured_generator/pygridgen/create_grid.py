@@ -276,6 +276,25 @@ def _normalize_boundaries(bound):
     return processed
 
 
+
+def _check_memory_plan(cells):
+    """Whether a grid of *cells* points is expected to fit in memory.
+
+    Deliberately tolerant: if the helpers are unavailable, or the budget
+    cannot be read, the run proceeds.
+    """
+    try:
+        from utils.parallel import (available_cpus, check_memory_plan,
+                                    worker_baseline_bytes)
+    except ImportError:
+        return True, 'Memory estimate unavailable.'
+    return check_memory_plan(
+        cells,
+        n_workers=available_cpus(),
+        per_worker_bytes=worker_baseline_bytes() + (32 << 20),
+    )
+
+
 def _align_boundaries_to_grid(bound, lon_min, lon_max):
     """Shift coastline polygons into the target grid's longitude branch.
 
@@ -813,6 +832,16 @@ def create_grid(**kwargs):
         bound_user = []
         Nu = 0
     
+    # Check the run is expected to fit before paying for it.  The coastline
+    # database is loaded by now, so the fixed part of the estimate is measured
+    # rather than guessed, and a grid that cannot fit says so here instead of
+    # being killed by the OOM handler somewhere in step 7.
+    _fits, _mem_msg = _check_memory_plan(int(np.asarray(lon).size))
+    print(f'  {_mem_msg}', flush=True)
+    if not _fits:
+        raise MemoryError(_mem_msg)
+    print('', flush=True)
+
     # 3. Generate bathymetry
     print(f"Step 3: Generating bathymetry from {params['ref_grid']}...", flush=True)
     print('  This may take a while...', flush=True)
