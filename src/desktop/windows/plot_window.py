@@ -53,6 +53,7 @@ from workflows.infrastructure.plot.photo_output import (
     SUBDIR_WIND_FIELD,
     SUBDIR_WIND_SWELL,
 )
+from workflows.support.paths import normalize_local_path
 from workflows.support.translations import tr
 
 
@@ -390,16 +391,17 @@ class PlotInterface(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("select_file", "选择文件"),
-            edit.text().strip() or "",
+            normalize_local_path(edit.text()),
             tr("file_filter_netcdf_all_short", "NetCDF (*.nc);;所有文件 (*)"),
         )
         if path:
-            edit.setText(path)
+            edit.setText(normalize_local_path(path))
 
     def _pick_folder(self, edit: LineEdit) -> None:
-        path = QFileDialog.getExistingDirectory(self, tr("select_folder", "选择文件夹"), edit.text().strip() or "")
+        path = QFileDialog.getExistingDirectory(
+            self, tr("select_folder", "选择文件夹"), normalize_local_path(edit.text()))
         if path:
-            edit.setText(path)
+            edit.setText(normalize_local_path(path))
 
     # [EN] ── Read range from NC ────────────────────────────────────────────────────────
     # ── 从 NC 读取范围 ────────────────────────────────────────────────────────
@@ -461,11 +463,12 @@ class PlotInterface(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("select_file", "选择文件"),
-            edit.text().strip() or "",
+            normalize_local_path(edit.text()),
             tr("file_filter_netcdf_all_short", "NetCDF (*.nc);;所有文件 (*)"),
         )
         if not path:
             return
+        path = normalize_local_path(path)
         edit.setText(path)
         # [EN] Update button text to filename and change to blue color
         # 更新按钮文字为文件名，并改为蓝色
@@ -677,11 +680,12 @@ class PlotInterface(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("select_file", "选择文件"),
-            self._wind_file_edit.text().strip() or "",
+            normalize_local_path(self._wind_file_edit.text()),
             tr("file_filter_netcdf_all_short", "NetCDF (*.nc);;所有文件 (*)"),
         )
         if not path:
             return
+        path = normalize_local_path(path)
         self._wind_file_edit.setText(path)
         self._set_button_file_chosen(self._wind_file_btn, path)
 
@@ -777,11 +781,12 @@ class PlotInterface(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("plotting_choose_spectrum_file", "选择二维谱文件"),
-            self._spectrum_file.text().strip() or "",
+            normalize_local_path(self._spectrum_file.text()),
             tr("file_filter_netcdf_all_short", "NetCDF (*.nc);;所有文件 (*)"),
         )
         if not path:
             return
+        path = normalize_local_path(path)
         self._spectrum_file.setText(path)
         self._set_button_file_chosen(self._spectrum_file_btn, path)
         self._load_spectrum_stations(path)
@@ -907,11 +912,12 @@ class PlotInterface(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("select_file", "选择文件"),
-            self._wave_file.text().strip() or "",
+            normalize_local_path(self._wave_file.text()),
             tr("file_filter_netcdf_all_short", "NetCDF (*.nc);;所有文件 (*)"),
         )
         if not path:
             return
+        path = normalize_local_path(path)
         self._wave_file.setText(path)
         self._set_button_file_chosen(self._wave_file_btn, path)
 

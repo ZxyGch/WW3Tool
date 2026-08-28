@@ -17,6 +17,7 @@ from workflows.infrastructure.runtime_config import (
     get_recent_workdirs,
     order_recent_workdirs_for_display,
 )
+from workflows.support.paths import normalize_local_path
 from workflows.support.translations import tr
 
 
@@ -190,10 +191,12 @@ class WorkFolderDialog(MessageBoxBase):
             QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks,
         )
         if selected:
+            # Qt returns forward slashes on Windows; show and store the native form.
+            selected = normalize_local_path(selected)
             self._choose(selected, success_text=tr("workdir_dialog_choose_success_content", "已选择文件夹：{path}").format(path=selected))
 
     def _choose(self, folder: str, success_text: str | None = None) -> None:
-        folder = os.path.abspath(os.path.normpath(folder))
+        folder = os.path.abspath(normalize_local_path(folder))
         if not os.path.isdir(folder):
             InfoBar.warning(
                 title=tr("workdir_dialog_not_exists", "目录不存在"),

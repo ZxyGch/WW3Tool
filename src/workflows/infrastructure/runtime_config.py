@@ -16,6 +16,7 @@ import shutil
 from contextlib import contextmanager
 from pathlib import Path
 
+from workflows.support.paths import normalize_local_path, same_local_path
 from workflows.support.translations import tr
 from workflows.domain.named_path_preset_yaml import (
     parse_named_path_preset_block,
@@ -1082,6 +1083,8 @@ def _is_local_path_compatible(path: str) -> bool:
     if not path:
         return True
     path = path.strip()
+    if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+        path = path[1:-1].strip()
     if os.name == "nt":
         # Windows: POSIX 绝对路径（/Users/、/Volumes/、/Applications/ 等）不兼容
         if path.startswith("/") and not path.startswith("//"):
@@ -1417,7 +1420,8 @@ def save_full_config(config: dict) -> bool:
 def _normalize_recent_workdir(workdir):
     if not workdir or not isinstance(workdir, str):
         return ""
-    return os.path.abspath(os.path.normpath(os.path.expanduser(workdir.strip())))
+    normalized = normalize_local_path(workdir)
+    return os.path.abspath(normalized) if normalized else ""
 
 
 def _recent_workdir_key(workdir):
@@ -1454,12 +1458,14 @@ def ensure_project_data_dir(config_key, folder_name):
     default_dir = os.path.normpath(os.path.join(project_root, folder_name))
 
     config = load_config()
-    raw_path = str(config.get(config_key, "") or "").strip()
-    target_dir = os.path.normpath(raw_path) if raw_path and os.path.isdir(raw_path) else default_dir
+    raw_path = normalize_local_path(config.get(config_key, ""))
+    target_dir = raw_path if raw_path and os.path.isdir(raw_path) else default_dir
 
     os.makedirs(target_dir, exist_ok=True)
 
-    if str(config.get(config_key, "") or "").strip() != target_dir:
+    # Compare by normalised key: a stored "C:/…" and the "C:\…" built here name
+    # the same directory, and rewriting params.yml on every call is not free.
+    if not same_local_path(config.get(config_key, ""), target_dir):
         config[config_key] = target_dir
         save_config(config)
 
@@ -1470,7 +1476,7 @@ def get_forcing_field_default_dir():
     """获取默认的强迫场文件目录（供第二步选场等使用）。"""
     try:
         config = load_config()
-        forcing_dir = config.get("FORCING_FIELD_DIR_PATH", "").strip()
+        forcing_dir = normalize_local_path(config.get("FORCING_FIELD_DIR_PATH", ""))
         if forcing_dir:
             if not os.path.isabs(forcing_dir):
                 # 相对路径相对于项目根目录
@@ -1579,14 +1585,19 @@ def get_default_workdir(create_if_not_exists=True):
 
     # 从根 params.yml 的 workdir.default_workspace 读取（已从 desktop 段移到 workdir 段）。
     raw = (_read_root_params().get("workdir") or {}).get("default_workspace")
-    workdir = str(raw).strip() if raw else ""
+    # 兼容性判断要看原始写法：规范化会把 POSIX 路径的分隔符换成反斜杠，
+    # 之后就认不出它本来是另一个系统留下的路径了。
+    # [EN] Test compatibility on the raw spelling: normalising a POSIX path on
+    # Windows swaps its separators, after which it no longer looks foreign.
+    raw_text = str(raw).strip() if raw else ""
+    workdir = normalize_local_path(raw_text) if _is_local_path_compatible(raw_text) else ""
 
     # 如果配置中的路径为空、跨平台不兼容、或无效，使用默认值
-    if not workdir or not _is_local_path_compatible(workdir):
+    if not workdir:
         workdir = fallback
 
     # 规范化路径
-    workdir = os.path.normpath(workdir.strip())
+    workdir = os.path.normpath(workdir)
 
     # 如果目录不存在，尝试创建
     if not os.path.exists(workdir):

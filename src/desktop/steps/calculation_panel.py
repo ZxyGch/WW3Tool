@@ -48,6 +48,7 @@ from ..components.point_edit_dialog import PointEditDialog
 from ..components.table_widget import EdgeAlignedTableWidget
 from . import point_io
 from workflows.domain.config_models import CalcConfig
+from workflows.support.paths import normalize_local_path
 from workflows.support.translations import tr
 
 _MODES = ["region", "spectral_point", "track"]
@@ -341,6 +342,7 @@ class CalculationStepPanel:
         )
         if not path:
             return
+        path = normalize_local_path(path)
         bounds = self._bounds_provider()
         try:
             if kind == "track":

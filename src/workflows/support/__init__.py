@@ -6,6 +6,7 @@ application 直接引用，但不反向依赖业务用例。
 导出符号：
 - ``CoreLogger`` / ``LogCallback``：统一日志接口
 - ``tr``：翻译回退函数
+- ``normalize_local_path`` / ``local_path_key`` / ``same_local_path``：本地路径规范化
 
 [EN] Support utilities shared by the application and interfaces layers.
 
@@ -16,9 +17,18 @@ by interfaces and application layers but never depends on business use cases.
 Exported symbols:
 - ``CoreLogger`` / ``LogCallback``: unified logging interface
 - ``tr``: translation fallback function
+- ``normalize_local_path`` / ``local_path_key`` / ``same_local_path``: local path normalisation
 """
 
 from .logging import CoreLogger, LogCallback
+from .paths import local_path_key, normalize_local_path, same_local_path
 from .translations import tr
 
-__all__ = ["CoreLogger", "LogCallback", "tr"]
+__all__ = [
+    "CoreLogger",
+    "LogCallback",
+    "local_path_key",
+    "normalize_local_path",
+    "same_local_path",
+    "tr",
+]

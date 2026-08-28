@@ -181,6 +181,11 @@ class ForcingVariableMappingDialog(MessageBoxBase):
             )
 
     def _browse_path(self) -> None:
+        # 这里填的是**服务器**上的路径，不能按本地路径规范化：在 Windows 上
+        # normalize_local_path 会把 /data/wind.nc 变成 \data\wind.nc。
+        # [EN] This field holds a path on the *server*, so it must not go
+        # through normalize_local_path: on Windows that would turn
+        # /data/wind.nc into \data\wind.nc.
         selected, _ = QFileDialog.getOpenFileName(
             self,
             tr("choose_forcing_file", "选择强迫场文件"),

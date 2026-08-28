@@ -63,6 +63,7 @@ from workflows.infrastructure.runtime_config import (
 from workflows.infrastructure.adapters.grid_generation_adapter import (
     REFERENCE_DATA_REQUIRED_FILES,
 )
+from workflows.support.paths import normalize_local_path
 from workflows.support.translations import tr
 
 from ..background_runner import BackgroundRunner
@@ -1165,11 +1166,12 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             tr("file_filter_yaml_all", "YAML 参数文件 (*.yml *.yaml);;所有文件 (*)"),
         )
         if selected:
+            selected = normalize_local_path(selected)
             self._params_label.setText(selected)
             self._load_params(Path(selected))
 
     def _load_params_from_field(self) -> None:
-        text = self._params_label.text().strip()
+        text = normalize_local_path(self._params_label.text())
         if not text:
             self._show_error(tr("select_params_first", "请先选择 params.yml"))
             return
@@ -1222,7 +1224,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         )
         if not target:
             return
-        path = Path(target)
+        path = Path(normalize_local_path(target))
         path.write_text(EXAMPLE_YAML, encoding="utf-8")
         self._params_label.setText(str(path))
         self._load_params(path)
@@ -1290,11 +1292,11 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
 
     def _sync_config_forcing_paths(self, config: PipelineConfig) -> None:
         for key in ("wind", "current", "level", "ice"):
-            text = self._paths[key].text().strip()
+            text = normalize_local_path(self._paths[key].text())
             setattr(config.forcing, key, Path(text) if text else None)
 
     def _browse_path(self, key: str, directory: bool) -> None:
-        current = self._paths[key].text().strip()
+        current = normalize_local_path(self._paths[key].text())
         if current:
             candidate = Path(current).expanduser()
             if candidate.exists():
@@ -1319,6 +1321,9 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 tr("file_filter_netcdf_all", "NetCDF 文件 (*.nc *.nc4 *.cdf);;所有文件 (*)"),
             )
         if selected:
+            # Qt returns forward slashes on Windows as well; store the path the
+            # way this platform writes it so it matches os.path-built paths.
+            selected = normalize_local_path(selected)
             if key in {"wind", "current", "level", "ice"}:
                 # Remove missing results from an earlier import before installing
                 # the new source path. Otherwise stale ViewModel state can clear

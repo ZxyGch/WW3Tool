@@ -37,7 +37,6 @@ from __future__ import annotations
 import argparse
 import cmd
 import os
-import readline
 import shlex
 import shutil
 import subprocess
@@ -45,8 +44,16 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+try:  # readline 是 Unix 专有模块；Windows 标准库里没有，缺失时降级为无历史。
+    # [EN] readline is Unix-only; Windows has no stdlib equivalent, so the
+    # shell simply runs without persistent history there.
+    import readline
+except ImportError:  # pragma: no cover - platform dependent
+    readline = None
+
 from ..application.configuration import ConfigError, EXAMPLE_YAML, load_pipeline_config
 from ..domain.config_models import PipelineConfig
+from ..support.paths import same_local_path
 from ..support.translations import tr
 
 
@@ -169,7 +176,9 @@ def _is_root_params(path: Path) -> bool:
     """
     root_params = _repo_root_path() / "params.yml"
     try:
-        return os.path.normpath(str(path.resolve())) == os.path.normpath(str(root_params))
+        # same_local_path also folds case, which matters on Windows: the drive
+        # letter of ``resolve()`` and of ``__file__`` need not agree.
+        return same_local_path(path.resolve(), root_params)
     except OSError:
         return False
 
@@ -618,9 +627,11 @@ class InteractiveCLI(cmd.Cmd):
 
         [EN] Load command history file on startup.
         """
+        if readline is None:
+            return
         try:
             readline.read_history_file(str(_HISTORY_FILE))
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             pass
         readline.set_history_length(_HISTORY_MAX_LINES)
 
@@ -629,6 +640,8 @@ class InteractiveCLI(cmd.Cmd):
 
         [EN] Save command history file on exit.
         """
+        if readline is None:
+            return
         try:
             readline.write_history_file(str(_HISTORY_FILE))
         except OSError:

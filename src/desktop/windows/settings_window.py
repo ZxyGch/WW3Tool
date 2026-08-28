@@ -70,6 +70,7 @@ from workflows.infrastructure.runtime_config import (
     swap_ww3_version,
 )
 from workflows.infrastructure.remote.ssh_config import list_ssh_config_hosts
+from workflows.support.paths import normalize_local_path
 from workflows.support.translations import tr
 
 # 谱分区输出方案的候选变量（WW3 可选场变量全集，见 parameter_catalog.OUTPUT_FIELD_OPTIONS）。
@@ -269,6 +270,9 @@ class SettingsInterface(QWidget):
         self._on_theme_changed_callback = on_theme_changed
         self._config = self._vm.load()
         self._fields: dict[str, LineEdit] = {}
+        # 指向本地磁盘的字段：保存前统一按当前平台的写法规范化。
+        # [EN] Fields holding a local path; normalised to this platform on save.
+        self._local_path_keys: set[str] = set()
         self._combos: dict[str, ComboBox] = {}
         self._checks: dict[str, QWidget] = {}
         self._unst_fields: dict[str, LineEdit] = {}
@@ -426,6 +430,7 @@ class SettingsInterface(QWidget):
         grid.addWidget(edit, row, 1, 1, 2)
         grid.addWidget(button, row, 3)
         self._fields[key] = edit
+        self._local_path_keys.add(key)
 
     def _label(self, text: str, *, word_wrap: bool = True) -> QLabel:
         label = QLabel(text)
@@ -469,19 +474,22 @@ class SettingsInterface(QWidget):
         row.addWidget(button)
         layout.addLayout(row)
         self._fields[key] = edit
+        self._local_path_keys.add(key)
 
     def _pick_path(self, edit: LineEdit, directory: bool) -> None:
-        start = edit.text().strip() or str(__import__("pathlib").Path.home())
+        start = normalize_local_path(edit.text()) or str(__import__("pathlib").Path.home())
         if directory:
             picked = QFileDialog.getExistingDirectory(self, tr("select_dir_dialog", "选择目录"), start)
         else:
             picked, _ = QFileDialog.getOpenFileName(self, tr("select_file", "选择文件"), start)
         if picked:
-            edit.setText(picked)
+            # Qt hands back forward slashes on every platform; store the path
+            # the way this platform writes it.
+            edit.setText(normalize_local_path(picked))
             self._save_config_now()
 
     def _open_path(self, edit: LineEdit) -> None:
-        path = edit.text().strip()
+        path = normalize_local_path(edit.text())
         if path:
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
@@ -766,6 +774,7 @@ class SettingsInterface(QWidget):
         grid.addWidget(key_edit, 5, 1, 1, 2)
         grid.addWidget(key_button, 5, 3)
         self._fields["SERVER_KEY_FILE"] = key_edit
+        self._local_path_keys.add("SERVER_KEY_FILE")
         self._server_key_button = key_button
 
         ssh_alias = _as_text(self._config.get("SERVER_SSH_CONFIG_HOST", "")).strip()
@@ -846,7 +855,7 @@ class SettingsInterface(QWidget):
             combo.setCurrentIndex(0)
 
     def _pick_ssh_key_file(self, edit: LineEdit) -> None:
-        start = edit.text().strip()
+        start = normalize_local_path(edit.text())
         if not start:
             start = str(__import__("pathlib").Path.home() / ".ssh")
         picked, _ = QFileDialog.getOpenFileName(
@@ -856,7 +865,7 @@ class SettingsInterface(QWidget):
             tr("set_server_key_file_filter", "SSH 私钥 (*);;所有文件 (*)"),
         )
         if picked:
-            edit.setText(picked)
+            edit.setText(normalize_local_path(picked))
             self._save_config_now()
 
     def _on_server_login_mode_changed(self, _index: int = 0) -> None:
@@ -1113,11 +1122,16 @@ class SettingsInterface(QWidget):
             name = self._local_st_table.item(r, 0)
             path = self._local_st_table.item(r, 1)
             if name and name.text().strip():
-                rows.append({"name": name.text().strip(), "path": path.text().strip() if path else ""})
+                rows.append({
+                    "name": name.text().strip(),
+                    # Local bin directory: normalise, unlike the server-side ST
+                    # table above whose paths stay remote POSIX paths.
+                    "path": normalize_local_path(path.text()) if path else "",
+                })
         return rows
 
     def _local_st_add(self) -> None:
-        dlg = _NamePathDialog(self.window(), directory=True)
+        dlg = _NamePathDialog(self.window(), directory=True, local_path=True)
         if dlg.exec() and dlg.value:
             versions = self._local_st_rows() + [dlg.value]
             self._vm.save_local_st_versions(versions, self._vm.default_local_st())
@@ -1129,7 +1143,7 @@ class SettingsInterface(QWidget):
         if r < 1:
             return
         initial = {"name": self._local_st_table.item(r, 0).text(), "path": self._local_st_table.item(r, 1).text()}
-        dlg = _NamePathDialog(self.window(), initial=initial, directory=True)
+        dlg = _NamePathDialog(self.window(), initial=initial, directory=True, local_path=True)
         if dlg.exec() and dlg.value:
             versions = self._local_st_rows()
             versions[r - 1] = dlg.value
@@ -1292,6 +1306,11 @@ class SettingsInterface(QWidget):
         updates: dict = {}
         for key, edit in self._fields.items():
             text = edit.text().strip()
+            if key in self._local_path_keys:
+                # Typed or pasted by hand: same treatment as a picked path, so
+                # a quoted Windows path or a stray slash still compares equal
+                # to what the rest of the app builds.
+                text = normalize_local_path(text)
             if key in ("WINDOW_WIDTH", "WINDOW_HEIGHT"):
                 try:
                     updates[key] = int(text)
@@ -1442,10 +1461,25 @@ class _NamePathDialog(MessageBoxBase):
     [EN] Enter a name (optionally with executable path or directory).
     """
 
-    def __init__(self, parent=None, *, initial: dict | None = None, name_only: bool = False, title: str = "", directory: bool = False) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        initial: dict | None = None,
+        name_only: bool = False,
+        title: str = "",
+        directory: bool = False,
+        local_path: bool = False,
+    ) -> None:
+        """``local_path``：路径指向本机磁盘（服务器 ST 路径是远端 POSIX 路径，不能规范化）。
+
+        [EN] ``local_path`` marks a path on this machine. Server-side ST
+        paths are remote POSIX paths and must be left exactly as typed.
+        """
         super().__init__(parent)
         self.value: dict | None = None
         self._directory = directory
+        self._local_path = local_path
         initial = initial or {}
         if getattr(self, "yesButton", None):
             self.yesButton.setText(tr("confirm", "确定"))
@@ -1478,20 +1512,23 @@ class _NamePathDialog(MessageBoxBase):
     def _browse_directory(self) -> None:
         if not self._path:
             return
-        start = self._path.text().strip()
+        start = normalize_local_path(self._path.text())
         if not start:
             from pathlib import Path
             start = str(Path.home())
         picked = QFileDialog.getExistingDirectory(self, tr("select_dir_dialog", "选择目录"), start)
         if picked:
-            self._path.setText(picked)
+            self._path.setText(normalize_local_path(picked) if self._local_path else picked)
 
     def validate(self) -> bool:
         name = self._name.text().strip()
         if not name:
             InfoBar.warning(title="", content=tr("set_name_empty","名称不能为空"), duration=2000, parent=self)
             return False
-        self.value = {"name": name, "path": self._path.text().strip() if self._path else ""}
+        path = self._path.text().strip() if self._path else ""
+        if path and self._local_path:
+            path = normalize_local_path(path)
+        self.value = {"name": name, "path": path}
         return True
 
 

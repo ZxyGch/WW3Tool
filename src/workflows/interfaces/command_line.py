@@ -47,6 +47,7 @@ import sys
 from pathlib import Path
 
 from ..application.configuration import ConfigError, EXAMPLE_YAML, load_pipeline_config
+from ..support.paths import same_local_path
 from ..support.translations import tr
 
 
@@ -87,7 +88,9 @@ def _is_root_params(path: Path) -> bool:
     """
     root_params = _repo_root_path() / "params.yml"
     try:
-        return os.path.normpath(str(path.resolve())) == os.path.normpath(str(root_params))
+        # same_local_path also folds case, which matters on Windows: the drive
+        # letter of ``resolve()`` and of ``__file__`` need not agree.
+        return same_local_path(path.resolve(), root_params)
     except OSError:
         return False
 

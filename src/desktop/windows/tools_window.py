@@ -43,6 +43,7 @@ from workflows.infrastructure.forcing.merge_service import (
     merge_forcing_netcdf,
     union_time_range,
 )
+from workflows.support.paths import local_path_key, normalize_local_path
 from workflows.support.translations import tr
 
 
@@ -289,7 +290,12 @@ class ToolsInterface(QWidget):
         )
         if not paths:
             return
-        self._merge_paths = list(dict.fromkeys([*self._merge_paths, *paths]))
+        # Deduplicate by normalised key: Qt hands back forward slashes, so on
+        # Windows the same file picked twice would otherwise be added twice.
+        merged: dict[str, str] = {}
+        for candidate in [*self._merge_paths, *[normalize_local_path(p) for p in paths]]:
+            merged.setdefault(local_path_key(candidate), candidate)
+        self._merge_paths = list(merged.values())
         if not self._merge_output.text():
             self._merge_output.setText(self._default_merge_output(self._merge_paths[0]))
         self._analyze_merge_files()
@@ -314,7 +320,7 @@ class ToolsInterface(QWidget):
         self._merge_button.setEnabled(False)
 
     def _choose_merge_output(self) -> None:
-        start = self._merge_output.text().strip()
+        start = normalize_local_path(self._merge_output.text())
         if not start and self._merge_paths:
             start = self._default_merge_output(self._merge_paths[0])
         path, _ = QFileDialog.getSaveFileName(
@@ -324,6 +330,7 @@ class ToolsInterface(QWidget):
             "NetCDF (*.nc)",
         )
         if path:
+            path = normalize_local_path(path)
             if not path.lower().endswith((".nc", ".nc4")):
                 path += ".nc"
             self._merge_output.setText(path)
