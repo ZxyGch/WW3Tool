@@ -277,7 +277,48 @@ def _normalize_boundaries(bound):
 
 
 
-def _check_memory_plan(cells):
+
+def _estimate_base_read_bytes(params, lon, lat):
+    """Bytes ``generate_grid`` will hold for its slice of the base bathymetry.
+
+    This is the term that decides a global run: the window is read in one
+    slice, so a global domain against 15-arcsecond GEBCO is 3.7 billion points
+    -- about 11 GiB once netCDF4's mask byte is counted -- regardless of how
+    coarse the target grid is.  Estimated from the base file's own extent, so
+    it follows whichever dataset was selected.
+    """
+    ref_grid = str(params.get('ref_grid') or '')
+    path = os.path.join(params['ref_dir'], f'{ref_grid}.nc')
+    if not os.path.isfile(path):
+        return 0
+    var_z = params.get('var_z') or (
+        'z' if ref_grid.lower() in ('etopo1', 'etopo2') else 'elevation')
+    try:
+        f = netCDF4.Dataset(path, 'r')
+    except OSError:
+        return 0
+    try:
+        var = f.variables.get(var_z)
+        if var is None or len(var.shape) != 2:
+            return 0
+        n_lat_base, n_lon_base = int(var.shape[0]), int(var.shape[1])
+        itemsize = var.dtype.itemsize
+    except (AttributeError, KeyError, TypeError):
+        return 0
+    finally:
+        f.close()
+
+    # Fraction of the globe the domain covers, with a little slack for the
+    # two-cell margin generate_grid adds on each side.
+    lon_span = min(360.0, float(np.max(lon)) - float(np.min(lon)) + 4 * params['dx'])
+    lat_span = min(180.0, float(np.max(lat)) - float(np.min(lat)) + 4 * params['dy'])
+    rows = max(1.0, n_lat_base * lat_span / 180.0)
+    cols = max(1.0, n_lon_base * lon_span / 360.0)
+    # netCDF4 returns a masked array: the data plus one mask byte per point.
+    return int(rows * cols * (itemsize + 1))
+
+
+def _check_memory_plan(cells, base_read_bytes=0):
     """Whether a grid of *cells* points is expected to fit in memory.
 
     Deliberately tolerant: if the helpers are unavailable, or the budget
@@ -285,11 +326,13 @@ def _check_memory_plan(cells):
     """
     try:
         from utils.parallel import (available_cpus, check_memory_plan,
-                                    worker_baseline_bytes)
+                                    worker_baseline_bytes, _self_rss_bytes)
     except ImportError:
         return True, 'Memory estimate unavailable.'
+    base = (_self_rss_bytes() or 0) + int(base_read_bytes)
     return check_memory_plan(
         cells,
+        base_bytes=base,
         n_workers=available_cpus(),
         per_worker_bytes=worker_baseline_bytes() + (32 << 20),
     )
@@ -836,7 +879,11 @@ def create_grid(**kwargs):
     # database is loaded by now, so the fixed part of the estimate is measured
     # rather than guessed, and a grid that cannot fit says so here instead of
     # being killed by the OOM handler somewhere in step 7.
-    _fits, _mem_msg = _check_memory_plan(int(np.asarray(lon).size))
+    _base_read = _estimate_base_read_bytes(params, lon, lat)
+    if _base_read:
+        print(f'  Base bathymetry slice: ~{_base_read / 1024 ** 3:.1f} GiB '
+              f"({params['ref_grid']})", flush=True)
+    _fits, _mem_msg = _check_memory_plan(int(np.asarray(lon).size), _base_read)
     print(f'  {_mem_msg}', flush=True)
     if not _fits:
         raise MemoryError(_mem_msg)

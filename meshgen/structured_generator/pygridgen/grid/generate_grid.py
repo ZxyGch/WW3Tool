@@ -115,6 +115,59 @@ def _match_lon_convention(x, base_span):
     return shifted, True
 
 
+
+# int64 base copy + the wet mask + two int64 tables + one cumsum temporary.
+_SAT_BYTES_PER_POINT = 8 + 1 + 3 * 8
+
+# The shortcut may claim this much of the memory budget; the rest of the run
+# still needs the base window itself, the target grid and the coastline.
+_SAT_BUDGET_SHARE = 0.25
+
+# ...and never more than this, whatever the budget says.  Measured against the
+# per-cell loop it replaces: on a regional grid the table is *slower* as well
+# as six times heavier, and on a global one it buys 1.8x for 6.8x the memory.
+# It is worth keeping only while it stays a cheap optimisation, so an absolute
+# ceiling matters more than the share.
+_SAT_MAX_BYTES = 1536 * 1024 ** 2
+
+
+def _sat_is_affordable(shape):
+    """Whether the summed-area shortcut fits, judged from the base's shape.
+
+    Falls back to a fixed ceiling when the budget cannot be read, so the
+    decision never depends on an allocation having already succeeded.
+    """
+    if len(shape) != 2:
+        return False
+    n_lat, n_lon = int(shape[0]), int(shape[1])
+    if n_lat <= 0 or n_lon <= 0:
+        return False
+    need = (n_lat + 1) * (n_lon + 1) * _SAT_BYTES_PER_POINT
+
+    budget = None
+    try:
+        from utils.parallel import available_memory_bytes
+        budget = available_memory_bytes()
+    except ImportError:
+        pass
+    ceiling = int(budget * _SAT_BUDGET_SHARE) if budget else _SAT_MAX_BYTES
+    ceiling = min(ceiling, _SAT_MAX_BYTES)
+    # Escape hatch, mostly for benchmarking the two paths against each other.
+    override = os.environ.get("WW3TOOL_SAT_MAX_MB")
+    if override is not None:
+        try:
+            ceiling = int(override) * 1024 ** 2
+        except ValueError:
+            pass
+
+    if need <= ceiling:
+        return True
+    print(f'  Base bathymetry too large for the summed-area shortcut '
+          f'(~{need / 1024 ** 3:.1f} GiB needed, {ceiling / 1024 ** 3:.1f} GiB allowed); '
+          f'using the per-cell loop.', flush=True)
+    return False
+
+
 def _integral_base(depth_base):
     """Return the base bathymetry as a plain int64 array, or None.
 
@@ -217,17 +270,18 @@ def _sat_average(depth_sub, depth_base, avg_k, avg_j,
     Returns False when the shortcut does not apply, leaving ``depth_sub``
     untouched so the caller can run the original loop.
     """
+    # Decide affordability from the *shape*, before anything is allocated:
+    # _integral_base makes an int64 copy of the whole base window, which for a
+    # global GEBCO domain is 30 GiB on its own.  Checking afterwards, as this
+    # used to, meant the check could only ever run once the damage was done.
+    if not _sat_is_affordable(np.shape(depth_base)):
+        return False
+
     base = _integral_base(depth_base)
     if base is None:
         return False
 
     n_lat, n_lon = base.shape
-    # Two int64 tables plus their int64 intermediates and the int64 base copy.
-    if (n_lat + 1) * (n_lon + 1) * 40 > 8 * 1024 ** 3:
-        print('  Base bathymetry too large for the summed-area shortcut.',
-              flush=True)
-        return False
-
     wet = base <= cut_off
     count_sat = np.zeros((n_lat + 1, n_lon + 1), dtype=np.int64)
     np.cumsum(np.cumsum(wet, axis=0, dtype=np.int64), axis=1,

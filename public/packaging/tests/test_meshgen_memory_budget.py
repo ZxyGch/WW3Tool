@@ -113,3 +113,48 @@ class MemoryBudgetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class SummedAreaCeilingTest(unittest.TestCase):
+    """积分图必须先按形状判负担得起，再分配——否则检查形同虚设。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            import importlib
+            cls.gg = importlib.import_module("grid.generate_grid")
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 grid.generate_grid：{exc}")
+
+    def setUp(self):
+        os.environ.pop("WW3TOOL_SAT_MAX_MB", None)
+
+    def test_global_gebco_shape_is_refused(self):
+        # 43200x86400 的积分图要上百 GiB，必须拒绝。
+        self.assertFalse(self.gg._sat_is_affordable((43200, 86400)))
+
+    def test_global_etopo1_shape_is_refused(self):
+        # 实测这个形状的表要 ~6.8 GiB，换来 1.8 倍提速——不划算。
+        self.assertFalse(self.gg._sat_is_affordable((9602, 21602)))
+
+    def test_small_window_is_allowed(self):
+        self.assertTrue(self.gg._sat_is_affordable((2000, 3000)))
+
+    def test_absolute_ceiling_holds_even_on_a_huge_budget(self):
+        with mock.patch("utils.parallel.available_memory_bytes",
+                        return_value=1024 * (1 << 30)):
+            self.assertFalse(self.gg._sat_is_affordable((9602, 21602)))
+
+    def test_degenerate_shapes_are_refused(self):
+        for shape in ((0, 10), (10, 0), (10,), (1, 2, 3)):
+            self.assertFalse(self.gg._sat_is_affordable(shape))
+
+    def test_env_override_is_honoured(self):
+        os.environ["WW3TOOL_SAT_MAX_MB"] = "0"
+        try:
+            self.assertFalse(self.gg._sat_is_affordable((100, 100)))
+        finally:
+            os.environ.pop("WW3TOOL_SAT_MAX_MB", None)
