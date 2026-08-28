@@ -66,6 +66,10 @@ $
 $  LONFROM  : origin of longitudes defined in bathy file
 $             lonfrom = -180 -> longitudes from -180 to 180 (ie. gebco)
 $             lonfrom = 0    -> longitudes from 0 to 360 (ie. etopo1)
+$             Kept for compatibility with the MATLAB namelist; pygridgen
+$             reads the convention from the bathy file itself and shifts
+$             LON_WEST / LON_EAST to match, so either convention works for
+$             the target grid regardless of what is set here.
 $
 $  XVAR     : name of variable defining longitudes in bathy file
 $             xvar = 'x' (ie. etopo1)

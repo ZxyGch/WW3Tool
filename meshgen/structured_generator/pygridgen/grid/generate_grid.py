@@ -26,6 +26,64 @@ except ImportError:
 
 
 
+
+def _base_lon_span(fname_base, var_x):
+    """Longitude span of the base bathymetry, as ``(lo, hi)`` or None.
+
+    Read from the file itself rather than from a namelist flag: GEBCO ships
+    -180..180 while ETOPO1 and ETOPO2 ship 0..360, and getting this wrong is
+    what used to make the two conventions irreconcilable.
+    """
+    try:
+        f = netCDF4.Dataset(fname_base, 'r')
+    except OSError:
+        return None
+    try:
+        var_lon = f.variables[var_x]
+        try:
+            span = var_lon.actual_range
+            lo, hi = float(span[0]), float(span[1])
+        except AttributeError:
+            data = var_lon[:]
+            lo, hi = float(np.min(data)), float(np.max(data))
+    except (KeyError, IndexError, ValueError):
+        return None
+    finally:
+        f.close()
+    return lo, hi
+
+
+def _match_lon_convention(x, base_span):
+    """Shift target longitudes into the base bathymetry's convention.
+
+    Returns ``(x, changed)``.  The base is read as 0..360 when its longitudes
+    run past 180 (ETOPO1) and as -180..180 otherwise (GEBCO, ETOPO2); target
+    longitudes outside that interval move by a whole turn, everything inside
+    is left bit for bit alone.  The comparison is against the convention
+    boundary, not the data extent, so a cell sitting exactly on 180 keeps the
+    sign it has always had.
+
+    A domain that straddles the seam comes back non-monotonic (e.g. 350..360
+    followed by 0..36); that is fine -- every cell is looked up by its own
+    longitude, and the read window simply widens to the full band, which is
+    what a dateline-crossing GEBCO grid has always done.
+    """
+    if base_span is None:
+        return x, False
+
+    base_lo, base_hi = base_span
+    if base_hi > 180.0 + 1e-6:
+        low, high = 0.0, 360.0
+    else:
+        low, high = -180.0, 180.0
+
+    shifted = np.where(x > high, x - 360.0, x)
+    shifted = np.where(shifted < low, shifted + 360.0, shifted)
+    if np.array_equal(shifted, x):
+        return x, False
+    return shifted, True
+
+
 def _integral_base(depth_base):
     """Return the base bathymetry as a plain int64 array, or None.
 
@@ -256,19 +314,27 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
     late = np.max(y)
     lone = np.max(x)
     
-    # Convert 0~360 longitude format to -180~180 format if needed
-    # This is needed because GEBCO and most bathymetry data use -180~180
-    lon_converted = False
-    if lons >= 0 and lone > 180:
-        # User is using 0~360 format, convert to -180~180
-        # For example: 130~200 becomes 130~180 and -180~-160
-        # But for simplicity, we just convert values > 180 to negative
-        x_converted = np.where(x > 180, x - 360, x)
-        lons = np.min(x_converted)
-        lone = np.max(x_converted)
-        x = x_converted
-        lon_converted = True
-        print(f'  Converted longitude from 0~360 to -180~180 format: [{lons:.2f}, {lone:.2f}]', flush=True)
+    # Determine dimensions and ranges of base bathymetry coords
+    fname_base = os.path.normpath(
+        os.path.join(
+            os.path.abspath(os.path.expanduser(str(ref_dir).strip())),
+            f'{bathy_input}.nc',
+        )
+    )
+    
+    if not os.path.exists(fname_base):
+        raise FileNotFoundError(f'Bathymetry file not found: {fname_base}')
+    
+    # Put the target longitudes in whichever convention the base data uses.
+    # Both -180..180 (GEBCO) and 0..360 (ETOPO1 / ETOPO2) bases are supported,
+    # and the target grid may be written either way.
+    if type_grid in ('rect', 'curv'):
+        x, lon_shifted = _match_lon_convention(x, _base_lon_span(fname_base, var_x))
+        if lon_shifted:
+            lons = float(np.min(x))
+            lone = float(np.max(x))
+            print(f'  Shifted target longitudes into the base grid convention: '
+                  f'[{lons:.2f}, {lone:.2f}]', flush=True)
     
     depth_sub = np.zeros_like(x)
     
@@ -294,17 +360,6 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
     # Get maximum cell dimensions
     dx = float(np.max(cell_widths))
     dy = float(np.max(cell_heights))
-    
-    # Determine dimensions and ranges of base bathymetry coords
-    fname_base = os.path.normpath(
-        os.path.join(
-            os.path.abspath(os.path.expanduser(str(ref_dir).strip())),
-            f'{bathy_input}.nc',
-        )
-    )
-    
-    if not os.path.exists(fname_base):
-        raise FileNotFoundError(f'Bathymetry file not found: {fname_base}')
     
     f = netCDF4.Dataset(fname_base, 'r')
     
