@@ -15,7 +15,11 @@ PYGRIDGEN = REPO_ROOT / "meshgen" / "structured_generator" / "pygridgen"
 if str(PYGRIDGEN) not in sys.path:
     sys.path.insert(0, str(PYGRIDGEN))
 
-from grid.generate_grid import _match_lon_convention  # noqa: E402
+from grid.generate_grid import (  # noqa: E402
+    _lon_axis_periodicity,
+    _match_lon_convention,
+    _wrap_into_axis,
+)
 
 GEBCO = (-179.99791666666667, 179.99791666666667)
 ETOPO1 = (0.0, 360.0)
@@ -81,6 +85,61 @@ class MatchLonConventionTest(unittest.TestCase):
         out, changed = _match_lon_convention(x, ETOPO2)
         self.assertFalse(changed)
         self.assertIs(out, x)
+
+
+class LonAxisPeriodicityTest(unittest.TestCase):
+    """接缝识别：全球轴分像元中心式和节点式两种。"""
+
+    def test_pixel_centred_global_axis(self):
+        # GEBCO: one cell of gap across the seam, no repeated meridian.
+        lon = np.linspace(GEBCO[0], GEBCO[1], 86400)
+        periodic, duplicate = _lon_axis_periodicity(lon, 359.99583333333334 / 86399)
+        self.assertTrue(periodic)
+        self.assertFalse(duplicate)
+
+    def test_node_registered_global_axes(self):
+        # ETOPO1 / ETOPO2: the meridian appears at both ends.
+        for lon, dx in ((np.linspace(0.0, 360.0, 21601), 360.0 / 21600),
+                        (np.linspace(-180.0, 180.0, 10801), 360.0 / 10800)):
+            periodic, duplicate = _lon_axis_periodicity(lon, dx)
+            self.assertTrue(periodic)
+            self.assertTrue(duplicate)
+
+    def test_regional_axis_is_not_periodic(self):
+        lon = np.linspace(118.0, 126.0, 481)
+        periodic, duplicate = _lon_axis_periodicity(lon, 360.0 / 21600)
+        self.assertFalse(periodic)
+        self.assertFalse(duplicate)
+
+    def test_too_short_axis_is_not_periodic(self):
+        self.assertEqual(_lon_axis_periodicity(np.array([0.0, 1.0]), 0.5), (False, False))
+        self.assertEqual(_lon_axis_periodicity(np.linspace(0, 360, 5), 0.0), (False, False))
+
+
+class WrapIntoAxisTest(unittest.TestCase):
+    """越过接缝的格子框整圈折回，框内的值一位不动。"""
+
+    def setUp(self):
+        self.lon = np.linspace(GEBCO[0], GEBCO[1], 8641)
+
+    def test_values_inside_are_bit_identical(self):
+        v = np.array([-179.0, -0.5, 0.0, 120.25, 179.9])
+        np.testing.assert_array_equal(_wrap_into_axis(v, self.lon), v)
+
+    def test_value_past_the_east_end_folds_west(self):
+        out = _wrap_into_axis(np.array([180.125]), self.lon)
+        self.assertAlmostEqual(float(out[0]), -179.875)
+
+    def test_value_before_the_west_end_folds_east(self):
+        out = _wrap_into_axis(np.array([-180.125]), self.lon)
+        self.assertAlmostEqual(float(out[0]), 179.875)
+
+    def test_straddling_box_inverts_start_and_end(self):
+        # A cell centred on the seam: after folding, the box start sorts
+        # above its end, which is how the readers recognise a wrap.
+        lo = _wrap_into_axis(np.array([179.875]), self.lon)[0]
+        hi = _wrap_into_axis(np.array([180.125]), self.lon)[0]
+        self.assertGreater(lo, hi)
 
 
 if __name__ == "__main__":

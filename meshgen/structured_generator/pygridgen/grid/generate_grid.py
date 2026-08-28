@@ -27,6 +27,37 @@ except ImportError:
 
 
 
+
+def _lon_axis_periodicity(lon_base, dx_base):
+    """Describe the longitude axis that was actually read from the base file.
+
+    Returns ``(periodic, duplicate_end)``.  A global axis comes in two shapes:
+    pixel-centred (GEBCO), where the seam leaves exactly one cell of gap
+    between the last and first column, and node-registered (ETOPO1, ETOPO2),
+    where the meridian appears at both ends.  A regional read is not periodic
+    and nothing below applies to it.
+    """
+    if lon_base is None or len(lon_base) < 3 or not np.isfinite(dx_base) or dx_base <= 0:
+        return False, False
+    span = float(np.max(lon_base)) - float(np.min(lon_base))
+    tol = dx_base * 0.5
+    duplicate_end = abs(span - 360.0) <= tol
+    periodic = duplicate_end or abs(span + dx_base - 360.0) <= tol
+    return periodic, duplicate_end
+
+
+def _wrap_into_axis(values, lon_base):
+    """Move longitudes outside the base axis by a whole turn, leave the rest.
+
+    Values already inside keep their exact bits, so only cells that straddle
+    the seam see any change.
+    """
+    lo = float(np.min(lon_base))
+    hi = float(np.max(lon_base))
+    out = np.where(values < lo, values + 360.0, values)
+    return np.where(out > hi, out - 360.0, out)
+
+
 def _base_lon_span(fname_base, var_x):
     """Longitude span of the base bathymetry, as ``(lo, hi)`` or None.
 
@@ -583,6 +614,14 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         lon_base = lon_base_tmp
         depth_base = depth_base_tmp
         
+        # A node-registered global base repeats the meridian at both ends.
+        # Drop the copy: with it in place a cell straddling the seam would
+        # average that column twice.
+        lon_periodic, lon_duplicate_end = _lon_axis_periodicity(lon_base, dx_base)
+        if lon_periodic and lon_duplicate_end:
+            lon_base = lon_base[:-1]
+            depth_base = depth_base[:, :-1]
+        
         # Obtaining data from base bathymetry. If desired grid is coarser than
         # base grid then 2D averaging of bathymetry, else grid is interpolated
         # from base grid.
@@ -606,18 +645,34 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         
         # Pre-compute indices for all cells using searchsorted (vectorized)
         # For interpolation cells
-        lon_prev_idx_all = np.searchsorted(lon_sorted, x, side='right') - 1
-        lon_prev_idx_all = np.clip(lon_prev_idx_all, 0, len(lon_base) - 2)
+        lon_prev_raw = np.searchsorted(lon_sorted, x, side='right') - 1
+        lon_prev_idx_all = np.clip(lon_prev_raw, 0, len(lon_base) - 2)
         lon_next_idx_all = lon_prev_idx_all + 1
+        if lon_periodic:
+            # In the seam gap the two neighbours are the last and the first
+            # column, not the last two.
+            seam = (lon_prev_raw < 0) | (lon_prev_raw >= len(lon_base) - 1)
+            lon_prev_idx_all = np.where(seam, len(lon_base) - 1, lon_prev_idx_all)
+            lon_next_idx_all = np.where(seam, 0, lon_next_idx_all)
         
         lat_prev_idx_all = np.searchsorted(lat_sorted, y, side='right') - 1
         lat_prev_idx_all = np.clip(lat_prev_idx_all, 0, len(lat_base) - 2)
         lat_next_idx_all = lat_prev_idx_all + 1
         
-        # For averaging cells - pre-compute bounding box indices
-        lon_start_idx_all = np.searchsorted(lon_sorted, cell_px_min, side='right') - 1
+        # For averaging cells - pre-compute bounding box indices.  On a
+        # periodic base a box that hangs over the seam is folded round so the
+        # start index ends up above the end index; the readers below already
+        # treat that as "wrap".  Clipping it instead, as before, silently
+        # averaged only the half of the cell that fell inside the array.
+        box_px_min = cell_px_min
+        box_px_max = cell_px_max
+        if lon_periodic:
+            box_px_min = _wrap_into_axis(cell_px_min, lon_base)
+            box_px_max = _wrap_into_axis(cell_px_max, lon_base)
+        
+        lon_start_idx_all = np.searchsorted(lon_sorted, box_px_min, side='right') - 1
         lon_start_idx_all = np.clip(lon_start_idx_all, 0, len(lon_base) - 1)
-        lon_end_idx_all = np.searchsorted(lon_sorted, cell_px_max, side='left')
+        lon_end_idx_all = np.searchsorted(lon_sorted, box_px_max, side='left')
         lon_end_idx_all = np.clip(lon_end_idx_all, 0, len(lon_base) - 1)
         
         lat_start_idx_all = np.searchsorted(lat_sorted, cell_py_min, side='right') - 1
@@ -641,6 +696,9 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         
         # Compute interpolation weights (vectorized)
         dx1 = np.abs(x - lon_base[lon_prev_idx_all])
+        if lon_periodic:
+            # Distance the short way round, for the seam cells only.
+            dx1 = np.where(dx1 > 180.0, 360.0 - dx1, dx1)
         dx2 = dx_base - dx1
         dy1 = y - lat_base[lat_prev_idx_all]
         dy2 = dy_base - dy1

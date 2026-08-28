@@ -57,6 +57,21 @@ Edit `gridgen/grid.nml` and `pygridgen/grid.nml`.
 
 `create_grid` reads `grid.nml` by default.
 
+### Longitude conventions and the seam (pygridgen)
+
+The target grid may be written either 0..360 or -180..180 regardless of which
+convention the bathymetry file uses: `create_grid` reads the convention from
+the file and shifts `LON_WEST` / `LON_EAST` to match. (The `LONFROM` namelist
+entry is not consulted.) GEBCO ships -180..180, ETOPO1 ships 0..360, ETOPO2
+ships -180..180.
+
+For a global bathymetry file the cell sitting on the seam (180 for a
+-180..180 base, 0/360 for a 0..360 base) is averaged and interpolated across
+the wrap, so it uses the full cell rather than the half that happens to fall
+inside the array. Grids that cross that seam therefore differ from output
+produced before this was fixed — in exactly one column, by up to a few hundred
+metres of depth. Regional grids that do not reach the seam are unaffected.
+
 ### Parallelism (pygridgen)
 
 Boundary splitting, mask cleanup, bathymetry averaging and obstruction generation
@@ -170,6 +185,12 @@ python create_grid.py
 修改 gridgen/grid.nml 和 pygridgen/grid.nml 即可
 
 create_grid 会默认自动读取 grid.nml
+
+## 经度约定与接缝（pygridgen）
+
+目标网格用 0~360 还是 −180~180 书写都可以，与底图用哪套约定无关：`create_grid` 会从底图文件本身读出约定，并把 `LON_WEST` / `LON_EAST` 平移到一致（命名列表里的 `LONFROM` 不再参与判断）。GEBCO 是 −180~180，ETOPO1 是 0~360，ETOPO2 是 −180~180。
+
+对于全球底图，骑在接缝上的那一列格子（−180~180 底图的 180°、0~360 底图的 0°/360°）现在会跨接缝绕回取平均和插值，用的是整个格子而不是恰好落在数组内的那一半。因此跨接缝的网格与修复前的结果会有差异——差异只出现在这一列，水深最多相差几百米。不触及接缝的区域网格不受影响。
 
 ## 并行计算（pygridgen）
 
