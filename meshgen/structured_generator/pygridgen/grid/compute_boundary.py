@@ -277,37 +277,30 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
                         
                         # Check for points on the grid boundary edges
                         # MATLAB inpolygon treats points on edges as "in"
-                        # We need to identify which points are exactly on edges
-                        for j in range(len(points)):
-                            x_pt = points[j, 0]
-                            y_pt = points[j, 1]
-                            
-                            # Check if point is on any of the 4 grid edges
-                            for k in range(4):
-                                if np.isinf(m_grid[k]):
-                                    # Vertical edge: check if x matches
-                                    if abs(x_pt - px[k]) <= eps:
-                                        # Check if y is within edge bounds
-                                        y_min = min(py[k], py[k + 1])
-                                        y_max = max(py[k], py[k + 1])
-                                        if y_min - eps <= y_pt <= y_max + eps:
-                                            on_points[j] = True
-                                            in_points[j] = True  # Treat on as in
-                                            break
-                                else:
-                                    # Non-vertical edge: check distance to line
-                                    dist = abs(m_grid[k] * x_pt + c_grid[k] - y_pt)
-                                    if dist <= eps:
-                                        # Check if point is within edge bounds
-                                        x_min = min(px[k], px[k + 1])
-                                        x_max = max(px[k], px[k + 1])
-                                        y_min = min(py[k], py[k + 1])
-                                        y_max = max(py[k], py[k + 1])
-                                        if (x_min - eps <= x_pt <= x_max + eps and
-                                            y_min - eps <= y_pt <= y_max + eps):
-                                            on_points[j] = True
-                                            in_points[j] = True  # Treat on as in
-                                            break
+                        # We need to identify which points are exactly on edges.
+                        # Which of the four edges a point sits on does not
+                        # change the outcome, so all four are tested at once.
+                        x_pts = points[:, 0]
+                        y_pts = points[:, 1]
+                        for k in range(4):
+                            y_min = min(py[k], py[k + 1])
+                            y_max = max(py[k], py[k + 1])
+                            if np.isinf(m_grid[k]):
+                                # Vertical edge: check if x matches
+                                on_edge = ((np.abs(x_pts - px[k]) <= eps)
+                                           & (y_pts >= y_min - eps)
+                                           & (y_pts <= y_max + eps))
+                            else:
+                                # Non-vertical edge: check distance to line
+                                x_min = min(px[k], px[k + 1])
+                                x_max = max(px[k], px[k + 1])
+                                on_edge = ((np.abs(m_grid[k] * x_pts + c_grid[k] - y_pts) <= eps)
+                                           & (x_pts >= x_min - eps)
+                                           & (x_pts <= x_max + eps)
+                                           & (y_pts >= y_min - eps)
+                                           & (y_pts <= y_max + eps))
+                            on_points |= on_edge
+                        in_points |= on_points  # Treat on as in
                         
                         loc1 = np.where(in_points)[0]
                         loc2 = np.where(on_points)[0]
@@ -382,11 +375,12 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
                             in2out = []
                             out2in = []
                             
-                            for j in range(n - 1):
-                                if in_points[j] and not in_points[j + 1]:
-                                    in2out.append(j)
-                                if not in_points[j] and in_points[j + 1]:
-                                    out2in.append(j)
+                            n_edges = min(n - 1, len(in_points) - 1)
+                            if n_edges > 0:
+                                here = in_points[:n_edges]
+                                nxt = in_points[1:n_edges + 1]
+                                in2out = np.flatnonzero(here & ~nxt).tolist()
+                                out2in = np.flatnonzero(~here & nxt).tolist()
                             
                             in2out_count = len(in2out)
                             out2in_count = len(out2in)

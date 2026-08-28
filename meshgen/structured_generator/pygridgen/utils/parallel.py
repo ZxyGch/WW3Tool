@@ -1,149 +1,167 @@
 """
 Parallel Processing Utilities
 
-Provides parallel processing capabilities for gridgen operations.
+Worker-count resolution and a small process-pool helper shared by the gridgen
+stages.  The point of the module is that the number of workers must reflect
+what the *scheduler* gave us, not what the machine happens to have: on a Slurm
+node ``os.cpu_count()`` reports every core of the box while the job may only
+own a handful of them, and oversubscribing a cpuset is markedly slower than
+running serially.
 """
 
-import multiprocessing as mp
+import os
+import sys
 
-import numpy as np
+_ENV_OVERRIDE = "WW3TOOL_MESHGEN_WORKERS"
 
-
-def get_num_workers():
-    """Get optimal number of worker processes."""
-    return max(1, mp.cpu_count() - 1)
-
-
-def chunk_list(lst, n_chunks):
-    """Split a list into n chunks."""
-    chunk_size = max(1, len(lst) // n_chunks)
-    chunks = []
-    for i in range(0, len(lst), chunk_size):
-        chunks.append((i, lst[i:i + chunk_size]))
-    return chunks
+# Thread knobs of the numeric libraries.  Workers are processes, so each one
+# spinning up its own BLAS/OpenMP thread pool would multiply the core count.
+_THREAD_ENV = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
 
 
-def process_boundary_chunk(args):
+def _int_env(name):
+    """Read a positive integer from the environment, or None."""
+    raw = os.environ.get(name)
+    if not raw:
+        return None
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def available_cpus():
+    """Number of CPUs this process may actually run on.
+
+    Honours, in order: the ``WW3TOOL_MESHGEN_WORKERS`` override, Slurm's
+    per-task allocation, the scheduler affinity mask (which is what cgroup /
+    cpuset confinement shows up as), and finally the machine core count.
     """
-    Process a chunk of boundaries for compute_boundary.
-    
-    This function is designed to be called by multiprocessing.Pool.map().
-    """
-    from matplotlib.path import Path
-    
-    (chunk_start, chunk, coord, bflg, eps, MAX_SEG_LENGTH,
-     px, py, m_grid, c_grid, box_length, norm) = args
-    
-    lat_start, lon_start, lat_end, lon_end = coord
-    
-    bound_ingrid = []
-    in_coord = 0
-    
-    for idx, boundary in enumerate(chunk):
+    for name in (_ENV_OVERRIDE, "SLURM_CPUS_PER_TASK", "SLURM_CPUS_ON_NODE"):
+        value = _int_env(name)
+        if value is not None:
+            return value
+
+    if hasattr(os, "sched_getaffinity"):
         try:
-            # Limit boundaries to coastal type only
-            level_val = boundary.get('level', 0)
-            if isinstance(level_val, np.ndarray):
-                level_val = float(level_val.item()) if level_val.size == 1 else float(level_val.flat[0])
-            elif isinstance(level_val, (list, tuple)):
-                level_val = float(level_val[0]) if len(level_val) > 0 else 0
-            else:
-                level_val = float(level_val)
-            
-            if level_val != bflg and level_val != 2:
-                continue
-            
-            # Get boundary extent
-            west_val = boundary.get('west', 0)
-            east_val = boundary.get('east', 0)
-            south_val = boundary.get('south', 0)
-            north_val = boundary.get('north', 0)
-            
-            for val_name in ['west_val', 'east_val', 'south_val', 'north_val']:
-                val = locals()[val_name]
-                if isinstance(val, np.ndarray):
-                    locals()[val_name] = val.item() if val.size == 1 else val[0]
-            
-            west_val = float(west_val.item() if isinstance(west_val, np.ndarray) else west_val)
-            east_val = float(east_val.item() if isinstance(east_val, np.ndarray) else east_val)
-            south_val = float(south_val.item() if isinstance(south_val, np.ndarray) else south_val)
-            north_val = float(north_val.item() if isinstance(north_val, np.ndarray) else north_val)
-            
-            # Check if boundary is in grid domain
-            if (west_val > lon_end or east_val < lon_start or
-                    south_val > lat_end or north_val < lat_start):
-                continue  # Outside grid
-            
-            # Check if completely inside grid
-            inside_grid = (west_val >= lon_start and east_val <= lon_end and
-                          south_val >= lat_start and north_val <= lat_end)
-            
-            lev1 = level_val
-            
-            # Extract boundary coordinates
-            def extract_array(data):
-                if isinstance(data, np.ndarray):
-                    if data.dtype == object and data.size > 0:
-                        return extract_array(data.flat[0])
-                    return data.flatten()
-                elif isinstance(data, (list, tuple)):
-                    return np.array(data).flatten()
-                return np.array([data])
-            
-            bound_x = extract_array(boundary.get('x', []))
-            bound_y = extract_array(boundary.get('y', []))
-            
-            if len(bound_x) == 0 or len(bound_y) == 0:
-                continue
-            
-            n_val = int(boundary.get('n', len(bound_x)))
-            if isinstance(n_val, np.ndarray):
-                n_val = int(n_val.item() if n_val.size == 1 else n_val[0])
-            
-            if inside_grid:
-                # Boundary is completely inside, add directly
-                bound_dict = {
-                    'x': bound_x,
-                    'y': bound_y,
-                    'n': n_val,
-                    'east': east_val,
-                    'west': west_val,
-                    'north': north_val,
-                    'south': south_val,
-                    'height': north_val - south_val,
-                    'width': east_val - west_val,
-                    'level': lev1
-                }
-                bound_ingrid.append(bound_dict)
-                in_coord += 1
-            else:
-                # Boundary crosses domain, need to clip
-                # Simplified: just check if any points are inside
-                bbox_path = Path(np.column_stack([px[:-1], py[:-1]]))
-                points = np.column_stack([bound_x, bound_y])
-                in_points = bbox_path.contains_points(points, radius=1e-6)
-                
-                if np.any(in_points):
-                    # At least some points inside, add the boundary
-                    # (Full clipping logic would go here, but for performance
-                    # we just add the whole boundary and let later stages handle it)
-                    bound_dict = {
-                        'x': bound_x,
-                        'y': bound_y,
-                        'n': n_val,
-                        'east': east_val,
-                        'west': west_val,
-                        'north': north_val,
-                        'south': south_val,
-                        'height': north_val - south_val,
-                        'width': east_val - west_val,
-                        'level': lev1
-                    }
-                    bound_ingrid.append(bound_dict)
-                    in_coord += 1
-                    
-        except Exception as e:
-            continue
-    
-    return bound_ingrid, in_coord
+            return max(1, len(os.sched_getaffinity(0)))
+        except OSError:
+            pass
 
+    return max(1, os.cpu_count() or 1)
+
+
+def startup_penalty():
+    """How expensive a worker process is to start, relative to ``fork``.
+
+    ``fork`` shares the parent image and costs almost nothing; ``spawn`` (macOS
+    and Windows) re-imports numpy, scipy and matplotlib in every worker, which
+    is seconds; ``forkserver`` sits in between.  Stages use this to decide how much work must be on the table
+    before a pool is worth it.
+    """
+    import multiprocessing as mp
+
+    try:
+        method = mp.get_start_method(allow_none=False)
+    except (ValueError, RuntimeError):
+        return 8
+    return {"fork": 1, "forkserver": 4}.get(method, 8)
+
+
+def resolve_workers(n_items=None, min_chunk=1, requested=None):
+    """Pick a worker count for a job of *n_items* units of work.
+
+    Never returns more workers than there is work to hand out, so small grids
+    fall back to a single process instead of paying pool start-up for nothing.
+    ``min_chunk`` is the work per worker that makes a pool worthwhile under
+    ``fork``; it is scaled up where starting a worker costs more.
+    """
+    workers = requested if requested and requested > 0 else available_cpus()
+    workers = max(1, int(workers))
+    if requested and requested > 0:
+        return workers
+    if n_items is not None:
+        chunk = max(1, int(min_chunk) * startup_penalty())
+        workers = max(1, min(workers, int(n_items) // chunk))
+    return workers
+
+
+def limit_worker_threads():
+    """Pin the numeric libraries to one thread. Call from a pool initializer."""
+    for name in _THREAD_ENV:
+        os.environ[name] = "1"
+
+
+def describe_cpu_budget():
+    """One-line summary of where the worker count came from (for the log)."""
+    source = "os.cpu_count()"
+    for name in (_ENV_OVERRIDE, "SLURM_CPUS_PER_TASK", "SLURM_CPUS_ON_NODE"):
+        if _int_env(name) is not None:
+            source = name
+            break
+    else:
+        if hasattr(os, "sched_getaffinity"):
+            source = "sched_getaffinity"
+    return f"{available_cpus()} CPUs (from {source})"
+
+
+def chunk_ranges(n_items, n_chunks):
+    """Split ``range(n_items)`` into at most *n_chunks* contiguous (start, stop)."""
+    n_items = int(n_items)
+    n_chunks = max(1, min(int(n_chunks), n_items)) if n_items > 0 else 1
+    if n_items <= 0:
+        return []
+    size, extra = divmod(n_items, n_chunks)
+    ranges = []
+    start = 0
+    for i in range(n_chunks):
+        stop = start + size + (1 if i < extra else 0)
+        if stop > start:
+            ranges.append((start, stop))
+        start = stop
+    return ranges
+
+
+def run_parallel(func, tasks, workers, initializer=None, initargs=(), ordered=True):
+    """Map *func* over *tasks* in a process pool, falling back to a plain loop.
+
+    Returns results in submission order when ``ordered``.  Any failure to
+    start or drive the pool degrades to serial execution rather than aborting
+    the grid run — the stages using this are all correctness-critical.
+    """
+    tasks = list(tasks)
+    if not tasks:
+        return []
+
+    workers = max(1, min(int(workers), len(tasks)))
+    if workers == 1:
+        if initializer is not None:
+            initializer(*initargs)
+        return [func(t) for t in tasks]
+
+    from concurrent.futures import ProcessPoolExecutor
+
+    executor = None
+    try:
+        executor = ProcessPoolExecutor(
+            max_workers=workers, initializer=initializer, initargs=initargs
+        )
+        chunksize = max(1, len(tasks) // (workers * 4))
+        results = list(executor.map(func, tasks, chunksize=chunksize))
+    except Exception as exc:  # pool unusable (no fork, restricted env, OOM, ...)
+        print(f'  Warning: parallel execution unavailable ({exc}); running serially.',
+              flush=True)
+        if initializer is not None:
+            initializer(*initargs)
+        results = [func(t) for t in tasks]
+    finally:
+        if executor is not None:
+            executor.shutdown(wait=True)
+    return results

@@ -18,10 +18,170 @@ import netCDF4
 import numpy as np
 
 try:
-    from ..utils.compute_cellcorner import compute_cellcorner
+    from ..utils.compute_cellcorner import compute_cellcorner_grid
+    from ..utils.parallel import chunk_ranges, describe_cpu_budget, resolve_workers, run_parallel
 except ImportError:
-    from utils.compute_cellcorner import compute_cellcorner
+    from utils.compute_cellcorner import compute_cellcorner_grid
+    from utils.parallel import chunk_ranges, describe_cpu_budget, resolve_workers, run_parallel
 
+
+
+def _integral_base(depth_base):
+    """Return the base bathymetry as a plain int64 array, or None.
+
+    Only *integer* base data qualifies (GEBCO and ETOPO1 store metres as
+    int16).  Float bases are rejected even when their values happen to be
+    whole numbers: ``np.mean`` accumulates a float32 array in float32, and a
+    summed-area table would produce the exact mean instead — a different
+    number in the last digits of the written bathymetry.  Those go through the
+    per-cell loop, which is parallelised instead.
+
+    ``None`` means the shortcut is not applicable and the caller must fall
+    back to that loop.
+    """
+    db = depth_base
+    if np.ma.isMaskedArray(db):
+        if np.ma.getmaskarray(db).any():
+            return None
+        db = np.ma.getdata(db)
+    db = np.asarray(db)
+    if not np.issubdtype(db.dtype, np.integer):
+        return None
+    return db.astype(np.int64)
+
+
+
+_AVG_STATE = {}
+
+
+def _init_avg_state(state):
+    _AVG_STATE.clear()
+    _AVG_STATE.update(state)
+    try:
+        from ..utils.parallel import limit_worker_threads
+    except ImportError:
+        from utils.parallel import limit_worker_threads
+    limit_worker_threads()
+
+
+def _average_cells(task):
+    """Average one slice of the averaging-cell list, cell by cell.
+
+    Kept identical to the original loop body -- including doing the mean on
+    the base array's own dtype -- because that rounding is visible in the
+    written bathymetry.
+    """
+    start, stop = task
+    st = _AVG_STATE
+    depth_base = st['depth_base']
+    avg_k = st['avg_k'][start:stop]
+    avg_j = st['avg_j'][start:stop]
+    lat_start_idx_all = st['lat_start_idx_all']
+    lat_end_idx_all = st['lat_end_idx_all']
+    lon_start_idx_all = st['lon_start_idx_all']
+    lon_end_idx_all = st['lon_end_idx_all']
+    cut_off = st['cut_off']
+    limit = st['limit']
+    dry = st['dry']
+
+    out = np.empty(stop - start, dtype=float)
+    for idx in range(stop - start):
+        k, j = avg_k[idx], avg_j[idx]
+
+        lon_start_idx = lon_start_idx_all[k, j]
+        lon_end_idx = lon_end_idx_all[k, j]
+        lat_start_idx = lat_start_idx_all[k, j]
+        lat_end_idx = lat_end_idx_all[k, j]
+
+        if lon_end_idx < lon_start_idx:
+            depth_tmp = np.concatenate([
+                depth_base[lat_start_idx:lat_end_idx + 1, lon_start_idx:],
+                depth_base[lat_start_idx:lat_end_idx + 1, :lon_end_idx + 1]
+            ], axis=1)
+        else:
+            depth_tmp = depth_base[lat_start_idx:lat_end_idx + 1,
+                                   lon_start_idx:lon_end_idx + 1]
+
+        if depth_tmp.size == 0:
+            out[idx] = dry
+            continue
+
+        valid_depth = depth_tmp[depth_tmp <= cut_off]
+        if len(valid_depth) > 0 and len(valid_depth) / depth_tmp.size > limit:
+            out[idx] = np.mean(valid_depth)
+        else:
+            out[idx] = dry
+    return start, stop, out
+
+def _box_sum(sat, r0, r1, c0, c1):
+    """Inclusive box sums over a summed-area table with a (1, 1) zero pad."""
+    return (sat[r1 + 1, c1 + 1] - sat[r0, c1 + 1]
+            - sat[r1 + 1, c0] + sat[r0, c0])
+
+
+def _sat_average(depth_sub, depth_base, avg_k, avg_j,
+                 lat_start_idx_all, lat_end_idx_all,
+                 lon_start_idx_all, lon_end_idx_all,
+                 cut_off, limit, dry):
+    """Fill the averaging cells of ``depth_sub`` in one vectorised pass.
+
+    Returns False when the shortcut does not apply, leaving ``depth_sub``
+    untouched so the caller can run the original loop.
+    """
+    base = _integral_base(depth_base)
+    if base is None:
+        return False
+
+    n_lat, n_lon = base.shape
+    # Two int64 tables plus their int64 intermediates and the int64 base copy.
+    if (n_lat + 1) * (n_lon + 1) * 40 > 8 * 1024 ** 3:
+        print('  Base bathymetry too large for the summed-area shortcut.',
+              flush=True)
+        return False
+
+    wet = base <= cut_off
+    count_sat = np.zeros((n_lat + 1, n_lon + 1), dtype=np.int64)
+    np.cumsum(np.cumsum(wet, axis=0, dtype=np.int64), axis=1,
+              out=count_sat[1:, 1:])
+    value_sat = np.zeros((n_lat + 1, n_lon + 1), dtype=np.int64)
+    np.cumsum(np.cumsum(np.where(wet, base, 0), axis=0, dtype=np.int64), axis=1,
+              out=value_sat[1:, 1:])
+    del wet
+
+    r0 = lat_start_idx_all[avg_k, avg_j].astype(np.intp)
+    r1 = lat_end_idx_all[avg_k, avg_j].astype(np.intp)
+    c0 = lon_start_idx_all[avg_k, avg_j].astype(np.intp)
+    c1 = lon_end_idx_all[avg_k, avg_j].astype(np.intp)
+
+    n_rows = r1 - r0 + 1
+    empty = n_rows <= 0
+    # Keep the index arithmetic in range for the empty rows too; they are
+    # overwritten with ``dry`` at the end.
+    r1_safe = np.where(empty, r0, r1)
+
+    wrapped = c1 < c0
+    c1_head = np.where(wrapped, n_lon - 1, c1)
+    counts = _box_sum(count_sat, r0, r1_safe, c0, c1_head)
+    values = _box_sum(value_sat, r0, r1_safe, c0, c1_head)
+    n_cols = c1_head - c0 + 1
+
+    if np.any(wrapped):
+        c0_tail = np.zeros_like(c0)
+        c1_tail = np.where(wrapped, c1, 0)
+        tail_counts = _box_sum(count_sat, r0, r1_safe, c0_tail, c1_tail)
+        tail_values = _box_sum(value_sat, r0, r1_safe, c0_tail, c1_tail)
+        counts = counts + np.where(wrapped, tail_counts, 0)
+        values = values + np.where(wrapped, tail_values, 0)
+        n_cols = n_cols + np.where(wrapped, c1_tail + 1, 0)
+
+    box_size = np.where(empty, 0, n_rows * n_cols)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        ratio = np.where(box_size > 0, counts / np.maximum(box_size, 1), 0.0)
+        mean = np.where(counts > 0, values / np.maximum(counts, 1), 0.0)
+
+    keep = (box_size > 0) & (counts > 0) & (ratio > limit)
+    depth_sub[avg_k, avg_j] = np.where(keep, mean, dry)
+    return True
 
 def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *args):
     """
@@ -115,23 +275,25 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
     # Compute cell corners
     Ny, Nx = x.shape
     
-    # Create cell structure (list of lists of dicts)
-    cell = [[{'px': None, 'py': None, 'width': None, 'height': None}
-             for _ in range(Nx)] for _ in range(Ny)]
-    
-    for j in range(1, Nx + 1):
-        for k in range(1, Ny + 1):
-            c1, c2, c3, c4, wdth, hgt = compute_cellcorner(x, y, j, k, Nx, Ny)
-            cell[k - 1][j - 1]['px'] = np.array([c4[0], c1[0], c2[0], c3[0], c4[0]])
-            cell[k - 1][j - 1]['py'] = np.array([c4[1], c1[1], c2[1], c3[1], c4[1]])
-            cell[k - 1][j - 1]['width'] = wdth
-            cell[k - 1][j - 1]['height'] = hgt
+    # Cell corners for the whole grid at once.  The per-cell Python loop this
+    # replaces was the single largest cost of this routine on fine grids, and
+    # it also materialised a dict per cell (gigabytes at a few million cells).
+    corners = compute_cellcorner_grid(x, y)
+    cell_widths = corners['width']
+    cell_heights = corners['height']
+    cell_px_min = np.minimum.reduce([corners['c1x'], corners['c2x'],
+                                     corners['c3x'], corners['c4x']])
+    cell_px_max = np.maximum.reduce([corners['c1x'], corners['c2x'],
+                                     corners['c3x'], corners['c4x']])
+    cell_py_min = np.minimum.reduce([corners['c1y'], corners['c2y'],
+                                     corners['c3y'], corners['c4y']])
+    cell_py_max = np.maximum.reduce([corners['c1y'], corners['c2y'],
+                                     corners['c3y'], corners['c4y']])
+    del corners
     
     # Get maximum cell dimensions
-    all_widths = [cell[k][j]['width'] for k in range(Ny) for j in range(Nx)]
-    all_heights = [cell[k][j]['height'] for k in range(Ny) for j in range(Nx)]
-    dx = max(all_widths)
-    dy = max(all_heights)
+    dx = float(np.max(cell_widths))
+    dy = float(np.max(cell_heights))
     
     # Determine dimensions and ranges of base bathymetry coords
     fname_base = os.path.normpath(
@@ -375,14 +537,7 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         
         print('Generating grid bathymetry ....', flush=True)
         
-        # Pre-compute cell properties as numpy arrays for vectorization
-        cell_widths = np.array([[cell[k][j]['width'] for j in range(Nx)] for k in range(Ny)])
-        cell_heights = np.array([[cell[k][j]['height'] for j in range(Nx)] for k in range(Ny)])
-        cell_px_min = np.array([[np.min(cell[k][j]['px']) for j in range(Nx)] for k in range(Ny)])
-        cell_px_max = np.array([[np.max(cell[k][j]['px']) for j in range(Nx)] for k in range(Ny)])
-        cell_py_min = np.array([[np.min(cell[k][j]['py']) for j in range(Nx)] for k in range(Ny)])
-        cell_py_max = np.array([[np.max(cell[k][j]['py']) for j in range(Nx)] for k in range(Ny)])
-        
+        # Cell extents were already computed as arrays above.
         # Pre-compute ndx and ndy for all cells
         ndx_all = np.round(cell_widths / dx_base).astype(int)
         ndy_all = np.round(cell_heights / dy_base).astype(int)
@@ -455,47 +610,40 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         if n_avg > 0:
             print(f'  Processing {n_avg} averaging cells...', flush=True)
             avg_k, avg_j = np.where(avg_mask)
-            
-            # Process in batches for progress reporting
-            batch_size = max(1, n_avg // 20)
-            last_progress = 0
-            
-            for idx in range(n_avg):
-                k, j = avg_k[idx], avg_j[idx]
-                
-                lon_start_idx = lon_start_idx_all[k, j]
-                lon_end_idx = lon_end_idx_all[k, j]
-                lat_start_idx = lat_start_idx_all[k, j]
-                lat_end_idx = lat_end_idx_all[k, j]
-                
-                if lon_end_idx < lon_start_idx:
-                    depth_tmp = np.concatenate([
-                        depth_base[lat_start_idx:lat_end_idx + 1, lon_start_idx:],
-                        depth_base[lat_start_idx:lat_end_idx + 1, :lon_end_idx + 1]
-                    ], axis=1)
-                else:
-                    depth_tmp = depth_base[lat_start_idx:lat_end_idx + 1, lon_start_idx:lon_end_idx + 1]
-                
-                if depth_tmp.size == 0:
-                    depth_sub[k, j] = dry
-                else:
-                    valid_depth = depth_tmp[depth_tmp <= cut_off]
-                    if len(valid_depth) > 0:
-                        ratio = len(valid_depth) / depth_tmp.size
-                        if ratio > limit:
-                            depth_sub[k, j] = np.mean(valid_depth)
-                        else:
-                            depth_sub[k, j] = dry
-                    else:
-                        depth_sub[k, j] = dry
-                
-                # Progress reporting
-                progress = int((idx + 1) / n_avg * 100)
-                if progress >= last_progress + 5:
-                    last_progress = (progress // 5) * 5
-                    total_progress = int((n_interp + idx + 1) / Nb * 100)
-                    print(f'Completed {total_progress} per cent of the cells', flush=True)
-        
+
+            # Fast path: the wet-cell count and the wet-cell sum of every
+            # averaging box are box queries on a summed-area table, so all the
+            # cells can be answered at once instead of slicing per cell.  Only
+            # taken when the base bathymetry is integer valued (ETOPO / GEBCO
+            # are metres as integers), which keeps the sums exact.
+            if _sat_average(depth_sub, depth_base, avg_k, avg_j,
+                            lat_start_idx_all, lat_end_idx_all,
+                            lon_start_idx_all, lon_end_idx_all,
+                            cut_off, limit, dry):
+                print('Completed 100 per cent of the cells', flush=True)
+                return depth_sub
+
+            print('  Base bathymetry is not integer typed; averaging cell by '
+                  'cell across worker processes.', flush=True)
+
+            n_workers = resolve_workers(n_avg, min_chunk=20_000)
+            print(f'  Averaging on {n_workers} worker(s); {describe_cpu_budget()}',
+                  flush=True)
+            avg_state = {
+                'depth_base': depth_base,
+                'avg_k': avg_k, 'avg_j': avg_j,
+                'lat_start_idx_all': lat_start_idx_all,
+                'lat_end_idx_all': lat_end_idx_all,
+                'lon_start_idx_all': lon_start_idx_all,
+                'lon_end_idx_all': lon_end_idx_all,
+                'cut_off': cut_off, 'limit': limit, 'dry': dry,
+            }
+            tasks = chunk_ranges(n_avg, max(n_workers * 4, 1))
+            for start, stop, values in run_parallel(
+                    _average_cells, tasks, n_workers,
+                    initializer=_init_avg_state, initargs=(avg_state,)):
+                depth_sub[avg_k[start:stop], avg_j[start:stop]] = values
+
         print('Completed 100 per cent of the cells', flush=True)
     
     return depth_sub

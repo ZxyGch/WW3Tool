@@ -57,6 +57,30 @@ Edit `gridgen/grid.nml` and `pygridgen/grid.nml`.
 
 `create_grid` reads `grid.nml` by default.
 
+### Parallelism (pygridgen)
+
+Boundary splitting, mask cleanup, bathymetry averaging and obstruction generation
+run across worker processes. The worker count is resolved in this order:
+
+1. `WW3TOOL_MESHGEN_WORKERS` — explicit override
+2. `SLURM_CPUS_PER_TASK` / `SLURM_CPUS_ON_NODE` — the CPUs the job was allocated
+3. the scheduler affinity mask (`sched_getaffinity`, i.e. cgroup / cpuset limits)
+4. `os.cpu_count()`
+
+Under Slurm, request the cores you want with `--cpus-per-task`; the generator picks
+them up on its own. `os.cpu_count()` is only the last resort because it reports every
+core of the node rather than the cores the job owns.
+
+```bash
+srun --cpus-per-task=32 --mem=64G python create_grid.py
+# or pin it explicitly
+WW3TOOL_MESHGEN_WORKERS=16 python create_grid.py
+```
+
+Small grids stay single-process on purpose: each stage only spreads out once there is
+enough work to pay back starting the pool. Setting `WW3TOOL_MESHGEN_WORKERS=1` forces
+fully serial execution, which is the easiest way to compare against older output.
+
 
 
 ### Output files (detail)
@@ -146,6 +170,25 @@ python create_grid.py
 修改 gridgen/grid.nml 和 pygridgen/grid.nml 即可
 
 create_grid 会默认自动读取 grid.nml
+
+## 并行计算（pygridgen）
+
+边界切分、掩膜清理、水深平均和障碍物生成都会分发到多个工作进程。进程数按以下顺序确定：
+
+1. `WW3TOOL_MESHGEN_WORKERS`：显式指定
+2. `SLURM_CPUS_PER_TASK` / `SLURM_CPUS_ON_NODE`：作业实际分配到的核数
+3. 调度器亲和性掩码（`sched_getaffinity`，即 cgroup / cpuset 限制）
+4. `os.cpu_count()`
+
+在 Slurm 上只需用 `--cpus-per-task` 申请核数，生成器会自动识别。`os.cpu_count()` 放在最后是因为它报告的是整台节点的核数，而不是作业真正拥有的核数，据此开进程会造成超订。
+
+```bash
+srun --cpus-per-task=32 --mem=64G python create_grid.py
+# 或显式指定
+WW3TOOL_MESHGEN_WORKERS=16 python create_grid.py
+```
+
+小网格会有意保持单进程：只有当计算量足够抵消进程池启动开销时，各阶段才会真正并行。设置 `WW3TOOL_MESHGEN_WORKERS=1` 可强制完全串行，便于与旧版结果对比。
 
 
 

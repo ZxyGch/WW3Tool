@@ -16,37 +16,97 @@ Distributed with WAVEWATCH III
 Last Update: 29-Mar-2013
 """
 
-import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
 import numpy as np
 from matplotlib.path import Path
 
 try:
-    from ..utils.compute_cellcorner import compute_cellcorner
+    from ..utils.compute_cellcorner import cellcorner_polygons, compute_cellcorner_grid
+    from ..utils.parallel import describe_cpu_budget, resolve_workers, run_parallel
 except ImportError:
-    from utils.compute_cellcorner import compute_cellcorner
+    from utils.compute_cellcorner import cellcorner_polygons, compute_cellcorner_grid
+    from utils.parallel import describe_cpu_budget, resolve_workers, run_parallel
 
 
-def _process_wet_cell_batch(args):
+# Boundary data shared by every worker.  Sent once per worker through the pool
+# initializer instead of riding along with each batch -- at a few million cells
+# the per-task copies dominated everything else this routine does.
+_BOUND_STATE = {}
+
+
+def _init_bound_state(state):
+    _BOUND_STATE.clear()
+    _BOUND_STATE.update(state)
+    try:
+        from ..utils.parallel import limit_worker_threads
+    except ImportError:
+        from utils.parallel import limit_worker_threads
+    limit_worker_threads()
+
+
+_CELL_FIELDS = ('px', 'py', 'angle', 'width', 'height')
+
+
+class _CellRow:
+    """One row of :class:`_CellGrid`; materialises records on first touch."""
+
+    __slots__ = ('_store', '_k')
+
+    def __init__(self, store, k):
+        self._store = store
+        self._k = k
+
+    def __getitem__(self, j):
+        key = (self._k, j)
+        rec = self._store.get(key)
+        if rec is None:
+            rec = {'px': None, 'py': None, 'angle': None, 'width': None,
+                   'height': None, 'nx': 0, 'ny': 0, 'south_lim': [],
+                   'north_lim': [], 'east_lim': [], 'west_lim': [],
+                   'bndx': [], 'bndy': []}
+            self._store[key] = rec
+        return rec
+
+
+class _CellGrid:
+    """``cell[k][j]`` storage that only allocates the cells actually used.
+
+    The obstruction bookkeeping touches coastal cells and their immediate
+    neighbours, not the whole grid, so a dense list of dicts spent gigabytes on
+    records that stayed empty.
+    """
+
+    __slots__ = ('_store',)
+
+    def __init__(self):
+        self._store = {}
+
+    def __getitem__(self, k):
+        return _CellRow(self._store, k)
+
+
+def _process_wet_cell_batch(cell_batch):
     """Process a batch of wet cells (for parallel processing with reduced overhead)."""
-    (cell_batch, cell_bounds, bnd_x, bnd_y, bnd_indx, bound_dict, bound_bboxes) = args
-    
+    bnd_x = _BOUND_STATE['bnd_x']
+    bnd_y = _BOUND_STATE['bnd_y']
+    bnd_indx = _BOUND_STATE['bnd_indx']
+    bound_dict = _BOUND_STATE['bound_dict']
+    bound_bboxes = _BOUND_STATE['bound_bboxes']
+
+    ks, js, pxs, pys, angles, widths, heights, bounds = cell_batch
     results = []
     
-    for k, j, cell_data in cell_batch:
-        angle = cell_data['angle']
-        x0 = cell_data['px'][0]
-        y0 = cell_data['py'][0]
-        px = cell_data['px']
-        py = cell_data['py']
-        cell_width = cell_data['width']
-        cell_height = cell_data['height']
+    for idx in range(len(ks)):
+        k = int(ks[idx])
+        j = int(js[idx])
+        angle = angles[idx]
+        px = pxs[idx]
+        py = pys[idx]
+        x0 = px[0]
+        y0 = py[0]
+        cell_width = widths[idx]
+        cell_height = heights[idx]
         
-        cell_min_x = cell_bounds[k, j, 0]
-        cell_max_x = cell_bounds[k, j, 1]
-        cell_min_y = cell_bounds[k, j, 2]
-        cell_max_y = cell_bounds[k, j, 3]
+        cell_min_x, cell_max_x, cell_min_y, cell_max_y = bounds[idx]
         
         # Fast bounding box pre-filter
         margin = max(cell_width, cell_height) * 0.1
@@ -129,6 +189,51 @@ def _process_wet_cell_batch(args):
     return results
 
 
+
+def _cells_near_boundaries(cell_min_x, cell_max_x, cell_min_y, cell_max_y,
+                           margin, bnd_x, bnd_y):
+    """Boolean grid marking cells whose padded box could hold a boundary point.
+
+    The per-cell test in the worker compares the cell box against *every*
+    boundary point, which on a fine grid is millions of cells times hundreds of
+    thousands of points.  Binning the points first and asking a summed-area
+    table whether any bin in range is occupied answers the same question for
+    all cells at once, and only ever over-selects, so the exact per-cell test
+    that follows is unchanged.
+    """
+    if bnd_x.size == 0:
+        return np.zeros(cell_min_x.shape, dtype=bool)
+
+    span = max(float(np.max(cell_max_x - cell_min_x)),
+               float(np.max(cell_max_y - cell_min_y)))
+    bin_size = max(span * 4.0, 1e-9)
+
+    ox = float(min(np.min(cell_min_x), np.min(bnd_x))) - bin_size
+    oy = float(min(np.min(cell_min_y), np.min(bnd_y))) - bin_size
+    hx = float(max(np.max(cell_max_x), np.max(bnd_x))) + bin_size
+    hy = float(max(np.max(cell_max_y), np.max(bnd_y))) + bin_size
+
+    n_bx = int((hx - ox) / bin_size) + 2
+    n_by = int((hy - oy) / bin_size) + 2
+
+    occ = np.zeros((n_by, n_bx), dtype=np.int32)
+    pbx = np.clip(((bnd_x - ox) / bin_size).astype(np.int64), 0, n_bx - 1)
+    pby = np.clip(((bnd_y - oy) / bin_size).astype(np.int64), 0, n_by - 1)
+    occ[pby, pbx] = 1
+
+    sat = np.zeros((n_by + 1, n_bx + 1), dtype=np.int64)
+    np.cumsum(np.cumsum(occ, axis=0, dtype=np.int64), axis=1, out=sat[1:, 1:])
+
+    bx0 = np.clip(((cell_min_x - margin - ox) / bin_size).astype(np.int64), 0, n_bx - 1)
+    bx1 = np.clip(((cell_max_x + margin - ox) / bin_size).astype(np.int64), 0, n_bx - 1)
+    by0 = np.clip(((cell_min_y - margin - oy) / bin_size).astype(np.int64), 0, n_by - 1)
+    by1 = np.clip(((cell_max_y + margin - oy) / bin_size).astype(np.int64), 0, n_by - 1)
+
+    hits = (sat[by1 + 1, bx1 + 1] - sat[by0, bx1 + 1]
+            - sat[by1 + 1, bx0] + sat[by0, bx0])
+    return hits > 0
+
+
 def create_obstr(x, y, bound, mask, offset_left, offset_right):
     """
     Generate 2D obstruction grids in x and y directions.
@@ -169,14 +274,10 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     sx[loc] = 0
     sy[loc] = 0
     
-    # Create cell structure (list of lists of dicts)
-    cell = [[{
-        'px': None, 'py': None, 'angle': None, 'width': None, 'height': None,
-        'nx': 0, 'ny': 0, 'south_lim': [], 'north_lim': [], 'east_lim': [],
-        'west_lim': [], 'bndx': [], 'bndy': []
-    } for _ in range(Nx)] for _ in range(Ny)]
+    # Sparse cell structure: records appear only where they are written to.
+    cell = _CellGrid()
     
-    cell_bnd = mask.copy()
+    cell_bnd = np.zeros_like(mask)
     
     loc_wet = np.where(mask != 0)
     N_wet = len(loc_wet[0])
@@ -185,24 +286,14 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     print(f' Total Number of cells = {Nb}', flush=True)
     print(f'   Number of wet cells = {N_wet}', flush=True)
     
-    # Set up the cells
-    for j in range(1, Nx + 1):
-        for k in range(1, Ny + 1):
-            c1, c2, c3, c4, wdth, hgt = compute_cellcorner(x, y, j, k, Nx, Ny)
-            
-            cell[k - 1][j - 1]['px'] = np.array([c4[0], c1[0], c2[0], c3[0], c4[0]])
-            cell[k - 1][j - 1]['py'] = np.array([c4[1], c1[1], c2[1], c3[1], c4[1]])
-            cell[k - 1][j - 1]['angle'] = np.arctan2(c1[1] - c4[1], c1[0] - c4[0])
-            cell[k - 1][j - 1]['width'] = wdth
-            cell[k - 1][j - 1]['height'] = hgt
-            cell[k - 1][j - 1]['nx'] = 0
-            cell[k - 1][j - 1]['ny'] = 0
-            cell[k - 1][j - 1]['south_lim'] = []
-            cell[k - 1][j - 1]['north_lim'] = []
-            cell[k - 1][j - 1]['east_lim'] = []
-            cell[k - 1][j - 1]['west_lim'] = []
-            cell[k - 1][j - 1]['bndx'] = []
-            cell[k - 1][j - 1]['bndy'] = []
+    # Cell geometry for the whole grid in one vectorised pass.
+    corners = compute_cellcorner_grid(x, y)
+    cell_px, cell_py = cellcorner_polygons(corners)
+    cell_angle = np.arctan2(corners['c1y'] - corners['c4y'],
+                            corners['c1x'] - corners['c4x'])
+    cell_width = corners['width']
+    cell_height = corners['height']
+    del corners
     
     N = len(bound)
     
@@ -228,24 +319,28 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     bnd_y = np.array(bnd_y)
     bnd_indx = np.array(bnd_indx)
     
-    # Pre-compute cell bounding boxes for fast filtering (vectorized)
+    # Per-cell bounding boxes, straight from the corner arrays.
     print('Pre-computing cell bounding boxes for fast filtering...', flush=True)
-    # Extract all px and py arrays at once
-    all_px = np.array([[cell[k][j]['px'] for j in range(Nx)] for k in range(Ny)])  # (Ny, Nx, 5)
-    all_py = np.array([[cell[k][j]['py'] for j in range(Nx)] for k in range(Ny)])  # (Ny, Nx, 5)
-    cell_bounds = np.zeros((Ny, Nx, 4))  # [min_x, max_x, min_y, max_y]
-    cell_bounds[:, :, 0] = np.min(all_px, axis=2)
-    cell_bounds[:, :, 1] = np.max(all_px, axis=2)
-    cell_bounds[:, :, 2] = np.min(all_py, axis=2)
-    cell_bounds[:, :, 3] = np.max(all_py, axis=2)
+    cell_min_x = cell_px.min(axis=2)
+    cell_max_x = cell_px.max(axis=2)
+    cell_min_y = cell_py.min(axis=2)
+    cell_max_y = cell_py.max(axis=2)
     
     # Loop through the wet cells and determine the boundaries that are within
     print('Loop through the wet cells to identify boundaries', flush=True)
     
-    # Use multiprocessing for parallel execution
-    n_workers = max(1, mp.cpu_count())
-    batch_size = max(50, N_wet // (n_workers * 8))  # Smaller batches for better load balancing
-    print(f'  Using {n_workers} workers, batch size {batch_size}...', flush=True)
+    # Skip the cells that provably hold no boundary point.
+    margin = np.maximum(cell_width, cell_height) * 0.1
+    near = _cells_near_boundaries(cell_min_x, cell_max_x, cell_min_y, cell_max_y,
+                                  margin, bnd_x, bnd_y)
+    work_k, work_j = np.where((mask != 0) & near)
+    N_work = len(work_k)
+    print(f'   Wet cells to test against boundaries = {N_work}', flush=True)
+    
+    n_workers = resolve_workers(N_work, min_chunk=2_500)
+    batch_size = max(50, N_work // max(1, n_workers * 8))
+    print(f'  Using {n_workers} worker(s), batch size {batch_size}; '
+          f'{describe_cpu_budget()}', flush=True)
     
     # Pre-extract boundary data to reduce serialization overhead
     print('  Preparing data for parallel processing...', flush=True)
@@ -268,28 +363,21 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     
     # Prepare cell batches for parallel processing
     print('  Creating cell batches...', flush=True)
-    cell_batches = []
-    current_batch = []
-    for indx_wet in range(N_wet):
-        k = loc_wet[0][indx_wet]
-        j = loc_wet[1][indx_wet]
-        
-        cell_data = {
-            'angle': cell[k][j]['angle'],
-            'px': np.array(cell[k][j]['px']),
-            'py': np.array(cell[k][j]['py']),
-            'width': cell[k][j]['width'],
-            'height': cell[k][j]['height']
-        }
-        
-        current_batch.append((k, j, cell_data))
-        
-        if len(current_batch) >= batch_size:
-            cell_batches.append(current_batch)
-            current_batch = []
+    work_bounds = np.stack([cell_min_x[work_k, work_j], cell_max_x[work_k, work_j],
+                            cell_min_y[work_k, work_j], cell_max_y[work_k, work_j]],
+                           axis=1)
+    work_px = cell_px[work_k, work_j]
+    work_py = cell_py[work_k, work_j]
+    work_angle = cell_angle[work_k, work_j]
+    work_width = cell_width[work_k, work_j]
+    work_height = cell_height[work_k, work_j]
     
-    if current_batch:
-        cell_batches.append(current_batch)
+    cell_batches = [
+        (work_k[a:b], work_j[a:b], work_px[a:b], work_py[a:b], work_angle[a:b],
+         work_width[a:b], work_height[a:b], work_bounds[a:b])
+        for a, b in ((i, min(i + batch_size, N_work))
+                     for i in range(0, N_work, batch_size))
+    ]
     
     print(f'  Created {len(cell_batches)} batches, starting parallel processing...', flush=True)
     
@@ -297,76 +385,43 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     completed = 0
     last_progress = 0
     
-    executor = None
-    try:
-        executor = ProcessPoolExecutor(max_workers=n_workers)
-        # Submit all batch tasks
-        print(f'  Submitting {len(cell_batches)} batch tasks to {n_workers} workers...', flush=True)
-        futures = [executor.submit(_process_wet_cell_batch, 
-                                   (batch, cell_bounds, bnd_x, bnd_y, bnd_indx, bound_dict, bound_bboxes))
-                   for batch in cell_batches]
-        
-        print(f'  All tasks submitted, collecting results...', flush=True)
-        
-        # Collect results as they complete
-        for future in as_completed(futures):
-            try:
-                batch_results = future.result()
-                
-                for k, j, Nbnds, results in batch_results:
-                    cell_bnd[k, j] = Nbnds
-                    
-                    # Update cell data with results
-                    for result in results:
-                        indx_bnd = result['indx_bnd']
-                        south_limit = result['south_lim']
-                        north_limit = result['north_lim']
-                        west_limit = result['west_lim']
-                        east_limit = result['east_lim']
-                        
-                        # Store x-direction boundary
-                        cell[k][j]['nx'] = cell[k][j]['nx'] + 1
-                        if not isinstance(cell[k][j]['south_lim'], list):
-                            cell[k][j]['south_lim'] = []
-                        if not isinstance(cell[k][j]['north_lim'], list):
-                            cell[k][j]['north_lim'] = []
-                        if not isinstance(cell[k][j]['bndx'], list):
-                            cell[k][j]['bndx'] = []
-                        
-                        cell[k][j]['south_lim'].append(south_limit)
-                        cell[k][j]['north_lim'].append(north_limit)
-                        cell[k][j]['bndx'].append(indx_bnd)
-                        
-                        # Store y-direction boundary
-                        cell[k][j]['ny'] = cell[k][j]['ny'] + 1
-                        if not isinstance(cell[k][j]['east_lim'], list):
-                            cell[k][j]['east_lim'] = []
-                        if not isinstance(cell[k][j]['west_lim'], list):
-                            cell[k][j]['west_lim'] = []
-                        if not isinstance(cell[k][j]['bndy'], list):
-                            cell[k][j]['bndy'] = []
-                        
-                        cell[k][j]['east_lim'].append(east_limit)
-                        cell[k][j]['west_lim'].append(west_limit)
-                        cell[k][j]['bndy'].append(indx_bnd)
-                    
-                    completed += 1
-                    progress = int(completed / N_wet * 100)
-                    if progress >= last_progress + 5:
-                        last_progress = (progress // 5) * 5
-                        print(f' Completed {last_progress} per cent', flush=True)
-            except Exception as e:
-                print(f'  Warning: Error processing batch: {e}', flush=True)
-                import traceback
-                traceback.print_exc()
-    finally:
-        # Explicitly shutdown the executor to ensure all processes are closed
-        if executor is not None:
-            print('  Shutting down worker processes...', flush=True)
-            executor.shutdown(wait=True, cancel_futures=False)
-            print('  Worker processes closed.', flush=True)
-    
-    
+    bound_state = {
+        'bnd_x': bnd_x, 'bnd_y': bnd_y, 'bnd_indx': bnd_indx,
+        'bound_dict': bound_dict, 'bound_bboxes': bound_bboxes,
+    }
+    print(f'  Dispatching {len(cell_batches)} batches to {n_workers} worker(s)...',
+          flush=True)
+    all_results = run_parallel(_process_wet_cell_batch, cell_batches, n_workers,
+                               initializer=_init_bound_state,
+                               initargs=(bound_state,))
+    print('  Collecting results...', flush=True)
+
+    for batch_results in all_results:
+        for k, j, Nbnds, results in batch_results:
+            cell_bnd[k, j] = Nbnds
+
+            for result in results:
+                indx_bnd = result['indx_bnd']
+                rec = cell[k][j]
+
+                # Store x-direction boundary
+                rec['nx'] = rec['nx'] + 1
+                rec['south_lim'].append(result['south_lim'])
+                rec['north_lim'].append(result['north_lim'])
+                rec['bndx'].append(indx_bnd)
+
+                # Store y-direction boundary
+                rec['ny'] = rec['ny'] + 1
+                rec['east_lim'].append(result['east_lim'])
+                rec['west_lim'].append(result['west_lim'])
+                rec['bndy'].append(indx_bnd)
+
+            completed += 1
+            progress = int(completed / max(1, N_work) * 100)
+            if progress >= last_progress + 5:
+                last_progress = (progress // 5) * 5
+                print(f' Completed {last_progress} per cent', flush=True)
+
     # Loop through all the wet cells with boundaries and move boundary segments
     # that are part of the same boundary and cross neighboring cells
     loc_bnd = np.where(cell_bnd != 0)
