@@ -21,10 +21,12 @@ from matplotlib.path import Path
 
 try:
     from ..utils.compute_cellcorner import cellcorner_polygons, compute_cellcorner_grid
-    from ..utils.parallel import describe_cpu_budget, resolve_workers, run_parallel
+    from ..utils.parallel import (cap_workers_for_memory, describe_cpu_budget,
+                                  resolve_workers, run_parallel, worker_baseline_bytes)
 except ImportError:
     from utils.compute_cellcorner import cellcorner_polygons, compute_cellcorner_grid
-    from utils.parallel import describe_cpu_budget, resolve_workers, run_parallel
+    from utils.parallel import (cap_workers_for_memory, describe_cpu_budget,
+                                resolve_workers, run_parallel, worker_baseline_bytes)
 
 
 # Boundary data shared by every worker.  Sent once per worker through the pool
@@ -338,9 +340,15 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     print(f'   Wet cells to test against boundaries = {N_work}', flush=True)
     
     n_workers = resolve_workers(N_work, min_chunk=2_500)
+    # The polygon points go to every worker, so the pool width has to answer
+    # to the memory budget as well as to the core count.
+    per_worker = (worker_baseline_bytes()
+                  + int(bnd_x.nbytes + bnd_y.nbytes + bnd_indx.nbytes) * 2)
+    n_workers = cap_workers_for_memory(n_workers, per_worker, 'obstruction grids')
     batch_size = max(50, N_work // max(1, n_workers * 8))
     print(f'  Using {n_workers} worker(s), batch size {batch_size}; '
-          f'{describe_cpu_budget()}', flush=True)
+          f'{describe_cpu_budget()}; ~{per_worker / (1 << 20):.0f} MiB per worker',
+          flush=True)
     
     # Pre-extract boundary data to reduce serialization overhead
     print('  Preparing data for parallel processing...', flush=True)

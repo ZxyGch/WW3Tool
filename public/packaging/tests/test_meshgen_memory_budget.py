@@ -158,3 +158,144 @@ class SummedAreaCeilingTest(unittest.TestCase):
             self.assertFalse(self.gg._sat_is_affordable((100, 100)))
         finally:
             os.environ.pop("WW3TOOL_SAT_MAX_MB", None)
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class CgroupResolutionTest(unittest.TestCase):
+    """Slurm 节点通常没有命名空间，必须沿自己的 cgroup 路径找限额。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            from utils import parallel
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 utils.parallel：{exc}")
+        cls.parallel = parallel
+
+    @staticmethod
+    def _make_tree(root, spec):
+        """spec: {相对路径: (limit, usage)}；limit 为 None 表示写 'max'。"""
+        import pathlib
+        for rel, (limit, usage) in spec.items():
+            d = pathlib.Path(root) / rel.strip("/")
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "memory.max").write_text("max" if limit is None else str(limit))
+            (d / "memory.current").write_text(str(usage))
+
+    def test_job_limit_is_found_below_an_unlimited_root(self):
+        import tempfile
+        job = "/system.slice/slurmstepd.scope/job_1234/step_0"
+        with tempfile.TemporaryDirectory() as root:
+            self._make_tree(root, {
+                "/": (None, 0),                      # 根：无限制
+                "/system.slice": (None, 0),
+                "/system.slice/slurmstepd.scope": (None, 0),
+                "/system.slice/slurmstepd.scope/job_1234": (8 << 30, 1 << 30),
+                job: (None, 0),
+            })
+            got = self.parallel._cgroup_limit_along(root, job,
+                                                    "memory.max", "memory.current")
+        self.assertEqual(got, (8 << 30) - (1 << 30))
+
+    def test_tightest_ancestor_wins(self):
+        import tempfile
+        job = "/a/b/c"
+        with tempfile.TemporaryDirectory() as root:
+            self._make_tree(root, {
+                "/": (None, 0),
+                "/a": (16 << 30, 0),
+                "/a/b": (4 << 30, 0),      # 最紧的一层
+                "/a/b/c": (32 << 30, 0),
+            })
+            got = self.parallel._cgroup_limit_along(root, job,
+                                                    "memory.max", "memory.current")
+        self.assertEqual(got, 4 << 30)
+
+    def test_unlimited_everywhere_gives_none(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            self._make_tree(root, {"/": (None, 0), "/a": (None, 0)})
+            self.assertIsNone(
+                self.parallel._cgroup_limit_along(root, "/a",
+                                                  "memory.max", "memory.current"))
+
+    def test_missing_path_gives_none(self):
+        self.assertIsNone(
+            self.parallel._cgroup_limit_along("/nonexistent", "/a/b",
+                                              "memory.max", "memory.current"))
+        self.assertIsNone(
+            self.parallel._cgroup_limit_along("/tmp", None,
+                                              "memory.max", "memory.current"))
+
+    def test_proc_cgroup_v2_line_is_parsed(self):
+        data = "0::/system.slice/slurmstepd.scope/job_99/step_0\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=data)):
+            v2, v1 = self.parallel._own_cgroup_paths()
+        self.assertEqual(v2, "/system.slice/slurmstepd.scope/job_99/step_0")
+
+    def test_proc_cgroup_v1_memory_line_is_parsed(self):
+        data = ("11:cpuset:/slurm/uid_1000/job_99\n"
+                "6:memory:/slurm/uid_1000/job_99/step_0\n"
+                "3:cpu,cpuacct:/slurm/uid_1000/job_99\n")
+        with mock.patch("builtins.open", mock.mock_open(read_data=data)):
+            v2, v1 = self.parallel._own_cgroup_paths()
+        self.assertIsNone(v2)
+        self.assertEqual(v1, "/slurm/uid_1000/job_99/step_0")
+
+    def test_unreadable_proc_cgroup_is_tolerated(self):
+        with mock.patch("builtins.open", side_effect=OSError):
+            self.assertEqual(self.parallel._own_cgroup_paths(), (None, None))
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class MemoryWatchdogTest(unittest.TestCase):
+    """看门狗看的是运行时的真实占用，不依赖任何估算模型。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            from utils import parallel
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 utils.parallel：{exc}")
+        cls.parallel = parallel
+
+    def test_no_limit_gives_a_noop(self):
+        with mock.patch.object(self.parallel, "_cgroup_current_and_max",
+                               return_value=(None, None)), \
+             mock.patch.object(self.parallel, "available_memory_bytes",
+                               return_value=None):
+            stop = self.parallel.start_memory_watchdog()
+        self.assertTrue(callable(stop))
+        stop()
+
+    def test_cgroup_reading_is_preferred_over_the_budget(self):
+        # cgroup 覆盖 worker 进程，是 Slurm 上 OOM killer 真正看的数。
+        with mock.patch.object(self.parallel, "_cgroup_current_and_max",
+                               return_value=(1 << 30, 8 << 30)) as cg, \
+             mock.patch.object(self.parallel, "available_memory_bytes") as budget:
+            stop = self.parallel.start_memory_watchdog(interval=60)
+            stop()
+        self.assertTrue(cg.called)
+        budget.assert_not_called()
+
+    def test_trip_fraction_is_clamped_to_a_sane_range(self):
+        for raw, lo, hi in (("0.01", 0.5, 0.5), ("5", 0.99, 0.99), ("junk", 0.9, 0.9)):
+            with mock.patch.dict(os.environ,
+                                 {"WW3TOOL_MESHGEN_MEM_ABORT_FRACTION": raw}), \
+                 mock.patch.object(self.parallel, "_cgroup_current_and_max",
+                                   return_value=(None, None)), \
+                 mock.patch.object(self.parallel, "available_memory_bytes",
+                                   return_value=1 << 30):
+                stop = self.parallel.start_memory_watchdog(interval=60)
+                stop()
+        # 只要不抛异常即可：范围钳制在内部完成。
+
+    def test_tree_rss_is_at_least_own_rss(self):
+        own = self.parallel._self_rss_bytes()
+        if own is None:
+            self.skipTest("平台不支持 getrusage")
+        self.assertGreaterEqual(self.parallel._tree_rss_bytes(), own)

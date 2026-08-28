@@ -278,6 +278,19 @@ def _normalize_boundaries(bound):
 
 
 
+
+_CURRENT_STAGE = ['startup']
+
+
+def _start_memory_watchdog():
+    """Start the runtime memory watchdog, or a no-op if unavailable."""
+    try:
+        from utils.parallel import start_memory_watchdog
+    except ImportError:
+        return lambda: None
+    return start_memory_watchdog(lambda: _CURRENT_STAGE[0])
+
+
 def _estimate_base_read_bytes(params, lon, lat):
     """Bytes ``generate_grid`` will hold for its slice of the base bathymetry.
 
@@ -303,14 +316,30 @@ def _estimate_base_read_bytes(params, lon, lat):
             return 0
         n_lat_base, n_lon_base = int(var.shape[0]), int(var.shape[1])
         itemsize = var.dtype.itemsize
-    except (AttributeError, KeyError, TypeError):
+        var_x = params.get('var_x') or (
+            'x' if ref_grid.lower() == 'etopo2' else 'lon')
+        lon_var = f.variables.get(var_x)
+        lon_hi = float(np.max(lon_var[:])) if lon_var is not None else None
+    except (AttributeError, KeyError, TypeError, ValueError):
         return 0
     finally:
         f.close()
 
     # Fraction of the globe the domain covers, with a little slack for the
     # two-cell margin generate_grid adds on each side.
-    lon_span = min(360.0, float(np.max(lon)) - float(np.min(lon)) + 4 * params['dx'])
+    #
+    # Longitude has to be measured *after* folding into the base's convention,
+    # exactly as generate_grid does: a domain straddling the base's seam (150~210
+    # against -180..180 GEBCO) folds to -180..180 and is read at full width, so
+    # taking the domain's own 60-degree span would understate it six-fold.
+    lon_eff = np.asarray(lon, dtype=float)
+    if n_lon_base and lon_hi is not None:
+        if lon_hi > 180.0 + 1e-6:
+            if np.min(lon_eff) < -1e-6:
+                lon_eff = np.where(lon_eff < 0.0, lon_eff + 360.0, lon_eff)
+        elif np.max(lon_eff) > 180.0 + 1e-6:
+            lon_eff = np.where(lon_eff > 180.0, lon_eff - 360.0, lon_eff)
+    lon_span = min(360.0, float(np.max(lon_eff)) - float(np.min(lon_eff)) + 4 * params['dx'])
     lat_span = min(180.0, float(np.max(lat)) - float(np.min(lat)) + 4 * params['dy'])
     rows = max(1.0, n_lat_base * lat_span / 180.0)
     cols = max(1.0, n_lon_base * lon_span / 360.0)
@@ -682,6 +711,7 @@ def create_grid(**kwargs):
     
     # 1. Define grid coordinates
     print('Step 1: Defining grid coordinates...', flush=True)
+    _CURRENT_STAGE[0] = 'Step 1'
     # MATLAB: lon1d = params.lon_range(1):params.dx:params.lon_range(2);
     # This creates an array from start to end with step dx, inclusive of both ends
     lon_start = params['lon_range'][0]
@@ -824,6 +854,7 @@ def create_grid(**kwargs):
     Nu = 0
     if params['read_boundary']:
         print('Step 2: Reading GSHHS boundary data...', flush=True)
+        _CURRENT_STAGE[0] = 'Step 2'
         boundary_file = _resolve_boundary_mat_file(params['ref_dir'], params['boundary'])
         
         if os.path.exists(boundary_file):
@@ -879,6 +910,12 @@ def create_grid(**kwargs):
     # database is loaded by now, so the fixed part of the estimate is measured
     # rather than guessed, and a grid that cannot fit says so here instead of
     # being killed by the OOM handler somewhere in step 7.
+    # Watch the real number for the rest of the run.  The estimate below can
+    # only ever be advisory -- validated against measured peaks it ranged from
+    # 0.4x to 2.1x -- so it warns, while the watchdog is what actually stops a
+    # run before the OOM killer does.
+    _stop_watchdog = _start_memory_watchdog()
+
     _base_read = _estimate_base_read_bytes(params, lon, lat)
     if _base_read:
         print(f'  Base bathymetry slice: ~{_base_read / 1024 ** 3:.1f} GiB '
@@ -955,6 +992,7 @@ def create_grid(**kwargs):
     
     # 5. Create initial land-sea mask
     print('Step 5: Creating initial land-sea mask...', flush=True)
+    _CURRENT_STAGE[0] = 'Step 5'
     m = np.ones_like(depth)
     m[depth == params['DRY_VAL']] = 0
     print(f'  Initial wet cells: {np.sum(m == 1)}', flush=True)
@@ -964,6 +1002,7 @@ def create_grid(**kwargs):
     # 6. Split large boundary polygons (for efficiency)
     if params['read_boundary'] and N1 > 0:
         print('Step 6: Splitting large boundary polygons...', flush=True)
+        _CURRENT_STAGE[0] = 'Step 6'
         sys.stdout.flush()
         b_split = split_boundary(b, params['SPLIT_LIM'], params['MIN_DIST'])
         sys.stdout.flush()
@@ -975,6 +1014,7 @@ def create_grid(**kwargs):
     # 7. Clean mask using boundary polygons
     if params['read_boundary'] and N1 > 0:
         print('Step 7: Cleaning mask using boundary polygons...', flush=True)
+        _CURRENT_STAGE[0] = 'Step 7'
         sys.stdout.flush()
         m2 = clean_mask(lon, lat, m, b_split, params['LIM_VAL'], params['OFFSET'])
         if params['opt_poly'] == 1 and N2 != 0:
@@ -994,6 +1034,7 @@ def create_grid(**kwargs):
     
     # 8. Remove lakes and small water bodies
     print('Step 8: Removing lakes and small water bodies...', flush=True)
+    _CURRENT_STAGE[0] = 'Step 8'
     m4, mask_map = remove_lake(m3, params['LAKE_TOL'], params['IS_GLOBAL'])
     print(f'  Final wet cells: {np.sum(m4 == 1)}', flush=True)
     print(f'  Final dry cells: {np.sum(m4 == 0)}', flush=True)
@@ -1002,6 +1043,7 @@ def create_grid(**kwargs):
     # 9. Create obstruction grids
     if params['read_boundary'] and N1 > 0:
         print('Step 9: Creating obstruction grids...', flush=True)
+        _CURRENT_STAGE[0] = 'Step 9'
         sx1, sy1 = create_obstr(lon, lat, b, m4, params['OBSTR_OFFSET'], params['OBSTR_OFFSET'])
         print('  Done.\n', flush=True)
     else:
@@ -1012,6 +1054,7 @@ def create_grid(**kwargs):
     
     # 10. Write output files
     print('Step 10: Writing WAVEWATCH III output files...', flush=True)
+    _CURRENT_STAGE[0] = 'Step 10'
     depth_scale = 1000
     obstr_scale = 100
     

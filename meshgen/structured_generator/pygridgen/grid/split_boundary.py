@@ -14,9 +14,11 @@ Last Update: 23-Oct-2012
 import numpy as np
 
 try:
-    from ..utils.parallel import describe_cpu_budget, resolve_workers, run_parallel
+    from ..utils.parallel import (cap_workers_for_memory, describe_cpu_budget,
+                                  resolve_workers, run_parallel, worker_baseline_bytes)
 except ImportError:
-    from utils.parallel import describe_cpu_budget, resolve_workers, run_parallel
+    from utils.parallel import (cap_workers_for_memory, describe_cpu_budget,
+                                resolve_workers, run_parallel, worker_baseline_bytes)
 
 
 def _split_one(task):
@@ -106,6 +108,8 @@ def split_boundary(bound, lim, min_val=None):
     work = sum(int(np.size(b['x'])) for b in bound
                if b['width'] > lim or b['height'] > lim)
     n_workers = resolve_workers(work, min_chunk=25_000)
+    n_workers = cap_workers_for_memory(n_workers, worker_baseline_bytes() + (64 << 20),
+                                       'boundary splitting')
     print(f'  Splitting {N} boundaries on {n_workers} worker(s); '
           f'{describe_cpu_budget()}', flush=True)
 

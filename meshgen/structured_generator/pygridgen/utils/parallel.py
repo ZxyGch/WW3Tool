@@ -177,23 +177,68 @@ def _read_int_file(path):
     return value if 0 < value < (1 << 62) else None
 
 
-def _cgroup_memory_limit():
-    """Memory this container/cgroup may use, minus what it already holds.
+def _own_cgroup_paths():
+    """This process's cgroup path, as ``(v2_path, v1_memory_path)``.
 
-    Slurm confines a job with cgroups, so this is the number that decides
-    whether the job gets OOM-killed -- not the size of the node.
+    Reading a fixed ``/sys/fs/cgroup/memory.max`` finds the *root* cgroup on
+    any host that is not namespaced -- which is the normal Slurm compute node.
+    The job's own limit lives further down, at something like
+    ``/system.slice/slurmstepd.scope/job_1234/step_0``, and that is the number
+    the OOM killer actually enforces.
     """
-    for limit_path, usage_path in (
-        ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
-        ("/sys/fs/cgroup/memory/memory.limit_in_bytes",
-         "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
-    ):
-        limit = _read_int_file(limit_path)
+    v2 = v1 = None
+    try:
+        with open("/proc/self/cgroup", "r") as handle:
+            for line in handle:
+                parts = line.strip().split(":", 2)
+                if len(parts) != 3:
+                    continue
+                hid, controllers, path = parts
+                if hid == "0" and controllers == "":
+                    v2 = path or "/"
+                elif "memory" in controllers.split(","):
+                    v1 = path or "/"
+    except OSError:
+        return None, None
+    return v2, v1
+
+
+def _cgroup_limit_along(root, rel_path, limit_name, usage_name):
+    """Smallest limit set anywhere from *rel_path* up to the hierarchy root.
+
+    A cgroup is bounded by every ancestor, so the effective ceiling is the
+    minimum of the limits along the way, not just the one on the leaf.
+    """
+    if rel_path is None:
+        return None
+    parts = [p for p in rel_path.strip("/").split("/") if p]
+    best = None
+    for depth in range(len(parts), -1, -1):
+        directory = os.path.join(root, *parts[:depth])
+        limit = _read_int_file(os.path.join(directory, limit_name))
         if limit is None:
             continue
-        used = _read_int_file(usage_path) or 0
-        return max(0, limit - used)
-    return None
+        used = _read_int_file(os.path.join(directory, usage_name)) or 0
+        free = max(0, limit - used)
+        best = free if best is None else min(best, free)
+    return best
+
+
+def _cgroup_memory_limit():
+    """Memory this cgroup may still use, or None when it is unconstrained.
+
+    Slurm confines a job with cgroups, so this -- not the size of the node --
+    is what decides whether the job gets OOM-killed.
+    """
+    v2_path, v1_path = _own_cgroup_paths()
+
+    limit = _cgroup_limit_along("/sys/fs/cgroup", v2_path,
+                                "memory.max", "memory.current")
+    if limit is not None:
+        return limit
+
+    return _cgroup_limit_along("/sys/fs/cgroup/memory", v1_path,
+                               "memory.limit_in_bytes", "memory.usage_in_bytes")
 
 
 def _slurm_memory_limit():
@@ -392,6 +437,137 @@ def check_memory_plan(cells, base_bytes=None, n_workers=1, per_worker_bytes=0):
         "  Set WW3TOOL_MESHGEN_MEM_MB to override the budget if this estimate\n"
         "  is wrong for your machine."
     )
+
+
+
+
+def _tree_rss_bytes():
+    """Resident size of this process and its descendants.
+
+    The cgroup reading already covers the workers; this is the fallback for
+    platforms without cgroups (macOS), where the pool would otherwise be
+    invisible to the watchdog even though it is often the larger half.
+    """
+    own = _self_rss_bytes() or 0
+    try:
+        import subprocess
+
+        out = subprocess.run(["ps", "-Ao", "rss=,ppid=,pid="],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError, ImportError):
+        return own
+
+    rows = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                rows.append((int(parts[0]), int(parts[1]), int(parts[2])))
+            except ValueError:
+                continue
+    me = os.getpid()
+    tree = {me}
+    # A worker pool is one level deep, but walk a few in case of re-spawns.
+    for _ in range(4):
+        for _rss, ppid, pid in rows:
+            if ppid in tree:
+                tree.add(pid)
+    total = sum(rss for rss, _ppid, pid in rows if pid in tree) * 1024
+    return max(own, total)
+
+
+_WATCHDOG_FRACTION_ENV = "WW3TOOL_MESHGEN_MEM_ABORT_FRACTION"
+
+
+def _cgroup_current_and_max():
+    """(used, limit) of this process's memory cgroup, or (None, None).
+
+    On Slurm this pair is exactly what the OOM killer watches, and it counts
+    the worker processes too -- which no per-process reading does.
+    """
+    v2_path, v1_path = _own_cgroup_paths()
+    for root, rel, cur_name, max_name in (
+        ("/sys/fs/cgroup", v2_path, "memory.current", "memory.max"),
+        ("/sys/fs/cgroup/memory", v1_path, "memory.usage_in_bytes",
+         "memory.limit_in_bytes"),
+    ):
+        if rel is None:
+            continue
+        parts = [p for p in rel.strip("/").split("/") if p]
+        for depth in range(len(parts), -1, -1):
+            directory = os.path.join(root, *parts[:depth])
+            limit = _read_int_file(os.path.join(directory, max_name))
+            if limit is None:
+                continue
+            used = _read_int_file(os.path.join(directory, cur_name))
+            if used is not None:
+                return used, limit
+    return None, None
+
+
+def start_memory_watchdog(stage_name=lambda: "", interval=2.0):
+    """Abort with a diagnosis instead of being killed silently.
+
+    Estimating peak memory ahead of time cannot be made reliable -- the peak
+    depends on how many workers a stage ends up using and how much each of
+    them copies, which is only known once the run is under way.  So watch the
+    real number instead.  Under Slurm that number is the cgroup's
+    ``memory.current``, which includes the worker processes and is what the
+    kernel's OOM killer acts on; elsewhere it falls back to this process's own
+    resident size, which misses the pool.
+
+    Returns a ``stop`` callable.  Does nothing, and says so, when no limit can
+    be determined.
+    """
+    import threading
+
+    try:
+        fraction = float(os.environ.get(_WATCHDOG_FRACTION_ENV, "0.9"))
+    except ValueError:
+        fraction = 0.9
+    fraction = min(max(fraction, 0.5), 0.99)
+
+    used, limit = _cgroup_current_and_max()
+    source = "cgroup"
+    if limit is None:
+        limit = available_memory_bytes()
+        source = "budget"
+        if limit is None:
+            return lambda: None
+
+    threshold = int(limit * fraction)
+    stopping = threading.Event()
+
+    def sample():
+        if source == "cgroup":
+            cur, _ = _cgroup_current_and_max()
+            return cur
+        return _tree_rss_bytes()
+
+    def loop():
+        while not stopping.wait(interval):
+            cur = sample()
+            if cur is None or cur < threshold:
+                continue
+            where = stage_name() or "grid generation"
+            sys.stdout.flush()
+            print(
+                f"\n  ABORTING: memory use reached {cur / (1 << 30):.1f} GiB of the "
+                f"{limit / (1 << 30):.1f} GiB {source} limit during {where}.\n"
+                f"  Stopping here rather than letting the OOM killer take the job,\n"
+                f"  which would leave no diagnosis and half-written output.\n"
+                f"  Give the job more memory, use a coarser REF_GRID / BOUNDARY,\n"
+                f"  or enlarge DX/DY.  Set {_WATCHDOG_FRACTION_ENV} to change the\n"
+                f"  {fraction:.0%} trip point.",
+                flush=True,
+            )
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(3)
+
+    thread = threading.Thread(target=loop, name="ww3tool-mem-watchdog", daemon=True)
+    thread.start()
+    return stopping.set
 
 
 def chunk_ranges(n_items, n_chunks):
