@@ -1070,7 +1070,9 @@ def create_grid(**kwargs):
     if params['read_boundary'] and N1 > 0:
         print('Step 9: Creating obstruction grids...', flush=True)
         _CURRENT_STAGE[0] = 'Step 9'
-        sx1, sy1 = create_obstr(lon, lat, b, m4, params['OBSTR_OFFSET'], params['OBSTR_OFFSET'])
+        sx1, sy1 = create_obstr(lon, lat, b, m4, params['OBSTR_OFFSET'],
+                                params['OBSTR_OFFSET'],
+                                is_global=params.get('IS_GLOBAL', 0))
         print('  Done.\n', flush=True)
     else:
         print('Step 9: Skipping obstruction grid creation (no boundaries)', flush=True)

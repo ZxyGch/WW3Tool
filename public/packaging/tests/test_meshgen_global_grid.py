@@ -104,3 +104,44 @@ class GlobalMeridianNotRepeatedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class PeriodicNeighbourTest(unittest.TestCase):
+    """全球网格在经度上是周期的，首尾两列互为邻居。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            import importlib
+            cls.nb = staticmethod(
+                importlib.import_module("grid.create_obstr")._x_neighbour)
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 create_obstr：{exc}")
+
+    def test_interior_is_unaffected_by_wrapping(self):
+        for wrap in (False, True):
+            self.assertEqual(self.nb(5, 1, 10, wrap), 6)
+            self.assertEqual(self.nb(5, -1, 10, wrap), 4)
+
+    def test_non_periodic_grid_has_no_neighbour_past_the_edge(self):
+        self.assertIsNone(self.nb(9, 1, 10, False))
+        self.assertIsNone(self.nb(0, -1, 10, False))
+
+    def test_periodic_grid_wraps_at_both_ends(self):
+        self.assertEqual(self.nb(9, 1, 10, True), 0)
+        self.assertEqual(self.nb(0, -1, 10, True), 9)
+
+    def test_multi_step_offsets_wrap(self):
+        self.assertEqual(self.nb(8, 3, 10, True), 1)
+        self.assertEqual(self.nb(1, -3, 10, True), 8)
+
+    def test_a_cell_is_never_its_own_neighbour(self):
+        # 绕一整圈会回到自己，那不是邻居。
+        self.assertIsNone(self.nb(3, 10, 10, True))
+        self.assertIsNone(self.nb(0, 1, 1, True))
+
+    def test_single_column_grid_has_no_neighbour(self):
+        self.assertIsNone(self.nb(0, 1, 1, False))

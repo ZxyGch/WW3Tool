@@ -87,6 +87,25 @@ class _CellGrid:
 
 
 
+
+def _x_neighbour(j, delta, Nx, wrap):
+    """Column *delta* steps from *j*, or None when it falls off the grid.
+
+    Latitude never wraps, but a global grid is periodic in longitude: its
+    first and last columns are neighbours.  Without this the seam column is
+    treated as having no neighbour on one side, so its x-obstruction is
+    computed from half the information -- wrong on every global grid,
+    whichever longitude the seam happens to sit at.
+    """
+    jj = j + delta
+    if 0 <= jj < Nx:
+        return jj
+    if not wrap or Nx <= 1:
+        return None
+    jj %= Nx
+    return None if jj == j else jj
+
+
 def _clamped_ratio(value, extent):
     """``value / extent`` clamped to [0, 1], with a zero-extent cell giving 0.
 
@@ -266,7 +285,7 @@ def _cells_near_boundaries(cell_min_x, cell_max_x, cell_min_y, cell_max_y,
     return hits > 0
 
 
-def create_obstr(x, y, bound, mask, offset_left, offset_right):
+def create_obstr(x, y, bound, mask, offset_left, offset_right, is_global=0):
     """
     Generate 2D obstruction grids in x and y directions.
     
@@ -299,6 +318,11 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
     """
     # Initialize variables
     Ny, Nx = x.shape
+    # A global grid is periodic in longitude, so its first and last columns
+    # are neighbours for every x-direction lookup below.
+    wrap_x = bool(int(is_global or 0) == 1) and Nx > 1
+    if wrap_x:
+        print('  Global grid: x-direction neighbours wrap across the seam.', flush=True)
     sx = np.zeros((Ny, Nx))
     sy = np.zeros((Ny, Nx))
     
@@ -486,9 +510,8 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
         k = row_bnd[indx_bnd]
         
         # Check neighbors in x direction
-        if j < Nx - 1:
-            jj = j + 1
-            
+        jj = _x_neighbour(j, 1, Nx, wrap_x)
+        if jj is not None:
             if cell[k][j]['nx'] != 0 and cell[k][jj]['nx'] != 0:
                 # Save information to temporary variables (MATLAB style)
                 set1 = {
@@ -743,8 +766,8 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
             
             # Compare with left neighbors
             for off in range(1, offset_left + 1):
-                jj = j - off
-                if jj >= 0:
+                jj = _x_neighbour(j, -off, Nx, wrap_x)
+                if jj is not None:
                     if cell[k][jj]['nx'] != 0:
                         set1 = {
                             'nx': cell[k][jj]['nx'],
@@ -797,8 +820,8 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
             # Compare with right neighbors
             if not no_boundary:
                 for off in range(1, offset_right + 1):
-                    jj = j + off
-                    if jj < Nx:
+                    jj = _x_neighbour(j, off, Nx, wrap_x)
+                    if jj is not None:
                         if cell[k][jj]['nx'] != 0:
                             set1 = {
                                 'nx': cell[k][jj]['nx'],
@@ -1094,9 +1117,11 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
         # MATLAB: if (j > 1 && mask(k,j-1) == 0), sx(k,j) = 0; end
         # MATLAB: if (k < Ny && mask(k+1,j) == 0), sy(k,j) = 0; end
         # MATLAB: if (k > 1 && mask(k-1,j) == 0), sy(k,j) = 0; end
-        if j < Nx - 1 and mask[k, j + 1] == 0:
+        j_right = _x_neighbour(j, 1, Nx, wrap_x)
+        if j_right is not None and mask[k, j_right] == 0:
             sx[k, j] = 0
-        if j > 0 and mask[k, j - 1] == 0:
+        j_left = _x_neighbour(j, -1, Nx, wrap_x)
+        if j_left is not None and mask[k, j_left] == 0:
             sx[k, j] = 0
         if k < Ny - 1 and mask[k + 1, j] == 0:
             sy[k, j] = 0
