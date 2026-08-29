@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 from ..components.header_card import create_header_card
 from ..components.scroll_area import NoHScrollArea
 from ..components.table_widget import EdgeAlignedTableWidget
-from qfluentwidgets import LineEdit, PrimaryPushButton, PushButton
+from qfluentwidgets import LineEdit, PrimaryPushButton
 from qfluentwidgets.common.style_sheet import setCustomStyleSheet
 from qfluentwidgets.components.widgets.scroll_bar import SmoothScrollDelegate
 from workflows.application.remote_ops import (
@@ -136,10 +136,13 @@ class TaskActionsCard(QWidget):
         action_row = QHBoxLayout()
         action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(8)
-        self.watch_button = PushButton(tr("step6_watch_job_ntfy", "监听此任务"))
+        # PrimaryPushButton，与同卡片的「常驻 ntfy 监听」以及全局一致：
+        # _refresh_manual_styles 只对 PrimaryPushButton 套用 styles.button_style()，
+        # 用 PushButton 的话这两个按钮会保留 qfluentwidgets 默认外观。
+        self.watch_button = PrimaryPushButton(tr("step6_watch_job_ntfy", "监听此任务"))
         self.watch_button.clicked.connect(self._watch_current_job)
         action_row.addWidget(self.watch_button, 1)
-        self.cancel_button = PushButton(tr("cancel_task", "取消任务"))
+        self.cancel_button = PrimaryPushButton(tr("cancel_task", "取消任务"))
         self.cancel_button.clicked.connect(self._cancel_current_job)
         action_row.addWidget(self.cancel_button, 1)
         layout.addLayout(action_row)
@@ -487,6 +490,25 @@ class IdleResourcesTable(QWidget):
             self._table.setUpdatesEnabled(True)
 
 
+
+def _laid_out_height(widget: QWidget) -> int:
+    """Height the layout will actually give *widget*.
+
+    ``setFixedHeight`` constrains a widget through its min/max, but leaves
+    ``sizeHint()`` alone -- and a QTableWidget's hint is a constant default
+    viewport size (192 px here) no matter how many rows it holds.  Measuring
+    with the hint therefore over-subtracts for a short table and
+    under-subtracts for a tall one, which is why the others-jobs table used to
+    scroll while empty space sat below My Jobs.
+    """
+    if not widget.isVisible():
+        return 0
+    fixed = widget.maximumHeight()
+    if 0 < fixed < 16777215:
+        return fixed
+    return widget.sizeHint().height()
+
+
 class OthersJobsTable(QWidget):
     """其他用户/本人任务详细表格（结构化数据，非文本日志）。"""
 
@@ -750,16 +772,8 @@ class OthersJobsTable(QWidget):
         if vl.count():
             lay = vl.itemAt(0).layout()
             if lay is not None:
-                title_h = (
-                    self._my_jobs_title.sizeHint().height()
-                    if self._my_jobs_title.isVisible()
-                    else 0
-                )
-                mt_h = (
-                    self._mine_table.sizeHint().height()
-                    if self._mine_table.isVisible()
-                    else 0
-                )
+                title_h = _laid_out_height(self._my_jobs_title)
+                mt_h = _laid_out_height(self._mine_table)
                 avail = (
                     lay.geometry().height()
                     - title_h
