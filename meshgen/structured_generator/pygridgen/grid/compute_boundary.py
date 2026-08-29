@@ -28,7 +28,7 @@ def _log_progress(msg: str) -> None:
         sys.stdout.flush()
 
 
-def compute_boundary(coord, bound, min_val=None, bflg=None):
+def compute_boundary(coord, bound, min_val=None, bflg=None, quiet=False):
     """
     Compute shoreline polygons that lie within the grid domain.
     
@@ -52,6 +52,12 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
         Optional definition of flag type from the gshhs boundary database:
         1 = land; 2 = lake margin; 3 = in-lake island.
         If left blank, defaults to land (1).
+    quiet : bool, optional
+        Suppress progress logging.  ``split_boundary`` calls this routine once
+        per one-degree sub-tile of every large polygon -- thousands of times
+        for a normal domain -- and each call would otherwise announce itself
+        twice, including the "clipping may take minutes" line that is plainly
+        wrong for a single small tile.  The caller reports its own progress.
     
     Returns
     -------
@@ -159,12 +165,14 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
             continue
     
     N_candidates = len(candidate_indices)
-    if N_candidates > 0:
-        _log_progress(
-            f'  compute_boundary: {N_candidates} candidate polygons (clipping may take minutes)...'
-        )
-    else:
-        _log_progress('  compute_boundary: no candidate polygons in domain.')
+    if not quiet:
+        if N_candidates > 0:
+            _log_progress(
+                f'  compute_boundary: {N_candidates} candidate polygons '
+                f'(clipping may take minutes)...'
+            )
+        else:
+            _log_progress('  compute_boundary: no candidate polygons in domain.')
 
     # Loop through candidate boundaries only
     for idx, i in enumerate(candidate_indices):
@@ -852,7 +860,7 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
             itmp = int((idx + 1) / N_candidates * 100) if N_candidates > 0 else 100
             is_milestone = (itmp % 5 == 0) and (itmp_prev != itmp)
             log_dense = N_candidates <= 20
-            if (idx == 0) or is_milestone or (log_dense and idx > 0):
+            if not quiet and ((idx == 0) or is_milestone or (log_dense and idx > 0)):
                 _log_progress(
                     f'Completed {itmp} per cent of {N_candidates} candidate boundaries '
                     f'and found {in_coord} internal boundaries'
@@ -865,7 +873,7 @@ def compute_boundary(coord, bound, min_val=None, bflg=None):
         # Log first polygon and every 5% (small N_candidates seldom hits multiples of 5 — log each idx)
         is_milestone = (itmp % 5 == 0) and (itmp_prev != itmp)
         log_dense = N_candidates <= 20
-        if (idx == 0) or is_milestone or (log_dense and idx > 0):
+        if not quiet and ((idx == 0) or is_milestone or (log_dense and idx > 0)):
             _log_progress(
                 f'Completed {itmp} per cent of {N_candidates} candidate boundaries '
                 f'and found {in_coord} internal boundaries'

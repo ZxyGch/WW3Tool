@@ -64,6 +64,7 @@ def _split_one(task):
                 [poly],
                 min_val,
                 poly['level'],
+                quiet=True,
             )
             if Nb > 0:
                 if isinstance(bt, list):
