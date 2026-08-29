@@ -86,6 +86,26 @@ class _CellGrid:
         return _CellRow(self._store, k)
 
 
+
+def _clamped_ratio(value, extent):
+    """``value / extent`` clamped to [0, 1], with a zero-extent cell giving 0.
+
+    A cell can have zero width or height when the grid is one row or one
+    column across, or when consecutive coordinates repeat.  Dividing by that
+    raised divide-by-zero / overflow / invalid flags, and the flags were then
+    reported against the *next* matmul, which made the warning point at a line
+    that had nothing to do with it.  The clamp also turned the resulting
+    infinities into an arbitrary 0.0 or 1.0; a cell with no extent cannot be
+    partially blocked, so 0.0 is the answer that means something.
+    """
+    if not extent or not np.isfinite(extent):
+        return 0.0
+    ratio = value / extent
+    if not np.isfinite(ratio):
+        return 0.0
+    return float(max(0.0, min(1.0, ratio)))
+
+
 def _process_wet_cell_batch(cell_batch):
     """Process a batch of wet cells (for parallel processing with reduced overhead)."""
     bnd_x = _BOUND_STATE['bnd_x']
@@ -169,14 +189,24 @@ def _process_wet_cell_batch(cell_batch):
                 xt = bound_x_data[in_box_coords]
                 yt = bound_y_data[in_box_coords]
                 
-                tmp = np.column_stack([xt - x0, yt - y0]) @ RM
+                # numpy's (N,2) @ (2,2) path raises divide-by-zero, overflow,
+                # underflow and invalid flags on perfectly ordinary input --
+                # its SIMD kernel reads past the end of the buffer and the
+                # garbage lanes, though discarded from the result, still set
+                # the FPU flags.  Verified on real data: inputs finite, output
+                # finite and correct.  Silencing it here rather than rewriting
+                # the product by hand, because the hand-rolled form differs
+                # from BLAS by an ulp and would move the written bathymetry.
+                with np.errstate(divide='ignore', over='ignore',
+                                 under='ignore', invalid='ignore'):
+                    tmp = np.column_stack([xt - x0, yt - y0]) @ RM
                 xt = tmp[:, 0]
                 yt = tmp[:, 1]
                 
-                south_limit = max(0.0, min(1.0, np.min(yt) / cell_height))
-                north_limit = max(0.0, min(1.0, np.max(yt) / cell_height))
-                west_limit = max(0.0, min(1.0, np.min(xt) / cell_width))
-                east_limit = max(0.0, min(1.0, np.max(xt) / cell_width))
+                south_limit = _clamped_ratio(np.min(yt), cell_height)
+                north_limit = _clamped_ratio(np.max(yt), cell_height)
+                west_limit = _clamped_ratio(np.min(xt), cell_width)
+                east_limit = _clamped_ratio(np.max(xt), cell_width)
                 
                 cell_results.append({
                     'indx_bnd': int(indx_bnd),
@@ -295,6 +325,17 @@ def create_obstr(x, y, bound, mask, offset_left, offset_right):
                             corners['c1x'] - corners['c4x'])
     cell_width = corners['width']
     cell_height = corners['height']
+
+    # A cell with no extent cannot hold a partial obstruction, so it silently
+    # contributes nothing.  That is almost always a grid that is one row or one
+    # column across, or one with repeated coordinates -- worth saying out loud
+    # rather than returning an all-zero obstruction field.
+    degenerate = int(np.count_nonzero((cell_width == 0) | (cell_height == 0)))
+    if degenerate:
+        print(f'  Warning: {degenerate} of {cell_width.size} cells have zero width '
+              f'or height; they get no obstruction.\n'
+              f'           Check DX / DY against the domain — a grid one row or '
+              f'one column across does this.', flush=True)
     del corners
     
     N = len(bound)
