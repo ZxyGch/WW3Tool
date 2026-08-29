@@ -732,6 +732,23 @@ def create_grid(**kwargs):
     lon1d = np.linspace(lon_start, lon_end, nx)
     lat1d = np.linspace(lat_start, lat_end, ny)
     
+    # On a grid that wraps in longitude the first and last columns are the same
+    # meridian, so keeping both is one column too many -- and WW3 does not
+    # merely tolerate it.  With GRID%CLOS='SMPL' it recomputes the spacing as
+    # SX = 360/NX (w3gridmd.F90: `IF ( ICLOSE.EQ.ICLOSE_SMPL ) SX = 360./REAL(NX)`),
+    # so a 0.5 degree global grid written with 721 columns is placed at
+    # 360/721 = 0.4993 degrees instead.  Every column then sits west of where
+    # its data came from, by up to a full cell at the far end.  Dropping the
+    # repeat makes NX = 360/dx, which is the spacing that was asked for.
+    if int(params.get('IS_GLOBAL', 0) or 0) == 1 and nx > 1:
+        span = float(lon1d[-1] - lon1d[0])
+        if abs(span - 360.0) <= 0.5 * float(params['dx']):
+            lon1d = lon1d[:-1]
+            nx -= 1
+            print(f'  Global grid: dropped the repeated meridian, '
+                  f'NX = {nx} at {params["dx"]:g} deg (WW3 forces SX = 360/NX '
+                  f'for GRID%CLOS=\'SMPL\').', flush=True)
+    
     lon, lat = np.meshgrid(lon1d, lat1d)
     print(f'  Grid size: {lon.shape[1]} x {lon.shape[0]} points', flush=True)
     print('  Done.\n', flush=True)

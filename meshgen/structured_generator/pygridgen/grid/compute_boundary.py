@@ -79,13 +79,20 @@ def compute_boundary(coord, bound, min_val=None, bflg=None, quiet=False):
     lon_start = coord[1]
     lat_end = coord[2]
     lon_end = coord[3]
-    cross_dateline = (lon_end - lon_start) > 180
+    # A box whose west edge sorts above its east edge is given in wrapped form
+    # and has to be tested as two pieces.  This is *not* the same as a box that
+    # is merely wider than 180 degrees: a global domain spans the whole turn
+    # yet is still a plain rectangle, and treating it as wrapped used to send
+    # every polygon down the clipping path -- where only polygons that actually
+    # cross an edge are kept, so a global grid ended up with almost no
+    # coastline at all (30 segments out of 10830 polygons).
+    wraps_seam = lon_start > lon_end
 
     # Polygon defining the bounding grid. Bounding grid is defined in the
     # counter clockwise direction
     px = np.array([lon_start, lon_end, lon_end, lon_start, lon_start])
     py = np.array([lat_start, lat_start, lat_end, lat_end, lat_start])
-    rect_domain = (not cross_dateline) and (len(np.unique(px)) == 2) and (len(np.unique(py)) == 2)
+    rect_domain = (not wraps_seam) and (len(np.unique(px)) == 2) and (len(np.unique(py)) == 2)
 
     # Definitions
     eps = 1e-5
@@ -153,7 +160,7 @@ def compute_boundary(coord, bound, min_val=None, bflg=None, quiet=False):
                 north_val = north_val.item() if north_val.size == 1 else north_val[0]
             
             # Quick rejection: bounding box doesn't intersect grid
-            if cross_dateline:
+            if wraps_seam:
                 lon_outside = (west_val > lon_end and east_val < lon_start)
             else:
                 lon_outside = (west_val > lon_end or east_val < lon_start)
@@ -213,7 +220,7 @@ def compute_boundary(coord, bound, min_val=None, bflg=None, quiet=False):
                 if isinstance(north_val, np.ndarray):
                     north_val = north_val.item() if north_val.size == 1 else north_val[0]
                 
-                if cross_dateline:
+                if wraps_seam:
                     lon_outside = (west_val > lon_end and east_val < lon_start)
                 else:
                     lon_outside = (west_val > lon_end or east_val < lon_start)
