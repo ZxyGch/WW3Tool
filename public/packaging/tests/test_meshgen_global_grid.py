@@ -54,6 +54,20 @@ class WideDomainIsNotWrappedTest(unittest.TestCase):
         _b, n = self.cb([-91.0, 100.0, 91.0, 140.0], [poly], 20, 1, quiet=True)
         self.assertEqual(n, 0)
 
+    def test_a_polygon_spanning_the_whole_turn_is_not_clipped(self):
+        # 南极洲那种跨满整圈的多边形：域覆盖全球时不该被域边界切开，
+        # 切开后沿边界闭合会凭空造出一条岸线。
+        poly = self._square(-180.0, 180.0, -78.0, -62.0)
+        for lo, hi in ((-181.0, 180.0), (-1.0, 360.0)):
+            _b, n = self.cb([-91.0, lo, 91.0, hi], [poly], 20, 1, quiet=True)
+            self.assertEqual(n, 1, msg=f"域 [{lo}, {hi}] 不该切开整圈多边形")
+
+    def test_latitude_still_excludes_on_a_global_domain(self):
+        # 经度全覆盖不代表纬度也全覆盖。
+        poly = self._square(-23.0, -22.0, 80.0, 85.0)
+        _b, n = self.cb([-60.0, -181.0, 60.0, 180.0], [poly], 20, 1, quiet=True)
+        self.assertEqual(n, 0)
+
     def test_regional_domain_behaviour_is_unchanged(self):
         poly = self._square(120.5, 121.5, 29.0, 30.0)
         _b, n = self.cb([28.0, 120.0, 32.0, 124.0], [poly], 20, 1, quiet=True)

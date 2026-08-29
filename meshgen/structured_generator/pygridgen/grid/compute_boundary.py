@@ -87,6 +87,12 @@ def compute_boundary(coord, bound, min_val=None, bflg=None, quiet=False):
     # cross an edge are kept, so a global grid ended up with almost no
     # coastline at all (30 segments out of 10830 polygons).
     wraps_seam = lon_start > lon_end
+    # A domain that spans the whole turn contains every longitude, so clipping
+    # a polygon against its east/west edge is meaningless -- and harmful: the
+    # clipped piece gets closed along the domain edge, inventing a coastline
+    # that is not there.  On such a domain only latitude can put a polygon
+    # outside.
+    full_turn = (lon_end - lon_start) >= 360.0 - 1e-9
 
     # Polygon defining the bounding grid. Bounding grid is defined in the
     # counter clockwise direction
@@ -232,7 +238,8 @@ def compute_boundary(coord, bound, min_val=None, bflg=None, quiet=False):
                 lev1 = level_val
                 
                 # Determine if boundary lies completely inside the domain
-                if rect_domain and (west_val >= lon_start and east_val <= lon_end and
+                lon_inside = full_turn or (west_val >= lon_start and east_val <= lon_end)
+                if rect_domain and lon_inside and (
                         south_val >= lat_start and north_val <= lat_end):
                     inside_grid = True
                 else:
