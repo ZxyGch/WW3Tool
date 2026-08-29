@@ -925,10 +925,14 @@ def create_grid(**kwargs):
     if _base_read:
         print(f'  Base bathymetry slice: ~{_base_read / 1024 ** 3:.1f} GiB '
               f"({params['ref_grid']})", flush=True)
-    _fits, _mem_msg = _check_memory_plan(int(np.asarray(lon).size), _base_read)
-    print(f'  {_mem_msg}', flush=True)
-    if not _fits:
+    _status, _mem_msg = _check_memory_plan(int(np.asarray(lon).size), _base_read)
+    if _status == 'over':
+        print(f'  {_mem_msg}', flush=True)
         raise MemoryError(_mem_msg)
+    if _status in ('tight', 'unknown'):
+        print(f'  WARNING: {_mem_msg}', flush=True)
+    else:
+        print(f'  {_mem_msg}', flush=True)
     print('', flush=True)
 
     # 3. Generate bathymetry

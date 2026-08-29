@@ -405,38 +405,59 @@ def estimate_peak_bytes(cells, base_bytes=None, n_workers=1, per_worker_bytes=0)
             + max(0, int(n_workers) - 1) * int(per_worker_bytes))
 
 
-def check_memory_plan(cells, base_bytes=None, n_workers=1, per_worker_bytes=0):
-    """Report whether a run of this size is expected to fit.
+# Above this share of the budget a run is reported as tight: it is allowed to
+# start, but the estimate is not accurate enough (0.3x-2.1x against measured
+# peaks) for the remaining headroom to be trusted.
+_MEMORY_TIGHT_SHARE = 0.6
 
-    Returns ``(fits, message)``.  ``fits`` is True when there is no reason to
-    think it will not -- including when the budget cannot be determined, since
-    refusing to run on an unknown budget would be worse than trying.
+_MEMORY_ADVICE = (
+    "    - give the job more memory (Slurm: --mem);\n"
+    "    - for a global or very wide domain, use a coarser bathymetry\n"
+    "      (REF_GRID='etopo2' or 'etopo1' instead of 'gebco'): the base\n"
+    "      slice is read whole, and 15-arcsecond GEBCO is ~7 GiB global;\n"
+    "    - use a coarser coastline (BOUNDARY='inter' or 'low' instead of\n"
+    "      'full'), which is most of the fixed cost;\n"
+    "    - enlarge DX/DY, or split the domain and generate it in pieces."
+)
+
+
+def check_memory_plan(cells, base_bytes=None, n_workers=1, per_worker_bytes=0):
+    """Report how a run of this size is expected to sit against the budget.
+
+    Returns ``(status, message)`` where status is ``"ok"``, ``"tight"`` or
+    ``"over"``.  An undeterminable budget counts as ``"unknown"`` and is
+    allowed through -- refusing on no information would be worse than trying --
+    but it is said out loud, because the watchdog is degraded in that case too.
     """
     need = estimate_peak_bytes(cells, base_bytes, n_workers, per_worker_bytes)
     budget = available_memory_bytes()
     gib = float(1 << 30)
     if budget is None:
-        return True, (f"Estimated peak memory ~{need / gib:.1f} GiB "
-                      f"({cells / 1e6:.2f}M cells); memory budget unknown.")
+        return "unknown", (
+            f"Estimated peak memory ~{need / gib:.1f} GiB "
+            f"({cells / 1e6:.2f}M cells), but the memory budget could not be "
+            f"determined, so this cannot be checked.")
 
     summary = (f"Estimated peak memory ~{need / gib:.1f} GiB "
                f"({cells / 1e6:.2f}M cells, {n_workers} worker(s)); "
                f"{describe_memory_budget()}.")
-    if need * _MEMORY_SAFETY_MARGIN <= budget:
-        return True, summary
-    return False, (
-        summary + "\n"
-        "  This grid is not expected to fit.  Options, cheapest first:\n"
-        "    - give the job more memory (Slurm: --mem);\n"
-        "    - for a global or very wide domain, use a coarser bathymetry\n"
-        "      (REF_GRID='etopo2' or 'etopo1' instead of 'gebco'): the base\n"
-        "      slice is read whole, and 15-arcsecond GEBCO is ~11 GiB global;\n"
-        "    - use a coarser coastline (BOUNDARY='inter' or 'low' instead of\n"
-        "      'full'), which is most of the fixed cost;\n"
-        "    - enlarge DX/DY, or split the domain and generate it in pieces.\n"
-        "  Set WW3TOOL_MESHGEN_MEM_MB to override the budget if this estimate\n"
-        "  is wrong for your machine."
-    )
+
+    if need * _MEMORY_SAFETY_MARGIN > budget:
+        return "over", (summary + "\n"
+                        "  This grid is not expected to fit.  Options, cheapest first:\n"
+                        + _MEMORY_ADVICE + "\n"
+                        "  Set WW3TOOL_MESHGEN_MEM_MB to override the budget if this\n"
+                        "  estimate is wrong for your machine.")
+
+    if need > budget * _MEMORY_TIGHT_SHARE:
+        return "tight", (
+            summary + "\n"
+            f"  That is {need / budget:.0%} of the budget, and this estimate has\n"
+            "  been measured anywhere from 0.3x to 2.1x of the real peak -- so the\n"
+            "  run may still be stopped part way.  If it is, one of these helps:\n"
+            + _MEMORY_ADVICE)
+
+    return "ok", summary
 
 
 
@@ -533,6 +554,9 @@ def start_memory_watchdog(stage_name=lambda: "", interval=2.0):
         limit = available_memory_bytes()
         source = "budget"
         if limit is None:
+            print('  WARNING: no memory limit could be determined, so the memory '
+                  'watchdog is off;\n           an over-large grid will be killed '
+                  'by the OS without a diagnosis.', flush=True)
             return lambda: None
 
     threshold = int(limit * fraction)

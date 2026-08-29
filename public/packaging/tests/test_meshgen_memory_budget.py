@@ -79,28 +79,54 @@ class MemoryBudgetTest(unittest.TestCase):
     def test_oversized_grid_is_refused_with_advice(self):
         with mock.patch.object(self.parallel, "available_memory_bytes",
                                return_value=2 << 30):
-            fits, msg = self.parallel.check_memory_plan(
+            status, msg = self.parallel.check_memory_plan(
                 40_000_000, base_bytes=1 << 30, n_workers=8,
                 per_worker_bytes=64 << 20)
-        self.assertFalse(fits)
+        self.assertEqual(status, "over")
         self.assertIn("--mem", msg)
         self.assertIn("BOUNDARY", msg)
 
-    def test_reasonable_grid_is_allowed(self):
+    def test_comfortable_grid_is_plain_ok(self):
         with mock.patch.object(self.parallel, "available_memory_bytes",
                                return_value=64 << 30):
-            fits, _ = self.parallel.check_memory_plan(
+            status, _ = self.parallel.check_memory_plan(
                 2_560_000, base_bytes=1 << 30, n_workers=8,
                 per_worker_bytes=64 << 20)
-        self.assertTrue(fits)
+        self.assertEqual(status, "ok")
 
-    def test_unknown_budget_allows_the_run(self):
-        # 预算读不到时宁可放行，也不要因为一个猜测挡住正常作业。
+    def test_tight_grid_warns_but_is_allowed(self):
+        # 关键的中间档：能起跑，但要明确告诉用户余量不足、估算不准。
+        need = self.parallel.estimate_peak_bytes(
+            2_560_000, base_bytes=1 << 30, n_workers=8,
+            per_worker_bytes=64 << 20)
+        budget = int(need / 0.75)          # 占 75%，在 60% 与拒绝线之间
+        with mock.patch.object(self.parallel, "available_memory_bytes",
+                               return_value=budget):
+            status, msg = self.parallel.check_memory_plan(
+                2_560_000, base_bytes=1 << 30, n_workers=8,
+                per_worker_bytes=64 << 20)
+        self.assertEqual(status, "tight")
+        self.assertIn("% of the budget", msg)
+        self.assertIn("--mem", msg)
+
+    def test_unknown_budget_allows_the_run_but_says_so(self):
+        # 预算读不到时宁可放行，也不要因为一个猜测挡住正常作业；但要讲明白。
         with mock.patch.object(self.parallel, "available_memory_bytes",
                                return_value=None):
-            fits, msg = self.parallel.check_memory_plan(40_000_000)
-        self.assertTrue(fits)
-        self.assertIn("unknown", msg)
+            status, msg = self.parallel.check_memory_plan(40_000_000)
+        self.assertEqual(status, "unknown")
+        self.assertIn("could not be determined", msg)
+
+    def test_tier_boundaries_are_ordered(self):
+        # ok < tight < over，随预算收紧单调变化。
+        args = dict(base_bytes=1 << 30, n_workers=4, per_worker_bytes=32 << 20)
+        need = self.parallel.estimate_peak_bytes(1_000_000, **args)
+        seen = []
+        for share in (0.3, 0.75, 1.2):     # 占预算 30% / 75% / 120%
+            with mock.patch.object(self.parallel, "available_memory_bytes",
+                                   return_value=int(need / share)):
+                seen.append(self.parallel.check_memory_plan(1_000_000, **args)[0])
+        self.assertEqual(seen, ["ok", "tight", "over"])
 
     def test_estimate_grows_with_cells_and_workers(self):
         base = dict(base_bytes=1 << 30, per_worker_bytes=64 << 20)
