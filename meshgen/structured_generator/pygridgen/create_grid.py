@@ -316,6 +316,12 @@ def _estimate_base_read_bytes(params, lon, lat):
             return 0
         n_lat_base, n_lon_base = int(var.shape[0]), int(var.shape[1])
         itemsize = var.dtype.itemsize
+        # netCDF4 adds a mask byte per point, unless the variable declares
+        # nothing to mask and generate_grid therefore reads it unmasked.
+        masking = {"_FillValue", "missing_value", "valid_min", "valid_max",
+                   "valid_range"} & set(var.ncattrs())
+        if masking:
+            itemsize += 1
         var_x = params.get('var_x') or (
             'x' if ref_grid.lower() == 'etopo2' else 'lon')
         lon_var = f.variables.get(var_x)
@@ -343,8 +349,7 @@ def _estimate_base_read_bytes(params, lon, lat):
     lat_span = min(180.0, float(np.max(lat)) - float(np.min(lat)) + 4 * params['dy'])
     rows = max(1.0, n_lat_base * lat_span / 180.0)
     cols = max(1.0, n_lon_base * lon_span / 360.0)
-    # netCDF4 returns a masked array: the data plus one mask byte per point.
-    return int(rows * cols * (itemsize + 1))
+    return int(rows * cols * itemsize)
 
 
 def _check_memory_plan(cells, base_read_bytes=0):

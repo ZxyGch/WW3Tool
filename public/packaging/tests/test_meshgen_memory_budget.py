@@ -299,3 +299,45 @@ class MemoryWatchdogTest(unittest.TestCase):
         if own is None:
             self.skipTest("平台不支持 getrusage")
         self.assertGreaterEqual(self.parallel._tree_rss_bytes(), own)
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class PointlessMaskingTest(unittest.TestCase):
+    """声明了 fill/valid 的变量保持默认；没声明的不该白白多占一字节/点。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            import importlib
+            cls.gg = importlib.import_module("grid.generate_grid")
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 grid.generate_grid：{exc}")
+
+    class _Var:
+        def __init__(self, attrs):
+            self._attrs = list(attrs)
+            self.masked = True
+
+        def ncattrs(self):
+            return self._attrs
+
+        def set_auto_mask(self, flag):
+            self.masked = flag
+
+    def test_variable_without_fill_is_read_unmasked(self):
+        # GEBCO 就是这种：没有 _FillValue，掩码全 False，纯浪费。
+        var = self._Var(["units", "long_name", "standard_name"])
+        self.assertTrue(self.gg._disable_pointless_masking(var))
+        self.assertFalse(var.masked)
+
+    def test_declared_fill_value_keeps_masking(self):
+        for attr in ("_FillValue", "missing_value", "valid_min",
+                     "valid_max", "valid_range"):
+            var = self._Var(["units", attr])
+            self.assertFalse(self.gg._disable_pointless_masking(var), msg=attr)
+            self.assertTrue(var.masked, msg=attr)
+
+    def test_object_without_ncattrs_is_left_alone(self):
+        self.assertFalse(self.gg._disable_pointless_masking(object()))

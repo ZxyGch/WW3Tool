@@ -30,6 +30,34 @@ except ImportError:
 
 
 
+
+# Attributes that make netCDF4's automatic masking mean something.  Without
+# any of them the mask it builds is all-False -- and it still costs one byte
+# per point, which on global GEBCO is 3.4 GiB of array that masks nothing.
+_MASKING_ATTRS = ("_FillValue", "missing_value", "valid_min", "valid_max",
+                  "valid_range")
+
+
+def _disable_pointless_masking(var):
+    """Turn off auto-masking for a variable that declares nothing to mask.
+
+    Returns True when masking was disabled.  Variables that do declare a fill
+    or valid range keep the default behaviour, so nothing that relies on the
+    mask changes.
+    """
+    try:
+        attrs = set(var.ncattrs())
+    except AttributeError:
+        return False
+    if attrs & set(_MASKING_ATTRS):
+        return False
+    try:
+        var.set_auto_mask(False)
+    except AttributeError:
+        return False
+    return True
+
+
 def _lon_axis_periodicity(lon_base, dx_base):
     """Describe the longitude axis that was actually read from the base file.
 
@@ -468,6 +496,9 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
         var_lon = f.variables[var_x]
         var_lat = f.variables[var_y]
         var_dep = f.variables[var_z]
+        if _disable_pointless_masking(var_dep):
+            print('  Base bathymetry declares no fill value; reading it unmasked '
+                  '(saves one byte per point).', flush=True)
         
         # Get dimensions
         dim_lon = f.dimensions[var_x]
