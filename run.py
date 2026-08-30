@@ -415,9 +415,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    # --json 时 stdout 上只能有那一个 JSON 对象，启动阶段的提示一律闭嘴。
+    # [EN] In --json mode stdout must carry nothing but the JSON object.
+    quiet_startup = "--json" in rest
+
     if _requires_full_dependencies(mode, rest):
         try:
-            _ensure_runtime(entry_script=ENTRY_SCRIPT, argv=original, mode=mode)
+            _ensure_runtime(entry_script=ENTRY_SCRIPT, argv=original, mode=mode,
+                            quiet=quiet_startup)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             print(
                 _tr("cli_dependency_init_failed", "依赖初始化失败：{error}").format(error=exc),
@@ -592,19 +597,22 @@ def _ensure_dependencies(*, quiet: bool = False, mode: str = "desktop") -> Path 
     return None
 
 
-def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None, mode: str = "cli") -> None:
+def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None, mode: str = "cli",
+                    quiet: bool = False) -> None:
     """Ensure dependencies and re-exec into the project venv when needed."""
     argv = list(argv or [])
     required = _required_imports(mode)
     venv_python = _venv_python_path()
 
     if venv_python.is_file() and not _running_in_project_venv():
-        print(f"Using project virtual environment: {VENV_DIR}")
+        if not quiet:
+            print(f"Using project virtual environment: {VENV_DIR}")
         _reexec(venv_python, entry_script, argv)
 
-    reexec_python = _ensure_dependencies(mode=mode)
+    reexec_python = _ensure_dependencies(mode=mode, quiet=quiet)
     if reexec_python is not None:
-        print(f"Switched to project virtual environment: {VENV_DIR}")
+        if not quiet:
+            print(f"Switched to project virtual environment: {VENV_DIR}")
         _reexec(reexec_python, entry_script, argv)
 
     if _missing_requirements(required):

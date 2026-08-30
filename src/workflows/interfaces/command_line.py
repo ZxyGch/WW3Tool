@@ -158,10 +158,23 @@ def build_parser() -> argparse.ArgumentParser:
         An ``ArgumentParser`` instance with all subcommands and arguments registered.
     """
     parser = argparse.ArgumentParser(prog="python3 run.py")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=tr("cli_help_json",
+                "Emit one machine-readable JSON object instead of prose"),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     # ── configuration ──────────────────────────────────────────────────────
     _WD_HELP = tr("cli_help_workdir", "Working directory containing params.yml (default: current directory)")
+
+    p_schema = sub.add_parser(
+        "schema",
+        help=tr("cli_help_schema",
+                "Describe params.yml fields, valid values and env vars (use with --json)"),
+    )
+    p_schema.set_defaults(command="schema")
 
     p_workdir = sub.add_parser(
         "workdir",
@@ -175,6 +188,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_validate = sub.add_parser("validate", help=tr("cli_help_validate", "[workdir] Validate a YAML parameter file"))
     p_validate.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_validate.add_argument(
+        "--stage",
+        choices=["grid", "forcing", "plot", "full"],
+        default="full",
+        help=tr("cli_help_validate_stage",
+                "Validate only what this stage needs (default: full)"),
+    )
 
     p_config = sub.add_parser("config", help=tr("cli_help_config", "[workdir] Show a configuration summary"))
     p_config.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
@@ -633,6 +653,86 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if not getattr(args, "json", False):
+        return _dispatch_body(args, parser)
+
+    # --json：拦下人类可读输出，最后在 stdout 上只留一个 JSON 对象。
+    from .json_output import capture, emit
+
+    with capture(str(args.command)) as res:
+        try:
+            code = _dispatch_body(args, parser)
+        except SystemExit as exc:            # argparse 等直接退出
+            code = int(exc.code or 0)
+        except Exception as exc:             # noqa: BLE001 - 汇报而非吞掉
+            import traceback
+            traceback.print_exc()
+            res.fail(1, f"{type(exc).__name__}: {exc}")
+            code = 1
+    emit(res, code)
+    return code
+
+
+
+
+def _record_failure(code: int, exc: BaseException, *, kind: str,
+                    hints: list[str] | None = None) -> None:
+    """把失败原因放进 JSON 结果。
+
+    错误信息原本只去 stderr，调用方拿到的 JSON 里只有一个退出码，看不出
+    为什么失败——这恰恰是最需要机器读到的一条。
+    """
+    from .json_output import result as _json_result
+
+    res = _json_result()
+    if res is not None:
+        res.fail(code, str(exc), kind=kind, hints=hints)
+
+
+def _record_grid_result(res, config) -> None:
+    """把网格生成的产出与阶段耗时登记进 JSON 结果。
+
+    调用方最想知道的是「生成了哪些文件、网格多大、时间花在哪」，让它去解析
+    日志里的散文来拼这些，既脆弱又没必要。
+    """
+    from pathlib import Path as _Path
+
+    workdir = _Path(str(config.workdir.path))
+    region = getattr(config.grid, "outer", None)
+    if region is not None:
+        res.update(
+            dx=float(region.dx), dy=float(region.dy),
+            lon=[float(region.lon[0]), float(region.lon[1])],
+            lat=[float(region.lat[0]), float(region.lat[1])],
+        )
+    res.update(mesh_type=str(getattr(config.grid, "mesh_type", "")),
+               grid_type=str(getattr(config.grid, "grid_type", "")),
+               workdir=str(workdir))
+    for name in ("grid.bot", "grid.mask_nobound", "grid.obst", "grid.meta",
+                 "grid_cell.dat", "grid.msh"):
+        candidate = workdir / name
+        if candidate.is_file():
+            res.add_output(candidate)
+    # 网格描述里带着 WW3 实际使用的维度，比从日志里抠可靠。
+    meta = workdir / "grid.meta"
+    if meta.is_file():
+        import re as _re
+        text = meta.read_text(encoding="utf-8", errors="replace")
+        dims = {}
+        for key, pattern in (("nx", r"RECT%NX\s*=\s*(\d+)"),
+                             ("ny", r"RECT%NY\s*=\s*(\d+)"),
+                             ("sx", r"RECT%SX\s*=\s*([\d.]+)"),
+                             ("sy", r"RECT%SY\s*=\s*([\d.]+)"),
+                             ("closure", r"GRID%CLOS\s*=\s*'(\w+)'")):
+            m = _re.search(pattern, text)
+            if m:
+                dims[key] = m.group(1)
+        if dims:
+            res.set("grid", dims)
+
+
+def _dispatch_body(args, parser) -> int:
+    """原有的命令分发逻辑。"""
     # 启动时校验根 params.yml 的本地路径参数，失效路径置 null
     from ..infrastructure.runtime_config import sanitize_root_params_paths
     _nulled = sanitize_root_params_paths()
@@ -640,6 +740,19 @@ def main(argv: list[str] | None = None) -> int:
         print(tr("cli_paths_nulled",
                  "ℹ️ 根 params.yml 中以下路径不存在，已置为 null："))
         print(format_key_value_lines(_nulled))
+
+    if args.command == "schema":
+        from .config_schema import build_schema
+        from .json_output import result as _json_result
+
+        schema = build_schema()
+        res = _json_result()
+        if res is not None:
+            res.data.update(schema)
+        else:
+            import json as _json
+            print(_json.dumps(schema, ensure_ascii=False, indent=2))
+        return 0
 
     if args.command == "print-example":
         print(EXAMPLE_YAML, end="")
@@ -680,11 +793,20 @@ def main(argv: list[str] | None = None) -> int:
             stage = "forcing"
         if args.command in ("generate-grid", "recommend-grid"):
             stage = "grid"
+        if args.command == "validate":
+            # 只校验该阶段需要的东西：想确认网格配置时，不该被还没准备的
+            # 风场卡住。
+            stage = getattr(args, "stage", "full")
 
         config = load_pipeline_config(params_path, validation_stage=stage)
 
         if args.command == "validate":
             print(tr("cli_validate_ok", "✅ OK: {path}").format(path=params_path))
+            from .json_output import result as _json_result
+            _r = _json_result()
+            if _r is not None:
+                _r.update(params_path=str(params_path),
+                          stage=getattr(args, "stage", "full"))
             return 0
 
         if args.command == "config":
@@ -717,10 +839,14 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "generate-grid":
             from ..application.grid_preparation import run_generate_grid
+            from .json_output import result as _json_result
 
             if not _resolve_reference_data_cli(config, args):
                 return 1
             run_generate_grid(config, log=print, use_cache=True)
+            _r = _json_result()
+            if _r is not None:
+                _record_grid_result(_r, config)
             return 0
 
         if args.command == "recommend-grid":
@@ -861,9 +987,14 @@ def main(argv: list[str] | None = None) -> int:
 
     except ConfigError as exc:
         print(tr("cli_config_error", "❌ 参数错误：{error}").format(error=exc), file=sys.stderr)
+        _record_failure(2, exc, kind="config", hints=[
+            "run `ww3tool schema --json` to see where each setting lives",
+            "run `ww3tool validate --stage grid` to check only what this step needs",
+        ])
         return 2
     except Exception as exc:
         print(tr("cli_execution_failed", "❌ 执行失败：{error}").format(error=exc), file=sys.stderr)
+        _record_failure(1, exc, kind=type(exc).__name__)
         return 1
 
     parser.error(tr("cli_unknown_command", "❌ 未知命令：{command}").format(command=args.command))
