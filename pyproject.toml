@@ -36,19 +36,28 @@ dependencies = [
     "requests",
     "PyYAML",
     "pyfiglet",
-    # GUI 桌面依赖并入主依赖：pip install ww3tool 一次装齐全部包
-    # （桌面界面、WebEngine globe picker、Fluent 组件）。
-    # [EN] GUI desktop deps merged into the main deps so a plain
-    # `pip install ww3tool` installs everything.
+]
+
+[project.optional-dependencies]
+# 桌面端依赖单列。并入主依赖会让 `pip install ww3tool` 在任何拿不到 PyQt6
+# wheel 的机器上直接失败——HPC 计算节点就是这种：CentOS 7 一代的 glibc 2.17
+# 配不上 PyQt6 官方 wheel 要求的 manylinux_2_34，pip 只能回落到源码编译，
+# 而那里没有 Qt 可编译。这类机器只需要 CLI。
+# 需要桌面端时 `pip install ww3tool[gui]`，或者直接 `ww3tool --gui`——
+# 有图形环境时它会自动补装。
+# [EN] Desktop deps are optional: bundling them makes a plain install fail on
+# any machine without a PyQt6 wheel, such as an HPC node that only needs the
+# CLI anyway.
+gui = [
     "PyQt6",
     "PyQt6-WebEngine",
     "PyQt6-Fluent-Widgets",
 ]
-
-[project.optional-dependencies]
-# 保留空 gui extra 兼容旧命令（pip install "ww3tool[gui]" 仍可用）。
-# [EN] Keep an empty gui extra so legacy install commands still work.
-gui = []
+desktop = [
+    "PyQt6",
+    "PyQt6-WebEngine",
+    "PyQt6-Fluent-Widgets",
+]
 dev = ["pytest"]
 
 # Windows 上不生成 ww3tool.exe（会被 Smart App Control / 应用控制策略拦截），

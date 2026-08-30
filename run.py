@@ -220,6 +220,10 @@ _CORE_REQUIRED_IMPORTS = {
 
 # 仅 Desktop / 交互式 GUI 需要
 # [EN] Required only for Desktop / interactive GUI.
+# 启动桌面端的写法。
+# [EN] Flags that launch the desktop.
+_GUI_FLAGS = frozenset({"--gui", "--desktop", "gui", "desktop"})
+
 _GUI_REQUIRED_IMPORTS = {
     "PyQt6": "PyQt6.QtWidgets",
     "PyQt6-Fluent-Widgets": "qfluentwidgets",
@@ -347,13 +351,16 @@ def _apply_language(lang: str | None) -> None:
 def _requires_full_dependencies(mode: str, rest: list[str]) -> bool:
     """判断当前调用是否需要检查虚拟环境与依赖。
 
-    Desktop 与 shell 始终检查（shell 不含 GUI 包）；CLI 下 help / print-example /
-    workdir 可跳过。
+    Desktop 与 shell 始终检查（shell 不含 GUI 包）；纯帮助以及 CLI 下的
+    help / print-example / workdir 可跳过。
 
     [EN] Whether the current invocation needs the venv/dependency check.
     Desktop and shell always check (shell excludes GUI packages); CLI help /
     print-example / workdir can be skipped.
     """
+    if mode == "help":
+        # 只打印帮助，不该为此去装任何东西。
+        return False
     if mode == "desktop":
         return True
     if mode == "shell":
@@ -380,27 +387,33 @@ def main(argv: list[str] | None = None) -> int:
     lang, rest = _extract_lang(original)
     _apply_language(lang)
 
+    # 不带参数只打印帮助：桌面端要显式 `ww3tool --gui` 才启动。默认启动桌面端
+    # 会在无图形环境的机器上强行要求 GUI 依赖，而那正是只需要 CLI 的场景。
+    # [EN] No arguments prints the help; the desktop needs an explicit --gui.
     if not rest:
+        mode = "help"
+    elif rest[0] in _GUI_FLAGS:
         mode = "desktop"
+        rest = rest[1:]
     elif rest[0] == "shell":
         mode = "shell"
     else:
         mode = "cli"
 
-    # 无头环境下退回交互式 Shell，而不是为了一个开不出来的窗口去装 GUI 依赖
-    # 然后失败。有桌面的机器照常要求装齐。
-    # [EN] Fall back to the shell where no GUI can be shown, instead of failing
-    # on desktop dependencies that could not be displayed anyway.
+    # 显式要 GUI 但没有图形环境：说清楚为什么起不来，而不是让 pip 去编译
+    # 一个注定装不上的 PyQt6 再报一堆编译错。
+    # [EN] --gui on a machine with no display: say so plainly.
     if mode == "desktop" and not _has_desktop_environment():
         print(
             _tr(
-                "cli_headless_fallback",
-                "未检测到图形环境，已启动交互式命令行（桌面端需要图形界面；"
-                "如确需启动桌面端请设置 WW3TOOL_FORCE_DESKTOP=1）。",
-            )
+                "cli_gui_needs_display",
+                "未检测到图形环境，桌面端无法启动。请在有显示器的机器上运行；"
+                "若确认可用（如 X11 转发）请设置 WW3TOOL_FORCE_DESKTOP=1。"
+                "命令行功能不受影响，直接运行 ww3tool shell 或 ww3tool --help。",
+            ),
+            file=sys.stderr,
         )
-        mode = "shell"
-        rest = ["shell"]
+        return 1
 
     if _requires_full_dependencies(mode, rest):
         try:
@@ -411,6 +424,12 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    if mode == "help":
+        from workflows.interfaces.interactive_cli import print_help
+
+        print_help()
+        return 0
 
     if mode == "desktop":
         from desktop.application import main as run_desktop

@@ -140,3 +140,73 @@ class HeadlessFallbackTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless((REPO_ROOT / "run.py").is_file(), "仓库形态才有 run.py")
+class EntryPointRoutingTest(unittest.TestCase):
+    """入口约定：裸 ww3tool 只给帮助，桌面端要显式 --gui。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.runmod = _load_run()
+
+    def _main(self, argv):
+        """跑 main()，把帮助与桌面端两个出口都换成探针。"""
+        calls = {"help": 0, "desktop": 0, "shell": 0}
+
+        import types
+        icli = types.ModuleType("workflows.interfaces.interactive_cli")
+        icli.print_help = lambda: calls.__setitem__("help", calls["help"] + 1)
+        icli.main = lambda *a, **k: calls.__setitem__("shell", calls["shell"] + 1) or 0
+        app = types.ModuleType("desktop.application")
+        app.main = lambda *a, **k: calls.__setitem__("desktop", calls["desktop"] + 1) or 0
+
+        with mock.patch.dict(sys.modules, {
+            "workflows.interfaces.interactive_cli": icli,
+            "desktop.application": app,
+        }), mock.patch.object(self.runmod, "_bootstrap_src_imports", lambda: None), \
+             mock.patch.object(self.runmod, "_ensure_runtime", lambda **k: None):
+            code = self.runmod.main(argv)
+        return code, calls
+
+    def test_bare_command_prints_help(self):
+        code, calls = self._main([])
+        self.assertEqual(code, 0)
+        self.assertEqual(calls["help"], 1)
+        self.assertEqual(calls["desktop"], 0, "裸命令不该启动桌面端")
+
+    def test_help_flag_prints_help(self):
+        for flag in ("--help", "-h"):
+            _code, calls = self._main([flag])
+            self.assertEqual(calls["help"], 1, msg=flag)
+
+    def test_gui_flag_launches_the_desktop(self):
+        with mock.patch.object(self.runmod, "_has_desktop_environment", lambda: True):
+            code, calls = self._main(["--gui"])
+        self.assertEqual(code, 0)
+        self.assertEqual(calls["desktop"], 1)
+
+    def test_desktop_alias_also_works(self):
+        with mock.patch.object(self.runmod, "_has_desktop_environment", lambda: True):
+            _code, calls = self._main(["--desktop"])
+        self.assertEqual(calls["desktop"], 1)
+
+    def test_gui_without_a_display_refuses_with_a_reason(self):
+        # 与其让 pip 去编译一个装不上的 PyQt6，不如直接说清楚。
+        with mock.patch.object(self.runmod, "_has_desktop_environment", lambda: False):
+            code, calls = self._main(["--gui"])
+        self.assertEqual(code, 1)
+        self.assertEqual(calls["desktop"], 0)
+
+    def test_shell_still_works(self):
+        _code, calls = self._main(["shell"])
+        self.assertEqual(calls["shell"], 1)
+
+    def test_help_mode_needs_no_dependency_check(self):
+        self.assertFalse(self.runmod._requires_full_dependencies("help", []))
+
+    def test_desktop_mode_still_checks_gui_dependencies(self):
+        # --gui 时要自动补装，所以这里必须仍然返回 True。
+        self.assertTrue(self.runmod._requires_full_dependencies("desktop", []))
+        self.assertIn("PyQt6", self.runmod._required_imports("desktop"))
+        self.assertNotIn("PyQt6", self.runmod._required_imports("shell"))
