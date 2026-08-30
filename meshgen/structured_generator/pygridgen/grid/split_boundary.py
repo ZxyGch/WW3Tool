@@ -21,57 +21,64 @@ except ImportError:
                                 resolve_workers, run_parallel, worker_baseline_bytes)
 
 
-def _split_one(task):
-    """Split a single polygon into the sub-boxes that fall inside the grid.
+_POLY_STATE: list = []
 
-    Polygons are independent of one another, so this is the unit of work that
-    gets spread across processes; results are reassembled in input order.
+
+def _init_poly_state(polys):
+    global _POLY_STATE
+    _POLY_STATE = polys
+    try:
+        from ..utils.parallel import limit_worker_threads
+    except ImportError:
+        from utils.parallel import limit_worker_threads
+    limit_worker_threads()
+
+
+def _tile_axis(lo_val, hi_val, lim):
+    """Tile edges along one axis, in the order the serial version produced."""
+    low = int(np.floor(lo_val))
+    high = int(np.ceil(hi_val))
+    step = max(1, int(lim)) if lim >= 1 else 1
+    axis = np.arange(low, high + step, step, dtype=int).tolist()
+    axis = sorted(set(axis)) if axis else [low, high]
+    if axis[-1] < high:
+        axis.append(high)
+    return axis
+
+
+def _tile_boxes(poly, lim):
+    """The sub-boxes a polygon is cut into, in (lx, ly) order.
+
+    Kept separate from the clipping so the boxes can be handed out as
+    individual units of work.
+    """
+    x_axis = _tile_axis(poly['west'], poly['east'], lim)
+    y_axis = _tile_axis(poly['south'], poly['north'], lim)
+    return [
+        [y_axis[ly], x_axis[lx], y_axis[ly + 1], x_axis[lx + 1]]
+        for lx in range(len(x_axis) - 1)
+        for ly in range(len(y_axis) - 1)
+    ]
+
+
+def _clip_tile(task):
+    """Clip one polygon against one of its sub-boxes.
+
+    The unit of work is a *tile*, not a polygon.  Coastline data is extremely
+    lopsided -- of 188617 polygons only 165 need splitting at all, and the
+    single largest carries 72.9% of the work -- so handing out whole polygons
+    caps the speed-up at about 1.4x however many workers are available.  The
+    polygons themselves ride the pool initializer, so a tile task is just an
+    index and four numbers.
     """
     from .compute_boundary import compute_boundary
 
-    poly, lim, min_val = task
-
-    if not (poly['width'] > lim or poly['height'] > lim):
-        return [poly]
-
-    low = int(np.floor(poly['west']))
-    high = int(np.ceil(poly['east']))
-    step = max(1, int(lim)) if lim >= 1 else 1
-    x_axis = np.arange(low, high + step, step, dtype=int).tolist()
-    if len(x_axis) == 0:
-        x_axis = [low, high]
-    else:
-        x_axis = sorted(set(x_axis))
-    if x_axis[-1] < high:
-        x_axis.append(high)
-
-    low = int(np.floor(poly['south']))
-    high = int(np.ceil(poly['north']))
-    step = max(1, int(lim)) if lim >= 1 else 1
-    y_axis = np.arange(low, high + step, step, dtype=int).tolist()
-    if len(y_axis) == 0:
-        y_axis = [low, high]
-    else:
-        y_axis = sorted(set(y_axis))
-    if y_axis[-1] < high:
-        y_axis.append(high)
-
-    pieces = []
-    for lx in range(len(x_axis) - 1):
-        for ly in range(len(y_axis) - 1):
-            bt, Nb = compute_boundary(
-                [y_axis[ly], x_axis[lx], y_axis[ly + 1], x_axis[lx + 1]],
-                [poly],
-                min_val,
-                poly['level'],
-                quiet=True,
-            )
-            if Nb > 0:
-                if isinstance(bt, list):
-                    pieces.extend(bt)
-                else:
-                    pieces.append(bt)
-    return pieces
+    poly_index, box, min_val = task
+    poly = _POLY_STATE[poly_index]
+    bt, Nb = compute_boundary(box, [poly], min_val, poly['level'], quiet=True)
+    if Nb <= 0:
+        return []
+    return list(bt) if isinstance(bt, list) else [bt]
 
 
 def split_boundary(bound, lim, min_val=None):
@@ -104,22 +111,46 @@ def split_boundary(bound, lim, min_val=None):
     if N == 0:
         return []
 
-    # Cost is driven by the polygons that actually get subdivided and by how
-    # many points they carry, not by the polygon count.
+    # Which polygons need cutting, and into what.  Everything else passes
+    # through untouched, exactly as the serial version left it.
+    plans = []
+    tasks = []
+    for i, poly in enumerate(bound):
+        if poly['width'] > lim or poly['height'] > lim:
+            boxes = _tile_boxes(poly, lim)
+            plans.append((i, len(tasks), len(boxes)))
+            tasks.extend((i, box, min_val) for box in boxes)
+        else:
+            plans.append((i, -1, 0))
+
+    n_split = sum(1 for _, start, _ in plans if start >= 0)
+    if not tasks:
+        print(f'  Splitting {N} boundaries: nothing exceeds the limit', flush=True)
+        return list(bound)
+
+    # Whether a pool is worth starting is a separate question from how finely
+    # the work is diced.  Keep the original measure -- points carried by the
+    # polygons that actually get cut -- so small jobs stay serial instead of
+    # paying for interpreter start-up; the per-tile tasks below only change
+    # how evenly the work spreads once a pool exists.
     work = sum(int(np.size(b['x'])) for b in bound
                if b['width'] > lim or b['height'] > lim)
     n_workers = resolve_workers(work, min_chunk=25_000)
     n_workers = cap_workers_for_memory(n_workers, worker_baseline_bytes() + (64 << 20),
                                        'boundary splitting')
-    print(f'  Splitting {N} boundaries on {n_workers} worker(s); '
-          f'{describe_cpu_budget()}', flush=True)
+    print(f'  Splitting {n_split} of {N} boundaries into {len(tasks)} tiles '
+          f'on {n_workers} worker(s); {describe_cpu_budget()}', flush=True)
 
-    tasks = [(bound[i], lim, min_val) for i in range(N)]
-    results = run_parallel(_split_one, tasks, n_workers)
+    results = run_parallel(_clip_tile, tasks, n_workers,
+                           initializer=_init_poly_state, initargs=(list(bound),))
 
     bound_ingrid = []
-    for pieces in results:
-        bound_ingrid.extend(pieces)
+    for i, start, count in plans:
+        if start < 0:
+            bound_ingrid.append(bound[i])
+            continue
+        for k in range(start, start + count):
+            bound_ingrid.extend(results[k])
 
     print(f'  Completed 100 per cent of {N} boundaries and split into '
           f'{len(bound_ingrid)} boundaries', flush=True)
