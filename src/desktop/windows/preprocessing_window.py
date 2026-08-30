@@ -60,6 +60,7 @@ from workflows.infrastructure.runtime_config import (
     normalize_run_mode,
     set_active_params_path,
 )
+from workflows.support.translations import resolve_language as _resolve_language
 from workflows.infrastructure.adapters.grid_generation_adapter import (
     REFERENCE_DATA_REQUIRED_FILES,
 )
@@ -199,7 +200,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             _qf_config.themeChangedFinished.connect(self._refresh_manual_styles)
         except Exception:
             pass
-        if str(_load_runtime_config().get("LANGUAGE", "zh_CN")).startswith("en"):
+        if _resolve_language().startswith("en"):
             self._append_log("Developed by Gong Chuheng, Shanghai Ocean University, Sep 2025. Assisted by Han Ziqi, supervised by Prof. Wei Yongliang")
         else:
             self._append_log("本软件由上海海洋大学宫楚恒于 2025 年 9 月开发，师兄韩梓琪帮助，导师魏永亮")

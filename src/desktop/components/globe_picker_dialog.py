@@ -33,11 +33,11 @@ from .._repo_root import repo_root
 def current_map_language() -> str:
     """Return the two-letter map language matching the application setting."""
     try:
-        from workflows.infrastructure.runtime_config import load_config
+        from workflows.support.translations import resolve_language
 
-        language = str(load_config().get("LANGUAGE", "zh_CN") or "zh_CN")
+        language = resolve_language()
     except Exception:
-        language = "zh_CN"
+        language = "en_US"
     return "en" if language.lower().startswith("en") else "zh"
 
 

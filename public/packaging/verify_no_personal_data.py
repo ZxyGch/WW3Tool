@@ -19,11 +19,44 @@ PATTERN = re.compile(rb"/Users/|/root/|/public/home/|[A-Za-z]:\\Users\\")
 # 只检查随包分发的运行资源；第三方依赖里出现构建路径是正常的。
 SUFFIXES = (".yml", ".yaml", ".json", ".nml", ".flag", "requirements.txt")
 
+# 模板里必须保持中性的偏好项（与 run.py 的 _NEUTRAL_DEFAULTS 对应）。
+# 打包那一刻开发者的界面语言曾经就这样成了所有用户的默认值。
+# [EN] Preferences the template must keep neutral (mirrors run.py's _NEUTRAL_DEFAULTS).
+NEUTRAL_DEFAULTS = {"language": "auto"}
+
+_PREF_KV = re.compile(rb"^\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>[^#\r\n]*?)\s*$")
+
 
 def _offenders(name, data):
     for lineno, line in enumerate(data.splitlines(), 1):
         if PATTERN.search(line):
             yield f"{name}:{lineno}: {line.decode('utf-8', 'replace').strip()}"
+
+
+def _preference_offenders(name, data):
+    """模板里的个人偏好没被清洗回中性值时报错。
+
+    [EN] Flag personal preferences the sanitizer failed to reset to a neutral value.
+    """
+    for lineno, line in enumerate(data.splitlines(), 1):
+        m = _PREF_KV.match(line)
+        if not m:
+            continue
+        key = m.group("key").decode("ascii", "replace")
+        expected = NEUTRAL_DEFAULTS.get(key)
+        if expected is None:
+            continue
+        value = m.group("value").decode("utf-8", "replace").strip().strip("'\"")
+        if value != expected:
+            yield (f"{name}:{lineno}: {key} 应为 {expected}，"
+                   f"实际是 {value!r}（开发机偏好泄漏到了发行模板）")
+
+
+def _scan_member(name, data):
+    found = list(_offenders(name, data))
+    if name.endswith("params.yml"):
+        found += list(_preference_offenders(name, data))
+    return found
 
 
 def scan(dist="dist"):
@@ -33,14 +66,14 @@ def scan(dist="dist"):
             with zipfile.ZipFile(path) as zf:
                 for member in zf.namelist():
                     if member.endswith(SUFFIXES):
-                        bad += list(_offenders(f"{path.name}:{member}", zf.read(member)))
+                        bad += _scan_member(f"{path.name}:{member}", zf.read(member))
         elif path.name.endswith(".tar.gz"):
             with tarfile.open(path) as tf:
                 for member in tf.getmembers():
                     if member.isfile() and member.name.endswith(SUFFIXES):
                         handle = tf.extractfile(member)
                         if handle is not None:
-                            bad += list(_offenders(f"{path.name}:{member.name}", handle.read()))
+                            bad += _scan_member(f"{path.name}:{member.name}", handle.read())
     return bad
 
 

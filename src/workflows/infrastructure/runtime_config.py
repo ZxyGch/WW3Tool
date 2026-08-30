@@ -1041,7 +1041,8 @@ _YAML_COMMENTS: list[tuple[str, str]] = [
     ("desktop:",
      "# ════════════════════════════════════════════════════════════════════\n"
      "# Desktop-only settings (managed by the Settings page; CLI ignores).\n"
-     "#   language           – UI locale: 'en_US' or 'zh_CN'.\n"
+     "#   language           – UI/CLI locale: 'auto' (follow LC_ALL/LC_MESSAGES/LANG,\n"
+     "#                        or the Windows UI language), 'en_US', or 'zh_CN'.\n"
      "#   theme              – colour theme: 'LIGHT' / 'DARK' / 'AUTO'.\n"
      "#   map_type           – default map type used by map views.\n"
      "#   run_mode           – 'local' / 'server' / 'both'.\n"

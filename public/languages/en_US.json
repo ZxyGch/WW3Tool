@@ -2180,7 +2180,7 @@
   "icli_help_hint": "Press Enter to execute, Tab to auto-complete, ↑↓ for history",
   "icli_help_template": "Default params.yml template: {path} (copy it into a workdir with the 'workdir' command)",
   "icli_global_options": "Global Options",
-  "icli_lang_desc": "Switch output language",
+  "icli_lang_desc": "Switch output language; defaults to auto, inferred from LC_ALL/LANG",
   "icli_grp_config": "Configuration",
   "icli_grp_preproc": "Preprocessing",
   "icli_grp_plot": "Post-processing / Plotting",

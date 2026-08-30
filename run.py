@@ -693,6 +693,10 @@ _PERSONAL_KEYS = frozenset({
 # 历史记录类的列表整段清空。
 _HISTORY_KEYS = frozenset({"recent_workdirs"})
 
+# 开发机上的个人偏好，发行版里改回中性默认值，否则打包那一刻的开发者
+# 设置会变成所有用户的默认值（语言就这么长期默认成了中文）。
+_NEUTRAL_DEFAULTS = {"language": "auto"}
+
 _KV = _re.compile(r"^(?P<indent>\s*)(?P<key>[^#:][^:]*):(?P<gap>\s*)(?P<value>.*?)(?P<eol>\s*)$")
 
 # Fortran namelist：KEY = '值'
@@ -744,6 +748,9 @@ def _sanitize_params_template(text: str) -> str:
             if bare in _HISTORY_KEYS:
                 out.append(f"{m.group('indent')}{m.group('key')}: []\n")
                 drop_list_under = key
+                continue
+            if bare in _NEUTRAL_DEFAULTS:
+                out.append(f"{m.group('indent')}{m.group('key')}: {_NEUTRAL_DEFAULTS[bare]}\n")
                 continue
             if value and (bare in _PERSONAL_KEYS or _PERSONAL_PATH.match(value.strip("'\""))):
                 out.append(f"{m.group('indent')}{m.group('key')}:\n")

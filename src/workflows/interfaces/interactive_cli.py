@@ -343,7 +343,7 @@ def print_help() -> None:
         print()
 
     print(f"  {_bold(_color(tr('icli_global_options', '全局选项'), _Colors.YELLOW))}")
-    print(f"    {_color('--lang <zh_CN|en_US>', _Colors.GREEN)}      {tr('icli_lang_desc', '切换输出语言')}")
+    print(f"    {_color('--lang <auto|zh_CN|en_US>', _Colors.GREEN)} {tr('icli_lang_desc', '切换输出语言；默认 auto，按 LC_ALL/LANG 等环境变量判断')}")
     print()
 
     g = _color

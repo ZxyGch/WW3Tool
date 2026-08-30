@@ -134,6 +134,8 @@ class SettingsViewModel:
         try:
             from workflows.support.translations import set_language
 
-            set_language(str(code or "zh_CN"))
+            # 空值/auto 交给 set_language 去问环境，别在这里替它决定
+            # [EN] Let set_language ask the environment for blank/auto instead of deciding here.
+            set_language(str(code or ""))
         except Exception:
             pass

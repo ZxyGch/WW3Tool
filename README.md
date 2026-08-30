@@ -1956,6 +1956,12 @@ ww3tool --json generate-grid /path/to/workdir
 to grep prose to find out whether a run worked or which files it produced.
 Without `--json` the output is unchanged.
 
+Prose messages follow the environment locale: `LC_ALL`, `LC_MESSAGES`, `LANG`
+and `LANGUAGE` are read in that order, and anything the tool has no translation
+for falls back to English. Pin it per invocation with `--lang en_US`, or
+permanently by setting `desktop.language` in params.yml to `en_US` / `zh_CN`
+instead of the default `auto`. The JSON keys never change with the language.
+
 ### Failures explain themselves
 
 An error goes into the object, not just to stderr, and carries the next step

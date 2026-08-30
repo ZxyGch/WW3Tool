@@ -497,7 +497,7 @@ class SettingsInterface(QWidget):
     # [EN] Individual setting cards
     def _build_interface_card(self) -> None:
         grid = self._card(tr("interface_settings", "界面设置"))
-        self._combo(grid, 0, 0, tr("language_select", "语言:"), "LANGUAGE", ["zh_CN", "en_US"])
+        self._combo(grid, 0, 0, tr("language_select", "语言:"), "LANGUAGE", ["auto", "zh_CN", "en_US"])
         self._build_run_mode_combo(grid, 1, 0)
         map_options = [
             (tr("map_type_administrative", "行政区划海图"), MAP_TYPE_VALUES[0]),

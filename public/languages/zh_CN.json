@@ -2180,7 +2180,7 @@
   "icli_help_hint": "输入命令后按回车执行，Tab 键自动补全，↑↓ 翻阅历史",
   "icli_help_template": "默认 params.yml 模板：{path}（用 'workdir' 命令复制到工作目录）",
   "icli_global_options": "全局选项",
-  "icli_lang_desc": "切换输出语言",
+  "icli_lang_desc": "切换输出语言；默认 auto，按 LC_ALL/LANG 等环境变量判断",
   "icli_grp_config": "配置管理",
   "icli_grp_preproc": "预处理",
   "icli_grp_plot": "后处理 / 绘图",
