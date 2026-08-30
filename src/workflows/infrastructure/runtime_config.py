@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -74,8 +75,73 @@ PUBLIC_DIR = os.path.join(PROJECT_ROOT, "public")
 # 确保公共目录存在，如果不存在则创建
 os.makedirs(PUBLIC_DIR, exist_ok=True)
 
+# 包内随发行版分发的模板（只读）。
+BUNDLED_PARAMS_FILE = os.path.join(PROJECT_ROOT, "params.yml")
+
+
+def _is_packaged_layout() -> bool:
+    """是否为 pip / brew 安装形态（仓库形态下 run.py 与 params.yml 同级）。"""
+    return not os.path.isfile(os.path.join(PROJECT_ROOT, "run.py"))
+
+
+def _user_config_dir() -> str:
+    """按各平台惯例给出用户配置目录。"""
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/ww3tool")
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or os.path.expanduser(r"~\AppData\Roaming")
+        return os.path.join(base, "ww3tool")
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return os.path.join(base, "ww3tool")
+
+
+def _seed_user_params(user_path: str, bundled_path: str) -> bool:
+    """首次运行时把现有配置搬到用户目录。返回是否可用。
+
+    从包内复制而不是从原始模板复制，是为了照顾老用户：他们的服务器地址、
+    WW3 可执行路径、参考数据位置此前就存在包内那份里，直接搬过去即可，
+    不需要重新配一遍。
+    """
+    if os.path.isfile(user_path):
+        return True
+    try:
+        os.makedirs(os.path.dirname(user_path), exist_ok=True)
+        if os.path.isfile(bundled_path):
+            shutil.copy2(bundled_path, user_path)
+        else:
+            with open(user_path, "w", encoding="utf-8") as f:
+                f.write("")
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_params_file() -> str:
+    """根 params.yml 的实际位置。
+
+    仓库形态下就是仓库里那份，开发时的行为不变。pip 安装形态下**不能**放在
+    site-packages：升级时 pip 会先删掉旧版的全部文件，存在那里的设置——服务器
+    地址、各 WW3 版本的可执行路径、7 GB 参考数据的位置——会在每次
+    ``pip install --upgrade`` 后全部丢失。实测确认过。
+
+    [EN] Keep the settings file outside site-packages for packaged installs:
+    pip deletes every file of the old version on upgrade, taking the user's
+    settings with it.
+    """
+    override = os.environ.get("WW3TOOL_PARAMS")
+    if override:
+        return os.path.normpath(os.path.expanduser(override))
+    if not _is_packaged_layout():
+        return BUNDLED_PARAMS_FILE
+    user_path = os.path.join(_user_config_dir(), "params.yml")
+    if _seed_user_params(user_path, BUNDLED_PARAMS_FILE):
+        return user_path
+    # 用户目录不可写（只读家目录等）时退回包内那份，功能可用但升级会丢设置。
+    return BUNDLED_PARAMS_FILE
+
+
 # 根目录 params.yml 路径（desktop 段的持久化文件）
-PARAMS_FILE = os.path.join(PROJECT_ROOT, "params.yml")
+PARAMS_FILE = _resolve_params_file()
 
 # desktop: 段 YAML 键名 ↔ 旧 config.json 扁平键名（双向映射，兼容消费者 API）
 _DESKTOP_YAML_TO_LEGACY = {
