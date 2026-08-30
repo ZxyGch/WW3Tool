@@ -83,6 +83,19 @@ build() {
     ls -la dist/
 }
 
+# 产物中不得残留开发者的路径 / 主机 / 账号。构建时 run.py 会清洗
+# params.yml 模板，这一步是兜底：漏了就让发布失败，而不是发出去才发现。
+verify_clean() {
+    echo "🔒 检查产物是否残留个人信息 ..."
+    if "$PY" "$ROOT/public/packaging/verify_no_personal_data.py" dist; then
+        echo "✅ 产物无个人信息残留"
+    else
+        echo "❌ 产物中仍有个人信息，已中止发布" >&2
+        exit 1
+    fi
+}
+
+
 check() {
     echo "🔍 twine check ..."
     "$PY" -m twine check dist/* || {
@@ -129,6 +142,7 @@ case "$MODE" in
         check_version
         build
         check
+        verify_clean
         ;;
     --upload)
         [ -n "$(ls dist/* 2>/dev/null)" ] || { echo "❌ dist/ 为空,请先 --build" >&2; exit 1; }
@@ -140,6 +154,7 @@ case "$MODE" in
         check_version
         build
         check
+        verify_clean
         upload
         cleanup
         ;;

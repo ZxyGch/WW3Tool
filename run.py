@@ -231,6 +231,28 @@ _GUI_REQUIRED_IMPORTS = {
 _REQUIRED_IMPORTS = {**_CORE_REQUIRED_IMPORTS, **_GUI_REQUIRED_IMPORTS}
 
 
+
+def _has_desktop_environment() -> bool:
+    """Whether this machine can actually put a window on a screen.
+
+    macOS and Windows always can.  On Linux it takes a display server, and an
+    HPC login or compute node has none -- there the Qt wheels usually cannot
+    even be built, so insisting on them turns a perfectly good CLI into a hard
+    failure.  ``WW3TOOL_FORCE_DESKTOP=1`` overrides this for cases such as X
+    forwarding where the variables are set late.
+
+    [EN] True when a GUI can be displayed.
+    """
+    if os.environ.get("WW3TOOL_FORCE_DESKTOP", "").strip() not in ("", "0"):
+        return True
+    if sys.platform in ("darwin", "win32"):
+        return True
+    return bool(
+        os.environ.get("DISPLAY", "").strip()
+        or os.environ.get("WAYLAND_DISPLAY", "").strip()
+    )
+
+
 def _required_imports(mode: str) -> dict[str, str]:
     """按运行模式返回需检查的依赖。CLI / Shell 不检查 GUI 包。
 
@@ -364,6 +386,21 @@ def main(argv: list[str] | None = None) -> int:
         mode = "shell"
     else:
         mode = "cli"
+
+    # 无头环境下退回交互式 Shell，而不是为了一个开不出来的窗口去装 GUI 依赖
+    # 然后失败。有桌面的机器照常要求装齐。
+    # [EN] Fall back to the shell where no GUI can be shown, instead of failing
+    # on desktop dependencies that could not be displayed anyway.
+    if mode == "desktop" and not _has_desktop_environment():
+        print(
+            _tr(
+                "cli_headless_fallback",
+                "未检测到图形环境，已启动交互式命令行（桌面端需要图形界面；"
+                "如确需启动桌面端请设置 WW3TOOL_FORCE_DESKTOP=1）。",
+            )
+        )
+        mode = "shell"
+        rest = ["shell"]
 
     if _requires_full_dependencies(mode, rest):
         try:
@@ -577,6 +614,9 @@ def _ensure_runtime(*, entry_script: Path, argv: list[str] | None = None, mode: 
 _BUILD_STAGE = ROOT / "src" / "ww3tool_resources"
 _BUILD_SKIP_DIRS = {"__pycache__", ".venv"}
 _BUILD_MESHGEN_SKIP_TOP = {"__pycache__", ".venv", "cache", "reference_data"}
+# 任意层级的运行产物目录都不进包：里面是跑过一次留下的文件，
+# 常常带着当时的绝对路径。
+_BUILD_SKIP_ANY_DIR = {"output", "__pycache__", ".venv"}
 _BUILD_MAX_NONPY_BYTES = 1_000_000  # meshgen 中 >1MB 的非 .py 文件视为数据/文档，不进包
 
 # 资源包的 __init__.py 壳（rmtree 重建时写入，保证包可导入）。
@@ -602,12 +642,96 @@ def is_packaged_root() -> bool:
 '''
 
 
+
+# ── 打包前清除模板中的个人信息 ─────────────────────────────────────────
+# 仓库根的 params.yml 同时是「开发者日常使用的配置」和「随包分发的模板」。
+# 直接打包会把开发机路径、集群家目录、SSH 别名一起发出去（实测 37 处）。
+# 处理时逐行改写而不是 YAML 往返：模板里大段说明注释是它的主要价值，
+# safe_load/safe_dump 会把它们全部丢掉。
+# [EN] Strip developer-specific values from the packaged params.yml template.
+
+import re as _re
+
+# 值以这些前缀开头就是某个人的家目录，不该随包发布。
+_PERSONAL_PATH = _re.compile(
+    r"^(/Users/|/home/|/root/|/public/home/|[A-Za-z]:[\\/](Users|home)[\\/])"
+)
+
+# 这些键无论取值如何都要清空：它们标识的是某台机器或某个账号。
+_PERSONAL_KEYS = frozenset({
+    "ssh_config_host", "default_remote_dir", "host", "user",
+    "password", "key_file", "passphrase",
+})
+
+# 历史记录类的列表整段清空。
+_HISTORY_KEYS = frozenset({"recent_workdirs"})
+
+_KV = _re.compile(r"^(?P<indent>\s*)(?P<key>[^#:][^:]*):(?P<gap>\s*)(?P<value>.*?)(?P<eol>\s*)$")
+
+# Fortran namelist：KEY = '值'
+_NML_KV = _re.compile(r"^(?P<head>\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*)(?P<q>['\"])(?P<value>.*?)(?P=q)(?P<tail>.*)$")
+
+# 随包分发的文本模板，暂存时一并清洗。
+_BUILD_SANITIZE_SUFFIXES = frozenset({".nml", ".json", ".yaml", ".yml", ".flag"})
+
+
+def _sanitize_config_text(text: str) -> str:
+    """Blank developer-specific values in a staged config template.
+
+    Handles the two shapes that ship with the package: YAML ``key: value``
+    and Fortran namelist ``KEY = 'value'``.
+    """
+    out = []
+    for line in text.splitlines(keepends=True):
+        m = _NML_KV.match(line.rstrip("\n"))
+        if m and _PERSONAL_PATH.match(m.group("value").strip()):
+            q = m.group("q")
+            out.append(f"{m.group('head')}{q}{q}{m.group('tail')}\n")
+            continue
+        out.append(line)
+    return _sanitize_params_template("".join(out))
+
+
+def _sanitize_params_template(text: str) -> str:
+    """Blank developer-specific values in the params.yml template.
+
+    Keys and comments are kept as they are -- the point is to ship a template
+    that documents every setting while pointing at nobody's machine.
+    """
+    out = []
+    drop_list_under = None
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+
+        # 正在丢弃某个历史列表的条目
+        if drop_list_under is not None:
+            if stripped.startswith("- "):
+                continue
+            drop_list_under = None
+
+        m = _KV.match(line.rstrip("\n"))
+        if m and not stripped.startswith("#"):
+            key = m.group("key").strip().strip("'\"")
+            value = m.group("value").strip()
+            bare = key.split(".")[-1]
+            if bare in _HISTORY_KEYS:
+                out.append(f"{m.group('indent')}{m.group('key')}: []\n")
+                drop_list_under = key
+                continue
+            if value and (bare in _PERSONAL_KEYS or _PERSONAL_PATH.match(value.strip("'\""))):
+                out.append(f"{m.group('indent')}{m.group('key')}:\n")
+                continue
+        out.append(line)
+    return "".join(out)
+
+
 def _build_walk_copy(src_root: Path, rel_dir: str, skip_top: set[str] | None = None) -> None:
     src = src_root / rel_dir
     if not src.is_dir():
         return
     for dirpath, dirnames, filenames in os.walk(src):
-        dirnames[:] = [d for d in dirnames if d not in _BUILD_SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames
+                       if d not in _BUILD_SKIP_DIRS and d not in _BUILD_SKIP_ANY_DIR]
         if skip_top and dirpath == str(src):
             dirnames[:] = [d for d in dirnames if d not in skip_top]
         for fn in filenames:
@@ -621,6 +745,15 @@ def _build_walk_copy(src_root: Path, rel_dir: str, skip_top: set[str] | None = N
                 continue
             tgt = _BUILD_STAGE / rel_dir / p.relative_to(src)
             tgt.parent.mkdir(parents=True, exist_ok=True)
+            if p.suffix in _BUILD_SANITIZE_SUFFIXES:
+                try:
+                    tgt.write_text(
+                        _sanitize_config_text(p.read_text(encoding="utf-8")),
+                        encoding="utf-8",
+                    )
+                    continue
+                except (OSError, UnicodeDecodeError):
+                    pass
             shutil.copy2(p, tgt)
 
 
@@ -638,7 +771,11 @@ def _stage_packaging_resources() -> None:
     _BUILD_STAGE.mkdir(parents=True, exist_ok=True)
     (_BUILD_STAGE / "__init__.py").write_text(_BUILD_INIT_PY, encoding="utf-8")
 
-    shutil.copy2(ROOT / "params.yml", _BUILD_STAGE / "params.yml")
+    # 模板随包分发，先去掉开发者自己的路径/主机/账号再落盘。
+    (_BUILD_STAGE / "params.yml").write_text(
+        _sanitize_params_template((ROOT / "params.yml").read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
     req_src = ROOT / "src" / "requirements.txt"
     if req_src.is_file():
         tgt = _BUILD_STAGE / "src" / "requirements.txt"
