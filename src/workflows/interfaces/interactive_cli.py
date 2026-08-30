@@ -55,6 +55,7 @@ from ..application.configuration import ConfigError, EXAMPLE_YAML, load_pipeline
 from ..domain.config_models import PipelineConfig
 from ..support.paths import same_local_path
 from ..support.translations import tr
+from ..support.formatting import format_key_value_lines
 
 
 # ANSI 颜色代码
@@ -1918,7 +1919,9 @@ def main(params_path: Optional[str] = None) -> int:
         from ..infrastructure.runtime_config import sanitize_root_params_paths
         _nulled = sanitize_root_params_paths()
         if _nulled:
-            print(_info(tr("cli_paths_nulled", "ℹ️ 根 params.yml 中以下路径不存在，已置为 null：{keys}").format(keys=", ".join(_nulled))))
+            print(_info(tr("cli_paths_nulled",
+                           "ℹ️ 根 params.yml 中以下路径不存在，已置为 null：")))
+            print(format_key_value_lines(_nulled))
     except Exception:
         pass
 

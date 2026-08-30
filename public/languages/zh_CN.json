@@ -2442,7 +2442,7 @@
   "cli_help_workdir_path": "Working directory path to create or load",
   "cli_slurm_section_missing": "params.yml 中缺少 slurm: 段",
   "cli_workdir_params": "配置文件：{path}",
-  "cli_paths_nulled": "ℹ️ 根 params.yml 中以下路径不存在，已置为 null：{keys}",
+  "cli_paths_nulled": "ℹ️ 根 params.yml 中以下路径不存在，已置为 null：",
   "icli_done_confirm_slurm": "✅ Slurm 配置已确认",
   "icli_done_merge_forcing": "✅ Forcing merge complete",
   "icli_failed_confirm_slurm": "❌ Slurm 配置确认失败",
