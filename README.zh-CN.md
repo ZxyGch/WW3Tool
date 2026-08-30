@@ -2099,8 +2099,26 @@ Estimated peak memory ~11.5 GiB (0.26M cells, 16 worker(s)); 7.8 GiB usable.
     - for a global or very wide domain, use a coarser bathymetry …
 ```
 
-运行**过程中**的进度目前仍是 `messages` 里的人类可读文本，流式结构化通道
-尚未实现。
+### 流式进度
+
+全球网格要跑十几分钟。`--progress` 会逐行输出 NDJSON 事件——每行一个独立
+对象，读到就能用——而 stdout 仍然只留给最终那个结果对象：
+
+```bash
+ww3tool --json --progress stderr generate-grid /path/to/workdir
+ww3tool --json --progress /tmp/run.ndjson generate-grid /path/to/workdir
+```
+
+```
+{"event": "start",  "elapsed": 0.0,  "command": "generate-grid"}
+{"event": "stage",  "elapsed": 24.8, "stage": "Step 3", "index": 3, "total": 10,
+ "title": "Generating bathymetry from gebco"}
+{"event": "stage",  "elapsed": 49.5, "stage": "Step 6", "index": 6, "total": 10,
+ "title": "Splitting large boundary polygons"}
+{"event": "done",   "elapsed": 618.8, "status": "ok", "exit_code": 0, "outputs": [...]}
+```
+
+指定的目标打不开时会被忽略，不会因此让整条命令失败。
 
 ## 7. 项目结构
 

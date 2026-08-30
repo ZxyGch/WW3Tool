@@ -28,6 +28,9 @@ __all__ = [
     "emit",
     "watch_outputs",
     "collect_outputs",
+    "open_progress",
+    "close_progress",
+    "progress",
 ]
 
 # 当前调用的结果对象；命令代码通过 result() 取用，不必层层传参。
@@ -126,6 +129,60 @@ def capture(command: str):
         _CURRENT = previous
         res._captured = buffer.getvalue()  # type: ignore[attr-defined]
 
+
+
+
+# ── 流式进度 ─────────────────────────────────────────────────────────
+# 全球网格要跑十几分钟，期间调用方只能干等。stdout 已经被那个最终对象占住
+# （必须保持可直接解析），所以进度走另一条通道，逐行 NDJSON——每行一个
+# 独立对象，读到一行就能用，不必等整体结束。
+_PROGRESS_SINK = None
+_PROGRESS_OWNED = False
+_PROGRESS_T0 = 0.0
+
+
+def open_progress(dest: str) -> None:
+    """打开进度通道。*dest* 为 ``stderr`` 或一个文件路径。"""
+    global _PROGRESS_SINK, _PROGRESS_OWNED, _PROGRESS_T0
+    close_progress()
+    _PROGRESS_T0 = time.time()
+    if not dest:
+        return
+    if dest == "stderr":
+        _PROGRESS_SINK = sys.stderr
+        _PROGRESS_OWNED = False
+        return
+    try:
+        _PROGRESS_SINK = open(dest, "w", encoding="utf-8", buffering=1)
+        _PROGRESS_OWNED = True
+    except OSError:
+        # 进度是附加信息，开不出来不该让整条命令失败。
+        _PROGRESS_SINK = None
+        _PROGRESS_OWNED = False
+
+
+def close_progress() -> None:
+    global _PROGRESS_SINK, _PROGRESS_OWNED
+    if _PROGRESS_SINK is not None and _PROGRESS_OWNED:
+        try:
+            _PROGRESS_SINK.close()
+        except OSError:
+            pass
+    _PROGRESS_SINK = None
+    _PROGRESS_OWNED = False
+
+
+def progress(event: str, **fields: Any) -> None:
+    """写一条进度事件；未开启通道时什么也不做。"""
+    if _PROGRESS_SINK is None:
+        return
+    payload = {"event": event, "elapsed": round(time.time() - _PROGRESS_T0, 3)}
+    payload.update(fields)
+    try:
+        _PROGRESS_SINK.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        _PROGRESS_SINK.flush()
+    except (OSError, ValueError):
+        pass
 
 
 # ── 产出探测 ─────────────────────────────────────────────────────────

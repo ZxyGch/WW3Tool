@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -163,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=tr("cli_help_json",
                 "Emit one machine-readable JSON object instead of prose"),
+    )
+    parser.add_argument(
+        "--progress",
+        metavar="DEST",
+        help=tr("cli_help_progress",
+                "Stream NDJSON progress events to 'stderr' or to a file path"),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -653,8 +660,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    from .json_output import close_progress, open_progress, progress
+
+    dest = getattr(args, "progress", None)
+    if dest:
+        open_progress(dest)
+        progress("start", command=str(args.command))
+
     if not getattr(args, "json", False):
-        return _dispatch_body(args, parser)
+        try:
+            code = _dispatch_body(args, parser)
+        finally:
+            if dest:
+                progress("done", command=str(args.command))
+                close_progress()
+        return code
 
     # --json：拦下人类可读输出，最后在 stdout 上只留一个 JSON 对象。
     from .json_output import capture, emit
@@ -674,6 +694,10 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             collect_outputs(res)
             _harvest_message_facts(res)
+    if dest:
+        progress("done", command=str(args.command), status=res.status,
+                 exit_code=code, outputs=res.outputs)
+        close_progress()
     emit(res, code)
     return code
 
@@ -704,6 +728,36 @@ def _harvest_message_facts(res) -> None:
 
 
 
+
+
+
+# 生成器把阶段写成 "Step 6: Splitting large boundary polygons..." 这样的行。
+# 与其让每个调用方各自去匹配，不如在日志流经这里时抽一次。
+_STAGE_LINE = re.compile(r"^\s*(Step (\d+))\s*[:：]\s*(.*?)\.*\s*$")
+_GRID_STEPS_TOTAL = 10
+
+
+def _progress_log(command: str):
+    """包一层日志回调：照常打印，同时把阶段变化发到进度通道。
+
+    长任务跑十几分钟，调用方此前只能干等；stdout 已被最终的 JSON 对象占住，
+    所以进度另走一条 NDJSON 通道。
+    """
+    from .json_output import progress
+
+    seen: dict = {}
+
+    def log(message):
+        print(message)
+        text = str(message)
+        m = _STAGE_LINE.match(text)
+        if m and seen.get("stage") != m.group(1):
+            seen["stage"] = m.group(1)
+            progress("stage", command=command, stage=m.group(1),
+                     index=int(m.group(2)), total=_GRID_STEPS_TOTAL,
+                     title=m.group(3).strip())
+
+    return log
 
 
 def _json_set(**fields) -> None:
@@ -941,7 +995,8 @@ def _dispatch_body(args, parser) -> int:
 
             if not _resolve_reference_data_cli(config, args):
                 return 1
-            run_generate_grid(config, log=print, use_cache=True)
+            run_generate_grid(config, log=_progress_log("generate-grid"),
+                              use_cache=True)
             _r = _json_result()
             if _r is not None:
                 _record_grid_result(_r, config)
@@ -956,7 +1011,7 @@ def _dispatch_body(args, parser) -> int:
 
         if args.command == "prepare-forcing":
             from ..application.preprocessing_workflow import run_prepare_forcing
-            run_prepare_forcing(config, log=print)
+            run_prepare_forcing(config, log=_progress_log("prepare-forcing"))
             return 0
 
         if args.command == "run-workflow":
@@ -966,7 +1021,7 @@ def _dispatch_body(args, parser) -> int:
                 return 1
             run_pipeline(
                 config,
-                log=print,
+                log=_progress_log("run-workflow"),
                 skip_grid=False,
                 use_grid_cache=True,
             )

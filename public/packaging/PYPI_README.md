@@ -82,6 +82,10 @@ ww3tool --json generate-grid /path/to/workdir
 - `ww3tool --json validate --stage grid` checks only what that step needs, so a
   mistake is caught in a second rather than after a ten-minute run.
 
+- `--progress stderr` (or a file path) streams NDJSON events while a long run
+  is in flight — one object per line, so a ten-minute grid can be followed
+  instead of waited out. stdout still carries only the final object.
+
 Without `--json` the output is unchanged.
 
 ### Interactive shell
@@ -176,6 +180,10 @@ ww3tool --json generate-grid /path/to/workdir
   默认值，结构不直观的还有附注。
 - `ww3tool --json validate --stage grid` 只校验该步需要的部分，配错一秒就
   发现，不用等十分钟的网格跑完。
+
+- `--progress stderr`（或给个文件路径）在长任务运行期间逐行输出 NDJSON 事件，
+  每行一个独立对象——十几分钟的网格可以边跑边看，不必干等。stdout 上仍然只有
+  最终那个对象。
 
 不加 `--json` 时输出与以往完全一致。
 

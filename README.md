@@ -2057,8 +2057,27 @@ Estimated peak memory ~11.5 GiB (0.26M cells, 16 worker(s)); 7.8 GiB usable.
     - for a global or very wide domain, use a coarser bathymetry …
 ```
 
-Progress during a run is still human-readable text on `messages`; a streaming
-structured channel is not implemented yet.
+### Streaming progress
+
+A global grid takes minutes. `--progress` streams NDJSON events — one object
+per line, usable as soon as it arrives — while stdout stays reserved for the
+final object:
+
+```bash
+ww3tool --json --progress stderr generate-grid /path/to/workdir
+ww3tool --json --progress /tmp/run.ndjson generate-grid /path/to/workdir
+```
+
+```
+{"event": "start",  "elapsed": 0.0,  "command": "generate-grid"}
+{"event": "stage",  "elapsed": 24.8, "stage": "Step 3", "index": 3, "total": 10,
+ "title": "Generating bathymetry from gebco"}
+{"event": "stage",  "elapsed": 49.5, "stage": "Step 6", "index": 6, "total": 10,
+ "title": "Splitting large boundary polygons"}
+{"event": "done",   "elapsed": 618.8, "status": "ok", "exit_code": 0, "outputs": [...]}
+```
+
+A destination that cannot be opened is ignored rather than failing the run.
 
 ## 7. Project Structure
 
