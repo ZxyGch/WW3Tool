@@ -145,3 +145,96 @@ class StagedValidationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(RUN_PY.is_file(), "需要仓库形态")
+class UniversalContextTest(unittest.TestCase):
+    """每条基于工作目录的命令都该带上下文，不必逐条改写。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wd = Path(self._tmp.name) / "wd"
+        _run("workdir", str(self.wd))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_workdir_command_reports_what_it_created(self):
+        target = Path(self._tmp.name) / "fresh"
+        payload = json.loads(_run("--json", "workdir", str(target)).stdout)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["data"]["path"], str(target))
+        self.assertTrue(payload["data"]["params_path"].endswith("params.yml"))
+
+    def test_config_does_not_require_a_complete_pipeline(self):
+        # 想看看配置长什么样，不该因为还没准备风场而失败。
+        payload = json.loads(_run("--json", "config", str(self.wd)).stdout)
+        self.assertEqual(payload["status"], "ok", payload.get("error"))
+        self.assertIn("mesh_type", payload["data"])
+        self.assertIn("grid_region", payload["data"])
+
+    def test_print_params_is_also_read_only(self):
+        payload = json.loads(_run("--json", "print-params", str(self.wd)).stdout)
+        self.assertEqual(payload["status"], "ok", payload.get("error"))
+
+    def test_workdir_and_params_path_are_always_recorded(self):
+        # 比较解析后的真实路径：macOS 上 /var 是 /private/var 的符号链接，
+        # 工具解析成真实路径是对的。
+        want = Path(self.wd).resolve()
+        for cmd in ("config", "print-params"):
+            payload = json.loads(_run("--json", cmd, str(self.wd)).stdout)
+            self.assertEqual(Path(payload["data"]["workdir"]).resolve(), want, cmd)
+            self.assertTrue(payload["data"]["params_path"].endswith("params.yml"), cmd)
+
+
+@unittest.skipUnless(RUN_PY.is_file(), "需要仓库形态")
+class OutputDetectionTest(unittest.TestCase):
+    """产出由工作目录快照对比得出，不靠每条命令自己登记。"""
+
+    def setUp(self):
+        sys.path.insert(0, str(REPO_ROOT / "src"))
+        from workflows.interfaces import json_output as jo
+        self.jo = jo
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _collect(self):
+        res = self.jo.JsonResult("t")
+        self.jo.collect_outputs(res)
+        return [Path(o).name for o in res.outputs]
+
+    def test_new_files_are_detected(self):
+        self.jo.watch_outputs(self.root)
+        (self.root / "grid.bot").write_text("x")
+        self.assertIn("grid.bot", self._collect())
+
+    def test_untouched_files_are_not_reported(self):
+        (self.root / "old.dat").write_text("x")
+        self.jo.watch_outputs(self.root)
+        self.assertEqual(self._collect(), [])
+
+    def test_modified_files_are_detected(self):
+        f = self.root / "grid.obst"
+        f.write_text("a")
+        self.jo.watch_outputs(self.root)
+        import os, time
+        time.sleep(0.01)
+        f.write_text("bb")
+        os.utime(f, None)
+        self.assertIn("grid.obst", self._collect())
+
+    def test_config_and_hidden_files_are_ignored(self):
+        self.jo.watch_outputs(self.root)
+        (self.root / "params.yml").write_text("x")
+        (self.root / ".hidden").write_text("x")
+        self.assertEqual(self._collect(), [])
+
+    def test_nested_outputs_are_found(self):
+        self.jo.watch_outputs(self.root)
+        sub = self.root / "level0"
+        sub.mkdir()
+        (sub / "grid.bot").write_text("x")
+        self.assertIn("grid.bot", self._collect())

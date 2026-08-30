@@ -659,6 +659,8 @@ def main(argv: list[str] | None = None) -> int:
     # --json：拦下人类可读输出，最后在 stdout 上只留一个 JSON 对象。
     from .json_output import capture, emit
 
+    from .json_output import collect_outputs
+
     with capture(str(args.command)) as res:
         try:
             code = _dispatch_body(args, parser)
@@ -669,10 +671,96 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
             res.fail(1, f"{type(exc).__name__}: {exc}")
             code = 1
+        finally:
+            collect_outputs(res)
+            _harvest_message_facts(res)
     emit(res, code)
     return code
 
 
+# 作业号、队列状态这类值只出现在给人看的输出里。与其让每个调用方各自去
+# 正则匹配，不如在这里统一抽一次。
+_MESSAGE_FACTS = (
+    ("job_id", r"(?:Submitted batch job|作业已提交[：:]?)\s*(\d+)"),
+    ("job_id", r"\bjob\s*id\s*[:=]\s*(\d+)"),
+    ("remote_dir", r"(?:Remote dir|远端目录)[：:]\s*(\S+)"),
+)
+
+
+def _harvest_message_facts(res) -> None:
+    """从捕获的人类可读输出里提取少数几个关键值。"""
+    import re
+
+    text = getattr(res, "_captured", "")
+    if not text:
+        return
+    for key, pattern in _MESSAGE_FACTS:
+        if key in res.data:
+            continue
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            value = m.group(1)
+            res.set(key, int(value) if value.isdigit() else value)
+
+
+
+
+
+def _json_set(**fields) -> None:
+    """往 JSON 结果的 data 里写字段；非 --json 模式下什么也不做。"""
+    from .json_output import result as _json_result
+
+    res = _json_result()
+    if res is not None:
+        res.update(**fields)
+
+
+def _json_begin(args, params_path) -> None:
+    """登记本次调用的上下文，并开始监视工作目录里的产出。
+
+    每条命令自己去说「我生成了哪些文件」既繁琐又容易漏，改为在工作目录上
+    做前后快照，一处实现覆盖网格、强迫场、绘图、下载等所有会落盘的命令。
+    """
+    from .json_output import result as _json_result, watch_outputs
+
+    res = _json_result()
+    if res is None:
+        return
+    workdir = Path(params_path).parent
+    res.update(workdir=str(workdir), params_path=str(params_path))
+    watch_outputs(workdir)
+
+
+def _config_facts(config, params_path) -> dict:
+    """从配置里挑出调用方最可能要判断的几项。"""
+    facts: dict = {"params_path": str(params_path),
+                   "workdir": str(config.workdir.path)}
+    grid = getattr(config, "grid", None)
+    if grid is not None:
+        facts["mesh_type"] = str(getattr(grid, "mesh_type", ""))
+        facts["grid_type"] = str(getattr(grid, "grid_type", ""))
+        region = getattr(grid, "outer", None)
+        if region is not None:
+            facts["grid_region"] = {
+                "dx": float(region.dx), "dy": float(region.dy),
+                "lon": [float(region.lon[0]), float(region.lon[1])],
+                "lat": [float(region.lat[0]), float(region.lat[1])],
+            }
+    forcing = getattr(config, "forcing", None)
+    if forcing is not None:
+        facts["forcing"] = {
+            name: (str(getattr(forcing, name)) if getattr(forcing, name, None) else None)
+            for name in ("wind", "current", "level", "ice")
+            if hasattr(forcing, name)
+        }
+    server = getattr(config, "server", None)
+    if server is not None:
+        facts["server"] = {
+            "host": getattr(server, "ssh_config_host", None) or getattr(server, "host", None),
+            "remote_dir": getattr(server, "remote_dir", None)
+            or getattr(server, "default_remote_dir", None),
+        }
+    return facts
 
 
 def _record_failure(code: int, exc: BaseException, *, kind: str,
@@ -756,10 +844,13 @@ def _dispatch_body(args, parser) -> int:
 
     if args.command == "print-example":
         print(EXAMPLE_YAML, end="")
+        _json_set(format="yaml")
         return 0
 
     if args.command == "workdir":
-        return _run_workdir(args.path)
+        code = _run_workdir(args.path)
+        _json_set(path=str(args.path), params_path=str(Path(args.path) / "params.yml"))
+        return code
 
     try:
         if args.command == "merge-forcing":
@@ -783,9 +874,15 @@ def _dispatch_body(args, parser) -> int:
         # 从工作目录解析 params.yml 路径
         # [EN] Resolve params.yml path from the working directory
         params_path = resolve_params_path(getattr(args, "workdir", None))
+        _json_begin(args, params_path)
 
         # Plot and remote commands skip preprocessing validation
         if args.command in _PLOT_COMMANDS or args.command in _REMOTE_COMMANDS:
+            stage = "plot"
+        # 纯查看类命令不该要求流水线配置完整：想看看配置长什么样，不应该
+        # 因为还没准备风场而失败。
+        # [EN] Read-only introspection must not require a complete pipeline.
+        if args.command in ("config", "print-params"):
             stage = "plot"
         else:
             stage = "full"
@@ -813,6 +910,7 @@ def _dispatch_body(args, parser) -> int:
             from .interactive_cli import print_config_summary
 
             print_config_summary(config, params_path)
+            _json_set(**_config_facts(config, params_path))
             return 0
 
         if args.command == "print-params":
@@ -851,7 +949,10 @@ def _dispatch_body(args, parser) -> int:
 
         if args.command == "recommend-grid":
             offset = 1 if args.coarse else (-1 if args.fine else 0)
-            return _run_recommend_grid(config, params_path, offset=offset)
+            code = _run_recommend_grid(config, params_path, offset=offset)
+            _json_set(offset=offset, params_path=str(params_path),
+                      updated=code == 0)
+            return code
 
         if args.command == "prepare-forcing":
             from ..application.preprocessing_workflow import run_prepare_forcing
@@ -875,7 +976,11 @@ def _dispatch_body(args, parser) -> int:
             return _run_prepare_ww3(config)
 
         if args.command == "recommend-cfl":
-            return _run_recommend_cfl(config, params_path, mode=args.mode, factor=args.factor)
+            code = _run_recommend_cfl(config, params_path, mode=args.mode,
+                                      factor=args.factor)
+            _json_set(mode=str(args.mode), factor=args.factor,
+                      params_path=str(params_path), updated=code == 0)
+            return code
 
         if args.command == "local-run":
             return _run_local_run(config)

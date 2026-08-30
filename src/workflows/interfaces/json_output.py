@@ -26,6 +26,8 @@ __all__ = [
     "json_mode",
     "capture",
     "emit",
+    "watch_outputs",
+    "collect_outputs",
 ]
 
 # 当前调用的结果对象；命令代码通过 result() 取用，不必层层传参。
@@ -123,6 +125,68 @@ def capture(command: str):
     finally:
         _CURRENT = previous
         res._captured = buffer.getvalue()  # type: ignore[attr-defined]
+
+
+
+# ── 产出探测 ─────────────────────────────────────────────────────────
+# 逐条命令去登记「我生成了哪些文件」既繁琐又容易漏。改为在工作目录上做
+# 前后快照：跑完之后新增或修改过的文件就是这次的产出。
+_SNAPSHOT: dict[str, float] = {}
+_WATCH_ROOT: str | None = None
+
+# 不算作产出的东西：配置本身、日志、缓存、隐藏文件。
+_IGNORED_NAMES = {"params.yml", "run.log", ".DS_Store"}
+_IGNORED_DIRS = {"__pycache__", ".git", ".cache", "photo"}
+
+
+def watch_outputs(root) -> None:
+    """记下工作目录当前的文件状态，供结束时对比。"""
+    global _SNAPSHOT, _WATCH_ROOT
+    import os
+
+    _WATCH_ROOT = str(root)
+    _SNAPSHOT = {}
+    for dirpath, dirnames, filenames in os.walk(_WATCH_ROOT):
+        dirnames[:] = [d for d in dirnames
+                       if d not in _IGNORED_DIRS and not d.startswith(".")]
+        for name in filenames:
+            if name in _IGNORED_NAMES or name.startswith("."):
+                continue
+            full = os.path.join(dirpath, name)
+            try:
+                _SNAPSHOT[full] = os.path.getmtime(full)
+            except OSError:
+                pass
+
+
+def collect_outputs(res: "JsonResult") -> None:
+    """把新增或改动过的文件登记为本次产出。"""
+    global _WATCH_ROOT
+    import os
+
+    if _WATCH_ROOT is None:
+        return
+    root = _WATCH_ROOT
+    _WATCH_ROOT = None
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in _IGNORED_DIRS and not d.startswith(".")]
+        for name in filenames:
+            if name in _IGNORED_NAMES or name.startswith("."):
+                continue
+            full = os.path.join(dirpath, name)
+            try:
+                mtime = os.path.getmtime(full)
+                size = os.path.getsize(full)
+            except OSError:
+                continue
+            if _SNAPSHOT.get(full) != mtime:
+                found.append((full, size))
+    for full, size in sorted(found):
+        res.add_output(full)
+    if found:
+        res.set("output_bytes", sum(size for _, size in found))
 
 
 def emit(res: JsonResult, exit_code: int) -> None:
