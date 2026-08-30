@@ -17,11 +17,13 @@ from matplotlib.path import Path
 try:
     from ..utils.compute_cellcorner import compute_cellcorner_grid
     from ..utils.parallel import (cap_workers_for_memory, chunk_ranges, describe_cpu_budget,
-                                  resolve_workers, run_parallel, worker_baseline_bytes)
+                                  resolve_workers, run_parallel, shared_state_bytes,
+                                  worker_baseline_bytes)
 except ImportError:
     from utils.compute_cellcorner import compute_cellcorner_grid
     from utils.parallel import (cap_workers_for_memory, chunk_ranges, describe_cpu_budget,
-                                resolve_workers, run_parallel, worker_baseline_bytes)
+                                resolve_workers, run_parallel, shared_state_bytes,
+                                  worker_baseline_bytes)
 
 # Sample points per cell edge (8x8 grid inside each cell).
 _NSAMP = 8
@@ -289,7 +291,10 @@ def clean_mask(x, y, mask, bound_ingrid, lim, offset, workers=None):
     state_bytes = sum(np.asarray(b['x']).nbytes + np.asarray(b['y']).nbytes
                       for b in bound_ingrid)
     band_cells = -(-Ny // max(1, n_workers * 4)) * Nx
-    per_worker = worker_baseline_bytes() + state_bytes + band_cells * _BAND_BYTES_PER_CELL
+    # Polygons ride the initializer (shared under fork); the band slices are
+    # pickled per task on every platform.
+    per_worker = (worker_baseline_bytes() + shared_state_bytes(state_bytes)
+                  + band_cells * _BAND_BYTES_PER_CELL)
     if workers is None:
         n_workers = cap_workers_for_memory(n_workers, per_worker, 'land-sea mask clean up')
     print(f'  Land-sea mask clean up on {n_workers} worker(s); {describe_cpu_budget()}; '

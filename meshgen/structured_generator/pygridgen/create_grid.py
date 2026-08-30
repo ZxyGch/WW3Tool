@@ -281,6 +281,47 @@ def _normalize_boundaries(bound):
 
 _CURRENT_STAGE = ['startup']
 
+# (name, seconds) for each finished stage, and the one still open.
+_STAGE_LOG: list = []
+_STAGE_OPEN: list = [None, 0.0]
+
+
+def _begin_stage(name):
+    """Mark the start of a stage, closing the timing of the previous one."""
+    now = time.time()
+    if _STAGE_OPEN[0] is not None:
+        _STAGE_LOG.append((_STAGE_OPEN[0], now - _STAGE_OPEN[1]))
+    _STAGE_OPEN[0] = name
+    _STAGE_OPEN[1] = now
+    _CURRENT_STAGE[0] = name
+
+
+def _reset_stages():
+    del _STAGE_LOG[:]
+    _STAGE_OPEN[0] = None
+    _STAGE_OPEN[1] = 0.0
+    _CURRENT_STAGE[0] = 'startup'
+
+
+def _report_stages():
+    """Print where the run actually spent its time.
+
+    Without this the only number reported was the total, which says nothing
+    about which stage to optimise -- a global run took 80 minutes and the
+    breakdown had to be guessed at.
+    """
+    now = time.time()
+    if _STAGE_OPEN[0] is not None:
+        _STAGE_LOG.append((_STAGE_OPEN[0], now - _STAGE_OPEN[1]))
+        _STAGE_OPEN[0] = None
+    if not _STAGE_LOG:
+        return
+    total = sum(sec for _, sec in _STAGE_LOG) or 1.0
+    print('Stage timings:', flush=True)
+    for name, sec in _STAGE_LOG:
+        bar = '#' * int(round(30 * sec / total))
+        print(f'  {name:<46} {sec:9.1f}s {100 * sec / total:5.1f}%  {bar}', flush=True)
+
 
 def _start_memory_watchdog():
     """Start the runtime memory watchdog, or a no-op if unavailable."""
@@ -688,6 +729,7 @@ def create_grid(**kwargs):
         params['SPLIT_LIM'] = 0.0
     
     # 0. Initialization
+    _reset_stages()
     start_time = time.time()
     # Force unbuffered output for real-time logging
     sys.stdout.flush()
@@ -716,7 +758,7 @@ def create_grid(**kwargs):
     
     # 1. Define grid coordinates
     print('Step 1: Defining grid coordinates...', flush=True)
-    _CURRENT_STAGE[0] = 'Step 1'
+    _begin_stage('Step 1')
     # MATLAB: lon1d = params.lon_range(1):params.dx:params.lon_range(2);
     # This creates an array from start to end with step dx, inclusive of both ends
     lon_start = params['lon_range'][0]
@@ -876,7 +918,7 @@ def create_grid(**kwargs):
     Nu = 0
     if params['read_boundary']:
         print('Step 2: Reading GSHHS boundary data...', flush=True)
-        _CURRENT_STAGE[0] = 'Step 2'
+        _begin_stage('Step 2')
         boundary_file = _resolve_boundary_mat_file(params['ref_dir'], params['boundary'])
         
         if os.path.exists(boundary_file):
@@ -953,6 +995,7 @@ def create_grid(**kwargs):
     print('', flush=True)
 
     # 3. Generate bathymetry
+    _begin_stage('Step 3')
     print(f"Step 3: Generating bathymetry from {params['ref_grid']}...", flush=True)
     print('  This may take a while...', flush=True)
     try:
@@ -984,6 +1027,7 @@ def create_grid(**kwargs):
     
     # 4. Compute boundaries within grid
     if params['read_boundary']:
+        _begin_stage('Step 4')
         _s4 = 'Step 4: Computing boundaries within grid domain...'
         try:
             sys.stdout.buffer.write(
@@ -1018,7 +1062,7 @@ def create_grid(**kwargs):
     
     # 5. Create initial land-sea mask
     print('Step 5: Creating initial land-sea mask...', flush=True)
-    _CURRENT_STAGE[0] = 'Step 5'
+    _begin_stage('Step 5')
     m = np.ones_like(depth)
     m[depth == params['DRY_VAL']] = 0
     print(f'  Initial wet cells: {np.sum(m == 1)}', flush=True)
@@ -1028,7 +1072,7 @@ def create_grid(**kwargs):
     # 6. Split large boundary polygons (for efficiency)
     if params['read_boundary'] and N1 > 0:
         print('Step 6: Splitting large boundary polygons...', flush=True)
-        _CURRENT_STAGE[0] = 'Step 6'
+        _begin_stage('Step 6')
         sys.stdout.flush()
         b_split = split_boundary(b, params['SPLIT_LIM'], params['MIN_DIST'])
         sys.stdout.flush()
@@ -1040,7 +1084,7 @@ def create_grid(**kwargs):
     # 7. Clean mask using boundary polygons
     if params['read_boundary'] and N1 > 0:
         print('Step 7: Cleaning mask using boundary polygons...', flush=True)
-        _CURRENT_STAGE[0] = 'Step 7'
+        _begin_stage('Step 7')
         sys.stdout.flush()
         m2 = clean_mask(lon, lat, m, b_split, params['LIM_VAL'], params['OFFSET'])
         if params['opt_poly'] == 1 and N2 != 0:
@@ -1060,7 +1104,7 @@ def create_grid(**kwargs):
     
     # 8. Remove lakes and small water bodies
     print('Step 8: Removing lakes and small water bodies...', flush=True)
-    _CURRENT_STAGE[0] = 'Step 8'
+    _begin_stage('Step 8')
     m4, mask_map = remove_lake(m3, params['LAKE_TOL'], params['IS_GLOBAL'])
     print(f'  Final wet cells: {np.sum(m4 == 1)}', flush=True)
     print(f'  Final dry cells: {np.sum(m4 == 0)}', flush=True)
@@ -1069,7 +1113,7 @@ def create_grid(**kwargs):
     # 9. Create obstruction grids
     if params['read_boundary'] and N1 > 0:
         print('Step 9: Creating obstruction grids...', flush=True)
-        _CURRENT_STAGE[0] = 'Step 9'
+        _begin_stage('Step 9')
         sx1, sy1 = create_obstr(lon, lat, b, m4, params['OBSTR_OFFSET'],
                                 params['OBSTR_OFFSET'],
                                 is_global=params.get('IS_GLOBAL', 0))
@@ -1082,7 +1126,7 @@ def create_grid(**kwargs):
     
     # 10. Write output files
     print('Step 10: Writing WAVEWATCH III output files...', flush=True)
-    _CURRENT_STAGE[0] = 'Step 10'
+    _begin_stage('Step 10')
     depth_scale = 1000
     obstr_scale = 100
     
@@ -1141,6 +1185,7 @@ def create_grid(**kwargs):
     else:
         print(f"  - {params['fname']}.obst (obstructions, all zeros)", flush=True)
     print("  - grid.nml (WW3 grid description, same as MATLAB gridgen)", flush=True)
+    _report_stages()
     print(f'Total time: {elapsed_time:.2f} seconds', flush=True)
     print('=' * 70, flush=True)
 

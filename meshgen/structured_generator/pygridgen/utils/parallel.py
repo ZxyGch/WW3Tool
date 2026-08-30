@@ -134,6 +134,29 @@ def _self_rss_bytes():
 _IMPORT_BASELINE_RSS = _self_rss_bytes() or 0
 
 
+
+def shared_state_bytes(nbytes):
+    """Per-worker cost of read-only state handed to a pool through *initargs*.
+
+    Under ``fork`` the pool inherits the parent's memory image: those arrays
+    are never pickled and the workers only read them, so copy-on-write keeps
+    the cost at approximately nothing.  ``spawn`` re-sends the whole thing to
+    every worker and the cost is real.
+
+    Charging it on Linux anyway is not merely pessimistic -- it throttles the
+    pool for no reason.  A global bathymetry run charged 7 GiB a worker for an
+    array fork was already sharing, and the averaging stage dropped from 12
+    workers to 2.
+    """
+    import multiprocessing as mp
+
+    try:
+        method = mp.get_start_method(allow_none=False)
+    except (ValueError, RuntimeError):
+        method = "spawn"
+    return 0 if method == "fork" else int(nbytes)
+
+
 def worker_baseline_bytes():
     """Memory a fresh worker costs before it is sent anything.
 

@@ -367,3 +367,40 @@ class PointlessMaskingTest(unittest.TestCase):
 
     def test_object_without_ncattrs_is_left_alone(self):
         self.assertFalse(self.gg._disable_pointless_masking(object()))
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class SharedStateCostTest(unittest.TestCase):
+    """经 initializer 传给进程池的只读数据，fork 下是共享的，不该按份计费。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            from utils import parallel
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 utils.parallel：{exc}")
+        cls.parallel = parallel
+
+    def test_fork_shares_it_for_free(self):
+        with mock.patch("multiprocessing.get_start_method", return_value="fork"):
+            self.assertEqual(self.parallel.shared_state_bytes(7 << 30), 0)
+
+    def test_spawn_pays_in_full(self):
+        for method in ("spawn", "forkserver"):
+            with mock.patch("multiprocessing.get_start_method", return_value=method):
+                self.assertEqual(self.parallel.shared_state_bytes(7 << 30), 7 << 30)
+
+    def test_unknown_start_method_is_charged(self):
+        # 拿不准就按最坏情况算，宁可池子窄一点也不要 OOM。
+        with mock.patch("multiprocessing.get_start_method", side_effect=ValueError):
+            self.assertEqual(self.parallel.shared_state_bytes(1 << 20), 1 << 20)
+
+    def test_a_global_run_is_no_longer_throttled_under_fork(self):
+        # 实测回归：全球底图 7 GiB 曾让平均化阶段从 12 个 worker 掉到 2 个。
+        with mock.patch("multiprocessing.get_start_method", return_value="fork"), \
+             mock.patch.object(self.parallel, "available_memory_bytes",
+                               return_value=47 << 30):
+            per_worker = self.parallel.shared_state_bytes(7 << 30)
+            self.assertEqual(self.parallel.cap_workers_for_memory(12, per_worker), 12)

@@ -68,3 +68,52 @@ class ComputeBoundaryQuietTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(PYGRIDGEN.is_dir(), "meshgen 源码不在此环境中")
+class StageTimingTest(unittest.TestCase):
+    """每一步都要计时，否则只有一个总耗时，没法知道该优化哪里。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if str(PYGRIDGEN) not in sys.path:
+            sys.path.insert(0, str(PYGRIDGEN))
+        try:
+            import importlib
+            cls.cg = importlib.import_module("create_grid")
+        except ImportError as exc:  # pragma: no cover - optional deps
+            raise unittest.SkipTest(f"无法导入 create_grid：{exc}")
+
+    def test_every_step_is_marked(self):
+        src = (PYGRIDGEN / "create_grid.py").read_text(encoding="utf-8")
+        for n in range(1, 11):
+            self.assertIn(f"_begin_stage('Step {n}')", src, msg=f"Step {n} 没有计时标记")
+
+    def test_stages_accumulate_and_reset(self):
+        cg = self.cg
+        cg._reset_stages()
+        cg._begin_stage("Step 1")
+        cg._begin_stage("Step 2")
+        self.assertEqual(len(cg._STAGE_LOG), 1)
+        self.assertEqual(cg._STAGE_LOG[0][0], "Step 1")
+        cg._reset_stages()
+        self.assertEqual(cg._STAGE_LOG, [])
+
+    def test_report_closes_the_open_stage(self):
+        cg = self.cg
+        cg._reset_stages()
+        cg._begin_stage("Step 1")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cg._report_stages()
+        self.assertIn("Stage timings:", buf.getvalue())
+        self.assertIn("Step 1", buf.getvalue())
+        cg._reset_stages()
+
+    def test_report_on_no_stages_is_silent(self):
+        cg = self.cg
+        cg._reset_stages()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cg._report_stages()
+        self.assertEqual(buf.getvalue(), "")

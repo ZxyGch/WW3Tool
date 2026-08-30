@@ -20,11 +20,13 @@ import numpy as np
 try:
     from ..utils.compute_cellcorner import compute_cellcorner_grid
     from ..utils.parallel import (cap_workers_for_memory, chunk_ranges, describe_cpu_budget,
-                                  resolve_workers, run_parallel, worker_baseline_bytes)
+                                  resolve_workers, run_parallel, shared_state_bytes,
+                                  worker_baseline_bytes)
 except ImportError:
     from utils.compute_cellcorner import compute_cellcorner_grid
     from utils.parallel import (cap_workers_for_memory, chunk_ranges, describe_cpu_budget,
-                                resolve_workers, run_parallel, worker_baseline_bytes)
+                                resolve_workers, run_parallel, shared_state_bytes,
+                                  worker_baseline_bytes)
 
 
 
@@ -831,9 +833,10 @@ def generate_grid(type_grid, x, y, ref_dir, bathy_source, limit, cut_off, dry, *
             # pool multiplies the largest array in the run.  On a global
             # domain that array is hundreds of megabytes and the pool, not
             # the parent, becomes the peak.
-            per_worker = (worker_baseline_bytes()
-                          + int(np.asarray(depth_base).nbytes)
-                          + int(avg_k.nbytes + avg_j.nbytes))
+            # The base window and the cell index arrays reach the workers
+            # through the pool initializer, so fork shares them.
+            per_worker = worker_baseline_bytes() + shared_state_bytes(
+                int(np.asarray(depth_base).nbytes) + int(avg_k.nbytes + avg_j.nbytes))
             n_workers = cap_workers_for_memory(n_workers, per_worker, 'bathymetry averaging')
             print(f'  Averaging on {n_workers} worker(s); {describe_cpu_budget()}; '
                   f'~{per_worker / (1 << 20):.0f} MiB per worker',
