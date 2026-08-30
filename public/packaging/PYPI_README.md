@@ -21,11 +21,17 @@ WW3Tool does **not** replace the WW3 executables (`ww3_grid`, `ww3_prnc`, `ww3_s
 
 ### Install
 
-One command on every platform (macOS / Linux / Windows). GUI dependencies are included, no extra extra to install:
+One command on every platform (macOS / Linux / Windows):
 
 ```bash
-pip install ww3tool
+pip install ww3tool            # CLI + shell
+pip install "ww3tool[gui]"     # …plus the desktop GUI
 ```
+
+The GUI dependencies are optional so that a plain install works on machines
+that have no Qt wheels — an HPC compute node, for instance, where only the CLI
+is wanted. Running `ww3tool --gui` installs them on demand when a display is
+available.
 
 Requires Python 3.9+. The `ww3tool` command is ready right after install.
 
@@ -45,8 +51,38 @@ ww3tool print-params        # print the current params.yml
 ### Desktop GUI
 
 ```bash
-ww3tool          # no argument launches the desktop GUI
+ww3tool --gui    # launch the desktop GUI (installs its deps on demand)
+ww3tool          # no argument prints the help
 ```
+
+### Calling it from an AI agent or a script
+
+All 37 subcommands speak JSON. With `--json`, stdout carries exactly one
+object, so nothing has to be parsed out of prose:
+
+```bash
+ww3tool --json generate-grid /path/to/workdir
+```
+
+```json
+{
+  "command": "generate-grid", "status": "ok", "exit_code": 0, "seconds": 618.8,
+  "data": {"dx": 0.5, "dy": 0.5, "grid": {"nx": "720", "closure": "SMPL"}},
+  "outputs": ["…/grid.bot", "…/grid.mask_nobound", "…/grid.obst"],
+  "messages": ["… the human-readable log, kept as lines …"]
+}
+```
+
+- `status` / `exit_code` / `outputs` are always there — no grepping to find out
+  whether a run worked or where its files went.
+- Failures put the reason **and the next step** in the object:
+  `{"error": {"message": "…", "hints": ["run `ww3tool schema --json` …"]}}`
+- `ww3tool --json schema` describes every `params.yml` field: path, type, valid
+  values, defaults, and notes where the layout is not obvious.
+- `ww3tool --json validate --stage grid` checks only what that step needs, so a
+  mistake is caught in a second rather than after a ten-minute run.
+
+Without `--json` the output is unchanged.
 
 ### Interactive shell
 
@@ -82,11 +118,15 @@ WW3Tool **不替代** WW3 可执行文件（`ww3_grid`、`ww3_prnc`、`ww3_shel`
 
 ### 安装
 
-一条指令，所有平台相同（macOS / Linux / Windows），GUI 依赖已内置，无需额外安装：
+一条指令，所有平台相同（macOS / Linux / Windows）：
 
 ```bash
-pip install ww3tool
+pip install ww3tool            # 命令行 + 交互式 shell
+pip install "ww3tool[gui]"     # 额外装上桌面图形界面
 ```
+
+GUI 依赖单列为可选项，这样在拿不到 Qt wheel 的机器上（例如只需要命令行的
+HPC 计算节点）也能正常安装。有图形环境时运行 `ww3tool --gui` 会按需补装。
 
 要求 Python 3.9+，安装后 `ww3tool` 命令直接可用。
 
@@ -106,8 +146,38 @@ ww3tool print-params        # 打印当前参数
 ### 桌面图形界面（GUI）
 
 ```bash
-ww3tool          # 无参数默认启动桌面
+ww3tool --gui    # 启动桌面端（依赖按需补装）
+ww3tool          # 无参数显示帮助
 ```
+
+### 用 AI 或脚本调用
+
+37 条子命令全部支持 JSON。加 `--json` 后 stdout 上只有一个对象，不需要从
+散文里往外抠：
+
+```bash
+ww3tool --json generate-grid /path/to/workdir
+```
+
+```json
+{
+  "command": "generate-grid", "status": "ok", "exit_code": 0, "seconds": 618.8,
+  "data": {"dx": 0.5, "dy": 0.5, "grid": {"nx": "720", "closure": "SMPL"}},
+  "outputs": ["…/grid.bot", "…/grid.mask_nobound", "…/grid.obst"],
+  "messages": ["… 原本给人看的日志，按行保留 …"]
+}
+```
+
+- `status` / `exit_code` / `outputs`一定存在——不必再 grep 关键词判断成败或
+  猜产出在哪。
+- 失败时把原因**和下一步**一起放进对象：
+  `{"error": {"message": "…", "hints": ["run `ww3tool schema --json` …"]}}`
+- `ww3tool --json schema` 描述 `params.yml` 每个字段：路径、类型、合法值、
+  默认值，结构不直观的还有附注。
+- `ww3tool --json validate --stage grid` 只校验该步需要的部分，配错一秒就
+  发现，不用等十分钟的网格跑完。
+
+不加 `--json` 时输出与以往完全一致。
 
 ### 交互式命令行（shell）
 

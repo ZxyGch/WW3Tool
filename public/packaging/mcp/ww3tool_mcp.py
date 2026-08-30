@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -46,30 +47,53 @@ TOOL_PREFIX = "ww3tool"
 
 
 def _run_cli(command: str, argv: list[str], timeout: float = 3600.0) -> str:
-    """以子进程执行 ``run.py <command> [argv...]`` 并返回完整输出。
+    """以子进程执行 ``run.py --json <command> [argv...]`` 并返回结构化结果。
+
+    走 ``--json``：客户端拿到的是一个对象——状态、退出码、产出文件清单、
+    失败原因与可操作建议，而不是一段需要靠关键词去猜的日志文本。原本给人
+    看的那些行仍保留在 ``messages`` 里。
 
     *timeout* 秒后仍未结束的任务会被终止（默认 1 小时，避免 MCP 请求无限挂起）。
+
+    [EN] Return the CLI's structured result rather than a blob of prose.
     """
     try:
         proc = subprocess.run(
-            [sys.executable, str(RUN_PY), command, *argv],
+            [sys.executable, str(RUN_PY), "--json", command, *argv],
             capture_output=True,
             text=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return (
-            f"[exit code 124] command `{command}` timed out after {timeout:.0f}s "
-            f"and was terminated. Long tasks (e.g. local-run, submit) may need "
-            f"to be run via CLI instead."
-        )
-    out = (proc.stdout or "").rstrip()
+        return json.dumps({
+            "command": command,
+            "status": "error",
+            "exit_code": 124,
+            "error": {
+                "kind": "timeout",
+                "message": f"command `{command}` timed out after {timeout:.0f}s",
+                "hints": ["long tasks such as local-run or submit are better "
+                          "started from the CLI and polled with check-status"],
+            },
+        }, ensure_ascii=False, indent=2)
+
+    out = (proc.stdout or "").strip()
     err = (proc.stderr or "").rstrip()
-    return (
-        f"[exit code {proc.returncode}]"
-        f"\n--- stdout ---\n{out}"
-        + (f"\n--- stderr ---\n{err}" if err else "")
-    )
+    try:
+        payload = json.loads(out)
+    except (ValueError, TypeError):
+        # --json 没能产出对象（极早期的失败等）：如实回报，不假装成功。
+        payload = {
+            "command": command,
+            "status": "ok" if proc.returncode == 0 else "error",
+            "exit_code": proc.returncode,
+            "messages": out.splitlines(),
+        }
+        if proc.returncode != 0:
+            payload["error"] = {"kind": "cli", "message": err or out or "no output"}
+    if err and "stderr" not in payload:
+        payload["stderr"] = err.splitlines()
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 # ──────────────────────────────────────────────────────────────────────────

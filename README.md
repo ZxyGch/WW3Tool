@@ -1926,6 +1926,140 @@ python3 run.py plot-spectrum new --mode polar
 
 
 
+## 6. Calling WW3Tool from an AI Agent or a Script
+
+Every one of the 37 subcommands speaks JSON. Add `--json` and stdout carries
+exactly one object — nothing else, so it parses without any cleanup:
+
+```bash
+ww3tool --json generate-grid /path/to/workdir
+```
+
+```json
+{
+  "command": "generate-grid",
+  "status": "ok",
+  "exit_code": 0,
+  "seconds": 618.8,
+  "data": {
+    "dx": 0.5, "dy": 0.5, "lon": [0.0, 360.0], "lat": [-90.0, 90.0],
+    "mesh_type": "structured", "grid_type": "normal",
+    "grid": {"nx": "720", "ny": "361", "sx": "0.5", "closure": "SMPL"},
+    "output_bytes": 6003561
+  },
+  "outputs": ["…/grid.bot", "…/grid.mask_nobound", "…/grid.obst", "…/grid.meta"],
+  "messages": ["… the human-readable log, kept as lines …"]
+}
+```
+
+`status`, `exit_code` and `outputs` are always present, so a caller never has
+to grep prose to find out whether a run worked or which files it produced.
+Without `--json` the output is unchanged.
+
+### Failures explain themselves
+
+An error goes into the object, not just to stderr, and carries the next step
+rather than only a diagnosis:
+
+```json
+{
+  "status": "error",
+  "exit_code": 2,
+  "error": {
+    "kind": "config",
+    "message": "Wind field file path cannot be empty",
+    "hints": [
+      "run `ww3tool schema --json` to see where each setting lives",
+      "run `ww3tool validate --stage grid` to check only what this step needs"
+    ]
+  }
+}
+```
+
+Exit codes: `0` success, `1` runtime failure, `2` bad argument or config,
+`3` a destructive remote operation that needs `--confirm`.
+
+### Discover the configuration instead of reading the source
+
+```bash
+ww3tool --json schema
+```
+
+Returns every `params.yml` field with its path, type, valid values, default,
+and — where the layout is not obvious — a note. For example the resolution of
+a single-domain grid lives under a key whose name says `nested`:
+
+```json
+{
+  "path": "grid.structured.nested.levels[0].dx",
+  "type": "float",
+  "required": true,
+  "note": "grid_type=normal takes its resolution from here too, despite the
+           key being called nested; levels[0] lon/lat are overridden by the
+           top-level grid.lon / grid.lat."
+}
+```
+
+It also lists both `params.yml` locations and the environment variables
+(`WW3TOOL_PARAMS`, `WW3TOOL_MESHGEN_WORKERS`, `WW3TOOL_MESHGEN_MEM_MB`, …).
+
+### Check cheaply before committing to a long run
+
+Validation is staged, so a grid configuration can be checked without a forcing
+field being ready:
+
+```bash
+ww3tool --json validate --stage grid /path/to/workdir     # grid | forcing | plot | full
+```
+
+A global grid takes minutes; finding out early that a setting is wrong is
+worth far more to an agent than a good error at the end.
+
+### MCP server
+
+For Claude Desktop / Cursor and other MCP clients the repo ships an MCP server
+(`public/packaging/mcp/`) exposing the same commands as tools. It calls the CLI
+with `--json`, so a client receives the structured object above rather than a
+transcript to read.
+
+### A minimal agent loop
+
+```python
+import json, subprocess
+
+def ww3(*args):
+    out = subprocess.run(["ww3tool", "--json", *args],
+                         capture_output=True, text=True)
+    return json.loads(out.stdout)
+
+schema = ww3("schema")["data"]                 # learn the field layout
+ww3("workdir", "/tmp/run1")                    # create a work directory
+# … edit /tmp/run1/params.yml …
+check = ww3("validate", "--stage", "grid", "/tmp/run1")
+if check["status"] != "ok":
+    print(check["error"]["message"], check["error"]["hints"])
+else:
+    result = ww3("generate-grid", "/tmp/run1")
+    print(result["outputs"])
+```
+
+### Long runs
+
+Grid generation reports a per-stage breakdown so a caller can see where the
+time went, and sizes its worker pool from the memory the job actually has
+(cgroup limits under Slurm, not the size of the node). A run that cannot fit
+says so before starting, with the levers to change:
+
+```
+Estimated peak memory ~11.5 GiB (0.26M cells, 16 worker(s)); 7.8 GiB usable.
+  This grid is not expected to fit.  Options, cheapest first:
+    - give the job more memory (Slurm: --mem);
+    - for a global or very wide domain, use a coarser bathymetry …
+```
+
+Progress during a run is still human-readable text on `messages`; a streaming
+structured channel is not implemented yet.
+
 ## 7. Project Structure
 
 ```

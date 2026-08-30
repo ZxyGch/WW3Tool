@@ -1976,6 +1976,132 @@ python3 run.py plot-spectrum new --mode polar
 
 
 
+## 6. 用 AI 或脚本调用
+
+37 条子命令全部支持 JSON。加上 `--json`，stdout 上**只有一个对象**，不掺
+任何别的输出，可以直接解析：
+
+```bash
+ww3tool --json generate-grid /path/to/workdir
+```
+
+```json
+{
+  "command": "generate-grid",
+  "status": "ok",
+  "exit_code": 0,
+  "seconds": 618.8,
+  "data": {
+    "dx": 0.5, "dy": 0.5, "lon": [0.0, 360.0], "lat": [-90.0, 90.0],
+    "mesh_type": "structured", "grid_type": "normal",
+    "grid": {"nx": "720", "ny": "361", "sx": "0.5", "closure": "SMPL"},
+    "output_bytes": 6003561
+  },
+  "outputs": ["…/grid.bot", "…/grid.mask_nobound", "…/grid.obst", "…/grid.meta"],
+  "messages": ["… 原本给人看的日志，按行保留 …"]
+}
+```
+
+`status`、`exit_code`、`outputs` 一定存在，调用方不必再从散文里 grep 关键词
+来判断成败或猜产出文件在哪。不加 `--json` 时输出与以往完全一致。
+
+### 失败会自己解释
+
+错误进对象，而不是只去 stderr，并且给的是下一步该做什么，不只是诊断：
+
+```json
+{
+  "status": "error",
+  "exit_code": 2,
+  "error": {
+    "kind": "config",
+    "message": "Wind field file path cannot be empty",
+    "hints": [
+      "run `ww3tool schema --json` to see where each setting lives",
+      "run `ww3tool validate --stage grid` to check only what this step needs"
+    ]
+  }
+}
+```
+
+退出码：`0` 成功，`1` 运行时失败，`2` 参数或配置错误，`3` 破坏性远程操作
+缺 `--confirm`。
+
+### 配置结构可自省，不用读源码
+
+```bash
+ww3tool --json schema
+```
+
+返回 `params.yml` 每个字段的路径、类型、合法值、默认值；结构不直观的还会
+附注说明。例如单域网格的分辨率，其实放在一个名字里带 `nested` 的键下：
+
+```json
+{
+  "path": "grid.structured.nested.levels[0].dx",
+  "type": "float",
+  "required": true,
+  "note": "grid_type=normal 时分辨率也取自这里——虽然键名里带 nested。
+           levels[0] 的 lon/lat 会被顶层 grid.lon / grid.lat 覆盖。"
+}
+```
+
+同时列出两个 `params.yml` 各自的位置，以及全部环境变量
+（`WW3TOOL_PARAMS`、`WW3TOOL_MESHGEN_WORKERS`、`WW3TOOL_MESHGEN_MEM_MB` 等）。
+
+### 先便宜地检查，再投入长任务
+
+校验是分阶段的，风场还没准备好也能先确认网格配置对不对：
+
+```bash
+ww3tool --json validate --stage grid /path/to/workdir   # grid | forcing | plot | full
+```
+
+全球网格要跑几分钟到十几分钟，早一步发现配错，比结尾给一条好错误有价值得多。
+
+### MCP server
+
+面向 Claude Desktop / Cursor 等 MCP 客户端，仓库自带一个 MCP server
+（`public/packaging/mcp/`），把同样这些命令暴露为工具。它内部用 `--json`
+调用 CLI，因此客户端拿到的就是上面那种结构化对象，而不是一段需要通读的日志。
+
+### 一个最小的调用循环
+
+```python
+import json, subprocess
+
+def ww3(*args):
+    out = subprocess.run(["ww3tool", "--json", *args],
+                         capture_output=True, text=True)
+    return json.loads(out.stdout)
+
+schema = ww3("schema")["data"]                 # 先了解字段结构
+ww3("workdir", "/tmp/run1")                    # 建工作目录
+# … 修改 /tmp/run1/params.yml …
+check = ww3("validate", "--stage", "grid", "/tmp/run1")
+if check["status"] != "ok":
+    print(check["error"]["message"], check["error"]["hints"])
+else:
+    result = ww3("generate-grid", "/tmp/run1")
+    print(result["outputs"])
+```
+
+### 长任务
+
+网格生成会给出逐阶段耗时，调用方能看出时间花在哪；进程池按作业**实际拥有**
+的内存来定（Slurm 下读 cgroup 限额，而不是节点大小）。放不下的网格在开跑前
+就说明，并给出可调的选项：
+
+```
+Estimated peak memory ~11.5 GiB (0.26M cells, 16 worker(s)); 7.8 GiB usable.
+  This grid is not expected to fit.  Options, cheapest first:
+    - give the job more memory (Slurm: --mem);
+    - for a global or very wide domain, use a coarser bathymetry …
+```
+
+运行**过程中**的进度目前仍是 `messages` 里的人类可读文本，流式结构化通道
+尚未实现。
+
 ## 7. 项目结构
 
 ```
