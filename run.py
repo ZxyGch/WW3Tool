@@ -702,6 +702,10 @@ _KV = _re.compile(r"^(?P<indent>\s*)(?P<key>[^#:][^:]*):(?P<gap>\s*)(?P<value>.*
 # Fortran namelist：KEY = '值'
 _NML_KV = _re.compile(r"^(?P<head>\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*)(?P<q>['\"])(?P<value>.*?)(?P=q)(?P<tail>.*)$")
 
+# JSON："键": "值"，行尾可能有逗号。改写时必须原样保住引号和逗号。
+# [EN] JSON: "key": "value" with a possible trailing comma, both of which must survive.
+_JSON_KV = _re.compile(r'^(?P<head>\s*"[^"]+"\s*:\s*)"(?P<value>(?:[^"\\]|\\.)*)"(?P<tail>\s*,?\s*)$')
+
 # 随包分发的文本模板，暂存时一并清洗。
 _BUILD_SANITIZE_SUFFIXES = frozenset({".nml", ".json", ".yaml", ".yml", ".flag"})
 
@@ -742,9 +746,22 @@ def _sanitize_params_template(text: str) -> str:
 
         m = _KV.match(line.rstrip("\n"))
         if m and not stripped.startswith("#"):
-            key = m.group("key").strip().strip("'\"")
+            raw_key = m.group("key").strip()
+            key = raw_key.strip("'\"")
             value = m.group("value").strip()
             bare = key.split(".")[-1]
+            # 带引号的键说明这是 JSON（语言包等），不能套用 YAML 的改写方式：
+            # 丢掉引号或行尾逗号会让整份文件解析失败，而 tr() 解析失败时会
+            # 静默退回源码里的中文默认值，发出去很难被发现。
+            # [EN] A quoted key means JSON; YAML-shaped rewriting would corrupt it,
+            # and a broken language file silently falls back to source defaults.
+            if raw_key.startswith(('"', "'")):
+                jm = _JSON_KV.match(line.rstrip("\n"))
+                if jm and _PERSONAL_PATH.match(jm.group("value").strip()):
+                    out.append(f'{jm.group("head")}""{jm.group("tail")}\n')
+                    continue
+                out.append(line)
+                continue
             if bare in _HISTORY_KEYS:
                 out.append(f"{m.group('indent')}{m.group('key')}: []\n")
                 drop_list_under = key

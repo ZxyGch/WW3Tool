@@ -172,10 +172,37 @@ class ShippedTemplateTest(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("language", found[0])
 
+    def test_sanitizer_keeps_language_files_parseable(self):
+        # 清洗器是按 YAML 写的，曾经把语言包里的 "language" 键改成 YAML 形状，
+        # 整份文件解析失败 —— 而 tr() 解析失败时静默退回源码里的中文默认值
+        import json
+
+        for name in ("public/languages/en_US.json", "public/languages/zh_CN.json"):
+            raw = (ROOT / name).read_text(encoding="utf-8")
+            before = json.loads(raw)
+            after = json.loads(self.runmod._sanitize_config_text(raw))
+            self.assertEqual(after, before, f"{name} 被清洗器改动了")
+
+    def test_sanitizer_still_blanks_personal_paths_in_json(self):
+        import json
+
+        text = '{\n  "a": "/Users/somebody/secret",\n  "b": "keep"\n}'
+        out = json.loads(self.runmod._sanitize_config_text(text))
+        self.assertEqual(out, {"a": "", "b": "keep"})
+
+    def test_release_gate_catches_broken_json(self):
+        gate = _load("_gate_for_json", "public/packaging/verify_no_personal_data.py")
+        member = "ww3tool-0.0.0.whl:ww3tool_resources/public/languages/en_US.json"
+        self.assertEqual(gate._scan_member(member, b'{"language": "Language"}'), [])
+        found = gate._scan_member(member, b'{"language": auto\n}')
+        self.assertEqual(len(found), 1)
+        self.assertIn("JSON", found[0])
+
     def test_gate_ignores_language_outside_params_yml(self):
         gate = _load("_gate_for_lang2", "public/packaging/verify_no_personal_data.py")
-        data = b"language: zh_CN\n"
-        self.assertEqual(gate._scan_member("w.whl:public/languages/meta.json", data), [])
+        # 语言包里的 "language" 是一条翻译，不是偏好设置，不该被判为泄漏
+        data = b'{\n  "language": "\xe8\xaf\xad\xe8\xa8\x80\xe8\xae\xbe\xe7\xbd\xae"\n}'
+        self.assertEqual(gate._scan_member("w.whl:public/languages/zh_CN.json", data), [])
 
 
 if __name__ == "__main__":

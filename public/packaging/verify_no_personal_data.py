@@ -7,6 +7,7 @@ run.py 的 _sanitize_params_template 清洗。这个脚本是兜底——清洗�
 [EN] Release gate: fail if developer-specific values reached the artifacts.
 """
 
+import json
 import pathlib
 import re
 import sys
@@ -52,10 +53,30 @@ def _preference_offenders(name, data):
                    f"实际是 {value!r}（开发机偏好泄漏到了发行模板）")
 
 
+def _broken_json(name, data):
+    """清洗器改坏 JSON 的话在这里拦住。
+
+    语言包解析失败不会报错，tr() 会静默退回源码里的中文默认值——
+    发出去之后要靠用户报"怎么全是中文"才发现。
+
+    [EN] Catch JSON the sanitizer corrupted: a broken language file does not
+    raise, it silently falls back to the source-language defaults.
+    """
+    try:
+        json.loads(data.decode("utf-8"))
+    except UnicodeDecodeError as exc:
+        return [f"{name}: 不是合法 UTF-8：{exc}"]
+    except json.JSONDecodeError as exc:
+        return [f"{name}: JSON 解析失败（清洗器很可能改坏了这一行）：{exc}"]
+    return []
+
+
 def _scan_member(name, data):
     found = list(_offenders(name, data))
     if name.endswith("params.yml"):
         found += list(_preference_offenders(name, data))
+    if name.endswith(".json"):
+        found += _broken_json(name, data)
     return found
 
 
