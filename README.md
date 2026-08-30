@@ -48,7 +48,8 @@ Two equivalent ways to use WW3Tool:
 - **Installed via the one-line command / Homebrew** — use the `ww3tool` command from anywhere (same entry point as `run.py`):
 
   ```sh
-  ww3tool                    # GUI (graphical interface)
+  ww3tool                    # Print the help (no arguments = help)
+  ww3tool --gui              # GUI (graphical interface; installs its deps on demand)
   ww3tool shell              # Interactive terminal (REPL; steps can be run repeatedly)
   ww3tool <subcommand> [workdir]  # Headless CLI (one command per step; suited for scripts and AI agents)
   ```
@@ -56,12 +57,17 @@ Two equivalent ways to use WW3Tool:
 - **Just want to run it from a directory** — clone the repo and use `python3 run.py` (identical behavior, commands are the same):
 
   ```sh
-  python3 run.py                    # GUI (graphical interface)
+  python3 run.py                    # Print the help (no arguments = help)
+  python3 run.py --gui              # GUI (graphical interface)
   python3 run.py shell              # Interactive terminal (REPL; steps can be run repeatedly)
   python3 run.py <subcommand> [workdir]  # Headless CLI (one command per step; suited for scripts and AI agents)
   ```
 
 Both ways share the same business logic (`src/workflows/application/`); only the interaction layer differs.
+
+The GUI needs an explicit `--gui` because its Qt dependencies are not part of the
+base install: a headless login node or compute node gets a working CLI without
+them, and `--gui` pulls them in on demand when a display is actually present.
 
 
 ### 2.1 GUI
@@ -69,7 +75,7 @@ Both ways share the same business logic (`src/workflows/application/`); only the
 ![](public/resource/README-media/截屏2026-07-16%2016.21.47.png)
 
 ```bash
-python3 run.py
+python3 run.py --gui
 ```
 
 This is the mode we use most often.

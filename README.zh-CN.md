@@ -45,7 +45,8 @@ WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshge
 - **用一键命令 / Homebrew 安装过**——从任意目录直接使用 `ww3tool` 命令（与 run.py 同一入口）：
 
   ```sh
-  ww3tool                    # GUI（图形界面）
+  ww3tool                    # 显示帮助（不带参数即帮助）
+  ww3tool --gui              # GUI（图形界面，依赖按需补装）
   ww3tool shell              # 交互式终端（REPL，可反复执行各步骤）
   ww3tool <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
   ```
@@ -53,12 +54,16 @@ WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshge
 - **只想在某个目录里用**——克隆仓库后使用 `python3 run.py`（行为完全一致，命令相同）：
 
   ```sh
-  python3 run.py                    # GUI（图形界面）
+  python3 run.py                    # 显示帮助（不带参数即帮助）
+  python3 run.py --gui              # GUI（图形界面）
   python3 run.py shell              # 交互式终端（REPL，可反复执行各步骤）
   python3 run.py <子命令> [workdir]  # 无界面 CLI（一条命令一个步骤，适合脚本与 AI 调用）
   ```
 
 两种方式共享同一套业务逻辑（src/workflows/application/），差别仅在交互层。
+
+GUI 之所以要显式加 `--gui`：它的 Qt 依赖不在基础安装里，登录节点、计算节点这类
+无图形环境装完就能直接用 CLI，确实有图形环境时再由 `--gui` 按需补装。
 
 
 ### 2.1 GUI
@@ -68,7 +73,7 @@ WW3Tool 完全由 Python 组成（其他语言的代码是网格生成器 meshge
 
 
 ```bash
-python3 run.py
+python3 run.py --gui
 ```
 
 这是我们最常用的模式
@@ -2004,6 +2009,11 @@ ww3tool --json generate-grid /path/to/workdir
 
 `status`、`exit_code`、`outputs` 一定存在，调用方不必再从散文里 grep 关键词
 来判断成败或猜产出文件在哪。不加 `--json` 时输出与以往完全一致。
+
+散文部分的语言跟随环境：按 `LC_ALL`、`LC_MESSAGES`、`LANG`、`LANGUAGE` 的顺序
+判断，没有对应语言包的一律用英文。想固定下来，单次调用加 `--lang en_US`，长期
+则把 params.yml 里的 `desktop.language` 从默认的 `auto` 改成 `en_US` 或 `zh_CN`。
+JSON 的键名不随语言变化。
 
 ### 失败会自己解释
 
