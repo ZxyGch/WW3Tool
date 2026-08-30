@@ -2714,5 +2714,10 @@
   "forcing_role_value": "水位值",
   "forcing_role_concentration": "海冰浓度",
   "forcing_role_thickness": "海冰厚度（可选）",
-  "forcing_mapping_auto_text": "（自动识别）"
+  "forcing_mapping_auto_text": "（自动识别）",
+  "icli_help_global_params": "全局配置：{path}（服务器、可执行路径、参考数据位置）",
+  "icli_help_bundled_params": "包内模板：{path}（只读，每次升级会被替换）",
+  "icli_help_workdir_params": "算例参数：用 'workdir <路径>' 在工作目录里创建，每个算例一份",
+  "icli_global_params": "全局配置：{}",
+  "icli_bundled_params": "包内模板（只读）：{}"
 }

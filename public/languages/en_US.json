@@ -2715,5 +2715,10 @@
   "forcing_role_value": "Water level value",
   "forcing_role_concentration": "Sea-ice concentration",
   "forcing_role_thickness": "Sea-ice thickness (optional)",
-  "forcing_mapping_auto_text": "(auto-detect)"
+  "forcing_mapping_auto_text": "(auto-detect)",
+  "icli_help_global_params": "Global settings: {path} (server, executables, reference data)",
+  "icli_help_bundled_params": "Bundled template: {path} (read-only; replaced on every upgrade)",
+  "icli_help_workdir_params": "Per-case settings: create one with 'workdir <path>'",
+  "icli_global_params": "Global settings: {}",
+  "icli_bundled_params": "Bundled template (read-only): {}"
 }

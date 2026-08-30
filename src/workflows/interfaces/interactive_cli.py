@@ -138,6 +138,27 @@ def _config_field(label: str, *values: object, indent: int = 4) -> str:
     return "".join(chunks)
 
 
+
+def _params_locations() -> tuple[str, str | None]:
+    """返回 (全局配置路径, 只读模板路径或 None)。
+
+    pip 安装形态下这是两个不同的文件：全局配置在用户目录，升级不动；包内那份
+    是随发行版分发的只读模板，每次 pip 升级都会被替换。把后者当成"你的配置"
+    去改，改动会在下次升级时消失——所以要分别说清楚。仓库形态下二者相同，
+    只显示一个。
+
+    [EN] (global config, read-only template) — different files for a pip
+    install, the same file in the repo.
+    """
+    try:
+        from ..infrastructure.runtime_config import BUNDLED_PARAMS_FILE, PARAMS_FILE
+    except ImportError:
+        return str(_repo_root_path() / "params.yml"), None
+    if os.path.normpath(PARAMS_FILE) == os.path.normpath(BUNDLED_PARAMS_FILE):
+        return str(PARAMS_FILE), None
+    return str(PARAMS_FILE), str(BUNDLED_PARAMS_FILE)
+
+
 def _repo_root_path() -> Path:
     """返回仓库根目录的绝对路径。
 
@@ -293,7 +314,17 @@ def print_help() -> None:
     print(_bold(tr("icli_help_header", "🌊 WW3Tool 交互式命令行")))
     print(_color(tr("icli_help_hint", "输入命令后按回车执行，Tab 键自动补全，↑↓ 翻阅历史"), _Colors.CYAN))
     print()
-    print(_color(tr("icli_help_template", "默认 params.yml 模板：{path}（用 'workdir' 命令复制到工作目录）").format(path=str(_repo_root_path() / "params.yml")), _Colors.CYAN))
+    _global_params, _template_params = _params_locations()
+    print(_color(tr("icli_help_global_params",
+                    "全局配置：{path}（服务器、可执行路径、参考数据位置）")
+                 .format(path=_global_params), _Colors.CYAN))
+    if _template_params:
+        print(_color(tr("icli_help_bundled_params",
+                        "包内模板：{path}（只读，每次升级会被替换）")
+                     .format(path=_template_params), _Colors.CYAN))
+    print(_color(tr("icli_help_workdir_params",
+                    "算例参数：用 'workdir <路径>' 在工作目录里创建，每个算例一份"),
+                 _Colors.CYAN))
     print()
 
     groups = _help_groups()
@@ -328,7 +359,11 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
     not_cfg = tr("icli_not_configured", "(未配置)")
 
     print(_bold(_color("\n" + tr("icli_config_summary", "📋 当前配置摘要"), _Colors.YELLOW)))
-    print(_config_field(tr("icli_default_template", "默认 params.yml 模板：{}"), str(_repo_root_path() / "params.yml"), indent=2))
+    _global_params, _template_params = _params_locations()
+    print(_config_field(tr("icli_global_params", "全局配置：{}"), _global_params, indent=2))
+    if _template_params:
+        print(_config_field(tr("icli_bundled_params", "包内模板（只读）：{}"),
+                            _template_params, indent=2))
     print(_config_field(tr("icli_config_file", "配置文件：{}"), params_path, indent=2))
     print(_config_field(tr("icli_workdir", "工作目录：{}"), cfg.workdir.path, indent=2))
 
