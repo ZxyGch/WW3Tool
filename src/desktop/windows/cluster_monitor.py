@@ -512,15 +512,8 @@ def _laid_out_height(widget: QWidget) -> int:
 class OthersJobsTable(QWidget):
     """其他用户/本人任务详细表格（结构化数据，非文本日志）。"""
 
-    # 任务多时表格限高、内部滚动，避免把页面拉成“巨大背景”
-    _TABLE_MAX_HEIGHT = 360
-
-    # 面板自身的最小高度：够放下标题 + 两张表的地板高度即可，不随内容增长
-    _MIN_PANEL_HEIGHT = 160
-
-    # 两张表各自的地板高度：谁都不会被对方彻底挤没
+    # 空表时的占位高度（只剩表头那一行）
     _OTHERS_FLOOR = 40
-    _MINE_FLOOR = 80
 
     # 最小可读宽度（px）：包含 Fluent 表格的文本留白，避免短文本也显示为省略号。
     _COL_MIN_WIDTH = {
@@ -570,12 +563,6 @@ class OthersJobsTable(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self._card)
-        # 显式最小高度压过 minimumSizeHint：否则 others 表的 setFixedHeight 会
-        # 一路累加成本面板的最小高度，窗口缩小时被 Qt 提前钳住，等 _fit_others_height
-        # 跑起来时量到的已是旧的大高度，表格再也收不回去。
-        # [EN] An explicit minimum overrides minimumSizeHint; otherwise the fixed
-        # table height becomes the panel's minimum and clamps the window on shrink.
-        self.setMinimumHeight(self._MIN_PANEL_HEIGHT)
         self._others_sig: tuple = ()
         self._others_struct: tuple = ()
         self._mine_sig: tuple = ()
@@ -774,35 +761,24 @@ class OthersJobsTable(QWidget):
         self._refresh_card_height()
 
     def _fit_others_height(self) -> None:
-        """others 表高度 = min(内容高, 可用区域高)：
-        内容少时紧凑（My Jobs 紧跟其后，无大间距）；
-        内容多时取可用高度并在表内滚动（不撑大页面）。"""
+        """两张任务表都按内容完整展开，不在表内滚动。
+
+        列表放不下时由右侧滚动区整体滚动 —— 表内滚动会把"还有多少任务"这个
+        信息藏起来，而这正是这个页面唯一要回答的问题。
+
+        [EN] Both job tables expand to their full content height and never
+        scroll internally; the right pane scrolls instead.
+        """
         if not hasattr(self, "_card"):
             return
         ot = self._others_table
         content_h = int(ot.property("_content_h") or 0)
-        # 先激活祖先布局，保证 card_layout.geometry() 是最终几何
-        w: QWidget = self
-        while w is not None:
-            lay = w.layout()
-            if lay is not None:
-                lay.activate()
-            w = w.parentWidget()
-        avail = 300
-        vl = self._card.viewLayout
-        if vl.count():
-            lay = vl.itemAt(0).layout()
-            if lay is not None:
-                title_h = _laid_out_height(self._my_jobs_title)
-                budget = lay.geometry().height() - title_h - lay.spacing() * 3
-                mt_h = self._fit_mine_height(budget)
-                avail = budget - mt_h
-        h = max(min(content_h, avail), 40) if content_h > 0 else 40
-        # 高度策略 Maximum：不参与剩余空间争抢（Expanding 会把受限后的
-        # 多余空间分散到各 item 之间，造成“My Jobs 上方大间距”）；
-        # 高度由 setFixedHeight 精确控制。
+        h = content_h if content_h > 0 else self._OTHERS_FLOOR
         ot.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        ot.scrollDelagate.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         # 高度未变就此打住：本函数也从 resizeEvent 走，回写高度会改变祖先
         # 几何、再次触发 resizeEvent，不收敛就会抖动。
@@ -811,40 +787,7 @@ class OthersJobsTable(QWidget):
         if ot.maximumHeight() == h and ot.height() == h:
             return
         ot.setFixedHeight(h)
-        if content_h > h:
-            ot.scrollDelagate.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            )
-        else:
-            ot.scrollDelagate.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-            )
         self._refresh_card_height()
-
-    def _fit_mine_height(self, budget: int) -> int:
-        """My Jobs 优先显示完整内容，但不得挤掉 others、也不得溢出卡片。
-
-        右侧滚动区关掉了竖直滚动条，溢出卡片的行在界面上够不着，所以宁可
-        让 My Jobs 自己内部滚动。
-
-        [EN] My Jobs shows its full content first, but must not squeeze out the
-        others table or overflow the card: the right pane has no vertical
-        scrollbar, so overflowing rows would simply be unreachable.
-        """
-        mt = self._mine_table
-        if not mt.isVisible():
-            return 0
-        content_h = _laid_out_height(mt)
-        cap = max(budget - self._OTHERS_FLOOR, self._MINE_FLOOR)
-        h = min(content_h, cap) if content_h > 0 else 0
-        if h and mt.maximumHeight() != h:
-            mt.setFixedHeight(h)
-        mt.scrollDelagate.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            if content_h > h
-            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        return h
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
         """统一两张任务表的内容列宽，并在宽度充足时铺满右侧区域。

@@ -83,7 +83,7 @@ class TaskActionButtonStyleTest(unittest.TestCase):
 
 
 class JobTableHeightAllocationTest(unittest.TestCase):
-    """My Jobs 优先完整显示，剩余高度归 others。"""
+    """两张任务表都按内容完整展开，放不下时由右侧滚动区整体滚动。"""
 
     def _panel(self, n_mine, n_others, card_h=700):
         win = QtWidgets.QWidget()
@@ -101,92 +101,64 @@ class JobTableHeightAllocationTest(unittest.TestCase):
         self._win = win          # 保持引用，避免被回收
         return panel
 
-    @staticmethod
-    def _slack(panel):
-        inner = panel._card.viewLayout.itemAt(0).layout()
-        used = (panel._others_table.height()
-                + cm._laid_out_height(panel._my_jobs_title)
-                + cm._laid_out_height(panel._mine_table)
-                + inner.spacing() * 3)
-        return inner.geometry().height() - used
-
-    def test_no_empty_space_while_others_scrolls(self):
-        # 这是用户报的问题：下方空着，others 却在滚动。
-        for n_mine in (1, 2, 3, 5, 8):
-            panel = self._panel(n_mine, 40)
-            ot = panel._others_table
-            scrolling = int(ot.property("_content_h") or 0) > ot.height()
-            self.assertTrue(scrolling, msg=f"{n_mine} 行时 others 应当仍需滚动")
-            self.assertLessEqual(abs(self._slack(panel)), 8,
-                                 msg=f"My Jobs {n_mine} 行时下方不应有空隙")
-
-    def test_my_jobs_is_never_truncated(self):
-        for n_mine in (1, 3, 8, 12):
-            panel = self._panel(n_mine, 40)
-            mt = panel._mine_table
-            self.assertGreaterEqual(mt.height(), (n_mine + 1) * 32,
-                                    msg=f"My Jobs {n_mine} 行被压缩了")
-
-    def test_others_shrinks_as_my_jobs_grows(self):
-        heights = [self._panel(n, 40)._others_table.height() for n in (1, 3, 8)]
-        self.assertGreater(heights[0], heights[1])
-        self.assertGreater(heights[1], heights[2])
-
     def _resize(self, panel, height):
         panel.window().resize(900, height)
         for _ in range(40):
             _app.processEvents()
 
-    def test_resizing_the_window_refits_the_others_table(self):
-        # 用户报的问题：窗口变大后 others 仍停在旧高度，多出来的空间被卡片
-        # 底部的弹簧吸走，看起来就是 others 挤在上面滚动、My Jobs 下面一大片空白
+    def test_others_always_shows_every_row(self):
+        # 表内滚动会把"还有多少任务"藏起来，而这正是这个页面要回答的问题
+        for n_others in (3, 10, 40, 80):
+            panel = self._panel(3, n_others)
+            ot = panel._others_table
+            self.assertEqual(ot.height(), int(ot.property("_content_h") or 0),
+                             msg=f"他人任务 {n_others} 条时没有完整展开")
+
+    def test_neither_table_scrolls_internally(self):
+        panel = self._panel(25, 80)
+        for name, table in (("others", panel._others_table), ("mine", panel._mine_table)):
+            self.assertFalse(table.verticalScrollBar().isVisible(),
+                             msg=f"{name} 出现了表内滚动条")
+
+    def test_my_jobs_is_never_truncated(self):
+        for n_mine in (1, 3, 8, 12, 30):
+            panel = self._panel(n_mine, 40)
+            mt = panel._mine_table
+            self.assertGreaterEqual(mt.height(), (n_mine + 1) * 32,
+                                    msg=f"My Jobs {n_mine} 行被压缩了")
+
+    def test_window_height_does_not_change_the_tables(self):
+        # 完全展开后高度只由内容决定；曾经它跟着窗口走，且 resize 时不重算，
+        # 多出来的空间被卡片底部的弹簧吸走 —— others 挤在上面滚动、My Jobs
+        # 下面一大片空白，正是用户报的现象
         panel = self._panel(3, 40, card_h=420)
-        before = panel._others_table.height()
-        self._resize(panel, 900)
-        self.assertGreater(panel._others_table.height(), before + 200,
-                           msg="窗口变大后 others 没有跟着变高")
-        self.assertLessEqual(abs(self._slack(panel)), 8, msg="窗口变大后下方留白了")
-
-    def test_shrinking_the_window_refits_too(self):
-        # setFixedHeight 会一并抬高 minimumHeight；若它累加成面板的最小高度，
-        # 窗口会被 Qt 提前钳住，缩小方向就再也收不回来
-        panel = self._panel(3, 40, card_h=900)
-        tall = panel._others_table.height()
-        self._resize(panel, 420)
-        self.assertLess(panel._others_table.height(), tall - 200,
-                        msg="窗口缩小后 others 没有跟着变矮")
-        self.assertLessEqual(abs(self._slack(panel)), 8, msg="窗口缩小后布局没收拢")
-
-    def test_repeated_resizes_are_stable_and_converge(self):
-        panel = self._panel(3, 40, card_h=700)
-        seen = {}
-        for height in (900, 620, 900, 620, 900):
+        heights = []
+        for height in (420, 900, 620, 1200, 380):
             self._resize(panel, height)
-            seen.setdefault(height, []).append(panel._others_table.height())
-        for height, values in seen.items():
-            self.assertEqual(len(set(values)), 1,
-                             msg=f"窗口高 {height} 反复出现时结果不一致：{values}")
+            heights.append((panel._others_table.height(), panel._mine_table.height()))
+        self.assertEqual(len(set(heights)), 1, msg=f"高度随窗口变了：{heights}")
 
-    def test_panel_can_shrink_no_matter_how_long_the_lists_are(self):
-        # 面板的最小高度必须是常量：表格的 setFixedHeight 会一并抬高
-        # minimumHeight，累加上去就会把窗口顶住，缩小时 Qt 先钳死尺寸，
-        # 等重算跑起来时量到的已经是旧的大高度
-        panel = self._panel(20, 60, card_h=900)
-        self._resize(panel, 380)
-        self.assertLessEqual(panel.height(), 400,
-                             msg=f"内容一多面板就缩不回去了：{panel.height()}")
-
-    def test_my_jobs_never_overflows_the_card(self):
-        # 右侧滚动区关掉了竖直滚动条，溢出卡片的行在界面上够不着
-        for n_mine in (15, 25, 40):
-            panel = self._panel(n_mine, 40, card_h=700)
-            inner = panel._card.viewLayout.itemAt(0).layout()
-            used = (panel._others_table.height()
-                    + cm._laid_out_height(panel._my_jobs_title)
-                    + cm._laid_out_height(panel._mine_table)
-                    + inner.spacing() * 3)
-            self.assertLessEqual(used, inner.geometry().height() + 8,
-                                 msg=f"我的任务 {n_mine} 行时内容溢出了卡片")
+    def test_content_taller_than_the_pane_stays_reachable(self):
+        # 完整展开意味着内容会超出视口，必须能滚到底，否则等于被裁掉
+        win = cm.ClusterMonitorInterface()
+        win.resize(1400, 800)
+        win.show()
+        for _ in range(40):
+            _app.processEvents()
+        win._others_jobs_panel.update_others_jobs(
+            [_job("me", i) for i in range(3)]
+            + [_job(f"u{i}", 1000 + i) for i in range(60)], "me")
+        for _ in range(60):
+            _app.processEvents()
+        self._win = win
+        w = win._others_jobs_panel.parentWidget()
+        while w is not None and not isinstance(w, QtWidgets.QScrollArea):
+            w = w.parentWidget()
+        self.assertIsNotNone(w, "面板不在滚动区里，超出的内容将无法到达")
+        overflow = w.widget().height() - w.viewport().height()
+        self.assertGreater(overflow, 0, "内容没有超出视口，这条用例失去意义")
+        self.assertGreaterEqual(w.verticalScrollBar().maximum(), overflow - 8,
+                                "滚动范围盖不住超出的内容")
 
     def test_short_lists_do_not_scroll(self):
         panel = self._panel(2, 3)
