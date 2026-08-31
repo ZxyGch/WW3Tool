@@ -150,12 +150,14 @@ class ShippedTemplateTest(unittest.TestCase):
     def setUpClass(cls):
         cls.runmod = _load("_run_for_lang", "run.py")
 
-    def test_sanitizer_resets_developer_language(self):
-        for developer_value in ("zh_CN", "en_US"):
-            text = f"desktop:\n  language: {developer_value}\n  theme: LIGHT\n"
+    def test_sanitizer_resets_developer_preferences(self):
+        # 打包那一刻开发者的界面设置不该变成所有用户的默认值
+        for lang, theme in (("zh_CN", "LIGHT"), ("en_US", "DARK")):
+            text = f"desktop:\n  language: {lang}\n  theme: {theme}\n  run_mode: both\n"
             out = self.runmod._sanitize_params_template(text)
-            self.assertIn("  language: auto\n", out, developer_value)
-            self.assertIn("  theme: LIGHT\n", out)
+            self.assertIn("  language: auto\n", out, lang)
+            self.assertIn("  theme: AUTO\n", out, theme)
+            self.assertIn("  run_mode: both\n", out)
 
     def test_repo_template_ships_auto(self):
         # 仓库里这份既是开发者配置又是分发模板，直接写 auto，避免再次泄漏
@@ -165,9 +167,9 @@ class ShippedTemplateTest(unittest.TestCase):
     def test_release_gate_catches_leaked_language(self):
         gate = _load("_gate_for_lang", "public/packaging/verify_no_personal_data.py")
         member = "ww3tool-0.0.0.whl:ww3tool_resources/params.yml"
-        clean = b"desktop:\n  language: auto\n  theme: LIGHT\n"
+        clean = b"desktop:\n  language: auto\n  theme: AUTO\n"
         self.assertEqual(gate._scan_member(member, clean), [])
-        leaked = b"desktop:\n  language: zh_CN\n  theme: LIGHT\n"
+        leaked = b"desktop:\n  language: zh_CN\n  theme: AUTO\n"
         found = gate._scan_member(member, leaked)
         self.assertEqual(len(found), 1)
         self.assertIn("language", found[0])

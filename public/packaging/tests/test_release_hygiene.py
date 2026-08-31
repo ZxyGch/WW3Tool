@@ -55,11 +55,12 @@ class TemplateSanitizerTest(unittest.TestCase):
                "  recent_workdirs:\n"
                "  - /Users/someone/a\n"
                "  - /Users/someone/b\n"
-               "  theme: dark\n")
+               "  map_type: satellite\n")
         out = self.runmod._sanitize_params_template(src)
         self.assertIn("recent_workdirs: []", out)
         self.assertNotIn("/Users/", out)
-        self.assertIn("theme: dark", out)
+        # 列表清空不应波及同段的其他键
+        self.assertIn("map_type: satellite", out)
 
     def test_comments_survive(self):
         src = ("# 这一行说明很重要\n"

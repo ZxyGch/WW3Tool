@@ -695,7 +695,7 @@ _HISTORY_KEYS = frozenset({"recent_workdirs"})
 
 # 开发机上的个人偏好，发行版里改回中性默认值，否则打包那一刻的开发者
 # 设置会变成所有用户的默认值（语言就这么长期默认成了中文）。
-_NEUTRAL_DEFAULTS = {"language": "auto"}
+_NEUTRAL_DEFAULTS = {"language": "auto", "theme": "AUTO"}
 
 _KV = _re.compile(r"^(?P<indent>\s*)(?P<key>[^#:][^:]*):(?P<gap>\s*)(?P<value>.*?)(?P<eol>\s*)$")
 

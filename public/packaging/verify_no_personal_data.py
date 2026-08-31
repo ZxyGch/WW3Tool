@@ -23,7 +23,7 @@ SUFFIXES = (".yml", ".yaml", ".json", ".nml", ".flag", "requirements.txt")
 # 模板里必须保持中性的偏好项（与 run.py 的 _NEUTRAL_DEFAULTS 对应）。
 # 打包那一刻开发者的界面语言曾经就这样成了所有用户的默认值。
 # [EN] Preferences the template must keep neutral (mirrors run.py's _NEUTRAL_DEFAULTS).
-NEUTRAL_DEFAULTS = {"language": "auto"}
+NEUTRAL_DEFAULTS = {"language": "auto", "theme": "AUTO"}
 
 _PREF_KV = re.compile(rb"^\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>[^#\r\n]*?)\s*$")
 
