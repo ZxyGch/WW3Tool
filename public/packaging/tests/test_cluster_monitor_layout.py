@@ -132,6 +132,62 @@ class JobTableHeightAllocationTest(unittest.TestCase):
         self.assertGreater(heights[0], heights[1])
         self.assertGreater(heights[1], heights[2])
 
+    def _resize(self, panel, height):
+        panel.window().resize(900, height)
+        for _ in range(40):
+            _app.processEvents()
+
+    def test_resizing_the_window_refits_the_others_table(self):
+        # 用户报的问题：窗口变大后 others 仍停在旧高度，多出来的空间被卡片
+        # 底部的弹簧吸走，看起来就是 others 挤在上面滚动、My Jobs 下面一大片空白
+        panel = self._panel(3, 40, card_h=420)
+        before = panel._others_table.height()
+        self._resize(panel, 900)
+        self.assertGreater(panel._others_table.height(), before + 200,
+                           msg="窗口变大后 others 没有跟着变高")
+        self.assertLessEqual(abs(self._slack(panel)), 8, msg="窗口变大后下方留白了")
+
+    def test_shrinking_the_window_refits_too(self):
+        # setFixedHeight 会一并抬高 minimumHeight；若它累加成面板的最小高度，
+        # 窗口会被 Qt 提前钳住，缩小方向就再也收不回来
+        panel = self._panel(3, 40, card_h=900)
+        tall = panel._others_table.height()
+        self._resize(panel, 420)
+        self.assertLess(panel._others_table.height(), tall - 200,
+                        msg="窗口缩小后 others 没有跟着变矮")
+        self.assertLessEqual(abs(self._slack(panel)), 8, msg="窗口缩小后布局没收拢")
+
+    def test_repeated_resizes_are_stable_and_converge(self):
+        panel = self._panel(3, 40, card_h=700)
+        seen = {}
+        for height in (900, 620, 900, 620, 900):
+            self._resize(panel, height)
+            seen.setdefault(height, []).append(panel._others_table.height())
+        for height, values in seen.items():
+            self.assertEqual(len(set(values)), 1,
+                             msg=f"窗口高 {height} 反复出现时结果不一致：{values}")
+
+    def test_panel_can_shrink_no_matter_how_long_the_lists_are(self):
+        # 面板的最小高度必须是常量：表格的 setFixedHeight 会一并抬高
+        # minimumHeight，累加上去就会把窗口顶住，缩小时 Qt 先钳死尺寸，
+        # 等重算跑起来时量到的已经是旧的大高度
+        panel = self._panel(20, 60, card_h=900)
+        self._resize(panel, 380)
+        self.assertLessEqual(panel.height(), 400,
+                             msg=f"内容一多面板就缩不回去了：{panel.height()}")
+
+    def test_my_jobs_never_overflows_the_card(self):
+        # 右侧滚动区关掉了竖直滚动条，溢出卡片的行在界面上够不着
+        for n_mine in (15, 25, 40):
+            panel = self._panel(n_mine, 40, card_h=700)
+            inner = panel._card.viewLayout.itemAt(0).layout()
+            used = (panel._others_table.height()
+                    + cm._laid_out_height(panel._my_jobs_title)
+                    + cm._laid_out_height(panel._mine_table)
+                    + inner.spacing() * 3)
+            self.assertLessEqual(used, inner.geometry().height() + 8,
+                                 msg=f"我的任务 {n_mine} 行时内容溢出了卡片")
+
     def test_short_lists_do_not_scroll(self):
         panel = self._panel(2, 3)
         ot = panel._others_table

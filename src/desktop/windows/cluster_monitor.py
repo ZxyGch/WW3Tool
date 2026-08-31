@@ -515,6 +515,13 @@ class OthersJobsTable(QWidget):
     # 任务多时表格限高、内部滚动，避免把页面拉成“巨大背景”
     _TABLE_MAX_HEIGHT = 360
 
+    # 面板自身的最小高度：够放下标题 + 两张表的地板高度即可，不随内容增长
+    _MIN_PANEL_HEIGHT = 160
+
+    # 两张表各自的地板高度：谁都不会被对方彻底挤没
+    _OTHERS_FLOOR = 40
+    _MINE_FLOOR = 80
+
     # 最小可读宽度（px）：包含 Fluent 表格的文本留白，避免短文本也显示为省略号。
     _COL_MIN_WIDTH = {
         1: 64,   # JobID
@@ -563,6 +570,12 @@ class OthersJobsTable(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self._card)
+        # 显式最小高度压过 minimumSizeHint：否则 others 表的 setFixedHeight 会
+        # 一路累加成本面板的最小高度，窗口缩小时被 Qt 提前钳住，等 _fit_others_height
+        # 跑起来时量到的已是旧的大高度，表格再也收不回去。
+        # [EN] An explicit minimum overrides minimumSizeHint; otherwise the fixed
+        # table height becomes the panel's minimum and clamps the window on shrink.
+        self.setMinimumHeight(self._MIN_PANEL_HEIGHT)
         self._others_sig: tuple = ()
         self._others_struct: tuple = ()
         self._mine_sig: tuple = ()
@@ -651,6 +664,14 @@ class OthersJobsTable(QWidget):
 
     def _apply_columns_after_layout(self) -> None:
         self._column_layout_pending = False
+        # 先定高再排列宽：others 是 setFixedHeight 定死的，面板变高时若不重算，
+        # 多出来的空间会被卡片底部的弹簧吸走，看起来就是 others 挤在上面滚动、
+        # My Jobs 下面一大片空白。高度变化还会影响竖直滚动条的有无，进而影响
+        # viewport 宽度，所以必须排在列宽之前。
+        # [EN] Refit the height before the columns: the others table has a fixed
+        # height, and leftover space would otherwise fall through to the bottom
+        # spacer. Height also decides the vertical scrollbar, hence the order.
+        self._fit_others_height()
         for table in (self._others_table, self._mine_table):
             if table.isVisible() and table.rowCount() > 0:
                 self._apply_col_widths(table)
@@ -773,13 +794,9 @@ class OthersJobsTable(QWidget):
             lay = vl.itemAt(0).layout()
             if lay is not None:
                 title_h = _laid_out_height(self._my_jobs_title)
-                mt_h = _laid_out_height(self._mine_table)
-                avail = (
-                    lay.geometry().height()
-                    - title_h
-                    - mt_h
-                    - lay.spacing() * 3
-                )
+                budget = lay.geometry().height() - title_h - lay.spacing() * 3
+                mt_h = self._fit_mine_height(budget)
+                avail = budget - mt_h
         h = max(min(content_h, avail), 40) if content_h > 0 else 40
         # 高度策略 Maximum：不参与剩余空间争抢（Expanding 会把受限后的
         # 多余空间分散到各 item 之间，造成“My Jobs 上方大间距”）；
@@ -787,6 +804,12 @@ class OthersJobsTable(QWidget):
         ot.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
         )
+        # 高度未变就此打住：本函数也从 resizeEvent 走，回写高度会改变祖先
+        # 几何、再次触发 resizeEvent，不收敛就会抖动。
+        # [EN] Bail out when the height is unchanged: this also runs from
+        # resizeEvent, and writing it back would re-trigger one.
+        if ot.maximumHeight() == h and ot.height() == h:
+            return
         ot.setFixedHeight(h)
         if content_h > h:
             ot.scrollDelagate.setVerticalScrollBarPolicy(
@@ -797,6 +820,31 @@ class OthersJobsTable(QWidget):
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
         self._refresh_card_height()
+
+    def _fit_mine_height(self, budget: int) -> int:
+        """My Jobs 优先显示完整内容，但不得挤掉 others、也不得溢出卡片。
+
+        右侧滚动区关掉了竖直滚动条，溢出卡片的行在界面上够不着，所以宁可
+        让 My Jobs 自己内部滚动。
+
+        [EN] My Jobs shows its full content first, but must not squeeze out the
+        others table or overflow the card: the right pane has no vertical
+        scrollbar, so overflowing rows would simply be unreachable.
+        """
+        mt = self._mine_table
+        if not mt.isVisible():
+            return 0
+        content_h = _laid_out_height(mt)
+        cap = max(budget - self._OTHERS_FLOOR, self._MINE_FLOOR)
+        h = min(content_h, cap) if content_h > 0 else 0
+        if h and mt.maximumHeight() != h:
+            mt.setFixedHeight(h)
+        mt.scrollDelagate.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            if content_h > h
+            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        return h
 
     def _apply_col_widths(self, table: EdgeAlignedTableWidget) -> None:
         """统一两张任务表的内容列宽，并在宽度充足时铺满右侧区域。
@@ -1111,6 +1159,12 @@ class ClusterMonitorInterface(QWidget):
             return
         self._refresh_splitter_height()
         op = self._others_jobs_panel
+        # 高度必须跟着窗口重算：others 表是 setFixedHeight 定死的，只刷卡片
+        # 高度的话它会停在上一次数据变化时算出的值，多出来的空间被卡片底部
+        # 的弹簧吸走 —— 表现为 others 挤在上面滚动、My Jobs 下面一大片空白。
+        # [EN] The others table has a fixed height, so it must be recomputed on
+        # resize; otherwise the extra space falls through to the bottom spacer.
+        op._fit_others_height()
         op._refresh_card_height()
         # 窗口宽度变化后重算列宽（窄窗口按比例压缩，避免横向滚动/列消失）
         op._apply_col_widths(op._others_table)
