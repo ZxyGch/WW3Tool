@@ -18,7 +18,7 @@ backend-path = ["."]
 
 [project]
 name = "ww3tool"
-version = "0.1.28"
+version = "0.1.29"
 description = "WW3Tool - WAVEWATCH III workflow toolkit (CLI / Shell REPL / Desktop GUI / MCP server)"
 readme = "public/packaging/PYPI_README.md"
 requires-python = ">=3.9"
