@@ -58,9 +58,9 @@ _WW3_LAT_NAME = "latitude"
 
 
 def _transpose_to_output(chunk, transpose_axes):
-    """把源数组转置到 WW3 布局 (lon, lat, time)；无法完全对应时不转置。
+    """把源数组转置到 WW3 布局 (time, lat, lon)；无法完全对应时不转置。
 
-    [EN] Transpose a source array to the WW3 layout (lon, lat, time);
+    [EN] Transpose a source array to the WW3 layout (time, lat, lon);
     fall back to no-op when the axes do not fully correspond.
     """
     chunk = np.asarray(chunk)
@@ -310,16 +310,23 @@ class ForcingNormalizeService:
                             ).format(shape=primary_shape, lat_len=len(latitude), lon_len=len(longitude))
                         )
 
-                # 输出维度顺序固定 (longitude, latitude, time)：
-                # WW3 ww3_prnc 读取数据时 start=(/1,1,ITIME/) count=(/MXM,MYM,1/)，
-                # 要求 time 为最后一维、前两维依次是经度/纬度。
-                # [EN] Output dims fixed to (longitude, latitude, time): ww3_prnc
-                # reads data as start=(/1,1,ITIME/) count=(/MXM,MYM,1/), so time
-                # must be the last axis and the first two axes are lon/lat.
-                output_dim_order = (_WW3_LON_NAME, _WW3_LAT_NAME, output_time)
-                # 源轴 → 输出轴顺序 (lon, lat, time)，用于数据转置
-                # [EN] Source axes ordered as (lon, lat, time), used to transpose data
-                _src_axes = (lon_dim_idx, lat_dim_idx, time_dim_idx)
+                # 输出维度顺序固定 (time, latitude, longitude)：
+                # WW3 7.14 ww3_prnc.F90 读取数据用 NF90_GET_VAR(...,
+                # start=(/1,1,ITIME/), count=(/MXM,MYM,1/))；Fortran 接口的
+                # 维度序与 CDL 声明相反，故文件必须声明 time 在前、lat 次之、
+                # lon 最后。time 放在末维会触发
+                # "NetCDF: Start+count exceeds dimension bound"（退出码 59）。
+                # [EN] Output dims fixed to (time, latitude, longitude): WW3 7.14
+                # ww3_prnc.F90 reads fields via NF90_GET_VAR(...,
+                # start=(/1,1,ITIME/), count=(/MXM,MYM,1/)); the Fortran
+                # interface's dimension order is reversed w.r.t. the CDL
+                # declaration, so the file must declare time first, lat second,
+                # lon last. A time-last layout triggers
+                # "NetCDF: Start+count exceeds dimension bound" (exit 59).
+                output_dim_order = (output_time, _WW3_LAT_NAME, _WW3_LON_NAME)
+                # 源轴 → 输出轴顺序 (time, lat, lon)，用于数据转置
+                # [EN] Source axes ordered as (time, lat, lon), used to transpose data
+                _src_axes = (time_dim_idx, lat_dim_idx, lon_dim_idx)
 
                 lon_dtype = src.variables[lon_name].dtype
                 lat_dtype = src.variables[lat_name].dtype
@@ -445,10 +452,10 @@ class ForcingNormalizeService:
             return tuple(size_map[d] for d in output_dim_order)
 
         def _transform_chunk(chunk, ndim):
-            """本地变换：翻转 lat 轴并把数据转置到 (lon, lat, time)。
+            """本地变换：翻转 lat 轴并把数据转置到 (time, lat, lon)。
 
             [EN] Local transform: flip the lat axis and transpose the data
-            to (lon, lat, time).
+            to (time, lat, lon).
             """
             chunk = np.asarray(chunk)
             if lat_needs_flip and lat_dim_idx is not None and lat_dim_idx < ndim:
@@ -618,14 +625,14 @@ class ForcingNormalizeService:
                                 prev_start, prev_end, prev_future = pending
                                 prev_results = prev_future.result()
                                 for i, info in enumerate(data_var_infos):
-                                    dst_data_vars[info["src_name"]][:, :, prev_start:prev_end] = prev_results[i]
+                                    dst_data_vars[info["src_name"]][prev_start:prev_end, :, :] = prev_results[i]
                             pending = (start, end, future)
 
                         if pending is not None:
                             prev_start, prev_end, prev_future = pending
                             prev_results = prev_future.result()
                             for i, info in enumerate(data_var_infos):
-                                dst_data_vars[info["src_name"]][:, :, prev_start:prev_end] = prev_results[i]
+                                dst_data_vars[info["src_name"]][prev_start:prev_end, :, :] = prev_results[i]
                 else:
                     # 顺序分块
                     # [EN] Sequential chunking
@@ -643,7 +650,7 @@ class ForcingNormalizeService:
                             src_var = src.variables[info["src_name"]]
                             slices = _make_read_slices(info["shape"], start, end)
                             chunk_data = np.asarray(src_var[slices])
-                            dst_data_vars[info["src_name"]][:, :, start:end] = _transform_chunk(
+                            dst_data_vars[info["src_name"]][start:end, :, :] = _transform_chunk(
                                 chunk_data, len(info["shape"])
                             )
 

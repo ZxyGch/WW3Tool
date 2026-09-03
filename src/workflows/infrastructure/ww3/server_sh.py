@@ -158,7 +158,13 @@ class ServerSh(NMLPrimitives):
                 # 检查是否找到 #SBATCH --time
                 elif line_stripped.startswith("#SBATCH --time"):
                     time_found = True
-                    new_lines.append(f"#SBATCH --time={slurm_time}\n" if slurm_time else line)
+                    # [EN] Empty slurm.time: drop the line entirely so the template
+                    # default (2880h) cannot leak into the job; the job then uses
+                    # the scheduler default limit (project rule: no --time).
+                    # slurm.time 为空时整行删除，避免模板默认 2880 h 泄漏进作业；
+                    # 作业时限交由调度器默认值决定。
+                    if slurm_time:
+                        new_lines.append(f"#SBATCH --time={slurm_time}\n")
                     # [EN] Skip subsequent blank lines and existing ST version paths
                     # 跳过后续的空行和已存在的 ST 版本路径
                     i += 1
