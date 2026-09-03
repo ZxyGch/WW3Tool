@@ -797,6 +797,8 @@ forcing:
   crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]; empty = no crop
   crop_bbox: []             # [west, east, south, north]; empty = no crop
   auto_associate: true      # If one file has multiple fields, link to multiple slots
+  custom: {...}             # Per-field variable overrides; see below
+  remote_paths: {...}       # Per-field path on the server; see below
 ```
 
 Settings page **Forcing configuration** provides default import mode and auto-associate toggle. The home page reads these when you open a work directory; actual import still follows current home-page selections and button clicks.
@@ -828,6 +830,114 @@ After confirm import:
 4. Latitude flipped from descending to ascending if needed (avoids WW3 6.07.1 `ww3_prnc` `EXTCDE(32)` on regular lat-lon grids).
 5. Normalized files feed Step 4 `ww3_prnc.nml` generation; no manual namelist edits for original variable names.
 
+
+#### Custom variable mapping (non-standard variable names)
+
+Auto-detection covers common naming. Files whose variables fall outside it and
+whose CF attributes are incomplete -- in-house products, regional model output,
+renamed reanalysis -- need the mapping filled in by hand.
+
+Detection runs in three steps and raises rather than guessing when a step is
+inconclusive:
+
+1. Match common names: `longitude/lon/x`, `latitude/lat/y`,
+   `time/valid_time/MT/t`; wind `u10/v10`, `wndewd/wndnwd`, `uwnd/vwnd`,
+   `uas/vas`; current `uo/vo`; level `zos`; ice `siconc` and `sithick`
+   (case variants included).
+2. Fall back to CF attributes: `standard_name` (e.g. `eastward_wind`,
+   `sea_surface_height_above_geoid`, `sea_ice_area_fraction`), `units`
+   (`degrees_east`, `m s-1`, `since` on the time axis), and `axis`.
+3. More than one candidate left is treated as ambiguous: it raises and lists
+   the candidates.
+
+So oddly named variables still resolve on their own when the CF attributes are
+there:
+
+```
+xlon (xlon) [degrees_east] / xlat (xlat) [degrees_north] / tt (tt) [hours since ...]
+WIND_E (tt, xlat, xlon) standard_name=eastward_wind
+-> auto-detected
+```
+
+The same file without those attributes fails, listing what it found:
+
+```
+Cannot determine the longitude role for the wind field. Auto-detection failed;
+available variables: WIND_E, WIND_N, tt, xlat, xlon
+```
+
+**GUI**: the pencil icon next to each forcing button opens the Variable Mapping
+dialog; fill one variable name per role, leave a field empty for auto-detection.
+Each input's tooltip lists every variable in the file with its dimensions and
+units. When auto-detection fails the dialog **opens by itself**.
+
+**params.yml**: written under `forcing.custom`, grouped by field. Every entry is
+optional; empty means auto-detect:
+
+```yaml
+forcing:
+  custom:
+    wind:
+      longitude: xlon
+      latitude: xlat
+      time: tt
+      u: WIND_E
+      v: WIND_N
+    current:      # all empty = fully auto-detected
+      longitude: null
+      latitude: null
+      time: null
+      u: null
+      v: null
+    level:        # the role is named value
+      value: null
+    ice:          # concentration, with optional thickness
+      concentration: null
+      thickness: null
+```
+
+Roles available per field:
+
+| Field | Roles |
+| --- | --- |
+| wind / current | `longitude`, `latitude`, `time`, `u`, `v` |
+| level | `longitude`, `latitude`, `time`, `value` |
+| ice | `longitude`, `latitude`, `time`, `concentration`, `thickness` (optional) |
+
+Names you supply are checked for existence **exactly and case-sensitively**; a
+typo raises instead of silently falling back to auto-detection:
+
+```
+Custom variable wind_e does not exist in the file (role: wind_u)
+```
+
+The mapping is stored in the workdir's params.yml and reused when Step 4 writes
+`ww3_prnc.nml`, so it is specified once and never hand-edited into the namelist.
+
+#### Keeping forcing files on the server
+
+Forcing files run to tens of gigabytes and often already live on the cluster,
+so there is no need to download and re-upload them. Enter the **path on the
+server** in the same Variable Mapping dialog, or write it directly:
+
+```yaml
+forcing:
+  remote_paths:
+    wind: /public/home/you/data/era5_wind_202501.nc
+    current: null
+    level: null
+    ice: null
+```
+
+A field with a server path is **not imported, cropped, or normalized locally**;
+Step 4 writes the namelist against that path as-is. The trade-off is that the
+file cannot be read locally, so its variables cannot be auto-detected: such a
+field **must also have its component variables set in `forcing.custom`**, or NML
+generation for it is skipped with a warning:
+
+```
+wind uses server path ... but has no variable mapping; NML generation skipped.
+```
 
 #### Multi-field auto-association
 

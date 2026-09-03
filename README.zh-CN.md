@@ -816,6 +816,8 @@ forcing:
   crop_time_range: []       # [start_YYYYMMDD, end_YYYYMMDD]，为空表示不裁剪
   crop_bbox: []             # [west, east, south, north]，为空表示不裁剪
   auto_associate: true      # 一个文件含多个场时，是否自动关联到多个槽位
+  custom: {...}             # 各场的变量名自定义映射，见下
+  remote_paths: {...}       # 各场在服务器上的路径，见下
 ```
 
 设置页面里的“强迫场配置”提供默认导入方式和自动关联开关。主页打开工作目录时会读取这些默认值；实际导入时仍以主页当前选择和按钮操作为准。
@@ -847,6 +849,103 @@ forcing:
 4. 纬度从大到小时会自动翻转为从小到大，避免 WW3 6.07.1 的 `ww3_prnc` 在规则经纬网下触发 `EXTCDE(32)`。
 5. 标准化后的文件供 Step 4 自动生成 `ww3_prnc.nml` 使用，因此后续不需要再根据原始变量名手动改 namelist。
 
+
+#### 自定义变量映射（非标准变量名）
+
+自动识别覆盖的是常见命名。遇到变量名不在下表、CF 属性也不全的文件——自制产品、
+区域模式输出、经过重命名的再分析数据——就需要手工指定。
+
+自动识别按三步走，任何一步定不下来就报错，**绝不擅自挑一个**：
+
+1. 按常见名称匹配：经度 `longitude/lon/x`、纬度 `latitude/lat/y`、时间
+   `time/valid_time/MT/t`；风 `u10/v10`、`wndewd/wndnwd`、`uwnd/vwnd`、`uas/vas`；
+   流 `uo/vo`；水位 `zos`；海冰 `siconc`、厚度 `sithick`（大小写变体一并匹配）。
+2. 名称认不出时看 CF 属性：`standard_name`（如 `eastward_wind`、
+   `sea_surface_height_above_geoid`、`sea_ice_area_fraction`）、`units`
+   （`degrees_east`、`m s-1`、时间轴的 `since`）、`axis`。
+3. 仍有多个候选就判为歧义，报错并列出候选变量名。
+
+也就是说，变量名再怪，只要 CF 属性齐全就仍能自动认出来：
+
+```
+xlon (xlon) [degrees_east] / xlat (xlat) [degrees_north] / tt (tt) [hours since ...]
+WIND_E (tt, xlat, xlon) standard_name=eastward_wind
+→ 自动识别成功
+```
+
+同一个文件如果没有这些属性，就会报错并提示可用变量：
+
+```
+无法确定 wind 场的 longitude 角色。无法自动识别该角色；
+可用变量：WIND_E, WIND_N, tt, xlat, xlon
+```
+
+**GUI**：每个强迫场按钮右侧的铅笔图标 ✏️ 打开「变量映射」弹窗，逐个角色填写
+变量名，留空表示自动识别；输入框的悬浮提示会列出文件里的全部变量及其维度和单位。
+自动识别失败时程序会**自动弹出这个窗口**，不需要自己去找。
+
+**params.yml**：写在 `forcing.custom` 下，按场分组。每一项都可留空，留空即自动识别：
+
+```yaml
+forcing:
+  custom:
+    wind:
+      longitude: xlon
+      latitude: xlat
+      time: tt
+      u: WIND_E
+      v: WIND_N
+    current:      # 各项留空 = 全部自动识别
+      longitude: null
+      latitude: null
+      time: null
+      u: null
+      v: null
+    level:        # 角色为 value
+      value: null
+    ice:          # 角色为 concentration，thickness 可选
+      concentration: null
+      thickness: null
+```
+
+各场可用的角色：
+
+| 场 | 角色 |
+| --- | --- |
+| wind / current | `longitude`、`latitude`、`time`、`u`、`v` |
+| level | `longitude`、`latitude`、`time`、`value` |
+| ice | `longitude`、`latitude`、`time`、`concentration`、`thickness`（可选） |
+
+填进去的名字会做**精确、区分大小写**的存在性校验，写错直接报错而不是退回自动识别：
+
+```
+自定义变量 wind_e 在文件中不存在（角色：wind_u）
+```
+
+映射保存在工作目录的 params.yml 里，Step 4 生成 `ww3_prnc.nml` 时会复用，
+所以指定一次即可，不必再手改 namelist。
+
+#### 强迫场放在服务器上（不下载到本机）
+
+强迫场文件动辄几十 GB，往往本来就在集群上。此时不必先下载再上传：在同一个
+「变量映射」弹窗里填写**服务器上的路径**，或直接写 params.yml：
+
+```yaml
+forcing:
+  remote_paths:
+    wind: /public/home/you/data/era5_wind_202501.nc
+    current: null
+    level: null
+    ice: null
+```
+
+填了服务器路径的场，本机**完全不做导入、裁剪和标准化**，Step 4 直接按这个路径
+生成 namelist。代价是本机读不到文件、也就无法自动识别变量，因此这种场**必须
+同时填写 `forcing.custom` 里的分量变量**，否则会跳过该场的 NML 生成并给出提示：
+
+```
+⚠️ wind 使用了服务器路径 ...，但未填写变量映射；将跳过 NML 生成。
+```
 
 #### 多场文件自动关联
 
