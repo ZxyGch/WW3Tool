@@ -283,26 +283,27 @@ slurm:
   nodelist: null
   time: null
   mem: 190G
+  # 方案名包含 WW3 版本、ST 源项和网格类型：RECT 矩形、SMC 多分辨率、UNST 非结构。
   server_st:
     use: 7.14 ST4_RECT
-    6.07 ST2: /public/home/weiyl001/bin/wavewatch3/6.07/st2_smc/model/exe
-    6.07 ST4: /public/home/weiyl001/bin/wavewatch3/6.07/st4_smc/model/exe
-    6.07 ST6: /public/home/weiyl001/bin/wavewatch3/6.07/st6_smc/model/exe
+    6.07 ST2_SMC: /public/home/weiyl001/bin/wavewatch3/6.07/st2_smc/model/exe
+    6.07 ST4_SMC: /public/home/weiyl001/bin/wavewatch3/6.07/st4_smc/model/exe
+    6.07 ST6_SMC: /public/home/weiyl001/bin/wavewatch3/6.07/st6_smc/model/exe
     6.07 ST2_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st2_rect/model/exe
     6.07 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st4_rect/model/exe
     6.07 ST6_RECT: /public/home/weiyl001/bin/wavewatch3/6.07/st6_rect/model/exe
     6.07 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st2_unst/model/exe
     6.07 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st4_unst/model/exe
     6.07 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/6.07/st6_unst/model/exe
-    7.14 ST2: /public/home/weiyl001/bin/wavewatch3/7.14/st2_smc/model/exe
-    7.14 ST4: /public/home/weiyl001/bin/wavewatch3/7.14/st4_smc/model/exe
-    7.14 ST6: /public/home/weiyl001/bin/wavewatch3/7.14/st6_smc/model/exe
-    7.14 ST2_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st2_rect/model/exe
-    7.14 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st4_rect/model/exe
-    7.14 ST6_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st6_rect/model/exe
-    7.14 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st2_unst/model/exe
-    7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st4_unst/model/exe
-    7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st6_unst/model/exe
+    7.14 ST2_SMC: /public/home/weiyl001/bin/wavewatch3/7.14/st2_smc/bin
+    7.14 ST4_SMC: /public/home/weiyl001/bin/wavewatch3/7.14/st4_smc/bin
+    7.14 ST6_SMC: /public/home/weiyl001/bin/wavewatch3/7.14/st6_smc/bin
+    7.14 ST2_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st2_rect/bin
+    7.14 ST4_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st4_rect/bin
+    7.14 ST6_RECT: /public/home/weiyl001/bin/wavewatch3/7.14/st6_rect/bin
+    7.14 ST2_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st2_unst/bin
+    7.14 ST4_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st4_unst/bin
+    7.14 ST6_UNST: /public/home/weiyl001/bin/wavewatch3/7.14/st6_unst/bin
 # ────────────────────────────────────────────────────────────────────
 # Local WW3 run settings (Step 5 local execution panel).
 #   local_st – local WW3 binaries: use + name: path (multi-scheme only).
