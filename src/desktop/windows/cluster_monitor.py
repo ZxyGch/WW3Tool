@@ -126,7 +126,6 @@ class TaskActionsCard(QWidget):
         self._card.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
         )
-        layout.setSpacing(8)
         self.job_edit = LineEdit()
         self.job_edit.setPlaceholderText(tr("enter_jobid_placeholder", "SLURM 任务号"))
         self.job_edit.setClearButtonEnabled(True)
@@ -162,12 +161,8 @@ class TaskActionsCard(QWidget):
         QTimer.singleShot(0, self._fit_height)
 
     def _fit_height(self) -> None:
-        row_height = max(
-            self.job_edit.sizeHint().height(),
-            self.watch_button.sizeHint().height(),
-            self.persistent_button.sizeHint().height(),
-        )
-        self._card.setFixedHeight(_CARD_EXTRA + 3 * row_height + 16)
+        # 按实际控件和公共卡片布局计算高度，保持行间距。
+        self._card.setFixedHeight(self._card.layout().sizeHint().height())
 
     def job_id(self) -> str:
         return self.job_edit.text().strip()
@@ -1152,6 +1147,11 @@ class ClusterMonitorInterface(QWidget):
     def append_log(self, message: str) -> None:
         """向集群监听页面的日志区域追加一条远程操作日志。"""
         self._append_log(message)
+
+    def refresh_styles(self) -> None:
+        """主题切换后同步日志样式和任务操作卡片尺寸。"""
+        self._log.setStyleSheet(self._log_style())
+        self._task_actions_panel._fit_height()
 
     def _append_log(self, message: str) -> None:
         try:

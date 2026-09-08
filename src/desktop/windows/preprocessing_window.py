@@ -301,6 +301,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             label.setStyleSheet(f"color: {_fg} !important;")
         if hasattr(self, "_log"):
             self._log.setStyleSheet(self._log_style())
+        if hasattr(self, "_cluster_monitor_interface"):
+            self._cluster_monitor_interface.refresh_styles()
         # 刷新 WW3 面板中的小标题
         if hasattr(self, "_ww3_panel") and self._ww3_panel is not None:
             ww3_widget = getattr(self._ww3_panel, "widget", None)
