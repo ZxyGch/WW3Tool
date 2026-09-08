@@ -12,9 +12,9 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QEventLoop, QObject, QRectF, Qt, QTimer, QUrl, QUrlQuery
+from PyQt6.QtCore import QEvent, QEventLoop, QObject, QRectF, QStandardPaths, Qt, QTimer, QUrl, QUrlQuery
 from PyQt6.QtGui import QColor, QPainterPath, QRegion
-from PyQt6.QtWebEngineCore import QWebEngineSettings
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -28,6 +28,27 @@ from qframelesswindow import FramelessWindow
 from qframelesswindow.webengine import FramelessWebEngineView
 
 from .._repo_root import repo_root
+
+
+def map_web_profile() -> QWebEngineProfile:
+    """为地图视图共享磁盘缓存，复用底图、字体与瓦片。"""
+    app = QApplication.instance()
+    profile = getattr(app, "_ww3_map_profile", None)
+    if profile is None:
+        cache_root = Path(QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.GenericCacheLocation
+        )) / "WW3Tool" / "maps"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        profile = QWebEngineProfile("ww3tool-maps", app)
+        profile.setCachePath(str(cache_root / "http"))
+        profile.setPersistentStoragePath(str(cache_root / "storage"))
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
+        profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
+        )
+        app._ww3_map_profile = profile
+    return profile
 
 
 def current_map_language() -> str:
@@ -72,6 +93,7 @@ class MapWebEngineView(FramelessWebEngineView):
             if temp_host is not None:
                 self.setParent(real_parent)
                 temp_host.deleteLater()
+        self.setPage(QWebEnginePage(map_web_profile(), self))
         self.installEventFilter(self)
         self._install_child_event_filters()
 

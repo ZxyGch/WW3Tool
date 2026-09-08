@@ -113,13 +113,11 @@ class BoundsMapPreview(MapWebEngineView):
         return [dict(region) for region in self._regions]
 
     def reload_map_type(self) -> None:
-        url = self.url()
-        query = QUrlQuery(url)
-        query.removeAllQueryItems("mapType")
-        query.addQueryItem("mapType", current_map_type())
-        url.setQuery(query)
-        self._page_loaded = False
-        self.load(url)
+        """在当前页面切换底图，保留地图实例和区域状态。"""
+        if self._page_loaded:
+            self.page().runJavaScript(
+                "window.__setMapType?.(" + json.dumps(current_map_type()) + ")"
+            )
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -140,6 +138,7 @@ class BoundsMapPreview(MapWebEngineView):
     def _on_page_loaded(self, ok: bool) -> None:
         self._page_loaded = ok
         if ok:
+            self.reload_map_type()
             self._sync_regions()
             if self.isVisible():
                 self._move_poll_timer.start()

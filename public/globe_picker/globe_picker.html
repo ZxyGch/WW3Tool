@@ -4,10 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>3D 地球选择区域</title>
-<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js">
-</script>
-<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="vendor/maplibre-gl-4.7.1/maplibre-gl.js"></script>
+<script src="map_style_loader.js"></script>
+<link href="vendor/maplibre-gl-4.7.1/maplibre-gl.css" rel="stylesheet" />
 <style>
+  #map-fallback {
+    position: absolute; bottom: 6px; left: 8px; z-index: 20;
+    max-width: calc(100% - 16px); padding: 3px 7px; border-radius: 4px;
+    color: #725514; background: #fff5d9; font-size: 11px; pointer-events: none;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
   body.picker-window { border-radius: 8px; }
@@ -335,6 +340,8 @@
   var pointSelectionEnabled = interactionMode === 'points';
   var pointDisplayEnabled = interactionMode === 'points-display';
   document.body.classList.add(embeddedPreview ? 'embedded-preview' : 'picker-window');
+  var pendingMapType = null;
+  window.__setMapType = function(styleId) { pendingMapType = styleId; };
   var pendingPreviewRegions = null;
   window.__setPreviewRegions = function(regions) {
     pendingPreviewRegions = regions;
@@ -352,6 +359,7 @@
       ready: '地图已就绪，可拖动地球或点击矩形按钮选择范围。',
       polarLoading: '正在加载极区投影地图...', polarReady: '极区地图已就绪，可缩放、拖动或框选区域。',
       polarError: '极区地图加载失败，请检查网络连接后重试。',
+      mapFallback: '行政区底图暂不可用，已显示亮色图',
       layerError: '矩形图层更新失败，请重新选择底图后重试。',
       styleLoading: '底图正在加载，请稍候再选择矩形。',
       styleTimeout: '底图仍在加载，请稍候再选择矩形。',
@@ -377,6 +385,7 @@
       ready: 'Map ready. Pan the globe or draw a rectangular region.',
       polarLoading: 'Loading polar projection map...', polarReady: 'Polar map ready. Zoom, pan, or select a region.',
       polarError: 'Polar map failed to load. Check the network and retry.',
+      mapFallback: 'Administrative map unavailable; showing light map',
       layerError: 'Rectangle layer failed to update. Switch the map style and retry.',
       styleLoading: 'The map style is loading. Please wait before drawing.',
       styleTimeout: 'The map style is still loading. Please try again shortly.',
@@ -471,9 +480,9 @@
   var startPoint = null;
   var currentRect = null;
   var hasRect = false;
-  var currentStyle = 'administrative';
+  var currentStyle = initialMapType;
+  var styleRequestId = 0;
   var drawingSourceReady = false;
-  var eventsBound = false;
   var lastPoint = null;
   var previewBounds = null;
   var previewFrame = null;
@@ -657,22 +666,29 @@
     return optimized;
   }
 
-  async function loadAdministrativeStyle() {
-    try {
-      var response = await fetch(RASTER_STYLES.administrative.style, { cache: 'force-cache' });
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      return optimizeAdministrativeStyle(await response.json());
-    } catch (_) {
-      return RASTER_STYLES.administrative.style;
-    }
+  var styleLoader = createMapStyleLoader(RASTER_STYLES, optimizeAdministrativeStyle);
+  var loadedStyle = await styleLoader.load(baseStyleId(currentStyle));
+  if (MAP_TYPES[pendingMapType] && pendingMapType !== currentStyle) {
+    currentStyle = pendingMapType;
+    loadedStyle = await styleLoader.load(baseStyleId(currentStyle));
   }
+  var loadedBaseStyle = loadedStyle.baseStyle;
+  var fallbackNotice = document.createElement('div');
+  fallbackNotice.id = 'map-fallback';
+  fallbackNotice.textContent = text.mapFallback;
+  document.body.appendChild(fallbackNotice);
 
-  var administrativeStyle = await loadAdministrativeStyle();
+  function updateStyleNotice(result) {
+    loadedBaseStyle = result.baseStyle;
+    fallbackNotice.hidden = !result.fallback;
+    attributionEl.textContent = (RASTER_STYLES[result.baseStyle] || {}).attribution || '';
+  }
+  updateStyleNotice(loadedStyle);
 
-  // -- MapLibre: 使用 OSM 行政区划样式和 globe 投影 --
+  // -- 按所选底图直接初始化地图 --
   var map = new maplibregl.Map({
     container: 'map',
-    style: administrativeStyle,
+    style: loadedStyle.style,
     projection: embeddedPreview ? 'mercator' : 'globe',
     center: [120, 20],
     zoom: 2.8,
@@ -709,7 +725,7 @@
   }
 
   function addNavigationOverlay() {
-    if (baseStyleId(currentStyle) !== 'administrative' || map.getSource('open-seamap')) return;
+    if (loadedBaseStyle !== 'administrative' || map.getSource('open-seamap')) return;
     map.addSource('open-seamap', {
       type: 'raster',
       tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
@@ -733,7 +749,7 @@
     if (navigationOverlayTimer !== null) window.clearTimeout(navigationOverlayTimer);
     navigationOverlayTimer = window.setTimeout(function() {
       navigationOverlayTimer = null;
-      if (baseStyleId(currentStyle) === 'administrative' && map.isStyleLoaded()) addNavigationOverlay();
+      if (loadedBaseStyle === 'administrative' && drawingSourceReady) addNavigationOverlay();
     }, 250);
   }
 
@@ -1844,87 +1860,54 @@
   //  底图切换
   // ----------------------------------------------------------------
 
-  function switchStyle(styleId) {
-    if (!MAP_TYPES[styleId]) return;
+  function updateStyleSelection(styleId) {
     styleSelectLabel.textContent = text[styleId];
     styleOptions.forEach(function(option) {
       var selected = option.dataset.value === styleId;
       option.classList.toggle('selected', selected);
       option.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
-    if (styleId === currentStyle) return;
+  }
+
+  async function switchStyle(styleId) {
+    if (!MAP_TYPES[styleId] || styleId === currentStyle) return;
+    updateStyleSelection(styleId);
     var previousStyleId = currentStyle;
     currentStyle = styleId;
+    var requestId = ++styleRequestId;
     if (navigationOverlayTimer !== null) {
       window.clearTimeout(navigationOverlayTimer);
       navigationOverlayTimer = null;
     }
+    fallbackNotice.hidden = true;
     if (isPolarMap(styleId)) {
+      loadedBaseStyle = 'polar';
       activatePolarMap(styleId);
       return;
     }
     if (isPolarMap(previousStyleId)) deactivatePolarMap();
-    var targetBaseStyle = baseStyleId(styleId);
-    attributionEl.textContent = RASTER_STYLES[targetBaseStyle].attribution;
+    setStatus(text.styleLoading, false);
+    var result = await styleLoader.load(baseStyleId(styleId));
+    // 快速切换时，仅应用最后一次选择的请求结果。
+    if (requestId !== styleRequestId) return;
+    updateStyleNotice(result);
     drawingSourceReady = false;
-    // 切换底图时按钮保持可点击，但绘制会等图层准备好后再开始。
-    rectBtn.disabled = false;
-
-    if (targetBaseStyle === 'administrative') {
-      map.setStyle(
-        typeof administrativeStyle === 'string'
-          ? administrativeStyle
-          : JSON.parse(JSON.stringify(administrativeStyle))
-      );
-    } else {
-      map.setStyle({
-        version: 8,
-        sources: { 'base-tiles': RASTER_STYLES[targetBaseStyle] },
-        layers: [{ id: 'base-tiles-layer', type: 'raster', source: 'base-tiles' }]
-      });
-    }
-    // 样式切换完成后重建绘制层
-    map.once('style.load', function() {
-      if (styleId !== currentStyle) return;
-      addDrawingLayers();
-      if (targetBaseStyle === 'administrative') scheduleNavigationOverlay();
-      rectBtn.disabled = false;
-    });
-
-    // 某些 QWebEngine / MapLibre 组合下 style.load 可能丢失，轮询样式状态兜底。
-    function waitForStyleReady(attempt) {
-      if (styleId !== currentStyle) return;
-      if (drawingSourceReady) return;
-      if (map.isStyleLoaded && map.isStyleLoaded()) {
-        addDrawingLayers();
-        if (targetBaseStyle === 'administrative') scheduleNavigationOverlay();
-        rectBtn.disabled = false;
-        return;
-      }
-      if (attempt < 120) {
-        window.setTimeout(function() { waitForStyleReady(attempt + 1); }, 50);
-      } else {
-        setStatus(text.styleTimeout, true);
-      }
-    }
-    waitForStyleReady(0);
+    map.setStyle(result.style, { diff: false });
   }
 
-  // ----------------------------------------------------------------
-  //  map.on('load') — 确保地图与 GL 上下文就绪后再绑定交互
-  // ----------------------------------------------------------------
+  window.__setMapType = switchStyle;
+  updateStyleSelection(currentStyle);
 
-  map.on('load', function() {
-    if (initialMapType === 'administrative') {
-      addDrawingLayers();
-      scheduleNavigationOverlay();
-    } else {
-      switchStyle(initialMapType);
-    }
+  // 样式就绪即可显示区域和操作，瓦片在后台继续下载。
+  map.on('style.load', function() {
+    if (isPolarActive()) return;
+    addDrawingLayers();
+    if (loadedBaseStyle === 'administrative') scheduleNavigationOverlay();
     rectBtn.disabled = false;
-    if (eventsBound) return;
-    eventsBound = true;
+  });
 
+  // 地图交互只绑定一次，底图切换复用同一实例。
+  (function bindMapEvents() {
     // 使用 MapLibre 的事件坐标，而不是 canvas 的 offsetX/offsetY。
     // QWebEngine 在高 DPI 或控件缩放时，offset 坐标可能与地图坐标不一致。
     map.on('mousedown', function(e) {
@@ -1982,7 +1965,7 @@
       map.getCanvas().style.cursor = '';
       map.on('click', function(e) { addSelectedPoint(e.lngLat); });
     }
-  });
+  })();
 
   map.on('move', positionRectangleMoveHandle);
 
@@ -2263,6 +2246,9 @@
       };
     });
   });
+
+  if (isPolarActive()) activatePolarMap(currentStyle);
+  if (MAP_TYPES[pendingMapType] && pendingMapType !== currentStyle) switchStyle(pendingMapType);
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && pointSelectionEnabled) confirmPointsBtn.click();
