@@ -500,6 +500,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             FluentIcon.CLOUD,
             tr("cluster_monitor", "集群监控"),
             NavigationItemPosition.TOP,
+            isTransparent=True,
         )
         cluster_monitor_item.clicked.connect(
             lambda *_: self._cluster_monitor_interface.start_monitoring()
