@@ -1170,75 +1170,10 @@ def _run_prepare_ww3(config) -> int:
     logger = CoreLogger(callback=print)
     file_service = FileService(logger=logger)
     files = ScanWorkdirForcingUseCase(file_service).execute(str(config.workdir.path))
-    
-    # 检查 WW3 时间范围是否在强迫场时间范围内
-    _check_and_log_ww3_time_range(config, logger, files)
-    
+
     prepare_ww3_files(config, files, logger)
     return 0
 
-
-def _check_and_log_ww3_time_range(config, logger, files) -> None:
-    """检查 WW3 时间范围是否在强迫场时间范围内，并记录警告。
-    
-    [EN] Check WW3 time range against forcing time range and log warnings.
-    """
-    from ..application.forcing_coverage_checker import check_time_range_coverage
-    
-    # 获取 WW3 时间范围
-    ww3_start = config.ww3.time_start.strip() if hasattr(config.ww3, 'time_start') and config.ww3.time_start else None
-    ww3_end = config.ww3.time_end.strip() if hasattr(config.ww3, 'time_end') and config.ww3.time_end else None
-    
-    if not (ww3_start and ww3_end):
-        return  # 无 WW3 时间配置，跳过检查
-    
-    # 获取强迫场路径
-    forcing_paths = {}
-    field_names = {}
-    for key, field in [
-        ("wind", "wind"),
-        ("current", "current"),
-        ("level", "level"),
-        ("ice", "ice"),
-    ]:
-        path = getattr(files, key, None) if hasattr(files, key) else None
-        if path:
-            forcing_paths[key] = str(path)
-            field_names[key] = tr(
-                f"step2_field_{key}",
-                {"wind": "风场", "current": "流场", "level": "水位场", "ice": "海冰场"}[key],
-            )
-    
-    if not forcing_paths:
-        return  # 无强迫场，跳过检查
-    
-    issues = check_time_range_coverage(ww3_start, ww3_end, forcing_paths, field_names)
-    if not issues:
-        return
-    
-    # 构建警告消息
-    messages = []
-    for issue in issues:
-        messages.append(
-            tr(
-                "step4_time_range_warning_detail",
-                "• {name}：{path}\n  强迫场时间：{time_start} → {time_end}\n  WW3 请求时间：{req_start} → {req_end}",
-            ).format(
-                name=issue.field_name,
-                path=issue.path,
-                time_start=issue.time_start,
-                time_end=issue.time_end,
-                req_start=issue.requested_start,
-                req_end=issue.requested_end,
-            )
-        )
-    
-    logger.log(
-        tr(
-            "step4_time_range_warning_cli",
-            "⚠️ WW3 时间范围警告：以下强迫场时间范围不足（将继续生成 namelist）：\n{details}",
-        ).format(details="\n\n".join(messages))
-    )
 
 
 def _run_recommend_cfl(config, params_path: str, *, mode: str = "safe", factor: float | None = None) -> int:
@@ -1535,8 +1470,11 @@ def _remote(fn) -> int:
         ``0`` on success, ``1`` on operation failure.
     """
     result = fn()
+    if result.data is not None:
+        _json_set(remote_result=result.data)
     if not result.success:
         print(tr("cli_operation_failed", "❌ 操作失败：{error}").format(error=result.error), file=sys.stderr)
+        _record_failure(1, RuntimeError(result.error or "Remote operation failed"), kind="remote")
         return 1
     return 0
 

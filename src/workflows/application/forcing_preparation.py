@@ -228,7 +228,14 @@ def _check_and_log_forcing_coverage(config: PipelineConfig, logger: CoreLogger) 
     if not forcing_paths:
         return  # 无强迫场，跳过检查
 
-    issues = check_lonlat_coverage(g_west, g_east, g_south, g_north, forcing_paths, field_names)
+    variable_names = {
+        key: {"longitude": custom.longitude, "latitude": custom.latitude}
+        for key, custom in config.forcing.custom.items()
+    }
+    issues = check_lonlat_coverage(
+        g_west, g_east, g_south, g_north, forcing_paths, field_names,
+        variable_names=variable_names,
+    )
     if not issues:
         return
 

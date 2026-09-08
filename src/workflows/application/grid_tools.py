@@ -114,6 +114,8 @@ class WindTimeRange:
     start_date: str
     end_date: str
     source_path: str = ""
+    start_time: str = ""
+    end_time: str = ""
 
 
 @dataclass
@@ -138,7 +140,11 @@ class GridPreviewResult:
     messages: list[str]
 
 
-def read_wind_bounds(path: str | Path, log: Optional[LogCallback] = None) -> GridBounds:
+def read_wind_bounds(
+    path: str | Path, log: Optional[LogCallback] = None, *,
+    continuous_longitude: bool = False,
+    longitude_name: str | None = None, latitude_name: str | None = None,
+) -> GridBounds:
     """从风场 NetCDF 文件读取经纬度范围。
 
     Args:
@@ -172,24 +178,35 @@ def read_wind_bounds(path: str | Path, log: Optional[LogCallback] = None) -> Gri
         raise RuntimeError(tr("step1_wind_file_not_found_path", "❌ 未找到风场文件：{path}").format(path=source))
 
     with Dataset(str(source), "r") as dataset:
-        lon = _first_variable(dataset, ("longitude", "lon", "Longitude", "LON"))
-        lat = _first_variable(dataset, ("latitude", "lat", "Latitude", "LAT"))
+        lon = _first_variable(dataset, (longitude_name,) if longitude_name else ("longitude", "lon", "Longitude", "LON"))
+        lat = _first_variable(dataset, (latitude_name,) if latitude_name else ("latitude", "lat", "Latitude", "LAT"))
         if lon is None:
             raise RuntimeError(tr("step1_lon_var_not_found_simple", "❌ {file} 中未找到经度变量").format(file=source.name))
         if lat is None:
             raise RuntimeError(tr("step1_lat_var_not_found_simple", "❌ {file} 中未找到纬度变量").format(file=source.name))
+        lon_values, lat_values = lon[:], lat[:]
+        for values in (lon_values, lat_values):
+            if not values.size or np.ma.getmaskarray(values).any() or not np.isfinite(values).all():
+                raise ValueError("经纬度坐标为空或包含无效值")
+        lon_min, lon_max = float(np.min(lon_values)), float(np.max(lon_values))
+        if continuous_longitude:
+            from ..domain.grid_bounds import longitude_coverage_interval
+
+            lon_min, lon_max = longitude_coverage_interval(lon_values.ravel())
         bounds = GridBounds(
-            lon_min=float(np.min(lon[:])),
-            lon_max=float(np.max(lon[:])),
-            lat_min=float(np.min(lat[:])),
-            lat_max=float(np.max(lat[:])),
+            lon_min=lon_min,
+            lon_max=lon_max,
+            lat_min=float(np.min(lat_values)),
+            lat_max=float(np.max(lat_values)),
             source_path=str(source),
         )
     logger.log(tr("step1_auto_load_range", "ℹ️ 已从 {filename} 自动加载经纬度范围").format(filename=source.name))
     return bounds
 
 
-def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) -> WindTimeRange:
+def read_wind_time_range(
+    path: str | Path, log: Optional[LogCallback] = None, *, time_name: str | None = None,
+) -> WindTimeRange:
     """从风场 NetCDF 文件读取时间范围。
 
     Args:
@@ -223,7 +240,7 @@ def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) ->
         raise RuntimeError(tr("step1_wind_file_not_found_path", "❌ 未找到风场文件：{path}").format(path=source))
 
     with Dataset(str(source), "r") as dataset:
-        time_var = _first_variable(dataset, ("time", "Time", "TIME", "valid_time", "MT", "mt", "t"))
+        time_var = _first_variable(dataset, (time_name,) if time_name else ("time", "Time", "TIME", "valid_time", "MT", "mt", "t"))
         if time_var is None:
             raise RuntimeError(tr("step4_time_var_not_found_simple", "❌ {file} 中未找到时间变量").format(file=source.name))
         units = getattr(time_var, "units", None)
@@ -231,7 +248,12 @@ def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) ->
             raise RuntimeError(tr("step4_time_units_missing", "❌ {file} 中的时间变量没有 units 属性，无法转换时间").format(file=source.name))
         calendar = getattr(time_var, "calendar", "gregorian")
         try:
-            times = num2date(time_var[:], units, calendar=calendar)
+            values = time_var[:]
+            if not values.size or np.ma.getmaskarray(values).any() or not np.isfinite(values).all():
+                raise ValueError("时间坐标为空或包含无效值")
+            if np.any(np.diff(np.asarray(values).ravel()) <= 0):
+                raise ValueError("时间坐标必须严格递增")
+            times = num2date(values, units, calendar=calendar)
         except Exception as exc:
             raise RuntimeError(tr("step4_time_read_failed", "❌ 读取 {file} 时间失败：{error}").format(file=source.name, error=exc)) from exc
         if hasattr(times, "compressed"):
@@ -246,6 +268,8 @@ def read_wind_time_range(path: str | Path, log: Optional[LogCallback] = None) ->
         result = WindTimeRange(
             start_date=times[0].strftime("%Y%m%d"),
             end_date=times[-1].strftime("%Y%m%d"),
+            start_time=times[0].strftime("%Y%m%d %H%M%S"),
+            end_time=times[-1].strftime("%Y%m%d %H%M%S"),
             source_path=str(source),
         )
     logger.log(tr("step4_time_range_loaded", "✅ 已从 {file} 读取时间范围：{start} → {end}").format(file=source.name, start=result.start_date, end=result.end_date))

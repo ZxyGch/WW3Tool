@@ -47,6 +47,16 @@ def run_local(
     [EN] Run the full WW3 workflow in Python (no bash / local.sh needed).
     """
     logger = CoreLogger(callback=log)
+    from .forcing_coverage_checker import validate_ww3_forcing_time
+    from ..infrastructure.forcing.file_service import FileService
+    from ..infrastructure.forcing.use_cases import ScanWorkdirForcingUseCase
+
+    try:
+        files = ScanWorkdirForcingUseCase(FileService(logger=logger)).execute(str(config.workdir.path))
+        validate_ww3_forcing_time(config, files, logger, allow_remote=False)
+    except (ValueError, RuntimeError) as exc:
+        logger.log(str(exc))
+        return LocalRunResult(success=False, messages=list(logger.messages))
     ret = service.run_workflow(str(config.workdir.path), _bin_dir(config, bin_dir), logger.log)
     return LocalRunResult(success=(ret == 0), messages=list(logger.messages))
 

@@ -386,6 +386,9 @@ def prepare_ww3_files(
         2. Call ``modify_ww3_file()`` to write out the namelist;
         3. Write ``ww3_grid.parameters`` values back into ``ww3_grid.nml``.
     """
+    from ...application.forcing_coverage_checker import validate_ww3_forcing_time
+
+    validate_ww3_forcing_time(config, files, logger)
     app_config = _merged_runtime_config(config)
     adapter = _WW3Adapter(config, files, logger, app_config)
     if not update_server_script:

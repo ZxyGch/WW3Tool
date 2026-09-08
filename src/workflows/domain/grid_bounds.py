@@ -23,6 +23,43 @@ MERCATOR_MAX_ABS_LAT = 85.0
 MapProjectionName = Literal["mercator", "plate_carree"]
 
 
+def longitude_coverage_interval(values, *, eps: float = 1e-3) -> tuple[float, float]:
+    """由经度坐标求连续覆盖区间；规则全球网格包含周期闭合间隔。"""
+    coordinates = [float(value) for value in values]
+    if not coordinates or not all(math.isfinite(value) for value in coordinates):
+        raise ValueError("经度坐标为空或包含无效值")
+    points = sorted(set(value % 360.0 for value in coordinates))
+    if len(points) == 1:
+        return points[0], points[0]
+    gaps = [points[i + 1] - points[i] for i in range(len(points) - 1)]
+    gaps.append(points[0] + 360.0 - points[-1])
+    # 无重复端点的全球轴（如 0…359.75）由各间隔及闭合间隔共同识别。
+    if len(points) >= 3 and max(gaps) - min(gaps) <= eps:
+        return points[0], points[0] + 360.0
+    gap_index = max(range(len(gaps)), key=gaps.__getitem__)
+    west = points[(gap_index + 1) % len(points)]
+    return west, west + 360.0 - gaps[gap_index]
+
+
+def longitude_interval_contains(
+    forcing_west: float, forcing_east: float, grid_west: float, grid_east: float,
+    *, eps: float = 1e-3,
+) -> bool:
+    """在圆周上检查完整区间包含关系，支持跨日界线及整周网格。"""
+    values = (forcing_west, forcing_east, grid_west, grid_east)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("经度边界必须为有限数值")
+    forcing_span = forcing_east - forcing_west
+    if forcing_span >= 360.0 - eps:
+        return True
+    difference = grid_east - grid_west
+    grid_span = 360.0 if abs(difference) >= 360.0 - eps else difference % 360.0
+    offset = (grid_west - forcing_west) % 360.0
+    if offset >= 360.0 - eps:
+        offset = 0.0
+    return offset + grid_span <= forcing_span + eps
+
+
 def lon_span_deg(lon: list[float] | tuple[float, float]) -> float:
     """Longitude span in degrees, including dateline-crossing boxes."""
     lon_min, lon_max = float(lon[0]), float(lon[1])

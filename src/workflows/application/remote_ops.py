@@ -50,7 +50,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..domain.config_models import PipelineConfig
-from ..infrastructure.remote.ssh_client import SshClient
+from ..infrastructure.remote.ssh_client import SshClient, TransferError
 from ..infrastructure.runtime_config import PUBLIC_DIR
 from ..support.logging import CoreLogger, LogCallback
 from ..support.translations import tr
@@ -231,11 +231,12 @@ def run_upload(
             raise FileNotFoundError(tr("local_workdir_not_exists", "❌ 本地工作目录不存在：{path}").format(path=local_dir))
         if owns:
             c.connect(log=logger.log)
-        c.upload_folder(local_dir, remote_dir, log=logger.log)
-        return RemoteResult(success=True, messages=list(logger.messages))
+        files = c.upload_folder(local_dir, remote_dir, log=logger.log)
+        return RemoteResult(success=True, data=files, messages=list(logger.messages))
     except Exception as exc:
-        logger.log(tr("upload_failed", "❌ 上传失败：{error}").format(error=exc))
-        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+        logger.log(tr("remote_upload_failed", "❌ 上传失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages),
+                            data=exc.details if isinstance(exc, TransferError) else None)
     finally:
         if owns:
             c.close()
@@ -326,7 +327,8 @@ def run_upload_without_forcing(
         return RemoteResult(success=True, data=count, messages=list(logger.messages))
     except Exception as exc:
         logger.log(tr("upload_without_forcing_failed", "❌ 上传非强迫场文件失败：{error}").format(error=exc))
-        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages),
+                            data=exc.details if isinstance(exc, TransferError) else None)
     finally:
         if owns:
             c.close()
@@ -1883,7 +1885,8 @@ def run_download_results(
         return RemoteResult(success=True, data=files, messages=list(logger.messages))
     except Exception as exc:
         logger.log(tr("download_results_failed", "❌ 下载结果失败：{error}").format(error=exc))
-        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages),
+                            data=exc.details if isinstance(exc, TransferError) else None)
     finally:
         if owns:
             c.close()
@@ -1919,7 +1922,8 @@ def run_download_log(
         return RemoteResult(success=True, data=files, messages=list(logger.messages))
     except Exception as exc:
         logger.log(tr("download_log_failed", "❌ 下载日志失败：{error}").format(error=exc))
-        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages),
+                            data=exc.details if isinstance(exc, TransferError) else None)
     finally:
         if owns:
             c.close()

@@ -21,6 +21,16 @@ def _slurm_nodelist_directive(value: str) -> str:
     return ",".join(nodes)
 
 
+def _update_submission_block(content: str, template: str) -> str:
+    """从发行模板同步标准提交入口，保留算例的计算脚本内容。"""
+    pattern = re.compile(
+        r'^if \[ -z "(?:\$SLURM_JOB_ID|\$\{SLURM_JOB_ID:-\})" \]; then\n.*?^fi[ \t]*$',
+        re.MULTILINE | re.DOTALL,
+    )
+    block = pattern.search(template)
+    return pattern.sub(lambda _: block.group(0), content, count=1) if block else content
+
+
 class ServerSh(NMLPrimitives):
     """Mixin: server.sh and SLURM parameter operations."""
 
@@ -77,7 +87,11 @@ class ServerSh(NMLPrimitives):
 
         try:
             with open(workdir_server_sh, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+                content = f.read()
+            if os.path.isfile(server_script_path):
+                with open(server_script_path, "r", encoding="utf-8") as f:
+                    content = _update_submission_block(content, f.read())
+            lines = content.splitlines(keepends=True)
 
             # [EN] Get ST version info
             # 获取 ST 版本信息
@@ -196,6 +210,9 @@ class ServerSh(NMLPrimitives):
                     new_lines.append(st_export)
                     st_path_inserted = True
                     continue
+                elif line_stripped.startswith("#wavewatch3--") and not st_path_inserted:
+                    new_lines.extend([st_comment, st_export])
+                    st_path_inserted = True
                 # [EN] If ST version path already inserted, skip subsequent old version paths
                 # 如果已经插入了 ST 版本路径，跳过后续可能存在的旧版本路径
                 elif st_path_inserted:
@@ -212,7 +229,7 @@ class ServerSh(NMLPrimitives):
                         continue
                     # [EN] Skip duplicate export PATH only (not runtime LD_LIBRARY_PATH block)
                     # 仅跳过重复的 ST export PATH，不修改运行时库段
-                    if line_stripped.startswith("export PATH="):
+                    if line.startswith("export PATH="):
                         i += 1
                         continue
                     new_lines.append(line)
@@ -223,6 +240,11 @@ class ServerSh(NMLPrimitives):
                 else:
                     new_lines.append(line)
                 i += 1
+
+            if not st_path_inserted:
+                insert_at = max((idx + 1 for idx, line in enumerate(new_lines)
+                                 if line.startswith("#SBATCH")), default=1)
+                new_lines[insert_at:insert_at] = ["\n", st_comment, st_export]
 
             # 模板无 --mem 时，在 -N 后补一行
             # [EN] If the template has no --mem, append one after -N.

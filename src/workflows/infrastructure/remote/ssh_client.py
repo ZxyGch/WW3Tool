@@ -19,6 +19,7 @@ import stat
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 
@@ -29,6 +30,17 @@ from .ssh_config import resolve_server_connection
 
 LogFn = Callable[[str], None]
 _noop: LogFn = lambda _: None
+
+
+class TransferError(RuntimeError):
+    """携带已完成文件及失败清单的批量传输异常。"""
+
+    def __init__(self, completed: List[str], failed: dict[str, str]) -> None:
+        self.details = {"completed": list(completed), "failed": dict(failed)}
+        super().__init__(tr(
+            "transfer_failed_summary", "文件传输未完成：成功 {done} 个，失败 {failed} 个。\n{details}",
+        ).format(done=len(completed), failed=len(failed),
+                 details="\n".join(f"{name}: {error}" for name, error in failed.items())))
 
 # [EN] Substrings in exception messages that indicate a transient network-level
 # failure worth retrying (SSH banner not received, socket timeout, EOF during
@@ -356,22 +368,35 @@ class SshClient:
     _UNIX_EOL_EXTS = frozenset({".nml", ".inp"})
 
     def _put_file(self, sftp, local_file: str, remote_file: str) -> None:
+        """先完整上传到同目录临时文件，再原子替换目标文件。"""
         fname = os.path.basename(local_file)
         _, ext = os.path.splitext(fname)
-        if fname in self._UNIX_EOL_FILES or ext.lower() in self._UNIX_EOL_EXTS:
-            with open(local_file, "rb") as fh:
-                content = fh.read()
-            if b"\r" in content:
-                content = content.replace(b"\r", b"")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=fname) as tmp:
-                    tmp.write(content)
-                    tmp_path = tmp.name
-                try:
-                    sftp.put(tmp_path, remote_file)
-                finally:
-                    os.unlink(tmp_path)
-                return
-        sftp.put(local_file, remote_file)
+        remote_tmp = posixpath.join(posixpath.dirname(remote_file), f".{fname}.{uuid.uuid4().hex}.part")
+        local_tmp = None
+        try:
+            source = local_file
+            if fname in self._UNIX_EOL_FILES or ext.lower() in self._UNIX_EOL_EXTS:
+                with open(local_file, "rb") as fh:
+                    content = fh.read()
+                if b"\r" in content:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=fname) as tmp:
+                        local_tmp = tmp.name
+                        tmp.write(content.replace(b"\r", b""))
+                    source = local_tmp
+            sftp.put(source, remote_tmp, confirm=True)
+            if sftp.stat(remote_tmp).st_size != os.path.getsize(source):
+                raise IOError("上传文件大小校验失败")
+            try:
+                sftp.posix_rename(remote_tmp, remote_file)
+            except OSError:
+                # 标准 SFTP rename 只允许不存在的目标；服务端不支持覆盖时保留原文件。
+                sftp.rename(remote_tmp, remote_file)
+        finally:
+            with contextlib.suppress(Exception):
+                sftp.remove(remote_tmp)
+            if local_tmp:
+                with contextlib.suppress(OSError):
+                    os.unlink(local_tmp)
 
     def upload_folder(
         self,
@@ -379,7 +404,7 @@ class SshClient:
         remote_dir: str,
         *,
         log: LogFn = _noop,
-    ) -> None:
+    ) -> List[str]:
         """通过 SFTP 递归上传本地目录到 ``remote_dir``。
 
         上传前会将 ``server.sh`` 等脚本规范为 LF 换行。
@@ -390,6 +415,8 @@ class SshClient:
         """
         self.ensure_connected(log=log)
         sftp = self._sftp()
+        completed: List[str] = []
+        failed: dict[str, str] = {}
         try:
             if remote_dir.startswith("~"):
                 remote_dir = remote_dir.replace("~", f"/home/{self._config.user}", 1)
@@ -399,7 +426,10 @@ class SshClient:
             total_files = sum(len(fs) for _, _, fs in os.walk(local_dir))
             uploaded = 0
 
-            for root, dirs, files in os.walk(local_dir):
+            def _walk_error(exc):
+                failed[str(exc.filename)] = str(exc)
+
+            for root, dirs, files in os.walk(local_dir, onerror=_walk_error):
                 rel = os.path.relpath(root, local_dir)
                 # [EN] Use posixpath for remote Linux paths; convert Windows-style rel to POSIX
                 rel_posix = rel.replace(os.sep, "/") if os.sep != "/" else rel
@@ -408,6 +438,7 @@ class SshClient:
                     self._ensure_remote_dir(sftp, remote_path)
                 except Exception as exc:
                     log(tr("ssh_remote_mkdir_failed", "⚠️ 无法创建远程目录 {path}: {error}").format(path=remote_path, error=exc))
+                    failed[rel_posix] = str(exc)
                     continue
 
                 for fname in files:
@@ -416,12 +447,17 @@ class SshClient:
                     try:
                         self._put_file(sftp, local_file, remote_file)
                         uploaded += 1
+                        completed.append(remote_file)
                         log(f"  ↑ {posixpath.join(rel_posix, fname) if rel_posix != '.' else fname}  [{uploaded}/{total_files}]")
                     except Exception as exc:
                         log(tr("ssh_upload_file_failed", "❌ 上传 {name} 失败: {error}").format(name=fname, error=exc))
+                        failed[remote_file] = str(exc)
         finally:
             sftp.close()
+        if failed:
+            raise TransferError(completed, failed)
         log(tr("upload_complete", "✅ 上传完成，共 {count} 个文件 → {path}").format(count=uploaded, path=remote_dir))
+        return completed
 
     def upload_matching_files(
         self,
@@ -439,11 +475,13 @@ class SshClient:
 
         sftp = self._sftp()
         uploaded = 0
+        completed: List[str] = []
+        failed: dict[str, str] = {}
         try:
             self._ensure_remote_dir(sftp, remote_dir)
             walker: Iterator[tuple[str, list[str], list[str]]]
             if recursive:
-                walker = os.walk(local_dir)
+                walker = os.walk(local_dir, onerror=lambda exc: failed.update({str(exc.filename): str(exc)}))
             else:
                 names = os.listdir(local_dir)
                 files = [name for name in names if os.path.isfile(os.path.join(local_dir, name))]
@@ -454,18 +492,28 @@ class SshClient:
                 # [EN] Use posixpath for remote Linux paths; convert Windows-style rel to POSIX
                 rel_posix = rel.replace(os.sep, "/") if os.sep != "/" else rel
                 remote_path = remote_dir if rel_posix == "." else posixpath.join(remote_dir, rel_posix)
-                self._ensure_remote_dir(sftp, remote_path)
+                try:
+                    self._ensure_remote_dir(sftp, remote_path)
+                except Exception as exc:
+                    failed[rel_posix] = str(exc)
+                    continue
                 for fname in files:
                     rel_file = fname if rel_posix == "." else posixpath.join(rel_posix, fname)
                     if not pattern_fn(rel_file):
                         continue
                     local_file = os.path.join(root, fname)
                     remote_file = posixpath.join(remote_path, fname)
-                    self._put_file(sftp, local_file, remote_file)
-                    uploaded += 1
-                    log(f"  ↑ {rel_file}")
+                    try:
+                        self._put_file(sftp, local_file, remote_file)
+                        uploaded += 1
+                        completed.append(remote_file)
+                        log(f"  ↑ {rel_file}")
+                    except Exception as exc:
+                        failed[remote_file] = str(exc)
         finally:
             sftp.close()
+        if failed:
+            raise TransferError(completed, failed)
         return uploaded
 
     # ── download ──────────────────────────────────────────────────────────────
@@ -489,6 +537,7 @@ class SshClient:
         self.ensure_connected(log=log)
         sftp = self._sftp()
         downloaded: List[str] = []
+        failed: dict[str, str] = {}
         try:
             try:
                 all_files = sftp.listdir(remote_dir)
@@ -497,13 +546,13 @@ class SshClient:
 
             matched = [f for f in all_files if pattern_fn(f)]
             if not matched:
-                log(tr("ssh_remote_no_matching_files", "⚠️ 远程目录未找到匹配的文件"))
-                return downloaded
+                raise FileNotFoundError(tr("ssh_remote_no_matching_files", "⚠️ 远程目录未找到匹配的文件"))
 
             os.makedirs(local_dir, exist_ok=True)
             for fname in matched:
                 rpath = posixpath.join(remote_dir, fname)
                 lpath = os.path.join(local_dir, fname)
+                temp_path = None
                 try:
                     size = sftp.stat(rpath).st_size or 0
                     log(f"⬇ {fname}  ({format_file_size(size)})")
@@ -515,13 +564,25 @@ class SshClient:
                             last_pct[0] = pct
                             log(f"  {name} ... {pct}%")
 
-                    sftp.get(rpath, lpath, callback=_progress)
+                    fd, temp_path = tempfile.mkstemp(prefix=f".{fname}.", suffix=".part", dir=local_dir)
+                    os.close(fd)
+                    sftp.get(rpath, temp_path, callback=_progress)
+                    if os.path.getsize(temp_path) != size:
+                        raise IOError("下载文件大小校验失败，请重试")
+                    os.replace(temp_path, lpath)
                     downloaded.append(lpath)
                     log(tr("download_file_complete", "✅ {name} 下载完成").format(name=fname))
                 except Exception as exc:
                     log(tr("ssh_download_file_failed", "❌ 下载 {name} 失败: {error}").format(name=fname, error=exc))
+                    failed[rpath] = str(exc)
+                finally:
+                    if temp_path:
+                        with contextlib.suppress(OSError):
+                            os.unlink(temp_path)
         finally:
             sftp.close()
+        if failed:
+            raise TransferError(downloaded, failed)
         return downloaded
 
     # ── status checks ─────────────────────────────────────────────────────────

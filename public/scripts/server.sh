@@ -4,7 +4,6 @@
 #SBATCH -n 48
 #SBATCH -N 1
 #SBATCH --mem=190G
-#SBATCH --time=2880:00:00
 
 #wavewatch3--ST2
 export PATH=/public/home/weiyl001/software/wavewatch3/model/exe:$PATH
@@ -24,14 +23,38 @@ ulimit -s unlimited
 
 # Check whether running under SLURM
 # If not, submit this script via sbatch
-if [ -z "$SLURM_JOB_ID" ]; then
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+    set -euo pipefail
     # Get absolute path of this script
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 
-    sbatch --chdir="$SCRIPT_DIR" "$SCRIPT_PATH"
-    squeue -l
-    exit $?
+    # 提交结果决定退出码；队列查询仅用于显示本次作业。
+    if SUBMISSION=$(sbatch --parsable --chdir="$SCRIPT_DIR" "$SCRIPT_PATH"); then
+        JOB_ID="${SUBMISSION%%;*}"
+    else
+        SUBMIT_RC=$?
+        echo "Slurm submission failed (exit $SUBMIT_RC)" >&2
+        exit "$SUBMIT_RC"
+    fi
+    if [[ ! "$JOB_ID" =~ ^[0-9]+$ ]]; then
+        echo "Cannot parse submitted job ID: $SUBMISSION" >&2
+        exit 1
+    fi
+    # 作业 ID 采用临时文件写入，同目录替换后可供后续查询使用。
+    echo "Submitted batch job $JOB_ID"
+    if JOB_FILE=$(mktemp "$SCRIPT_DIR/.slurm_job_id.XXXXXX"); then
+        if ! { printf '%s\n' "$JOB_ID" > "$JOB_FILE" && mv -f "$JOB_FILE" "$SCRIPT_DIR/slurm_job_id"; }; then
+            rm -f "$JOB_FILE"
+            echo "Job $JOB_ID submitted; could not save job ID" >&2
+        fi
+    else
+        echo "Job $JOB_ID submitted; could not save job ID" >&2
+    fi
+    if ! squeue -j "$JOB_ID" -l; then
+        echo "Job $JOB_ID submitted; queue query failed" >&2
+    fi
+    exit 0
 fi
 
 
