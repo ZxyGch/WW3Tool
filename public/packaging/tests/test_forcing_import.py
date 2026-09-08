@@ -169,8 +169,8 @@ class ForcingNormalizeTest(unittest.TestCase):
             self.assertIn("time", names)
             self.assertNotIn("valid_time", names)  # 时间统一为 time
             self.assertNotIn("u10", names)
-            # 数据变量维度顺序固定 (longitude, latitude, time)
-            self.assertEqual(ds.variables["UGRD_10m"].dimensions, ("longitude", "latitude", "time"))
+            # WW3 的 NetCDF 输入按 time、latitude、longitude 排列。
+            self.assertEqual(ds.variables["UGRD_10m"].dimensions, ("time", "latitude", "longitude"))
 
     def test_normalize_flips_descending_latitude_keeps_names(self):
         src = os.path.join(self.tmp, "wind_desc.nc")
@@ -187,11 +187,7 @@ class ForcingNormalizeTest(unittest.TestCase):
             self.assertLess(lat[0], lat[-1])  # 翻转后递增
 
     def test_normalize_transposes_to_ww3_layout(self):
-        """数据从源 (time, lat, lon) 转置为输出 (lon, lat, time)，数值逐点一致。
-
-        [EN] Data is transposed from source (time, lat, lon) to output
-        (lon, lat, time), values match point-by-point.
-        """
+        """将 lon、lat、time 输入转为 WW3 的 time、lat、lon 顺序，逐点校验数值。"""
         import numpy as np
 
         src = os.path.join(self.tmp, "wind_layout.nc")
@@ -205,29 +201,29 @@ class ForcingNormalizeTest(unittest.TestCase):
             t.units = "hours since 2020-01-01 00:00:00"
             lon.units = "degrees_east"
             lat.units = "degrees_north"
-            u = ds.createVariable("UGRD_10m", "f4", ("time", "XLAT", "XLONG"))
+            u = ds.createVariable("UGRD_10m", "f4", ("XLONG", "XLAT", "time"))
             u.standard_name = "eastward_wind"
             u.units = "m s-1"
-            v = ds.createVariable("VGRD_10m", "f4", ("time", "XLAT", "XLONG"))
+            v = ds.createVariable("VGRD_10m", "f4", ("XLONG", "XLAT", "time"))
             v.standard_name = "northward_wind"
             v.units = "m s-1"
             lon[:] = [100, 102, 104, 106]
             lat[:] = [20, 22, 24]
             t[:] = [0, 6]
-            # 非均匀数据：u[t, lat, lon] = t*12 + lat*4 + lon（np.arange(24).reshape(2,3,4)）
-            u[:] = np.arange(24, dtype="f4").reshape(2, 3, 4)
+            # 非均匀数据：u[lon, lat, t] = t*12 + lat*4 + lon。
+            u[:] = np.arange(24, dtype="f4").reshape(2, 3, 4).transpose(2, 1, 0)
         r = resolve_forcing_variables(src, "wind")
         out = os.path.join(self.tmp, "wind_layout_out.nc")
         ok = ForcingNormalizeService().normalize(src, out, variables=r)
         self.assertTrue(ok)
         with Dataset(out, "r") as ds:
-            self.assertEqual(ds.variables["UGRD_10m"].dimensions, ("longitude", "latitude", "time"))
+            self.assertEqual(ds.variables["UGRD_10m"].dimensions, ("time", "latitude", "longitude"))
             data = ds.variables["UGRD_10m"][:]
-            self.assertEqual(data.shape, (4, 3, 2))
+            self.assertEqual(data.shape, (2, 3, 4))
             for t_i in range(2):
                 for la in range(3):
                     for lo in range(4):
-                        self.assertEqual(data[lo, la, t_i], float(t_i * 12 + la * 4 + lo))
+                        self.assertEqual(data[t_i, la, lo], float(t_i * 12 + la * 4 + lo))
 
     def test_normalize_360day_calendar_preserved(self):
         """360_day 日历是 WW3 7.14 原生支持，应保留而非改写。
