@@ -171,3 +171,80 @@ def test_linear_efth_units_still_accepted():
     assert efth_unit_scale("m2 s rad-1") == (1.0, "m2 s rad-1")
     scale, unit = efth_unit_scale("m2 s degree-1")
     assert unit == "m2 s rad-1" and abs(scale - 180.0 / math.pi) < 1e-9
+
+
+def _official_boundary_files():
+    """WW3 官方回归算例自带的 ww3_bounc 输入谱（仓库内 WW3/data_regtests）。"""
+    import pathlib
+
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    found = []
+    for rel in (
+        "WW3/data_regtests/ww3_tp2.20/input/boundary.nc",
+        "WW3/data_regtests/ww3_tp2.19/input/boundary1A.nc",
+        "WW3/data_regtests/ww3_tp2.19/input/boundary1C.nc",
+    ):
+        path = repo / rel
+        if path.is_file():
+            found.append(path)
+    return found
+
+
+def test_reads_official_ww3_regtest_boundary_files():
+    """官方 boundary*.nc 必须能读：站名轴是 (string16, station)，
+    方向 standard_name 是空格分隔的 'sea surface wave to direction'。"""
+    import pytest
+
+    from workflows.infrastructure.boundary.spectra_normalizer import (
+        efth_unit_scale,
+        infer_direction_convention,
+    )
+    from workflows.infrastructure.boundary.spectra_reader import inspect_spectra_file
+
+    files = _official_boundary_files()
+    if not files:
+        pytest.skip("仓库内没有 WW3/data_regtests 官方谱文件")
+    for path in files:
+        meta = inspect_spectra_file(path)
+        assert meta.stations, path
+        # 轴顺序判错会退化成单字符 'w'
+        assert meta.stations[0].name == "wavemaker", (path, meta.stations[0].name)
+        assert infer_direction_convention(meta) == "to_direction", path
+        assert efth_unit_scale(meta.efth_units) == (1.0, "m2 s rad-1"), path
+
+
+def test_direction_convention_accepts_space_and_underscore_forms():
+    from workflows.infrastructure.boundary.spectra_normalizer import infer_direction_convention
+
+    class _Meta:
+        def __init__(self, standard_name):
+            self.dir_long_name = ""
+            self.dir_standard_name = standard_name
+            self.dir_units = "degree"
+
+    for name in ("sea surface wave to direction", "sea_surface_wave_to_direction"):
+        assert infer_direction_convention(_Meta(name)) == "to_direction", name
+    for name in ("sea surface wave from direction", "sea_surface_wave_from_direction"):
+        assert infer_direction_convention(_Meta(name)) == "from_direction", name
+
+
+def test_decode_station_name_transposed_char_array():
+    """(string16, station) 与 (station, string16) 两种轴顺序都要正确解码。"""
+    import numpy as np
+
+    from workflows.infrastructure.boundary.spectra_reader import _decode_names
+
+    class _Var:
+        def __init__(self, arr, dims):
+            self._arr = arr
+            self.dimensions = dims
+
+        def __getitem__(self, item):
+            return self._arr[item]
+
+    def chars(text, width=16):
+        return np.frombuffer(text.ljust(width).encode("ascii"), dtype="S1")
+
+    normal = np.stack([chars("w02"), chars("w03")])           # (station, string16)
+    assert _decode_names(_Var(normal, ("station", "string16")), 2) == ["w02", "w03"]
+    assert _decode_names(_Var(normal.T, ("string16", "station")), 2) == ["w02", "w03"]

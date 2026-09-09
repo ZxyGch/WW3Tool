@@ -30,17 +30,17 @@ def _check_cancel(cancel: CancelFn | None) -> None:
 
 def infer_direction_convention(meta: SpectraFileMeta) -> str:
     text = " ".join([meta.dir_long_name, meta.dir_standard_name, meta.dir_units]).lower()
-    if "from_direction" in text or "coming from" in text or "coming-from" in text:
+    # 下划线与空格都要认：ww3_ounp 写 'sea_surface_wave_to_direction'，
+    # 而官方回归算例（ww3_tp2.19/2.20）的 boundary*.nc 写成
+    # 'sea surface wave to direction'（空格）。只匹配下划线会把官方文件判成约定不明。
+    flat = text.replace("_", " ").replace("-", " ")
+    flat = " ".join(flat.split())
+    if "from direction" in flat or "coming from" in flat:
         return "from_direction"
-    if (
-        "to_direction" in text
-        or "going to" in text
-        or "towards" in text
-        or "sea_surface_wave_to_direction" in text
-    ):
+    if "to direction" in flat or "going to" in flat or "towards" in flat:
         return "to_direction"
     # WW3 原生 ounp 常见 long_name=wave direction，表示传播去向
-    if "wave direction" in text and "from" not in text:
+    if "wave direction" in flat and "from" not in flat:
         return "to_direction"
     raise BoundaryError(
         "BOUNDARY_CONVENTION_UNKNOWN",

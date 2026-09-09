@@ -107,8 +107,24 @@ def _decode_names(var, n: int) -> list[str]:
     data = var[:]
     names: list[str] = []
     arr = np.asarray(data)
-    # char array (station, strlen)：必须先判维数，S1 的 kind 也是 "S"
+    # char array：必须先判维数，S1 的 kind 也是 "S"。
+    # 轴顺序两种都要认：WW3 原生 ounp 写 (station, string16)，
+    # 而官方回归算例（ww3_tp2.19/2.20 的 boundary*.nc）写 (string16, station)。
     if arr.ndim == 2:
+        dims = tuple(str(d).lower() for d in (getattr(var, "dimensions", ()) or ()))
+        char_keys = ("string", "strlen", "nchar", "charlen")
+        station_axis = 0
+        if len(dims) == 2:
+            if any(k in dims[0] for k in char_keys):
+                station_axis = 1
+            elif any(k in dims[1] for k in char_keys):
+                station_axis = 0
+            elif "station" in dims[1] and "station" not in dims[0]:
+                station_axis = 1
+        elif arr.shape[0] != n and arr.shape[1] == n:
+            station_axis = 1
+        if station_axis == 1:
+            arr = arr.T
         for row in arr[:n]:
             chars = []
             for ch in row:
