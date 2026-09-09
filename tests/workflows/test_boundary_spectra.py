@@ -144,3 +144,30 @@ def test_decode_station_name_string_array():
     assert _decode_names(_Var(np.array(["s1", "s2"], dtype="U2")), 2) == ["s1", "s2"]
     # 站数多于名字时补占位，不得越界
     assert _decode_names(_Var(np.array([b"only"], dtype="S4")), 3)[1:] == ["station_2", "station_3"]
+
+
+def test_log_packed_ounp_units_rejected_with_actionable_hint():
+    """ww3_ounp NCVARTYPE<=3 写 log10 打包谱，units 含 "rad" 但不是线性谱。
+
+    必须在单位这一层拦下并指明改用 NCVARTYPE=4，不能落到下游"谱值为负"的误导报错。
+    """
+    import pytest
+
+    from workflows.infrastructure.boundary.errors import BoundaryError
+    from workflows.infrastructure.boundary.spectra_normalizer import efth_unit_scale
+
+    with pytest.raises(BoundaryError) as exc:
+        efth_unit_scale("log10(m2 s rad-1 +1E-12)")
+    assert exc.value.code == "BOUNDARY_CONVENTION_UNKNOWN"
+    assert any("NCVARTYPE=4" in h for h in exc.value.hints)
+
+
+def test_linear_efth_units_still_accepted():
+    """NCVARTYPE=4 的线性谱与每度谱不受影响。"""
+    import math
+
+    from workflows.infrastructure.boundary.spectra_normalizer import efth_unit_scale
+
+    assert efth_unit_scale("m2 s rad-1") == (1.0, "m2 s rad-1")
+    scale, unit = efth_unit_scale("m2 s degree-1")
+    assert unit == "m2 s rad-1" and abs(scale - 180.0 / math.pi) < 1e-9
