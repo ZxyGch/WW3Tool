@@ -72,6 +72,37 @@ WW3 场输出 `DIR` 为 270.1°（6.07）/ 270.2°（7.14），这是输出量�
 
 `SPECTRUM%FREQ1/XFR/THOFF` 按 `w3gridmd` 的夹取规则处理（`THOFF∈[-0.5,0.5]`、`XFR≥1.00001`、`FR1≥1e-6`）。此前未夹取，越界 THOFF 会算出与 WW3 实际相差整数个方向箱的轴，且无下游检查能发现。
 
+## 与官方做法的一致性
+
+本方案走的是 WW3 官方的**离线单向嵌套**路线：粗网格 `ww3_ounp` 出点谱 → `ww3_bounc` 合成
+`nest.ww3` → 细网格 `ww3_shel` 读。`nest.ww3` 由官方 `ww3_bounc` 生成，本工具不自己写。
+
+WW3 7.14 仓库内的对照证据：
+
+- 官方 `ww3_bounc.nml` 只有 `BOUND%FILE`（tp2.17、tp2.19 各 Case）。我们额外写出的
+  `MODE='WRITE'`、`INTERP=2`、`VERBOSE=1` 与 `w3nmlbouncmd.F90:239-242` 的默认值逐项相同。
+- 官方回归算例中用 `ww3_bounc` 的有 tp1.11、tp2.8、tp2.17、tp2.19；`ww3_bound`（老 ASCII 路线）
+  只剩 tr1 在用；`ww3_multi`（多网格在同一可执行内嵌套）出现在约 100 个算例，是另一条主线，
+  与本方案并列，不互相取代。首版不支持 `ww3_multi` 嵌套。
+- 官方 `boundary*.nc`（`WW3/data_regtests/ww3_tp2.19`、`ww3_tp2.20`）的 `direction` 值为
+  `[90, 89, 88, …]`，与 `MOD(450-THD,360)` 逐点吻合，独立印证方向轴公式。
+
+空间映射的定位要说清楚：`ww3_bounc` 内部会用自己的最近邻/两点线性重算一遍映射，本工具的
+`mapping.csv` 是**预览与校验**，不是下发给 WW3 的权重。工具的映射只决定哪些站点被规范化并写进
+`spec.list`（候选集），最终权重由 WW3 定。验收因此必须回读 `nest.ww3` 的 `IPBPO/RDBPO` 与预览比对。
+
+2026-09-09 用官方 `boundary*.nc` 实测，读入侧原先有两处比官方窄，已修：
+
+- `station_name` 轴顺序：官方写 `(string16, station)`，`ww3_ounp` 写 `(station, string16)`；
+  原先只认后者，站名 `wavemaker` 被解成 `w`。
+- 方向 `standard_name`：官方是空格分隔的 `sea surface wave to direction`，原先只匹配下划线形式，
+  官方文件一律被判 `BOUNDARY_CONVENTION_UNKNOWN` 拒收。
+
+另外 `ww3_ounp` 默认档（`NCVARTYPE<=3`）写的是 `NINT(log10(efth+1e-12)/0.0004)` 的 `NF90_SHORT`，
+`units='log10(m2 s rad-1 +1E-12)'`。该串含 `rad`，原先被判成线性谱，而 netCDF4 只做线性解包，
+拿到的是 log10 值。现在在单位层拦下并提示改用 `NCVARTYPE=4`。本版不做对数反解
+（`ww3_bounc` 自己是按 `10**(raw*scale)-1e-12` 反解的，见 `ww3_bounc.F90:609`）。
+
 ## 已知限制
 
 - 嵌套 `ww3_multi`、UNST、SMC、周期/跨日界线目标矩形、频率方向插值、ASCII 输入均报告不支持。
