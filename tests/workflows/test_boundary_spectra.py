@@ -98,3 +98,49 @@ def test_xfr_and_freq1_clamped_like_w3gridmd():
     assert flat[1] > flat[0]  # XFR=1 会造成全同频率，WW3 不允许
     tiny = target_spectral_discrete(0.0, 1.1, 4, 24, 0.0).frequencies_hz
     assert tiny[0] == 1.0e-6
+
+
+def test_decode_station_name_char_array():
+    """WW3 原生 station_name 是 (station, string16) 的 S1 字符数组。
+
+    dtype.kind 也是 "S"，若先按一维字符串分支处理，会得到 "[b'w' b'0' ...]"。
+    """
+    import numpy as np
+
+    from workflows.infrastructure.boundary.spectra_reader import _decode_names
+
+    class _Var:
+        def __init__(self, arr):
+            self._arr = arr
+
+        def __getitem__(self, item):
+            return self._arr[item]
+
+    def chars(text: str, width: int = 16):
+        return np.frombuffer(text.ljust(width).encode("ascii"), dtype="S1")
+
+    raw = np.stack([chars("w02"), chars("north_pt")])
+    assert raw.dtype.kind == "S" and raw.ndim == 2  # 与 WW3 原生文件同形
+    assert _decode_names(_Var(raw), 2) == ["w02", "north_pt"]
+    # NUL 填充的站名同样要清干净
+    nul = np.stack([np.frombuffer(b"w02" + b"\x00" * 13, dtype="S1")])
+    assert _decode_names(_Var(nul), 1) == ["w02"]
+
+
+def test_decode_station_name_string_array():
+    """一维字符串/字节数组仍按原路径解码，并去掉 NUL 填充。"""
+    import numpy as np
+
+    from workflows.infrastructure.boundary.spectra_reader import _decode_names
+
+    class _Var:
+        def __init__(self, arr):
+            self._arr = arr
+
+        def __getitem__(self, item):
+            return self._arr[item]
+
+    assert _decode_names(_Var(np.array([b"aaa\x00", b"bbb "], dtype="S4")), 2) == ["aaa", "bbb"]
+    assert _decode_names(_Var(np.array(["s1", "s2"], dtype="U2")), 2) == ["s1", "s2"]
+    # 站数多于名字时补占位，不得越界
+    assert _decode_names(_Var(np.array([b"only"], dtype="S4")), 3)[1:] == ["station_2", "station_3"]
