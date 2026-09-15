@@ -49,6 +49,12 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from ..support.translations import tr
 from ..domain.config_models import (
+    BoundaryConfig,
+    BoundaryInterpolationConfig,
+    BoundaryResourcesConfig,
+    BoundarySelectionConfig,
+    BoundarySourceConfig,
+    BoundaryValidationConfig,
     CalcConfig,
     ForcingConfig,
     ForcingVariableOverride,
@@ -349,6 +355,84 @@ def _file_split(value: Any) -> str:
     if raw not in accepted:
         raise ConfigError(f"ww3.file_split 必须是 {'、'.join(FILE_SPLIT_OPTIONS)}（兼容旧值 none）")
     return canonical_file_split(value, default="year")
+
+
+def _parse_boundary_config(raw: Any, base_dir: Path, *, from_workdir: bool) -> BoundaryConfig:
+    """解析 ``boundary`` 段。工作目录缺少该段时必须关闭，不得继承根模板中的谱路径。"""
+    if not from_workdir or raw is None:
+        return BoundaryConfig()
+    r = _as_dict(raw, "boundary")
+    mode = str(r.get("mode") or "none").strip().lower()
+    if mode not in {"none", "external_spectra"}:
+        raise ConfigError(tr("cfg_boundary_mode_invalid", "boundary.mode 必须是 none 或 external_spectra"))
+    src = _as_dict(r.get("source"), "boundary.source")
+    fmt = str(src.get("format") or "ww3_netcdf").strip().lower()
+    if fmt not in {"ww3_netcdf"}:
+        raise ConfigError(tr("cfg_boundary_format_invalid", "boundary.source.format 首版只接受 ww3_netcdf"))
+    location = str(src.get("location") or "local").strip().lower()
+    files_raw = src.get("files") or []
+    if files_raw is None:
+        files_raw = []
+    if not isinstance(files_raw, list):
+        raise ConfigError(tr("cfg_boundary_files_type", "boundary.source.files 必须是字符串列表"))
+    files = [str(item).strip() for item in files_raw if str(item).strip()]
+    if location not in {"local", "remote"}:
+        raise ConfigError(tr("cfg_boundary_location_invalid", "boundary.source.location 必须是 local 或 remote"))
+    if location == "remote":
+        for item in files:
+            if len(item) >= 2 and item[1] == ":" and item[0].isalpha():
+                raise ConfigError(tr("cfg_boundary_remote_posix", "boundary.source.location=remote 时路径必须是 POSIX 路径"))
+    sel = _as_dict(r.get("selection"), "boundary.selection")
+    sel_type = str(sel.get("type") or "sides").strip().lower()
+    if sel_type != "sides":
+        raise ConfigError(tr("cfg_boundary_selection_type_invalid", "boundary.selection.type 首版只接受 sides"))
+    sides_raw = sel.get("sides")
+    if sides_raw is None:
+        sides = ["west", "east", "south", "north"]
+    else:
+        if not isinstance(sides_raw, list) or not sides_raw:
+            raise ConfigError(tr("cfg_boundary_sides_empty", "boundary.selection.sides 至少一项"))
+        sides = []
+        for item in sides_raw:
+            name = str(item).strip().lower()
+            if name not in {"west", "east", "south", "north"}:
+                raise ConfigError(tr("cfg_boundary_sides_invalid", "boundary.selection.sides 仅允许 west/east/south/north"))
+            if name not in sides:
+                sides.append(name)
+    inset = sel.get("inset_cells", 1)
+    inset_cells = _int_value(inset, "boundary.selection.inset_cells") if inset is not None else 1
+    interp = _as_dict(r.get("interpolation"), "boundary.interpolation")
+    method = str(interp.get("method") or "nearest").strip().lower()
+    if method not in {"nearest", "linear"}:
+        raise ConfigError(tr("cfg_boundary_method_invalid", "boundary.interpolation.method 必须是 nearest 或 linear"))
+    max_km_raw = interp.get("max_distance_km")
+    max_km = None
+    if max_km_raw is not None and str(max_km_raw).strip() != "":
+        max_km = _float_value(max_km_raw, "boundary.interpolation.max_distance_km")
+    val = _as_dict(r.get("validation"), "boundary.validation")
+    gap_raw = val.get("max_time_gap_seconds")
+    gap = None
+    if gap_raw is not None and str(gap_raw).strip() != "":
+        gap = _int_value(gap_raw, "boundary.validation.max_time_gap_seconds")
+    res = _as_dict(r.get("resources"), "boundary.resources")
+    mem = res.get("memory_limit_mb", 1024)
+    memory_limit_mb = _int_value(mem, "boundary.resources.memory_limit_mb") if mem is not None else 1024
+    # 远程路径按 POSIX 原样保存；本地相对路径相对于 base_dir
+    stored_files = []
+    for item in files:
+        if location == "local":
+            resolved = _resolve_path(item, base_dir)
+            stored_files.append(str(resolved) if resolved is not None else item)
+        else:
+            stored_files.append(item.replace("\\", "/"))
+    return BoundaryConfig(
+        mode=mode,
+        source=BoundarySourceConfig(format=fmt, location=location, files=stored_files),
+        selection=BoundarySelectionConfig(type=sel_type, sides=sides, inset_cells=inset_cells),
+        interpolation=BoundaryInterpolationConfig(method=method, max_distance_km=max_km),
+        validation=BoundaryValidationConfig(max_time_gap_seconds=gap),
+        resources=BoundaryResourcesConfig(memory_limit_mb=memory_limit_mb),
+    )
 
 
 def _output_fields(value: Any, name: str) -> List[str]:
@@ -774,7 +858,7 @@ def load_pipeline_config(
     Args:
         path: ``params.yml`` 或同类参数文件的路径。
         validation_stage: 校验严格程度 — ``"forcing"``、``"grid"``、
-            ``"full"`` 或 ``"plot"``；默认 ``"full"`` 校验完整预处理所需项。
+            ``"full"``、``"plot"`` 或 ``"boundary"``；默认 ``"full"`` 校验完整预处理所需项。
 
     Returns:
         解析并校验通过的 ``PipelineConfig``。
@@ -788,7 +872,7 @@ def load_pipeline_config(
     Args:
         path: Path to ``params.yml`` or similar parameter file.
         validation_stage: Validation strictness -- ``"forcing"``, ``"grid"``,
-            ``"full"`` or ``"plot"``; default ``"full"`` validates all items needed for full preprocessing.
+            ``"full"``, ``"plot"`` or ``"boundary"``; default ``"full"`` validates all items needed for full preprocessing.
 
     Returns:
         Parsed and validated ``PipelineConfig``.
@@ -890,6 +974,12 @@ def parse_pipeline_config(
         ww3_section = _as_dict(raw.get("ww3"), "ww3")
         ww3_section["output_scheme"] = original_ww3["output_scheme"]
         raw["ww3"] = ww3_section
+
+    # 工作目录缺少 boundary 时必须关闭；禁止把根模板中的谱路径套到其他算例。
+    if "boundary" in original_raw:
+        boundary = _parse_boundary_config(original_raw.get("boundary"), base_dir, from_workdir=True)
+    else:
+        boundary = BoundaryConfig()
 
     presets = _parameter_presets(raw.get("presets"))
     workdir_raw = _as_dict(raw.get("workdir"), "workdir")
@@ -1133,6 +1223,13 @@ def parse_pipeline_config(
                 integer=True,
                 positive=True,
             ),
+            "SPECTRUM%THOFF": _numeric_text(
+                ww3_grid_raw.get("SPECTRUM%THOFF")
+                if ww3_grid_raw.get("SPECTRUM%THOFF") is not None
+                and str(ww3_grid_raw.get("SPECTRUM%THOFF")).strip() != ""
+                else 0,
+                "ww3_grid.SPECTRUM%THOFF",
+            ),
             "TIMESTEPS%DTMAX": _numeric_text(
                 ww3_grid_raw.get("TIMESTEPS%DTMAX"),
                 "ww3_grid.TIMESTEPS%DTMAX",
@@ -1225,6 +1322,7 @@ def parse_pipeline_config(
         workdir=WorkdirConfig(path=workdir_path),
         presets=presets,
         forcing=forcing,
+        boundary=boundary,
         grid=grid,
         calc=calc,
         ww3=ww3,
@@ -1271,13 +1369,16 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
     Raises:
         ConfigError: When any constraint is not met; also raised when ``stage`` is invalid.
     """
-    if stage not in {"forcing", "grid", "full", "plot"}:
-        raise ConfigError(tr("cfg_invalid_stage", "validation_stage 必须是 forcing、grid、full 或 plot"))
+    if stage not in {"forcing", "grid", "full", "plot", "boundary"}:
+        raise ConfigError(tr("cfg_invalid_stage", "validation_stage 必须是 forcing、grid、full、plot 或 boundary"))
     if stage == "plot":
         return
     if stage == "grid":
         if config.grid.mesh_type == "structured" and config.grid.gridgen_version.lower() != "python":
             raise ConfigError(tr("cfg_structured_python_only", "当前无界面流程的 structured 网格仅支持 grid.gridgen_version=Python"))
+        return
+    if stage == "boundary":
+        _validate_boundary_config(config, require_enabled_fields=True)
         return
     _validate_wind_path(config.forcing.wind, remote_path=config.forcing.remote_paths.get("wind"))
     _validate_existing_paths(
@@ -1332,6 +1433,47 @@ def validate_pipeline_config(config: PipelineConfig, *, stage: str = "full") -> 
         raise ConfigError(tr("cfg_spectral_points_required", "calc.mode=spectral_point 时必须提供 calc.points"))
     if config.calc.mode == "track" and not config.calc.track_points:
         raise ConfigError(tr("cfg_track_points_required", "calc.mode=track 时必须提供 calc.track_points"))
+    _validate_boundary_config(config, require_enabled_fields=True)
+
+
+def _validate_boundary_config(config: PipelineConfig, *, require_enabled_fields: bool) -> None:
+    """校验外部边界谱段。``mode: none`` 时不要求文件与距离门槛。"""
+    boundary = getattr(config, "boundary", None) or BoundaryConfig()
+    if not boundary.enabled:
+        return
+    if str(boundary.source.format or "ww3_netcdf").lower() != "ww3_netcdf":
+        raise ConfigError(tr("cfg_boundary_format_invalid", "boundary.source.format 首版只接受 ww3_netcdf"))
+    loc = str(boundary.source.location or "local").lower()
+    if loc not in {"local", "remote"}:
+        raise ConfigError(tr("cfg_boundary_location_invalid", "boundary.source.location 必须是 local 或 remote"))
+    if str(boundary.selection.type or "sides").lower() != "sides":
+        raise ConfigError(tr("cfg_boundary_selection_type_invalid", "boundary.selection.type 首版只接受 sides"))
+    if int(boundary.selection.inset_cells or 1) != 1:
+        raise ConfigError(tr("cfg_boundary_inset_fixed", "boundary.selection.inset_cells 首版固定为 1"))
+    sides = list(boundary.selection.sides or [])
+    if not sides:
+        raise ConfigError(tr("cfg_boundary_sides_empty", "boundary.selection.sides 至少一项"))
+    if str(config.grid.mesh_type or "").lower() != "structured" or str(config.grid.grid_type or "").lower() != "normal":
+        raise ConfigError(tr("cfg_boundary_grid_unsupported", "首版外部边界谱仅支持 mesh_type=structured 且 grid_type=normal"))
+    lon = list(config.grid.lon or [])
+    if len(lon) == 2:
+        span = float(lon[1]) - float(lon[0])
+        if span >= 360.0 - 1e-6 or span <= 0:
+            raise ConfigError(tr("cfg_boundary_periodic_unsupported", "首版不支持跨日界线或全球周期的目标矩形"))
+    if not require_enabled_fields:
+        return
+    files = [str(item).strip() for item in (boundary.source.files or []) if str(item).strip()]
+    if not files:
+        raise ConfigError(tr("cfg_boundary_files_required", "启用外部边界谱时 boundary.source.files 不能为空"))
+    max_km = boundary.interpolation.max_distance_km
+    if max_km is None or float(max_km) <= 0:
+        raise ConfigError(tr("cfg_boundary_max_distance_required", "启用外部边界谱时必须填写正的 interpolation.max_distance_km"))
+    gap = boundary.validation.max_time_gap_seconds
+    if gap is None or int(gap) <= 0:
+        raise ConfigError(tr("cfg_boundary_max_gap_required", "启用外部边界谱时必须填写正的 validation.max_time_gap_seconds"))
+    mem = int(boundary.resources.memory_limit_mb or 0)
+    if mem <= 0:
+        raise ConfigError(tr("cfg_boundary_memory_invalid", "boundary.resources.memory_limit_mb 必须为正整数"))
 
 
 # [EN] Complete params.yml example template: for CLI ``--print-example`` and documentation reference.
@@ -1351,6 +1493,26 @@ forcing:
   crop_time_range: []
   crop_bbox: []
   auto_associate: true
+
+# 区域模型外部边界谱。缺少本段或 mode: none 表示关闭。
+# 下列 50 km / 10800 s / 1024 MiB 仅为示例，不是物理推荐值。
+boundary:
+  mode: none
+  source:
+    format: ww3_netcdf
+    location: local
+    files: []
+  selection:
+    type: sides
+    sides: [west, east, south, north]
+    inset_cells: 1
+  interpolation:
+    method: nearest
+    max_distance_km:
+  validation:
+    max_time_gap_seconds:
+  resources:
+    memory_limit_mb: 1024
 
 grid:
   mesh_type: structured
@@ -1460,6 +1622,8 @@ ww3_grid:
                                  # 频率数量
   SPECTRUM%NTH: "24"             # [EN] Number of directions
                                  # 方向数量
+  SPECTRUM%THOFF: "0"            # [EN] First-direction offset
+                                 # 第一个方向偏移
   TIMESTEPS%DTMAX: "900"
   TIMESTEPS%DTXY: "320"
   TIMESTEPS%DTKTH: "300"

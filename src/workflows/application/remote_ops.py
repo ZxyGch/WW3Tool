@@ -43,7 +43,8 @@ import posixpath
 import re
 import shlex
 import hashlib
-import re
+import json
+import stat
 import base64
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1839,6 +1840,140 @@ def run_list_files(
 
 
 # ── 下载 ────────────────────────────────────────────────────────────────
+
+def run_inspect_boundary_remote(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """在服务器上检查外部谱文件头，只传回小型摘要。"""
+    logger = CoreLogger(callback=log)
+    loc = str(config.boundary.source.location or "local").lower()
+    if loc != "remote":
+        msg = tr("boundary_remote_inspect_needs_remote", "inspect-boundary --remote 要求 boundary.source.location=remote")
+        logger.log(msg)
+        return RemoteResult(success=False, error=msg, messages=list(logger.messages))
+    files = [str(p).strip() for p in config.boundary.source.files if str(p).strip()]
+    if not files:
+        return RemoteResult(success=False, error=tr("boundary_remote_inspect_no_files", "source.files 为空"), messages=list(logger.messages))
+    c, owns = _acquire(config, client)
+    try:
+        if owns:
+            c.connect(log=logger.log)
+        summaries = []
+        pending = []
+        for path in files:
+            cmd = (
+                "python3 -c "
+                + shlex.quote(
+                    "import json,sys\n"
+                    "from netCDF4 import Dataset\n"
+                    f"p={path!r}\n"
+                    "ds=Dataset(p,'r')\n"
+                    "dims={k:int(v.size) for k,v in ds.dimensions.items()}\n"
+                    "vars=list(ds.variables)\n"
+                    "print(json.dumps({'path':p,'dims':dims,'vars':vars[:40]}))\n"
+                    "ds.close()\n"
+                )
+            )
+            out, err, code = c.exec_command(cmd, log=logger.log, timeout=60)
+            if code != 0:
+                pending.append(path)
+                logger.log(tr("boundary_remote_metadata_failed", "远程元数据检查失败：{path} {detail}").format(path=path, detail=err or out))
+                continue
+            try:
+                summaries.append(json.loads(out.strip().splitlines()[-1]))
+            except Exception:
+                pending.append(path)
+        data = {
+            "state": "deferred_remote" if pending else "metadata_checked",
+            "validation_depth": "metadata",
+            "pending_checks": ["full_spectra"] + (["remote_metadata"] if pending else []),
+            "artifacts": {},
+            "summaries": summaries,
+        }
+        return RemoteResult(success=not pending, data=data, messages=list(logger.messages))
+    except Exception as exc:
+        logger.log(tr("boundary_remote_inspect_failed", "❌ 远程边界检查失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
+
+def run_download_boundary_report(
+    config: PipelineConfig,
+    log: Optional[LogCallback] = None,
+    *,
+    client: Optional[SshClient] = None,
+) -> RemoteResult:
+    """只下载边界 manifest、检查报告、映射和日志。"""
+    logger = CoreLogger(callback=log)
+    names = {
+        "boundary/plan.json",
+        "boundary/inspection.json",
+        "boundary/mapping.csv",
+        "boundary/target_points.csv",
+        "boundary/source_index.json",
+        "boundary/manifest.json",
+        "boundary/normalized/spec.list",
+    }
+    c, owns = _acquire(config, client)
+    try:
+        remote_dir = _resolve_remote_dir(config)
+        local_dir = _resolve_local_dir(config)
+        if owns:
+            c.connect(log=logger.log)
+
+        def match(relpath: str) -> bool:
+            rel = relpath.replace("\\", "/")
+            if rel in names:
+                return True
+            if rel.endswith("boundary_build.log"):
+                return True
+            if rel.endswith("status.json") and "boundary/runtime/" in rel:
+                return True
+            return False
+
+        downloaded: list[str] = []
+        sftp = c._sftp()
+        try:
+            def _walk_remote(rel: str) -> None:
+                remote_path = posixpath.join(remote_dir, rel)
+                try:
+                    entries = sftp.listdir_attr(remote_path)
+                except Exception:
+                    return
+                for item in entries:
+                    name = item.filename
+                    child_rel = posixpath.join(rel, name)
+                    remote_child = posixpath.join(remote_path, name)
+                    mode = int(getattr(item, "st_mode", 0) or 0)
+                    if stat.S_ISDIR(mode):
+                        _walk_remote(child_rel)
+                        continue
+                    if match(child_rel):
+                        dest = os.path.join(local_dir, child_rel.replace("/", os.sep))
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        sftp.get(remote_child, dest)
+                        downloaded.append(dest)
+                        logger.log(f"  ↓ {child_rel}")
+            _walk_remote("boundary")
+        finally:
+            sftp.close()
+        return RemoteResult(
+            success=True,
+            data={"state": "ok", "artifacts": {"files": downloaded}},
+            messages=list(logger.messages),
+        )
+    except Exception as exc:
+        logger.log(tr("boundary_report_download_failed", "❌ 下载边界报告失败：{error}").format(error=exc))
+        return RemoteResult(success=False, error=str(exc), messages=list(logger.messages))
+    finally:
+        if owns:
+            c.close()
+
 
 def run_download_results(
     config: PipelineConfig,

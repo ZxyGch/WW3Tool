@@ -399,6 +399,21 @@ def prepare_ww3_files(
     if config.grid.grid_type != "nested":
         _apply_ww3_grid_settings(config, logger)
         _apply_namelist_physics_settings(config, logger)
+        if getattr(config, "boundary", None) is not None and config.boundary.enabled:
+            _prepare_boundary_after_namelist(config, logger)
+
+
+def _prepare_boundary_after_namelist(config: PipelineConfig, logger: CoreLogger) -> None:
+    """namelist 写完后建立边界计划与派生掩码，使 MASK%FILENAME 指向正确文件。"""
+    from ...application.boundary_preparation import prepare_boundary_inputs
+    from ...infrastructure.boundary.errors import BoundaryError
+
+    try:
+        result = prepare_boundary_inputs(config, execution_context="local", log=logger.log)
+        logger.log(tr("boundary_prepared_state", "外部边界谱准备完成：{state}").format(state=result.state))
+    except BoundaryError as exc:
+        logger.log(f"❌ {exc.code}: {exc.message}")
+        raise
 
 
 def update_server_script(config: PipelineConfig, logger: CoreLogger) -> None:
