@@ -242,6 +242,10 @@ def _help_groups() -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 ("generate-grid", tr("icli_help_generate_grid", "生成网格（Step 1）")),
                 ("prepare-forcing", tr("icli_help_prepare_forcing", "准备强迫场（Step 2）")),
+                ("inspect-boundary [--remote]", tr("icli_help_inspect_boundary", "检查外部边界谱元数据")),
+                ("prepare-boundary", tr("icli_help_prepare_boundary", "准备规范化边界谱")),
+                ("boundary-status [--remote]", tr("icli_help_boundary_status", "查看边界准备状态")),
+                ("download-boundary-report", tr("icli_help_download_boundary_report", "下载边界诊断")),
                 (
                     "merge-forcing <in1.nc> [...] -o <out.nc> [--time-range ...] [--bbox ...]",
                     tr(
@@ -402,6 +406,17 @@ def print_config_summary(cfg: PipelineConfig, params_path: str) -> None:
     print(_config_field(tr("icli_process_mode", "处理模式：{}"), cfg.forcing.process_mode))
     auto_mark = _success("✓") if cfg.forcing.auto_associate else _error("✗")
     print(_config_field(tr("icli_auto_associate", "自动关联：{}"), auto_mark))
+
+    print(f"\n  {_section(tr('icli_config_boundary', '外部边界谱'))}")
+    b = getattr(cfg, "boundary", None)
+    if b is None or not b.enabled:
+        print(_config_field(tr("icli_boundary_mode", "模式：{}"), "none"))
+    else:
+        print(_config_field(tr("icli_boundary_mode", "模式：{}"), b.mode))
+        print(_config_field(tr("icli_boundary_location", "来源位置：{}"), b.source.location))
+        print(_config_field(tr("icli_boundary_files", "谱文件数：{}"), len(b.source.files or [])))
+        print(_config_field(tr("icli_boundary_interp", "插值：{}"), b.interpolation.method))
+        print(_config_field(tr("icli_boundary_sides", "开边界：{}"), ",".join(b.selection.sides or [])))
 
     print(f"\n  {_section(tr('icli_config_calc', '计算模式'))}")
     print(_config_field(tr("icli_calc_mode", "模式：{}"), cfg.calc.mode or not_set))
@@ -925,6 +940,82 @@ class InteractiveCLI(cmd.Cmd):
             print(_info(tr("icli_start_forcing", "▶ 开始准备强迫场...")))
             run_prepare_forcing(self._config, log=self._log_callback)
             print(_success(tr("icli_done_forcing", "✅ 强迫场准备完成")))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_inspect_boundary(self, arg: str) -> None:
+        """inspect-boundary [--remote]  — 检查外部边界谱"""
+        if not self._require_config():
+            return
+        if not self._reload_config_for_stage("boundary"):
+            return
+        remote = "--remote" in shlex.split(arg or "")
+        try:
+            from ..application.boundary_preparation import inspect_boundary
+            from ..infrastructure.boundary.errors import BoundaryError
+
+            if remote:
+                from ..application.remote_ops import run_inspect_boundary_remote
+
+                result = run_inspect_boundary_remote(self._config, log=self._log_callback)
+                if not result.success:
+                    print(_error(result.error or "remote inspect failed"))
+                    return
+                print(_success(str((result.data or {}).get("state"))))
+                return
+            inspection = inspect_boundary(self._config, execution_context="local", depth="metadata", log=self._log_callback)
+            print(_success(f"state={inspection.state} pending={inspection.pending_checks}"))
+            if inspection.state == "failed":
+                raise BoundaryError(
+                    inspection.issues[0].code if inspection.issues else "BOUNDARY_SOURCE_MISSING",
+                    inspection.issues[0].message if inspection.issues else "inspect failed",
+                )
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_prepare_boundary(self, arg: str) -> None:
+        """prepare-boundary  — 准备规范化边界谱"""
+        if not self._require_config():
+            return
+        if not self._reload_config_for_stage("boundary"):
+            return
+        try:
+            from ..application.boundary_preparation import prepare_boundary_inputs
+
+            result = prepare_boundary_inputs(self._config, execution_context="local", log=self._log_callback)
+            print(_success(f"state={result.state}"))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_boundary_status(self, arg: str) -> None:
+        """boundary-status [--remote]  — 查看边界准备状态"""
+        if not self._require_config():
+            return
+        if not self._reload_config_for_stage("boundary"):
+            return
+        remote = "--remote" in shlex.split(arg or "")
+        try:
+            from ..application.boundary_preparation import boundary_status
+
+            status = boundary_status(self._config, remote=remote)
+            print(_success(f"state={status.get('state')} pending={status.get('pending_checks')}"))
+        except Exception as exc:
+            print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
+
+    def do_download_boundary_report(self, arg: str) -> None:
+        """download-boundary-report  — 下载边界诊断"""
+        if not self._require_config():
+            return
+        if not self._reload_config_for_stage("boundary"):
+            return
+        try:
+            from ..application.remote_ops import run_download_boundary_report
+
+            result = run_download_boundary_report(self._config, log=self._log_callback)
+            if not result.success:
+                print(_error(result.error or "download failed"))
+                return
+            print(_success("downloaded boundary report"))
         except Exception as exc:
             print(_error(tr("icli_exec_failed", "❌ 执行失败：{}").format(exc)))
 

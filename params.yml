@@ -204,6 +204,27 @@ forcing:
     current: null
     level: null
     ice: null
+boundary:
+  mode: none
+  source:
+    format: ww3_netcdf
+    location: local
+    files: []
+  selection:
+    type: sides
+    sides:
+    - west
+    - east
+    - south
+    - north
+    inset_cells: 1
+  interpolation:
+    method: nearest
+    max_distance_km: null
+  validation:
+    max_time_gap_seconds: null
+  resources:
+    memory_limit_mb: 1024
 # ────────────────────────────────────────────────────────────────────
 # Calculation mode:
 #   mode – 'region' (gridded output over the full domain) or
@@ -265,6 +286,7 @@ ww3_grid:
   SPECTRUM%FREQ1: 0.0375
   SPECTRUM%NK: 35
   SPECTRUM%NTH: 36
+  SPECTRUM%THOFF: 0
   TIMESTEPS%DTMAX: 900
   TIMESTEPS%DTXY: 320
   TIMESTEPS%DTKTH: 300
@@ -283,7 +305,6 @@ slurm:
   nodelist: null
   time: null
   mem: 190G
-  # 方案名包含 WW3 版本、ST 源项和网格类型：RECT 矩形、SMC 多分辨率、UNST 非结构。
   server_st:
     use: 7.14 ST4_RECT
     6.07 ST2_SMC: /public/home/weiyl001/bin/wavewatch3/6.07/st2_smc/model/exe
@@ -400,7 +421,7 @@ server:
   key_file: null
   default_remote_dir: /public/home/weiyl001/user/gongchuheng/
   remote_dir: ''
-  ssh_config_host: SHOU-TS
+  ssh_config_host: SHOU
 # ────────────────────────────────────────────────────────────────────
 # External tool and data directory paths.
 #   matlab_path       – MATLAB executable for grid generators that require it.
@@ -425,7 +446,7 @@ paths:
 # ════════════════════════════════════════════════════════════════════
 desktop:
   language: auto
-  theme: LIGHT
+  theme: AUTO
   map_type: administrative
   run_mode: server
   window_width: 1300

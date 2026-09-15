@@ -15,6 +15,7 @@ _SPECTRUM_SPECS = [
     ("SPECTRUM%FREQ1", "set_freq_start", "起始频率："),
     ("SPECTRUM%NK", "set_freq_num", "频率数量："),
     ("SPECTRUM%NTH", "set_dir_num", "方向离散数："),
+    ("SPECTRUM%THOFF", "set_thoff", "方向偏移 THOFF："),
 ]
 _TIMESTEP_SPECS = [
     ("TIMESTEPS%DTMAX", "set_dtmax", "最大全局时间步长："),
@@ -285,6 +286,8 @@ class WW3StepPanel:
         layout.addWidget(self.load_time_button)
         self.run_button = create_button(tr("step4_confirm_params", "确认参数"), run_pipeline)
         layout.addWidget(self.run_button)
+        self.boundary_summary = self._field_label(tr("step4_boundary_off", "外部边界谱：关闭"))
+        layout.addWidget(self.boundary_summary)
         self.status = QLabel(tr("status_waiting", "等待执行"))
         self.status.hide()
         group.viewLayout.setContentsMargins(11, 10, 11, 12)
@@ -335,6 +338,20 @@ class WW3StepPanel:
             edit.setText(str(nml_params.get(nml_key, "")))
 
         self.render_forcing_availability(config.forcing)
+        boundary = getattr(config, "boundary", None)
+        if hasattr(self, "boundary_summary"):
+            if boundary is None or not boundary.enabled:
+                self.boundary_summary.setText(tr("step4_boundary_off", "外部边界谱：关闭"))
+            else:
+                loc = str(boundary.source.location or "local")
+                n_files = len(boundary.source.files or [])
+                method = str(boundary.interpolation.method or "nearest")
+                self.boundary_summary.setText(
+                    tr(
+                        "step4_boundary_on",
+                        "外部边界谱：已启用 · {loc} · {n} 个文件 · {method}。谱不匹配时请用「用源谱离散填写目标谱」，不会自动插值。",
+                    ).format(loc=loc, n=n_files, method=method)
+                )
 
     def render_forcing_availability(self, forcing: ForcingConfig) -> None:
         """Refresh only the forcing-field controls without resetting Step 4."""
@@ -544,6 +561,18 @@ class WW3StepPanel:
             edit = self._timesteps_fields.get(key)
             if edit is not None:
                 edit.setText(str(value))
+
+    def set_spectrum_values(self, values: dict[str, object], *, mark_boundary_stale: bool = False) -> None:
+        """写入目标谱离散。只覆盖 FREQ1/XFR/NK/NTH/THOFF。"""
+        allowed = {"SPECTRUM%XFR", "SPECTRUM%FREQ1", "SPECTRUM%NK", "SPECTRUM%NTH", "SPECTRUM%THOFF"}
+        for key, value in values.items():
+            if key not in allowed:
+                continue
+            edit = self._spectrum_fields.get(key)
+            if edit is not None and value is not None and str(value) != "":
+                edit.setText(str(value))
+        if mark_boundary_stale and hasattr(self, "status"):
+            self.status.setText(tr("step4_boundary_spectrum_updated", "已用源谱离散更新目标谱，请重新准备边界"))
 
     def spectrum_freq1_text(self) -> str:
         edit = self._spectrum_fields.get("SPECTRUM%FREQ1")

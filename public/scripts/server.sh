@@ -565,6 +565,75 @@ run_ww3_shel_with_fallback() {
     return $rc_direct
 }
 
+# 外部边界谱：用 WW3Tool 解释器调用公共 runtime。
+params_boundary_mode() {
+    awk '
+        BEGIN { mode="" }
+        /^[[:space:]]*#/ { next }
+        /^boundary:[[:space:]]*$/ { in_b=1; next }
+        /^[^[:space:]#]/ { in_b=0 }
+        in_b && /^[[:space:]]{2}mode:[[:space:]]*/ {
+            sub(/^[[:space:]]{2}mode:[[:space:]]*/, "")
+            gsub(/["'\'']/, "")
+            gsub(/[[:space:]]+$/, "")
+            print
+            exit
+        }
+    ' "$SCRIPT_ROOT/params.yml" 2>/dev/null
+}
+
+boundary_python() {
+    if [ -n "${WW3TOOL_PYTHON:-}" ]; then
+        printf '%s\n' "$WW3TOOL_PYTHON"
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' python3
+        return 0
+    fi
+    if command -v python >/dev/null 2>&1; then
+        printf '%s\n' python
+        return 0
+    fi
+    return 1
+}
+
+BOUNDARY_LOCK_OWNER="$(
+    if command -v uuidgen >/dev/null 2>&1; then
+        uuidgen | tr 'A-Z' 'a-z' | tr -d '-'
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import uuid; print(uuid.uuid4().hex)'
+    else
+        printf '%s.%s.%s.%s\n' "${HOST:-${HOSTNAME:-unknown}}" "$$" "${RANDOM:-0}" "$(date +%s)"
+    fi
+)"
+boundary_unlock() {
+    local py
+    if [ -n "${WW3TOOL_ROOT:-}" ] && [ -d "${WW3TOOL_ROOT}/src" ]; then
+        export PYTHONPATH="${WW3TOOL_ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+    fi
+    py="$(boundary_python 2>/dev/null)" || return 0
+    "$py" -m workflows.infrastructure.boundary.runtime --workdir "$SCRIPT_ROOT" --phase unlock --lock-owner "$BOUNDARY_LOCK_OWNER" >/dev/null 2>&1 || true
+}
+trap boundary_unlock EXIT
+
+run_boundary_runtime() {
+    local phase="$1"
+    local py
+    if [ -n "${WW3TOOL_ROOT:-}" ] && [ -d "${WW3TOOL_ROOT}/src" ]; then
+        export PYTHONPATH="${WW3TOOL_ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+    fi
+    py="$(boundary_python)" || {
+        echo "BOUNDARY_EXECUTABLE_MISSING: 找不到 Python，请设置 WW3TOOL_PYTHON" >> "$LOG"
+        fail_exit 1
+    }
+    if ! "$py" -c "import workflows.infrastructure.boundary.runtime" >/dev/null 2>&1; then
+        echo "BOUNDARY: 无法 import workflows.infrastructure.boundary.runtime；请设置 WW3TOOL_PYTHON 为 WW3Tool 解释器" >> "$LOG"
+        fail_exit 1
+    fi
+    run_step "boundary ($phase)" "$py" -m workflows.infrastructure.boundary.runtime --workdir "$SCRIPT_ROOT" --phase "$phase" --execution-context compute --lock-owner "$BOUNDARY_LOCK_OWNER"
+}
+
 # Determine grid type from params.yml (fall back to the on-disk layout)
 GRID_TYPE="$(grep -m1 -E '^[[:space:]]*grid_type:' "$SCRIPT_ROOT/params.yml" 2>/dev/null | sed -E 's/.*grid_type:[[:space:]]*//; s/[[:space:]]*$//')"
 if [ -z "$GRID_TYPE" ]; then
@@ -573,6 +642,11 @@ fi
 echo "Grid type (from params.yml): $GRID_TYPE" >> "$LOG"
 
 if [ "$GRID_TYPE" = "nested" ]; then
+    if [ "$(params_boundary_mode | tr '[:upper:]' '[:lower:]')" = "external_spectra" ]; then
+        echo "BOUNDARY_GRID_UNSUPPORTED: 首版不支持嵌套多网格外部谱" >> "$LOG"
+        fail_exit 1
+    fi
+    run_boundary_runtime lock
     # Nested grid mode (N levels: level0=coarsest .. levelN=finest)
     # Discover nested grid dirs (level0=coarsest .. levelN=finest).
     LEVELS=$(ls -d level[0-9]* 2>/dev/null | sort -V)
@@ -584,6 +658,7 @@ if [ "$GRID_TYPE" = "nested" ]; then
     if prepare_nested_restart $LEVELS; then
         RESTART_SKIP_STRT=1
     fi
+    run_boundary_runtime pregrid
 
     # 1) Per-level: ww3_grid + forcing prep + ww3_strt
     for lv in $LEVELS; do
@@ -638,11 +713,14 @@ if [ "$GRID_TYPE" = "nested" ]; then
     touch "$SUCCESS_MARK"
 else
     # Regular grid mode
+    run_boundary_runtime lock
     RESTART_SKIP_STRT=0
     if prepare_regular_restart; then
         RESTART_SKIP_STRT=1
     fi
+    run_boundary_runtime pregrid
     run_step "ww3_grid" ww3_grid
+    run_boundary_runtime postgrid
     run_prnc_with_fields
     if [ "$RESTART_SKIP_STRT" -eq 1 ]; then
         echo "⏭️ Restart mode: skip ww3_strt, start from $RESTART_RUNTIME_TIME" >> "$LOG"

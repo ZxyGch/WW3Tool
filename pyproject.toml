@@ -91,6 +91,7 @@ packages = [
     "workflows.infrastructure.adapters",
     "workflows.infrastructure.grid_visualization",
     "workflows.infrastructure.remote",
+    "workflows.infrastructure.boundary",
     "desktop",
     "desktop.view_models",
     "desktop.components",

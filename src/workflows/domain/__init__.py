@@ -22,6 +22,7 @@ Main consumers:
 """
 
 from .config_models import (
+    BoundaryConfig,
     CalcConfig,
     ForcingConfig,
     GridConfig,
@@ -49,6 +50,7 @@ from .parameter_catalog import (
 )
 
 __all__ = [
+    "BoundaryConfig",
     "CalcConfig",
     "ForcingConfig",
     "GridConfig",

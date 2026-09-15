@@ -142,6 +142,65 @@ class ForcingConfig:
 
 
 @dataclass
+class BoundarySourceConfig:
+    """外部边界谱来源（YAML ``boundary.source``）。"""
+
+    format: str = "ww3_netcdf"
+    location: str = "local"
+    files: List[str] = field(default_factory=list)
+
+
+@dataclass
+class BoundarySelectionConfig:
+    """活动边界边选择（YAML ``boundary.selection``）。"""
+
+    type: str = "sides"
+    sides: List[str] = field(default_factory=lambda: ["west", "east", "south", "north"])
+    inset_cells: int = 1
+
+
+@dataclass
+class BoundaryInterpolationConfig:
+    """空间映射（YAML ``boundary.interpolation``）。"""
+
+    method: str = "nearest"
+    max_distance_km: Optional[float] = None
+
+
+@dataclass
+class BoundaryValidationConfig:
+    """时间覆盖检查（YAML ``boundary.validation``）。"""
+
+    max_time_gap_seconds: Optional[int] = None
+
+
+@dataclass
+class BoundaryResourcesConfig:
+    """边界转换资源门槛（YAML ``boundary.resources``）。"""
+
+    memory_limit_mb: int = 1024
+
+
+@dataclass
+class BoundaryConfig:
+    """区域模型外部边界谱输入（YAML ``boundary``）。
+
+    ``mode: none`` 时关闭该功能；缺少该段时必须按关闭处理。
+    """
+
+    mode: str = "none"
+    source: BoundarySourceConfig = field(default_factory=BoundarySourceConfig)
+    selection: BoundarySelectionConfig = field(default_factory=BoundarySelectionConfig)
+    interpolation: BoundaryInterpolationConfig = field(default_factory=BoundaryInterpolationConfig)
+    validation: BoundaryValidationConfig = field(default_factory=BoundaryValidationConfig)
+    resources: BoundaryResourcesConfig = field(default_factory=BoundaryResourcesConfig)
+
+    @property
+    def enabled(self) -> bool:
+        return str(self.mode or "none").strip().lower() == "external_spectra"
+
+
+@dataclass
 class GridRegion:
     """矩形网格区域的经纬度范围与分辨率。
 
@@ -683,6 +742,7 @@ class PipelineConfig:
     workdir: WorkdirConfig
     presets: ParameterPresets = field(default_factory=ParameterPresets)
     forcing: ForcingConfig = field(default_factory=ForcingConfig)
+    boundary: BoundaryConfig = field(default_factory=BoundaryConfig)
     grid: GridConfig = field(default_factory=GridConfig)
     calc: CalcConfig = field(default_factory=CalcConfig)
     ww3: WW3Config = field(default_factory=WW3Config)

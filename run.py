@@ -31,6 +31,10 @@
                            独立工具：校验并合并强迫场 NetCDF（无需工作目录）
   inspect-forcing <场> <文件.nc> [-w 工作目录]
                            只读：打印强迫场变量自动识别结果/歧义/可用变量
+  inspect-boundary [--remote]  检查外部边界谱文件头
+  prepare-boundary            准备规范化边界谱与计划
+  boundary-status [--remote]  查看边界准备状态
+  download-boundary-report    只下载边界小型诊断
   generate-grid            Step 2：生成计算网格
   prepare-ww3              仅生成 WW3 namelist
   recommend-cfl            按 CFL 推荐时间步长并写回配置

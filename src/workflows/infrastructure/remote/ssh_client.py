@@ -132,6 +132,23 @@ def _make_ssh():
         ) from exc
 
 
+def _skip_boundary_upload_dir(rel_posix: str) -> bool:
+    """运行临时目录与失败产物不上传。"""
+    norm = rel_posix.replace("\\", "/").strip("./")
+    return norm == "boundary/runtime" or norm.startswith("boundary/runtime/")
+
+
+def _skip_boundary_upload_file(rel_posix: str) -> bool:
+    """根目录 nest.ww3 / mod_def.ww3 由运行端生成，禁止当作输入上传。"""
+    name = posixpath.basename(rel_posix.replace("\\", "/"))
+    rel = rel_posix.replace("\\", "/").strip("./")
+    if name in {"nest.ww3", "mod_def.ww3"}:
+        return True
+    if rel.startswith("boundary/runtime/"):
+        return True
+    return False
+
+
 class SshClient:
     """基于 paramiko 的 SSH/SFTP 薄封装。
 
@@ -423,16 +440,20 @@ class SshClient:
             log(tr("upload_folder_start", "📤 开始上传文件夹到 {path} ...").format(path=remote_dir))
             self._ensure_remote_dir(sftp, remote_dir)
 
-            total_files = sum(len(fs) for _, _, fs in os.walk(local_dir))
+            total_files = sum(len(fs) for _, _, fs in os.walk(local_dir, followlinks=False))
             uploaded = 0
 
             def _walk_error(exc):
                 failed[str(exc.filename)] = str(exc)
 
-            for root, dirs, files in os.walk(local_dir, onerror=_walk_error):
+            for root, dirs, files in os.walk(local_dir, onerror=_walk_error, followlinks=False):
+                dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
                 rel = os.path.relpath(root, local_dir)
                 # [EN] Use posixpath for remote Linux paths; convert Windows-style rel to POSIX
                 rel_posix = rel.replace(os.sep, "/") if os.sep != "/" else rel
+                if _skip_boundary_upload_dir(rel_posix):
+                    dirs[:] = []
+                    continue
                 remote_path = posixpath.join(remote_dir, rel_posix) if rel_posix != "." else remote_dir
                 try:
                     self._ensure_remote_dir(sftp, remote_path)
@@ -443,6 +464,11 @@ class SshClient:
 
                 for fname in files:
                     local_file = os.path.join(root, fname)
+                    if os.path.islink(local_file):
+                        continue
+                    rel_file = fname if rel_posix == "." else posixpath.join(rel_posix, fname)
+                    if _skip_boundary_upload_file(rel_file):
+                        continue
                     remote_file = posixpath.join(remote_path, fname)
                     try:
                         self._put_file(sftp, local_file, remote_file)
@@ -481,16 +507,20 @@ class SshClient:
             self._ensure_remote_dir(sftp, remote_dir)
             walker: Iterator[tuple[str, list[str], list[str]]]
             if recursive:
-                walker = os.walk(local_dir, onerror=lambda exc: failed.update({str(exc.filename): str(exc)}))
+                walker = os.walk(local_dir, followlinks=False, onerror=lambda exc: failed.update({str(exc.filename): str(exc)}))
             else:
                 names = os.listdir(local_dir)
                 files = [name for name in names if os.path.isfile(os.path.join(local_dir, name))]
                 walker = iter([(local_dir, [], files)])
 
-            for root, _dirs, files in walker:
+            for root, dirs, files in walker:
+                dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
                 rel = os.path.relpath(root, local_dir)
                 # [EN] Use posixpath for remote Linux paths; convert Windows-style rel to POSIX
                 rel_posix = rel.replace(os.sep, "/") if os.sep != "/" else rel
+                if _skip_boundary_upload_dir(rel_posix):
+                    dirs[:] = []
+                    continue
                 remote_path = remote_dir if rel_posix == "." else posixpath.join(remote_dir, rel_posix)
                 try:
                     self._ensure_remote_dir(sftp, remote_path)
@@ -499,9 +529,13 @@ class SshClient:
                     continue
                 for fname in files:
                     rel_file = fname if rel_posix == "." else posixpath.join(rel_posix, fname)
+                    if _skip_boundary_upload_file(rel_file):
+                        continue
                     if not pattern_fn(rel_file):
                         continue
                     local_file = os.path.join(root, fname)
+                    if os.path.islink(local_file):
+                        continue
                     remote_file = posixpath.join(remote_path, fname)
                     try:
                         self._put_file(sftp, local_file, remote_file)

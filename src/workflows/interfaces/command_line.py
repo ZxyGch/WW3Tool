@@ -9,7 +9,7 @@
 
 命令分组：
 - 配置管理：``workdir``、``validate``、``config``、``print-params``
-- 预处理：``generate-grid``、``prepare-forcing``、``merge-forcing``、``prepare-ww3``、``recommend-cfl``、``recommend-grid``、``run-workflow``、``local-run``
+- 预处理：``generate-grid``、``prepare-forcing``、``inspect-boundary``、``prepare-boundary``、``boundary-status``、``prepare-ww3``、``recommend-cfl``、``recommend-grid``、``run-workflow``、``local-run``
 - 后处理/绘图：``plot-wave-maps``、``plot-spectrum``、``plot-jason3``、``plot-jason3-swh``、``download-jason3``、``plot-ndbc``、``download-ndbc``
 - 远程运维：``connect-test``、``ssh``、``upload``、``submit``、``ntfy-watch``、``ntfy-watch-job`` 等 SLURM/SSH 操作
 - 辅助：``print-example`` 输出示例 YAML
@@ -30,7 +30,7 @@ Use ``workdir <path>`` to create or load a working directory from the template f
 
 Command groups:
 - Configuration: ``workdir``, ``validate``, ``config``, ``print-params``
-- Preprocessing: ``generate-grid``, ``prepare-forcing``, ``merge-forcing``, ``prepare-ww3``, ``recommend-cfl``, ``recommend-grid``, ``run-workflow``, ``local-run``
+- Preprocessing: ``generate-grid``, ``prepare-forcing``, ``inspect-boundary``, ``prepare-boundary``, ``boundary-status``, ``prepare-ww3``, ``recommend-cfl``, ``recommend-grid``, ``run-workflow``, ``local-run``
 - Post-processing/plotting: ``plot-wave-maps``, ``plot-spectrum``, ``plot-jason3``, ``plot-jason3-swh``, ``download-jason3``, ``plot-ndbc``, ``download-ndbc``
 - Remote operations: ``connect-test``, ``ssh``, ``upload``, ``submit`` and other SLURM/SSH operations
 - Auxiliary: ``print-example`` outputs a sample YAML
@@ -197,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
     p_validate.add_argument(
         "--stage",
-        choices=["grid", "forcing", "plot", "full"],
+        choices=["grid", "forcing", "plot", "full", "boundary"],
         default="full",
         help=tr("cli_help_validate_stage",
                 "Validate only what this stage needs (default: full)"),
@@ -268,6 +268,40 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=tr("cli_help_inspect_forcing_workdir", "Optional workdir whose params.yml supplies forcing.custom overrides"),
     )
+
+    p_insp_b = sub.add_parser(
+        "inspect-boundary",
+        help=tr("cli_help_inspect_boundary", "[workdir] Inspect external boundary spectra metadata"),
+    )
+    p_insp_b.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_insp_b.add_argument(
+        "--remote",
+        action="store_true",
+        help=tr("cli_help_inspect_boundary_remote", "Inspect server-side source metadata via SSH"),
+    )
+
+    p_prep_b = sub.add_parser(
+        "prepare-boundary",
+        help=tr("cli_help_prepare_boundary", "[workdir] Normalize local boundary spectra and write the plan"),
+    )
+    p_prep_b.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+
+    p_stat_b = sub.add_parser(
+        "boundary-status",
+        help=tr("cli_help_boundary_status", "[workdir] Show boundary preparation state"),
+    )
+    p_stat_b.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
+    p_stat_b.add_argument(
+        "--remote",
+        action="store_true",
+        help=tr("cli_help_boundary_status_remote", "Compare against server-side fingerprints"),
+    )
+
+    p_dl_b = sub.add_parser(
+        "download-boundary-report",
+        help=tr("cli_help_download_boundary_report", "[workdir] Download boundary diagnostics only"),
+    )
+    p_dl_b.add_argument("workdir", nargs="?", default=None, help=_WD_HELP)
 
     p_merge = sub.add_parser(
         "merge-forcing",
@@ -814,21 +848,31 @@ def _config_facts(config, params_path) -> dict:
             "remote_dir": getattr(server, "remote_dir", None)
             or getattr(server, "default_remote_dir", None),
         }
+    boundary = getattr(config, "boundary", None)
+    if boundary is not None:
+        facts["boundary"] = {
+            "mode": getattr(boundary, "mode", "none"),
+            "location": getattr(getattr(boundary, "source", None), "location", None),
+            "n_files": len(getattr(getattr(boundary, "source", None), "files", []) or []),
+        }
     return facts
 
 
 def _record_failure(code: int, exc: BaseException, *, kind: str,
                     hints: list[str] | None = None) -> None:
-    """把失败原因放进 JSON 结果。
-
-    错误信息原本只去 stderr，调用方拿到的 JSON 里只有一个退出码，看不出
-    为什么失败——这恰恰是最需要机器读到的一条。
-    """
+    """把失败原因放进 JSON 结果。"""
     from .json_output import result as _json_result
 
     res = _json_result()
     if res is not None:
-        res.fail(code, str(exc), kind=kind, hints=hints)
+        extra = {}
+        if hasattr(exc, "code"):
+            extra["code"] = str(getattr(exc, "code"))
+        if hasattr(exc, "context"):
+            extra["context"] = getattr(exc, "context")
+        if hasattr(exc, "hints") and not hints:
+            hints = list(getattr(exc, "hints") or [])
+        res.fail(code, str(exc), kind=kind, hints=hints, **extra)
 
 
 def _record_grid_result(res, config) -> None:
@@ -944,6 +988,8 @@ def _dispatch_body(args, parser) -> int:
             stage = "forcing"
         if args.command in ("generate-grid", "recommend-grid"):
             stage = "grid"
+        if args.command in ("inspect-boundary", "prepare-boundary", "boundary-status", "download-boundary-report"):
+            stage = "boundary"
         if args.command == "validate":
             # 只校验该阶段需要的东西：想确认网格配置时，不该被还没准备的
             # 风场卡住。
@@ -955,9 +1001,27 @@ def _dispatch_body(args, parser) -> int:
             print(tr("cli_validate_ok", "✅ OK: {path}").format(path=params_path))
             from .json_output import result as _json_result
             _r = _json_result()
+            payload = {
+                "params_path": str(params_path),
+                "stage": getattr(args, "stage", "full"),
+            }
+            if getattr(args, "stage", "full") == "boundary":
+                from ..application.boundary_preparation import inspect_boundary
+
+                inspection = inspect_boundary(config, execution_context="local", depth="metadata")
+                payload.update(
+                    state=inspection.state,
+                    validation_depth=inspection.validation_depth,
+                    pending_checks=list(inspection.pending_checks),
+                    artifacts=dict(inspection.artifacts),
+                )
+                if inspection.state == "failed":
+                    print(tr("cli_validate_boundary_failed", "❌ 边界检查未通过"), file=sys.stderr)
+                    if _r is not None:
+                        _r.update(**payload)
+                    return 1
             if _r is not None:
-                _r.update(params_path=str(params_path),
-                          stage=getattr(args, "stage", "full"))
+                _r.update(**payload)
             return 0
 
         if args.command == "config":
@@ -1013,6 +1077,15 @@ def _dispatch_body(args, parser) -> int:
             from ..application.preprocessing_workflow import run_prepare_forcing
             run_prepare_forcing(config, log=_progress_log("prepare-forcing"))
             return 0
+
+        if args.command == "inspect-boundary":
+            return _run_inspect_boundary(config, remote=bool(getattr(args, "remote", False)))
+        if args.command == "prepare-boundary":
+            return _run_prepare_boundary(config)
+        if args.command == "boundary-status":
+            return _run_boundary_status(config, remote=bool(getattr(args, "remote", False)))
+        if args.command == "download-boundary-report":
+            return _run_download_boundary_report(config)
 
         if args.command == "run-workflow":
             from ..application.preprocessing_workflow import run_pipeline
@@ -1153,12 +1226,90 @@ def _dispatch_body(args, parser) -> int:
         ])
         return 2
     except Exception as exc:
+        from ..infrastructure.boundary.errors import BoundaryError
+
+        if isinstance(exc, BoundaryError):
+            print(f"❌ {exc.code}: {exc.message}", file=sys.stderr)
+            _record_failure(1, exc, kind="boundary", hints=list(exc.hints))
+            return 1
         print(tr("cli_execution_failed", "❌ 执行失败：{error}").format(error=exc), file=sys.stderr)
         _record_failure(1, exc, kind=type(exc).__name__)
         return 1
 
     parser.error(tr("cli_unknown_command", "❌ 未知命令：{command}").format(command=args.command))
     return 2
+
+
+def _run_inspect_boundary(config, *, remote: bool) -> int:
+    from ..application.boundary_preparation import inspect_boundary
+    from ..infrastructure.boundary.errors import BoundaryError
+
+    if remote:
+        from ..application.remote_ops import run_inspect_boundary_remote
+
+        result = run_inspect_boundary_remote(config, log=print)
+        data = result.data if isinstance(result.data, dict) else {}
+        _json_set(
+            state=data.get("state", "failed" if not result.success else "ok"),
+            validation_depth=data.get("validation_depth", "metadata"),
+            pending_checks=data.get("pending_checks") or [],
+            artifacts=data.get("artifacts") or {},
+        )
+        return 0 if result.success else 1
+    inspection = inspect_boundary(config, execution_context="local", depth="metadata", log=print)
+    _json_set(
+        state=inspection.state,
+        validation_depth=inspection.validation_depth,
+        pending_checks=list(inspection.pending_checks),
+        artifacts=dict(inspection.artifacts),
+    )
+    if inspection.state == "failed":
+        issue = inspection.issues[0] if inspection.issues else None
+        if issue:
+            raise BoundaryError(issue.code, issue.message, context=issue.context, hints=issue.hints)
+        return 1
+    return 0
+
+
+def _run_prepare_boundary(config) -> int:
+    from ..application.boundary_preparation import prepare_boundary_inputs
+
+    result = prepare_boundary_inputs(config, execution_context="local", log=print)
+    _json_set(
+        state=result.state,
+        validation_depth="full",
+        pending_checks=list(result.pending_checks),
+        artifacts=dict(result.outputs),
+    )
+    return 0 if result.ok else 1
+
+
+def _run_boundary_status(config, *, remote: bool) -> int:
+    from ..application.boundary_preparation import boundary_status
+
+    status = boundary_status(config, remote=remote)
+    _json_set(
+        state=status.get("state"),
+        validation_depth=status.get("validation_depth"),
+        pending_checks=status.get("pending_checks") or [],
+        artifacts=status.get("artifacts") or {},
+    )
+    print(f"boundary state={status.get('state')} pending={status.get('pending_checks')}")
+    return 0 if status.get("state") != "failed" else 1
+
+
+def _run_download_boundary_report(config) -> int:
+    from ..application.remote_ops import run_download_boundary_report
+
+    result = run_download_boundary_report(config, log=print)
+    data = result.data if isinstance(result.data, dict) else {}
+    _json_set(
+        state=data.get("state", "ok" if result.success else "failed"),
+        validation_depth="report",
+        pending_checks=[],
+        artifacts=data.get("artifacts") or {},
+    )
+    return 0 if result.success else 1
 
 
 def _run_prepare_ww3(config) -> int:

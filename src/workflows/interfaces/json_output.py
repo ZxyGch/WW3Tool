@@ -71,11 +71,16 @@ class JsonResult:
         self.stages.append(entry)
 
     def fail(self, exit_code: int, message: str, *, kind: str = "error",
-             hints: list[str] | None = None) -> None:
+             hints: list[str] | None = None, code: str | None = None,
+             context: dict | None = None) -> None:
         """记录失败原因。*hints* 是可操作的下一步，不是解释。"""
         self.status = "error"
         self.exit_code = int(exit_code)
         self.error = {"kind": kind, "message": str(message)}
+        if code:
+            self.error["code"] = str(code)
+        if context:
+            self.error["context"] = context
         if hints:
             self.error["hints"] = [str(h) for h in hints]
 

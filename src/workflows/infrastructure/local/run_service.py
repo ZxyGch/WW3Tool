@@ -463,43 +463,79 @@ class LocalRunService:
                 pass
         return rc
 
+    def _run_boundary_phase(self, wp: Path, log: LogCallback, phase: str, lock_owner: str | None = None) -> int:
+        """调用与 local.sh 相同的边界 runtime。"""
+        from workflows.infrastructure.boundary.runtime import main as boundary_main
+
+        log("")
+        log("=" * 30 + f" boundary ({phase}) " + "=" * 30)
+        argv = ["--workdir", str(wp), "--phase", phase]
+        if lock_owner:
+            argv.extend(["--lock-owner", str(lock_owner)])
+        return int(boundary_main(argv))
+
     # ---- regular grid workflow ----
 
     def _workflow_regular(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
+        import uuid
+
+        from workflows.infrastructure.boundary.errors import BoundaryError
+        from workflows.infrastructure.boundary.manifest import WorkdirLock
+
         wd = str(wp)
+        owner = uuid.uuid4().hex
+        lock = WorkdirLock(wp, owner=owner)
         try:
-            restart_mode, restart_time = _prepare_regular_restart(wp, log)
-        except Exception as exc:
-            log(f"❌ Restart preparation failed: {exc}")
+            lock.acquire()
+        except BoundaryError as exc:
+            log(f"BOUNDARY {exc.code}: {exc.message}")
             return 1
-        log("")
-        log("=" * 30 + " " + tr("local_run_step_grid", "运行 ww3_grid") + " " + "=" * 30)
-        rc = self._run_tool_in("ww3_grid", wd, bin_dir, log)
-        if rc != 0:
-            return rc
-
-        rc = self._run_prnc_fields(wd, bin_dir, log)
-        if rc != 0:
-            return rc
-
-        if restart_mode:
-            log(f"⏭️ Restart mode: skip ww3_strt, start from {restart_time}")
-        else:
+        try:
+            try:
+                restart_mode, restart_time = _prepare_regular_restart(wp, log)
+            except Exception as exc:
+                log(f"❌ Restart preparation failed: {exc}")
+                return 1
+            rc = self._run_boundary_phase(wp, log, "pregrid", lock_owner=owner)
+            if rc != 0:
+                return rc
             log("")
-            log("=" * 30 + " " + tr("local_run_step_strt", "运行 ww3_strt") + " " + "=" * 30)
-            rc = self._run_tool_in("ww3_strt", wd, bin_dir, log)
+            log("=" * 30 + " " + tr("local_run_step_grid", "运行 ww3_grid") + " " + "=" * 30)
+            rc = self._run_tool_in("ww3_grid", wd, bin_dir, log)
+            if rc != 0:
+                return rc
+            rc = self._run_boundary_phase(wp, log, "postgrid", lock_owner=owner)
             if rc != 0:
                 return rc
 
-        rc = self._run_shel_with_fallback(wd, bin_dir, log, nprocs)
-        if rc != 0:
-            return rc
+            rc = self._run_prnc_fields(wd, bin_dir, log)
+            if rc != 0:
+                return rc
 
-        return self._run_post_processing(wd, bin_dir, log)
+            if restart_mode:
+                log(f"⏭️ Restart mode: skip ww3_strt, start from {restart_time}")
+            else:
+                log("")
+                log("=" * 30 + " " + tr("local_run_step_strt", "运行 ww3_strt") + " " + "=" * 30)
+                rc = self._run_tool_in("ww3_strt", wd, bin_dir, log)
+                if rc != 0:
+                    return rc
+
+            rc = self._run_shel_with_fallback(wd, bin_dir, log, nprocs)
+            if rc != 0:
+                return rc
+
+            return self._run_post_processing(wd, bin_dir, log)
+        finally:
+            lock.release()
 
     # ---- nested grid workflow ----
 
     def _workflow_nested(self, wp: Path, bin_dir: str, log: LogCallback, nprocs: int) -> int:
+        import uuid
+
+        from workflows.infrastructure.boundary.errors import BoundaryError
+        from workflows.infrastructure.boundary.manifest import WorkdirLock
         from workflows.infrastructure.ww3.nested_level_dirs import list_nested_level_entries
 
         levels = list_nested_level_entries(wp)
@@ -507,63 +543,84 @@ class LocalRunService:
             log(tr("nested_grid_folders_not_found", "❌ 未找到 level* 网格目录，请先生成嵌套网格"))
             return 1
         try:
-            restart_mode, restart_time = _prepare_nested_restart(wp, levels, log)
-        except Exception as exc:
-            log(f"❌ Restart preparation failed: {exc}")
-            return 1
+            from workflows.application.configuration import load_pipeline_config
 
-        for level_path, _idx in levels:
-            label = level_path.name
-            sub = str(level_path)
-            log("")
-            log("=" * 30 + " " + tr("local_run_step_grid_label", "运行 ww3_grid ({label})").format(label=label) + " " + "=" * 30)
-            rc = self._run_tool_in("ww3_grid", sub, bin_dir, log)
+            cfg = load_pipeline_config(wp / "params.yml", validation_stage="boundary")
+            if cfg.boundary.enabled:
+                log("BOUNDARY_GRID_UNSUPPORTED: 首版不支持嵌套多网格外部谱")
+                return 1
+        except Exception as exc:
+            log(f"BOUNDARY: {exc}")
+        owner = uuid.uuid4().hex
+        lock = WorkdirLock(wp, owner=owner)
+        try:
+            lock.acquire()
+        except BoundaryError as exc:
+            log(f"BOUNDARY {exc.code}: {exc.message}")
+            return 1
+        try:
+            try:
+                restart_mode, restart_time = _prepare_nested_restart(wp, levels, log)
+            except Exception as exc:
+                log(f"❌ Restart preparation failed: {exc}")
+                return 1
+            rc = self._run_boundary_phase(wp, log, "pregrid", lock_owner=owner)
             if rc != 0:
                 return rc
-            rc = self._run_prnc_fields(sub, bin_dir, log)
-            if rc != 0:
-                return rc
-            if restart_mode:
-                log(f"⏭️ Restart mode: skip ww3_strt ({label}), start from {restart_time}")
-            else:
+
+            for level_path, _idx in levels:
+                label = level_path.name
+                sub = str(level_path)
                 log("")
-                log("=" * 30 + " " + tr("local_run_step_strt_label", "运行 ww3_strt ({label})").format(label=label) + " " + "=" * 30)
-                rc = self._run_tool_in("ww3_strt", sub, bin_dir, log)
+                log("=" * 30 + " " + tr("local_run_step_grid_label", "运行 ww3_grid ({label})").format(label=label) + " " + "=" * 30)
+                rc = self._run_tool_in("ww3_grid", sub, bin_dir, log)
                 if rc != 0:
                     return rc
+                rc = self._run_prnc_fields(sub, bin_dir, log)
+                if rc != 0:
+                    return rc
+                if restart_mode:
+                    log(f"⏭️ Restart mode: skip ww3_strt ({label}), start from {restart_time}")
+                else:
+                    log("")
+                    log("=" * 30 + " " + tr("local_run_step_strt_label", "运行 ww3_strt ({label})").format(label=label) + " " + "=" * 30)
+                    rc = self._run_tool_in("ww3_strt", sub, bin_dir, log)
+                    if rc != 0:
+                        return rc
 
-        staged = ("mod_def", "restart", "wind", "current", "level", "ice", "ice1")
-        for level_path, _idx in levels:
-            lv = level_path.name
-            for stem in staged:
-                _move_if(level_path / f"{stem}.ww3", wp / f"{stem}.{lv}")
+            staged = ("mod_def", "restart", "wind", "current", "level", "ice", "ice1")
+            for level_path, _idx in levels:
+                lv = level_path.name
+                for stem in staged:
+                    _move_if(level_path / f"{stem}.ww3", wp / f"{stem}.{lv}")
 
-        # Run ww3_multi
-        multi = self._resolve_tool("ww3_multi", bin_dir)
-        mpi = shutil.which("mpirun") or shutil.which("mpiexec")
-        if mpi:
-            log("")
-            log("=" * 30 + " " + tr("local_run_step_mpi_multi", "运行 {mpi} -n {nprocs} ww3_multi").format(mpi=os.path.basename(mpi), nprocs=nprocs) + " " + "=" * 30)
-            rc = self._stream([mpi, "-n", str(nprocs), multi], str(wp), bin_dir, log)
-        else:
-            log("")
-            log("=" * 30 + " " + tr("local_run_step_multi_direct", "运行 ww3_multi (direct)") + " " + "=" * 30)
-            try:
-                rc = self._stream([multi], str(wp), bin_dir, log)
-            except FileNotFoundError:
-                log(tr("local_run_multi_not_found", "❌ 找不到 ww3_multi"))
-                return -1
-        if rc != 0:
-            return rc
+            multi = self._resolve_tool("ww3_multi", bin_dir)
+            mpi = shutil.which("mpirun") or shutil.which("mpiexec")
+            if mpi:
+                log("")
+                log("=" * 30 + " " + tr("local_run_step_mpi_multi", "运行 {mpi} -n {nprocs} ww3_multi").format(mpi=os.path.basename(mpi), nprocs=nprocs) + " " + "=" * 30)
+                rc = self._stream([mpi, "-n", str(nprocs), multi], str(wp), bin_dir, log)
+            else:
+                log("")
+                log("=" * 30 + " " + tr("local_run_step_multi_direct", "运行 ww3_multi (direct)") + " " + "=" * 30)
+                try:
+                    rc = self._stream([multi], str(wp), bin_dir, log)
+                except FileNotFoundError:
+                    log(tr("local_run_multi_not_found", "❌ 找不到 ww3_multi"))
+                    return -1
+            if rc != 0:
+                return rc
 
-        finest_path = levels[-1][0]
-        finest = finest_path.name
-        _move_if(wp / f"out_grd.{finest}", finest_path / "out_grd.ww3")
-        _move_if(wp / f"mod_def.{finest}", finest_path / "mod_def.ww3")
-        _move_if(wp / f"out_pnt.{finest}", finest_path / "out_pnt.ww3")
-        _move_if(wp / f"track_o.{finest}", finest_path / "track_o.ww3")
+            finest_path = levels[-1][0]
+            finest = finest_path.name
+            _move_if(wp / f"out_grd.{finest}", finest_path / "out_grd.ww3")
+            _move_if(wp / f"mod_def.{finest}", finest_path / "mod_def.ww3")
+            _move_if(wp / f"out_pnt.{finest}", finest_path / "out_pnt.ww3")
+            _move_if(wp / f"track_o.{finest}", finest_path / "track_o.ww3")
 
-        return self._run_post_processing(str(finest_path), bin_dir, log, points_list_dir=str(wp))
+            return self._run_post_processing(str(finest_path), bin_dir, log, points_list_dir=str(wp))
+        finally:
+            lock.release()
 
     # ---- post-processing ----
 
