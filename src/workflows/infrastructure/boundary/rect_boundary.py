@@ -18,6 +18,7 @@ from ..grid_visualization.rect_grid_desc_parse import parse_structured_grid_desc
 from ..grid_visualization.structured_grid_paths import structured_grid_desc_path
 from .errors import BoundaryError
 from .nml_text import effective_nml_assignments, is_nml_comment, strip_nml_comment
+from ...support.translations import tr
 
 
 SEA_MASK_VALUES = {1, 2}
@@ -95,7 +96,7 @@ def load_rect_geometry(workdir: Path) -> dict:
     if missing:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            "无法从网格产物读取 RECT 几何",
+            tr("boundary_rect_geometry_unreadable", "无法从网格产物读取 RECT 几何"),
             context={"missing": missing, "workdir": str(workdir)},
         )
     geo["depth_sf"] = float(geo.get("depth_sf") or nml.get("DEPTH%SF") or 1.0)
@@ -113,7 +114,7 @@ def _reshape_field(values: np.ndarray, nx: int, ny: int, idla: int) -> np.ndarra
     if arr.size != nx * ny:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            f"掩码/水深元素数 {arr.size} 与 NX*NY={nx*ny} 不一致",
+            tr("boundary_grid_size_mismatch", "掩码/水深元素数 {size} 与 NX*NY={expected} 不一致").format(size=arr.size, expected=nx * ny),
             context={"size": int(arr.size), "nx": nx, "ny": ny},
         )
     if idla in {1, 2}:
@@ -123,7 +124,7 @@ def _reshape_field(values: np.ndarray, nx: int, ny: int, idla: int) -> np.ndarra
         return arr.reshape((ny, nx))[::-1]
     raise BoundaryError(
         "BOUNDARY_GRID_UNSUPPORTED",
-        f"首版不支持 MASK%IDLA={idla}",
+        tr("boundary_mask_idla_unsupported", "首版不支持 MASK%IDLA={idla}").format(idla=idla),
         context={"idla": idla},
     )
 
@@ -132,7 +133,7 @@ def read_ww3_field(path: Path, nx: int, ny: int, idla: int) -> np.ndarray:
     if not path.is_file():
         raise BoundaryError(
             "BOUNDARY_SOURCE_MISSING",
-            f"网格文件不存在：{path}",
+            tr("boundary_grid_file_missing", "网格文件不存在：{path}").format(path=path),
             context={"path": str(path)},
         )
     values = np.loadtxt(path)
@@ -163,7 +164,7 @@ def base_mask_path(workdir: Path, geo: dict) -> Path:
         return fallback
     raise BoundaryError(
         "BOUNDARY_SOURCE_MISSING",
-        "找不到基础掩码 grid.mask_nobound",
+        tr("boundary_base_mask_missing", "找不到基础掩码 grid.mask_nobound"),
         context={"workdir": str(workdir)},
     )
 
@@ -228,28 +229,28 @@ def build_target_points(
     if int(inset_cells) != 1:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            "首版 inset_cells 固定为 1",
+            tr("boundary_inset_fixed", "首版 inset_cells 固定为 1"),
             context={"inset_cells": inset_cells},
         )
     geo = load_rect_geometry(workdir)
     if str(geo.get("grid_type") or "RECT").upper() not in {"RECT", "RECTILINEAR"}:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            f"首版仅支持结构化经纬度矩形网格，当前 GRID%TYPE={geo.get('grid_type')}",
+            tr("boundary_grid_type_unsupported", "首版仅支持结构化经纬度矩形网格，当前 GRID%TYPE={grid_type}").format(grid_type=geo.get('grid_type')),
             context={"grid_type": geo.get("grid_type")},
         )
     clos = str(geo.get("clos") or "")
     if clos in {"SMPL", "SMAP", "GLOBAL"} or "PERIOD" in clos:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            "首版不支持周期/全球闭合网格",
+            tr("boundary_periodic_unsupported", "首版不支持周期/全球闭合网格"),
             context={"GRID%CLOS": clos},
         )
     nx, ny = int(geo["nx"]), int(geo["ny"])
     if nx < 4 or ny < 4:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            "网格尺寸不足以形成边界环和内部海点",
+            tr("boundary_grid_too_small", "网格尺寸不足以形成边界环和内部海点"),
             context={"nx": nx, "ny": ny},
         )
     mask_file = base_mask_path(workdir, geo)
@@ -275,7 +276,7 @@ def build_target_points(
     if existing_boundary:
         raise BoundaryError(
             "BOUNDARY_MASK_CONFLICT",
-            "基础掩码已有未纳入本次选择的活动边界点",
+            tr("boundary_mask_conflict", "基础掩码已有未纳入本次选择的活动边界点"),
             context={"conflict_ij": existing_boundary[:20], "n": len(existing_boundary)},
         )
     points: list[BoundaryTargetPoint] = []
@@ -307,7 +308,7 @@ def build_target_points(
     if not points:
         raise BoundaryError(
             "BOUNDARY_NO_WET_POINTS",
-            "全部所选边均无有效海点",
+            tr("boundary_no_wet_points", "全部所选边均无有效海点"),
             context={"sides": list(sides), "empty_sides": empty_sides},
         )
     # 内部海点
@@ -323,7 +324,7 @@ def build_target_points(
     if interior < 1:
         raise BoundaryError(
             "BOUNDARY_GRID_UNSUPPORTED",
-            "边界环没有内部计算海点",
+            tr("boundary_ring_no_interior", "边界环没有内部计算海点"),
             context={"nx": nx, "ny": ny},
         )
     derived = mask.copy()
@@ -375,7 +376,7 @@ def read_target_points_csv(path: Path) -> list[BoundaryTargetPoint]:
 def set_mask_nml(nml_path: Path, filename: str, *, idla: int = 1, idfm: int = 1) -> None:
     """把 MASK%FILENAME/IDLA/IDFM 写到 ww3_grid.nml 的 &MASK_NML 段。"""
     if not nml_path.is_file():
-        raise BoundaryError("BOUNDARY_SOURCE_MISSING", f"找不到 {nml_path}")
+        raise BoundaryError("BOUNDARY_SOURCE_MISSING", tr("boundary_nml_missing", "找不到 {nml_path}").format(nml_path=nml_path))
     lines = nml_path.read_text(encoding="utf-8").splitlines(keepends=True)
     wanted = {
         "MASK%FILENAME": f"'{filename}'",
@@ -454,8 +455,8 @@ def load_or_capture_mask_origin(workdir: Path, geo: dict) -> dict:
     if Path(named).name == "grid.mask_boundary":
         raise BoundaryError(
             "BOUNDARY_STALE",
-            "缺少 boundary/mask_origin.json，禁止按派生 IDLA=1 掩码再次准备",
-            hints=["把 ww3_grid.nml 的 MASK%FILENAME/IDLA 恢复为首次准备前的值后再准备"],
+            tr("boundary_mask_origin_missing", "缺少 boundary/mask_origin.json，禁止按派生 IDLA=1 掩码再次准备"),
+            hints=[tr("boundary_hint_restore_mask_nml", "把 ww3_grid.nml 的 MASK%FILENAME/IDLA 恢复为首次准备前的值后再准备")],
         )
     if not named and not (geo or {}).get("mask_idla"):
         return {"filename": "grid.mask_nobound", "idla": 1, "idfm": 1}

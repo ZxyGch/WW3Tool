@@ -18,6 +18,7 @@ from ...support.netcdf_serialization import serialized_dataset
 from .errors import BoundaryError
 from .spectra_reader import SpectraFileMeta, inspect_spectra_file, read_station_efth
 from .spectrum_coords import cyclic_permutation_offset, directions_match, frequencies_match
+from ...support.translations import tr
 
 
 CancelFn = Callable[[], None]
@@ -44,13 +45,13 @@ def infer_direction_convention(meta: SpectraFileMeta) -> str:
         return "to_direction"
     raise BoundaryError(
         "BOUNDARY_CONVENTION_UNKNOWN",
-        f"方向约定不明：{meta.path}",
+        tr("boundary_direction_convention_unknown", "方向约定不明：{path}").format(path=meta.path),
         context={
             "path": meta.path,
             "long_name": meta.dir_long_name,
             "standard_name": meta.dir_standard_name,
         },
-        hints=["使用带 to_direction / from_direction 元数据的 WW3 原生谱"],
+        hints=[tr("boundary_hint_direction_metadata", "使用带 to_direction / from_direction 元数据的 WW3 原生谱")],
     )
 
 
@@ -60,7 +61,7 @@ def efth_unit_scale(units: str) -> tuple[float, str]:
     if not raw:
         raise BoundaryError(
             "BOUNDARY_CONVENTION_UNKNOWN",
-            "efth 缺少 units，禁止猜测",
+            tr("boundary_efth_units_missing", "efth 缺少 units，禁止猜测"),
             context={"units": raw},
         )
     # 7.14 ww3_ounp 的 SPECTRA%TYPE 为 2 或 3 时（代码里 NCVARTYPE<=3），把谱按
@@ -71,14 +72,11 @@ def efth_unit_scale(units: str) -> tuple[float, str]:
     if "log10" in lower or "logarithm" in lower:
         raise BoundaryError(
             "BOUNDARY_CONVENTION_UNKNOWN",
-            f"efth 是对数打包的 ww3_ounp 输出（units={raw}），首版不支持",
+            tr("boundary_efth_log_packed", "efth 是对数打包的 ww3_ounp 输出（units={raw}），首版不支持").format(raw=raw),
             context={"units": raw},
             hints=[
-                "重跑 ww3_ounp，在 ww3_ounp.nml 的 SPECTRA_NML 中设 SPECTRA%TYPE = 4"
-                "（写 NF90_FLOAT 线性谱，units 为 'm2 s rad-1'）。"
-                "注意 FILE%NETCDF 只管 NetCDF3/4 文件格式，改它不能去掉对数打包",
-                "对数打包为 NINT(log10(efth+1e-12)/0.0004) 的 NF90_SHORT，"
-                "需按 10**x-1e-12 反解，本版不做该反解",
+                tr("boundary_hint_rerun_ounp_type4", "重跑 ww3_ounp，在 ww3_ounp.nml 的 SPECTRA_NML 中设 SPECTRA%TYPE = 4（写 NF90_FLOAT 线性谱，units 为 'm2 s rad-1'）。注意 FILE%NETCDF 只管 NetCDF3/4 文件格式，改它不能去掉对数打包"),
+                tr("boundary_hint_log_packing_detail", "对数打包为 NINT(log10(efth+1e-12)/0.0004) 的 NF90_SHORT，需按 10**x-1e-12 反解，本版不做该反解"),
             ],
         )
     per_deg = ("deg" in lower or "degree" in lower) and "rad" not in lower
@@ -88,9 +86,9 @@ def efth_unit_scale(units: str) -> tuple[float, str]:
         return 1.0, "m2 s rad-1"
     raise BoundaryError(
         "BOUNDARY_CONVENTION_UNKNOWN",
-        f"无法识别的 efth 单位：{raw}",
+        tr("boundary_efth_units_unknown", "无法识别的 efth 单位：{raw}").format(raw=raw),
         context={"units": raw},
-        hints=["首版需要每 Hz、每弧度的方差谱密度"],
+        hints=[tr("boundary_hint_efth_units", "首版需要每 Hz、每弧度的方差谱密度")],
     )
 
 
@@ -127,7 +125,7 @@ def align_spectral_axes(
     if freqs.size != tgt_f.size:
         raise BoundaryError(
             "BOUNDARY_SPECTRAL_MISMATCH",
-            f"频率档数不同：源 {freqs.size}，目标 {tgt_f.size}",
+            tr("boundary_freq_count_mismatch", "频率档数不同：源 {n_source}，目标 {n_target}").format(n_source=freqs.size, n_target=tgt_f.size),
             context={"n_source": int(freqs.size), "n_target": int(tgt_f.size)},
         )
     freq_axis = -2 if data.ndim >= 2 else 0
@@ -144,19 +142,19 @@ def align_spectral_axes(
         else:
             raise BoundaryError(
                 "BOUNDARY_SPECTRAL_MISMATCH",
-                "源频率与目标 SPECTRUM%FREQ1/XFR/NK 不一致，首版禁止频率插值",
+                tr("boundary_freq_axis_mismatch", "源频率与目标 SPECTRUM%FREQ1/XFR/NK 不一致，首版禁止频率插值"),
                 context={
                     "source": [float(v) for v in freqs[:8]],
                     "target": [float(v) for v in tgt_f[:8]],
                     "rtol": 1e-6,
                     "atol_hz": 1e-10,
                 },
-                hints=["将目标谱参数设为源谱，或更换与目标离散一致的源数据"],
+                hints=[tr("boundary_hint_match_spectrum", "将目标谱参数设为源谱，或更换与目标离散一致的源数据")],
             )
     if dirs.size != tgt_d.size:
         raise BoundaryError(
             "BOUNDARY_SPECTRAL_MISMATCH",
-            f"方向档数不同：源 {dirs.size}，目标 {tgt_d.size}",
+            tr("boundary_dir_count_mismatch", "方向档数不同：源 {n_source}，目标 {n_target}").format(n_source=dirs.size, n_target=tgt_d.size),
             context={"n_source": int(dirs.size), "n_target": int(tgt_d.size)},
         )
     if directions_match(dirs, tgt_d):
@@ -168,7 +166,7 @@ def align_spectral_axes(
             # sorting for display is not allowed unless it matches after cyclic shift of original
             raise BoundaryError(
                 "BOUNDARY_SPECTRAL_MISMATCH",
-                "源方向与目标 THOFF/NTH 离散不等价，禁止自动方向插值",
+                tr("boundary_direction_axis_mismatch", "源方向与目标 THOFF/NTH 离散不等价，禁止自动方向插值"),
                 context={
                     "source": [float(v) for v in dirs[:8]],
                     "target": [float(v) for v in tgt_d[:8]],
@@ -183,7 +181,7 @@ def align_spectral_axes(
     if abs(after - checksum) > 1e-6 * scale:
         raise BoundaryError(
             "BOUNDARY_SPECTRAL_MISMATCH",
-            "方向/频率重排后积分方差不一致",
+            tr("boundary_reorder_variance_changed", "方向/频率重排后积分方差不一致"),
             context={"before": checksum, "after": after},
         )
     return np.asarray(data, dtype=np.float64)
@@ -195,7 +193,7 @@ def sanitize_efth(data: np.ndarray) -> tuple[np.ndarray, int, float]:
         n_bad = int(np.size(arr) - np.isfinite(arr).sum())
         raise BoundaryError(
             "BOUNDARY_INVALID_SPECTRA",
-            f"谱值含非有限或未解码填充值（{n_bad} 个）",
+            tr("boundary_spectra_nonfinite_or_fill", "谱值含非有限或未解码填充值（{n_bad} 个）").format(n_bad=n_bad),
             context={"n_invalid": n_bad},
         )
     neg = arr < 0
@@ -206,7 +204,7 @@ def sanitize_efth(data: np.ndarray) -> tuple[np.ndarray, int, float]:
         if worst < -NEG_SPECTRA_CLIP_TOL:
             raise BoundaryError(
                 "BOUNDARY_INVALID_SPECTRA",
-                f"谱值存在明显负值（最小 {worst}）",
+                tr("boundary_spectra_negative", "谱值存在明显负值（最小 {worst}）").format(worst=worst),
                 context={"min_value": worst, "n_negative": n_neg},
             )
         max_fix = abs(worst)
@@ -300,14 +298,14 @@ def merge_station_time_series(
                 if not np.allclose(by_time[key], frame, rtol=1e-6, atol=1e-10, equal_nan=True):
                     raise BoundaryError(
                         "BOUNDARY_DUPLICATE_CONFLICT",
-                        f"重复时刻 {key.strftime('%Y%m%d %H%M%S')} 的谱值冲突",
+                        tr("boundary_duplicate_time_conflict", "重复时刻 {time} 的谱值冲突").format(time=key.strftime('%Y%m%d %H%M%S')),
                         context={"time": key.strftime("%Y%m%d %H%M%S"), "slice": idx},
                     )
                 continue
             by_time[key] = np.asarray(frame, dtype=np.float64)
             origins[key] = idx
     if not by_time:
-        raise BoundaryError("BOUNDARY_TIME_COVERAGE", "站点没有有效时间样本")
+        raise BoundaryError("BOUNDARY_TIME_COVERAGE", tr("boundary_station_no_times", "站点没有有效时间样本"))
     ordered = sorted(by_time)
     stacked = np.stack([by_time[t] for t in ordered], axis=0)
     return ordered, stacked
@@ -324,13 +322,13 @@ def crop_halo_indices(
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
     if not times:
-        raise BoundaryError("BOUNDARY_TIME_COVERAGE", "没有谱时间样本")
+        raise BoundaryError("BOUNDARY_TIME_COVERAGE", tr("boundary_no_time_samples", "没有谱时间样本"))
     stamps = [t.astimezone(timezone.utc) if t.tzinfo else t.replace(tzinfo=timezone.utc) for t in times]
     if stamps[0] > start:
         if stamps[0] != start:
             raise BoundaryError(
                 "BOUNDARY_TIME_COVERAGE",
-                "有效起点之前缺少谱样本，禁止外推",
+                tr("boundary_no_sample_before_start", "有效起点之前缺少谱样本，禁止外推"),
                 context={
                     "effective_start": start.strftime("%Y%m%d %H%M%S"),
                     "first_sample": stamps[0].strftime("%Y%m%d %H%M%S"),
@@ -340,7 +338,7 @@ def crop_halo_indices(
         if stamps[-1] != end:
             raise BoundaryError(
                 "BOUNDARY_TIME_COVERAGE",
-                "有效终点之后缺少谱样本，禁止外推",
+                tr("boundary_no_sample_after_end", "有效终点之后缺少谱样本，禁止外推"),
                 context={
                     "effective_end": end.strftime("%Y%m%d %H%M%S"),
                     "last_sample": stamps[-1].strftime("%Y%m%d %H%M%S"),
@@ -360,7 +358,7 @@ def crop_halo_indices(
     if stamps[i0] > start or stamps[i1] < end:
         raise BoundaryError(
             "BOUNDARY_TIME_COVERAGE",
-            "裁剪后仍不能覆盖有效积分区间",
+            tr("boundary_crop_not_covering", "裁剪后仍不能覆盖有效积分区间"),
             context={
                 "effective_start": start.strftime("%Y%m%d %H%M%S"),
                 "effective_end": end.strftime("%Y%m%d %H%M%S"),
@@ -409,21 +407,21 @@ def crop_with_halo(
 
 def assert_time_gaps(times: list[datetime], max_gap_seconds: int) -> None:
     if max_gap_seconds <= 0:
-        raise BoundaryError("BOUNDARY_TIME_GAP", "max_time_gap_seconds 必须为正数")
+        raise BoundaryError("BOUNDARY_TIME_GAP", tr("boundary_max_gap_positive", "max_time_gap_seconds 必须为正数"))
     for a, b in zip(times, times[1:]):
         dt = (b - a).total_seconds()
         if dt <= 0:
             raise BoundaryError(
                 "BOUNDARY_TIME_GAP",
-                "时间轴必须严格递增",
+                tr("boundary_time_not_increasing", "时间轴必须严格递增"),
                 context={"t0": a.isoformat(), "t1": b.isoformat(), "dt": dt},
             )
         if dt > max_gap_seconds:
             raise BoundaryError(
                 "BOUNDARY_TIME_GAP",
-                f"相邻谱时刻间隔 {dt:.0f} s 超过 {max_gap_seconds} s",
+                tr("boundary_time_gap_exceeded", "相邻谱时刻间隔 {dt:.0f} s 超过 {max_gap_seconds} s").format(dt=dt, max_gap_seconds=max_gap_seconds),
                 context={"t0": a.strftime("%Y%m%d %H%M%S"), "t1": b.strftime("%Y%m%d %H%M%S"), "dt": dt},
-                hints=["补充数据或提高明确的间隔要求"],
+                hints=[tr("boundary_hint_time_gap", "补充数据或提高明确的间隔要求")],
             )
 
 

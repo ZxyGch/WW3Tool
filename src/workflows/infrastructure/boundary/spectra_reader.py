@@ -12,6 +12,7 @@ import numpy as np
 from ...domain.boundary_models import BoundaryStation
 from ...support.netcdf_serialization import serialized_dataset
 from .errors import BoundaryError
+from ...support.translations import tr
 
 
 _FREQ_NAMES = ("frequency", "freq", "f", "frequencies")
@@ -61,7 +62,7 @@ def _decode_times(var) -> list[datetime]:
     if not units:
         raise BoundaryError(
             "BOUNDARY_CONVENTION_UNKNOWN",
-            "时间变量缺少 units 属性",
+            tr("boundary_time_units_missing", "时间变量缺少 units 属性"),
             context={"variable": var.name},
         )
     calendar = getattr(var, "calendar", "gregorian")
@@ -69,7 +70,7 @@ def _decode_times(var) -> list[datetime]:
     if cal not in {"standard", "gregorian", "proleptic_gregorian"}:
         raise BoundaryError(
             "BOUNDARY_CONVENTION_UNKNOWN",
-            f"不支持的时间历法 {calendar}，首版仅接受 gregorian/standard",
+            tr("boundary_calendar_unsupported", "不支持的时间历法 {calendar}，首版仅接受 gregorian/standard").format(calendar=calendar),
             context={"calendar": calendar},
         )
     raw = np.asarray(var[:])
@@ -77,7 +78,7 @@ def _decode_times(var) -> list[datetime]:
     out: list[datetime] = []
     for item in np.atleast_1d(dates).tolist():
         if item is None:
-            raise BoundaryError("BOUNDARY_TIME_COVERAGE", "时间轴含无法解码的时刻")
+            raise BoundaryError("BOUNDARY_TIME_COVERAGE", tr("boundary_time_undecodable", "时间轴含无法解码的时刻"))
         if isinstance(item, datetime):
             dt = item
         else:
@@ -169,7 +170,7 @@ def _as_1d_positions(var, n_station: int, n_time: int) -> np.ndarray:
             if n_time > 1 and not np.allclose(arr, first, equal_nan=True):
                 raise BoundaryError(
                     "BOUNDARY_SOURCE_MISSING",
-                    "站点位置随时间变化，首版不支持移动站点",
+                    tr("boundary_moving_station", "站点位置随时间变化，首版不支持移动站点"),
                     context={"shape": list(arr.shape)},
                 )
             return np.asarray(first, dtype=np.float64)
@@ -178,13 +179,13 @@ def _as_1d_positions(var, n_station: int, n_time: int) -> np.ndarray:
             if arr.shape[1] > 1 and not np.allclose(arr, first[:, None], equal_nan=True):
                 raise BoundaryError(
                     "BOUNDARY_SOURCE_MISSING",
-                    "站点位置随时间变化，首版不支持移动站点",
+                    tr("boundary_moving_station", "站点位置随时间变化，首版不支持移动站点"),
                     context={"shape": list(arr.shape)},
                 )
             return np.asarray(first, dtype=np.float64)
     raise BoundaryError(
         "BOUNDARY_SOURCE_MISSING",
-        "无法识别站点经纬度布局",
+        tr("boundary_station_layout_unknown", "无法识别站点经纬度布局"),
         context={"shape": list(np.asarray(var[:]).shape)},
     )
 
@@ -194,7 +195,7 @@ def _efth_layout(dims: tuple[str, ...]) -> str:
     if len(lower) < 4:
         raise BoundaryError(
             "BOUNDARY_SOURCE_MISSING",
-            "efth 不是完整二维谱（需要 time、station、frequency、direction）",
+            tr("boundary_efth_not_2d", "efth 不是完整二维谱（需要 time、station、frequency、direction）"),
             context={"dims": list(dims)},
         )
     has_time = any(d in lower for d in ("time",))
@@ -204,7 +205,7 @@ def _efth_layout(dims: tuple[str, ...]) -> str:
     if not (has_time and has_freq and has_dir):
         raise BoundaryError(
             "BOUNDARY_SOURCE_MISSING",
-            "efth 缺少 time/frequency/direction 维",
+            tr("boundary_efth_missing_dims", "efth 缺少 time/frequency/direction 维"),
             context={"dims": list(dims)},
         )
     if lower[0] in {"time"} and has_station:
@@ -222,7 +223,7 @@ def inspect_spectra_file(path: str | Path) -> SpectraFileMeta:
     if not file_path.is_file():
         raise BoundaryError(
             "BOUNDARY_SOURCE_MISSING",
-            f"谱文件不存在：{file_path}",
+            tr("boundary_spectra_file_missing", "谱文件不存在：{path}").format(path=file_path),
             context={"path": str(file_path)},
         )
     with serialized_dataset(str(file_path), "r") as ds:
@@ -248,10 +249,10 @@ def inspect_spectra_file(path: str | Path) -> SpectraFileMeta:
             extra = ""
             names = list(ds.variables)
             if any("swh" in n.lower() or "hs" == n.lower() for n in names) and efth_var is None:
-                extra = "；文件像是波高/周期产品，缺少二维谱 efth"
+                extra = tr("boundary_suffix_looks_like_params", "；文件像是波高/周期产品，缺少二维谱 efth")
             raise BoundaryError(
                 "BOUNDARY_SOURCE_MISSING",
-                f"谱文件缺少必需变量：{', '.join(missing)}{extra}",
+                tr("boundary_spectra_vars_missing", "谱文件缺少必需变量：{missing}{extra}").format(missing=', '.join(missing), extra=extra),
                 context={"path": str(file_path), "missing": missing, "variables": names},
             )
         times = _decode_times(time_var)
@@ -344,7 +345,7 @@ def _reject_missing_efth(raw, var) -> np.ndarray:
         n_bad = int(np.count_nonzero(mask))
         raise BoundaryError(
             "BOUNDARY_INVALID_SPECTRA",
-            f"谱值含缺测（{n_bad} 个）",
+            tr("boundary_spectra_missing_values", "谱值含缺测（{n_bad} 个）").format(n_bad=n_bad),
             context={"n_invalid": n_bad, "variable": getattr(var, "name", "efth")},
         )
     arr = np.array(np.ma.filled(ma, np.nan), dtype=np.float64)
@@ -360,14 +361,14 @@ def _reject_missing_efth(raw, var) -> np.ndarray:
             n_bad = int(np.count_nonzero(arr == fv))
             raise BoundaryError(
                 "BOUNDARY_INVALID_SPECTRA",
-                f"谱值含未解码填充值（{n_bad} 个）",
+                tr("boundary_spectra_fill", "谱值含未解码填充值（{n_bad} 个）").format(n_bad=n_bad),
                 context={"n_invalid": n_bad, "fill_value": float(fv)},
             )
     if not np.isfinite(arr).all():
         n_bad = int(np.size(arr) - np.isfinite(arr).sum())
         raise BoundaryError(
             "BOUNDARY_INVALID_SPECTRA",
-            f"谱值含非有限值（{n_bad} 个）",
+            tr("boundary_spectra_nonfinite", "谱值含非有限值（{n_bad} 个）").format(n_bad=n_bad),
             context={"n_invalid": n_bad},
         )
     return arr
@@ -390,14 +391,14 @@ def read_station_efth(
         dir_var = _first_var(ds, _DIR_NAMES)
         time_var = _first_var(ds, _TIME_NAMES)
         if efth_var is None or freq_var is None or dir_var is None or time_var is None:
-            raise BoundaryError("BOUNDARY_SOURCE_MISSING", f"无法读取谱值：{file_path}")
+            raise BoundaryError("BOUNDARY_SOURCE_MISSING", tr("boundary_spectra_unreadable", "无法读取谱值：{path}").format(path=file_path))
         dims = tuple(d.lower() for d in efth_var.dimensions)
         ndim = len(efth_var.dimensions)
         mapping = _efth_axis_map(dims)
         if "time" not in mapping or "freq" not in mapping or "dir" not in mapping:
             raise BoundaryError(
                 "BOUNDARY_SOURCE_MISSING",
-                "efth 维度无法识别为 time/station/frequency/direction",
+                tr("boundary_efth_dims_unrecognized", "efth 维度无法识别为 time/station/frequency/direction"),
                 context={"dims": list(efth_var.dimensions)},
             )
         has_station = "station" in mapping
@@ -408,7 +409,7 @@ def read_station_efth(
         if station_index < 0 or station_index >= n_station:
             raise BoundaryError(
                 "BOUNDARY_SOURCE_MISSING",
-                f"站点索引 {station_index} 超出范围",
+                tr("boundary_station_index_range", "站点索引 {station_index} 超出范围").format(station_index=station_index),
                 context={"path": str(file_path), "n_station": n_station},
             )
         indexers: list = [slice(None)] * ndim
@@ -435,13 +436,13 @@ def read_station_efth(
         except Exception as exc:
             raise BoundaryError(
                 "BOUNDARY_SOURCE_MISSING",
-                "切片后 efth 不是 time/frequency/direction",
+                tr("boundary_efth_slice_shape", "切片后 efth 不是 time/frequency/direction"),
                 context={"shape": list(np.shape(data)), "dims": list(efth_var.dimensions)},
             ) from exc
         if data.ndim != 3:
             raise BoundaryError(
                 "BOUNDARY_SOURCE_MISSING",
-                "切片后 efth 不是 time/frequency/direction",
+                tr("boundary_efth_slice_shape", "切片后 efth 不是 time/frequency/direction"),
                 context={"shape": list(data.shape), "dims": list(efth_var.dimensions)},
             )
         freqs = np.asarray(freq_var[:], dtype=np.float64).reshape(-1)
@@ -465,7 +466,7 @@ def assign_source_ids(stations: list[BoundaryStation]) -> list[BoundaryStation]:
         if len(coords) > 1:
             raise BoundaryError(
                 "BOUNDARY_DUPLICATE_CONFLICT",
-                f"站名 {name!r} 对应多个不同位置，禁止静默合并",
+                tr("boundary_station_name_conflict", "站名 {name!r} 对应多个不同位置，禁止静默合并").format(name=name),
                 context={
                     "name": name,
                     "locations": [{"lon": s.lon, "lat": s.lat, "files": s.file_paths} for s in group],

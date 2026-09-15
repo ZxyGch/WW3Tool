@@ -11,6 +11,7 @@ import numpy as np
 from ...domain.boundary_models import ANGLE_TOL_DEG, FREQ_ATOL_HZ, FREQ_RTOL, SpectralDiscrete
 from .errors import BoundaryError
 from .nml_text import effective_nml_assignments
+from ...support.translations import tr
 
 
 def geometric_frequencies(freq1: float, xfr: float, nk: int) -> np.ndarray:
@@ -133,7 +134,7 @@ def parse_spectrum_from_nml(nml_path: Path, parameters: dict[str, str] | None = 
     if nk < 1 or nth < 1:
         raise BoundaryError(
             "BOUNDARY_SPECTRAL_MISMATCH",
-            "无法从 ww3_grid.nml 解析有效的 NK/NTH",
+            tr("boundary_nml_nk_nth_invalid", "无法从 ww3_grid.nml 解析有效的 NK/NTH"),
             context={"path": str(nml_path), "nk": nk, "nth": nth},
         )
     return target_spectral_discrete(
