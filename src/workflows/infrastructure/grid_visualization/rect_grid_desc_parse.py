@@ -157,13 +157,16 @@ def parse_rect_legacy_ascii(lines: list[str]) -> dict | None:
     L3 = lines[grid_line_idx + 3].split()
     if len(L1) < 2 or len(L2) < 3 or len(L3) < 3:
         return None
-    nx, ny = int(float(L1[0])), int(float(L1[1]))
-    sf = float(L2[2])
-    sf0 = float(L3[2])
-    sx_deg = float(L2[0]) / sf
-    sy_deg = float(L2[1]) / sf
-    x0 = float(L3[0]) / sf0
-    y0 = float(L3[1]) / sf0
+    try:
+        nx, ny = int(float(L1[0])), int(float(L1[1]))
+        sf = float(L2[2])
+        sf0 = float(L3[2])
+        sx_deg = float(L2[0]) / sf
+        sy_deg = float(L2[1]) / sf
+        x0 = float(L3[0]) / sf0
+        y0 = float(L3[1]) / sf0
+    except (TypeError, ValueError, ZeroDivisionError, IndexError):
+        return None
     return {
         "grid_type": "RECT",
         "nx": nx,

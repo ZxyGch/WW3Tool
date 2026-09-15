@@ -54,7 +54,11 @@ def structured_grid_desc_path(folder: str) -> str | None:
     preferred = os.path.join(folder, "ww3_grid.nml.grid")
     if os.path.isfile(preferred):
         return preferred
-    cands = sorted(glob.glob(os.path.join(folder, "ww3_grid.nml.*")))
+    cands = sorted(
+        p
+        for p in glob.glob(os.path.join(folder, "ww3_grid.nml.*"))
+        if not p.endswith(".log") and not p.endswith(".bak")
+    )
     if cands:
         return cands[0]
     if os.path.isfile(gm):
@@ -74,7 +78,13 @@ def structured_grid_desc_basenames_to_copy(folder: str) -> list[str]:
     gn = os.path.join(folder, "grid.nml")
     if os.path.isfile(gn) and _is_ww3_full_nml_file(gn):
         return ["grid.nml"]
-    names = sorted({os.path.basename(p) for p in glob.glob(os.path.join(folder, "ww3_grid.nml.*"))})
+    names = sorted(
+        {
+            os.path.basename(p)
+            for p in glob.glob(os.path.join(folder, "ww3_grid.nml.*"))
+            if not p.endswith(".log") and not p.endswith(".bak")
+        }
+    )
     if names:
         return names
     if os.path.isfile(os.path.join(folder, "grid.meta")):
