@@ -36,7 +36,8 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from netCDF4 import Dataset
+
+from workflows.support.netcdf_serialization import serialized_dataset
 
 from ...domain.config_models import ForcingVariableOverride, ResolvedForcingVariables
 from ...support.translations import tr
@@ -167,7 +168,7 @@ class ForcingVariableError(Exception):
         self.candidates = candidates or []
 
 
-def _snapshot_variables(ds: Dataset) -> Dict[str, VariableInfo]:
+def _snapshot_variables(ds):  # noqa: ANN001 - netCDF4 Dataset
     """快照文件内全部变量元信息。
 
     [EN] Snapshot metadata of all variables in the file.
@@ -191,7 +192,7 @@ def inspect_variables(file_path: str) -> Dict[str, VariableInfo]:
 
     [EN] Open the file and return metadata for all variables (read-only; no data reads).
     """
-    with Dataset(file_path, "r") as ds:
+    with serialized_dataset(file_path, "r") as ds:
         return _snapshot_variables(ds)
 
 

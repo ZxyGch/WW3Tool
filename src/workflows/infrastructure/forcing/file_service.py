@@ -32,7 +32,9 @@ import shutil
 import glob
 import numpy as np
 from datetime import datetime
-from netCDF4 import Dataset, num2date
+from netCDF4 import num2date
+
+from workflows.support.netcdf_serialization import serialized_dataset
 from typing import Optional
 from ...domain.forcing_fields import ForcingField, Step2Files
 from ...support.translations import tr
@@ -98,9 +100,9 @@ class FileService:
         dimensions, compression, and ``_FillValue`` settings.
         """
         temp_file = source_path + ".tmp"
-        with Dataset(source_path, "r") as src:
+        with serialized_dataset(source_path, "r") as src:
             file_format = getattr(src, "file_format", "NETCDF4")
-            with Dataset(temp_file, "w", format=file_format) as dst:
+            with serialized_dataset(temp_file, "w", format=file_format) as dst:
                 # 复制全局属性
                 # [EN] Copy global attributes
                 for attr_name in src.ncattrs():
@@ -230,9 +232,9 @@ class FileService:
         try:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
-            with Dataset(target_file, "r") as src:
+            with serialized_dataset(target_file, "r") as src:
                 file_format = getattr(src, "file_format", "NETCDF4")
-                with Dataset(temp_file, "w", format=file_format) as dst:
+                with serialized_dataset(temp_file, "w", format=file_format) as dst:
                     for attr_name in src.ncattrs():
                         dst.setncattr(attr_name, src.getncattr(attr_name))
 
@@ -280,7 +282,7 @@ class FileService:
         """
         temp_file = target_file + ".std_coord_tmp"
         try:
-            with Dataset(target_file, "r") as src:
+            with serialized_dataset(target_file, "r") as src:
                 # [EN] Build variable rename map: only rename 1-D coord vars whose dim matches
                 rename_map: dict[str, str] = {}
                 for alias in self._LON_ALIASES:
@@ -314,7 +316,7 @@ class FileService:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
                 file_format = getattr(src, "file_format", "NETCDF4")
-                with Dataset(temp_file, "w", format=file_format) as dst:
+                with serialized_dataset(temp_file, "w", format=file_format) as dst:
                     for attr_name in src.ncattrs():
                         dst.setncattr(attr_name, src.getncattr(attr_name))
 
@@ -352,7 +354,7 @@ class FileService:
         target_units = "seconds since 1970-01-01"
         temp_file = target_file + ".time_tmp"
         try:
-            with Dataset(target_file, "r") as src:
+            with serialized_dataset(target_file, "r") as src:
                 time_name = None
                 for candidate in ("time", "MT"):
                     if candidate in src.variables:
@@ -389,7 +391,7 @@ class FileService:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
                 file_format = getattr(src, "file_format", "NETCDF4")
-                with Dataset(temp_file, "w", format=file_format) as dst:
+                with serialized_dataset(temp_file, "w", format=file_format) as dst:
                     for attr_name in src.ncattrs():
                         dst.setncattr(attr_name, src.getncattr(attr_name))
 
@@ -528,7 +530,7 @@ class FileService:
             # 读取原始强迫场范围（优先使用解析结果中的坐标变量名）
             # [EN] Read original forcing ranges (resolution coordinate names take precedence)
             from netCDF4 import Dataset
-            with Dataset(source_file, "r") as ds:
+            with serialized_dataset(source_file, "r") as ds:
                 for var_name in [resolved_lon] + ["longitude", "lon", "x"] if resolved_lon else ["longitude", "lon", "x"]:
                     if var_name in ds.variables:
                         lon = ds.variables[var_name][:]

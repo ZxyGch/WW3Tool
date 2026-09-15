@@ -21,8 +21,9 @@ WW3 第二步要求识别四类强迫场对应的标准变量名：
 [EN] This module opens the file once to perform detection, avoiding redundant I/O,
 and is reused by import use cases and directory scanning.
 """
-from netCDF4 import Dataset
 from typing import Dict, List
+
+from workflows.support.netcdf_serialization import serialized_dataset
 
 
 class VariableDetector:
@@ -54,7 +55,7 @@ class VariableDetector:
         detected = {"wind": False, "current": False, "level": False, "ice": False}
         fields = []
         try:
-            with Dataset(file_path, "r") as ds:
+            with serialized_dataset(file_path, "r") as ds:
                 has_u10 = "u10" in ds.variables or "U10" in ds.variables
                 has_v10 = "v10" in ds.variables or "V10" in ds.variables
                 has_wndewd = "wndewd" in ds.variables or "WNDEWD" in ds.variables
@@ -91,7 +92,7 @@ class VariableDetector:
         [EN] Check if the file contains current variables (only accepts uo and vo).
         """
         try:
-            with Dataset(file_path, "r") as ds:
+            with serialized_dataset(file_path, "r") as ds:
                 # 只检查 uo 和 vo
                 # [EN] Only check uo and vo
                 has_uo = "uo" in ds.variables
@@ -108,7 +109,7 @@ class VariableDetector:
         [EN] Check if the file contains level variables (only accepts zos).
         """
         try:
-            with Dataset(file_path, "r") as ds:
+            with serialized_dataset(file_path, "r") as ds:
                 # 只检查 zos
                 # [EN] Only check zos
                 return "zos" in ds.variables
@@ -122,7 +123,7 @@ class VariableDetector:
         [EN] Check if the file contains ice variables (only accepts siconc).
         """
         try:
-            with Dataset(file_path, "r") as ds:
+            with serialized_dataset(file_path, "r") as ds:
                 # 只检查 siconc
                 # [EN] Only check siconc
                 return "siconc" in ds.variables

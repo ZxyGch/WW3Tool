@@ -89,7 +89,7 @@ def audit_time_metadata_for_ww3(
 
     [EN] Check whether the ``time`` metadata of a forcing NetCDF can be read by WW3 ``ww3_prnc``.
     """
-    from netCDF4 import Dataset
+    from workflows.support.netcdf_serialization import serialized_dataset
 
     issues: List[TimeMetadataIssue] = []
 
@@ -101,7 +101,7 @@ def audit_time_metadata_for_ww3(
             )
         )
 
-    with Dataset(file_path, "r") as ds:
+    with serialized_dataset(file_path, "r") as ds:
         resolved_time = time_name or pick_time_variable_name(ds)
         if not resolved_time:
             issues.append(TimeMetadataIssue("missing_time_var", ""))
@@ -174,6 +174,16 @@ def normalize_calendar_for_ww3(calendar: Optional[str]) -> str:
       attribute and shifting dates.
     """
     value = (calendar or "gregorian").strip().lower()
+    # CF 别名与 WW3 兼容日历名称一一映射：不换算时间数值，仅改 calendar 属性，
+    # 必须保证日期↔数值语义完全一致。proleptic_gregorian（ERA5 默认）与
+    # gregorian 在 1582 年后的格里历语义相同，对任意现代的 seconds-since
+    # 时间轴数值等价，可安全归一。
+    # [EN] Map CF aliases to WW3-compatible calendar names: only the calendar
+    # attribute is changed, the numeric time axis is NOT recomputed, so the
+    # mapping must preserve date<->number semantics exactly. proleptic_gregorian
+    # (ERA5 default) is identical to gregorian for dates after 1582, hence
+    # numerically equivalent for any modern seconds-since axis.
+    value = {"proleptic_gregorian": "gregorian"}.get(value, value)
     if value in _WW3_ALLOWED_CALENDARS:
         return value
     return ""

@@ -30,7 +30,7 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Callable, List, Optional
 
 import numpy as np
-from netCDF4 import Dataset
+from workflows.support.netcdf_serialization import serialized_dataset
 
 from ...support.translations import tr
 from .forcing_time_metadata import (
@@ -132,6 +132,37 @@ def _get_available_memory_bytes() -> int:
     return 0
 
 
+# 常见候选名，用于把基于「裁剪/合并前」源文件解析出的坐标/时间变量名
+# 重定位到加工后文件上（merge 会把任意时间变量统一重命名为 time）。
+# [EN] Common candidate names used to relocate coordinate/time variable names
+# resolved against the pre-crop/pre-merge source onto the processed file
+# (merge always renames the time variable to "time").
+_COORD_CANDIDATES: Dict[str, tuple[str, ...]] = {
+    "longitude": ("longitude", "lon", "Longitude", "LON", "x", "X"),
+    "latitude": ("latitude", "lat", "Latitude", "LAT", "y", "Y"),
+    "source_time": ("time", "Time", "TIME", "valid_time", "MT", "mt", "t"),
+}
+
+
+def _relocate_missing_coord_names(src, lon_name, lat_name, time_name) -> Tuple[str, str, str]:
+    """源坐标/时间变量名若不在（可能已裁剪/合并的）文件中，按常见候选名重定位；
+    找不到则保留原值，由调用方的存在性校验负责报错。
+
+    [EN] If a source coordinate/time variable name is missing from the
+    (possibly cropped/merged) file, relocate it through common candidates;
+    otherwise keep the original name for the caller's existence check.
+    """
+    names = {"longitude": lon_name, "latitude": lat_name, "source_time": time_name}
+    for role, current in names.items():
+        if current in src.variables:
+            continue
+        for candidate in _COORD_CANDIDATES.get(role, ()):
+            if candidate in src.variables:
+                names[role] = candidate
+                break
+    return names["longitude"], names["latitude"], names["source_time"]
+
+
 class ForcingNormalizeService:
     """将强迫场 NetCDF 归一化为 WW3 标准布局的服务类。
 
@@ -192,7 +223,7 @@ class ForcingNormalizeService:
         # ── Phase 1: 读取元数据 ─────────────────────────────────────────
         # [EN] Phase 1: read metadata
         try:
-            with Dataset(source_file, "r") as src:
+            with serialized_dataset(source_file, "r") as src:
                 src.set_auto_mask(False)
 
                 resolved_list = self._collect_resolved_variables(source_file, variables)
@@ -220,6 +251,15 @@ class ForcingNormalizeService:
                                 "❌ 同一文件的多个强迫场必须使用相同的经纬度/时间变量",
                             )
                         )
+
+                # 传入的解析结果可能基于裁剪/合并前的源文件（merge 已把时间
+                # 变量统一重命名为 time）；在加工后文件上重定位缺失的坐标/时间名。
+                # [EN] The passed-in resolution is usually based on the source
+                # file (merge renamed the time variable to "time"); relocate
+                # missing coordinate/time names against the processed file.
+                lon_name, lat_name, time_name = _relocate_missing_coord_names(
+                    src, lon_name, lat_name, time_name
+                )
 
                 if lon_name not in src.variables:
                     raise KeyError(tr("log_lon_var_not_found", "❌ 未找到经度变量：{name}").format(name=lon_name))
@@ -469,7 +509,7 @@ class ForcingNormalizeService:
             if os.path.exists(temp_output_path):
                 os.remove(temp_output_path)
 
-            with Dataset(source_file, "r") as src, Dataset(temp_output_path, "w", format="NETCDF4") as dst:
+            with serialized_dataset(source_file, "r") as src, serialized_dataset(temp_output_path, "w", format="NETCDF4") as dst:
                 src.set_auto_mask(False)
                 try:
                     dst.set_fill_off()
@@ -717,8 +757,8 @@ class ForcingNormalizeService:
                     raise ValueError(
                         tr(
                             "forcing_time_issue_unsupported_calendar",
-                            "⚠️ 不支持的日历类型：{calendar}（WW3 仅支持 standard/gregorian/360_day；noleap 等无法在不转换时间数值的前提下安全导入）",
-                        ).format(calendar=original_time_calendar)
+                            "⚠️ time:calendar={detail} 不被 WW3 支持，将改写为 gregorian",
+                        ).format(detail=original_time_calendar)
                     )
                 time_var.calendar = ww3_calendar
 

@@ -116,7 +116,9 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
     [EN] Output a detailed overview of a single NetCDF forcing file.
     """
     import numpy as np
-    from netCDF4 import Dataset, num2date
+    from netCDF4 import num2date
+
+    from workflows.support.netcdf_serialization import serialized_dataset
 
     logger.log("")
     logger.log("=" * 70)
@@ -128,7 +130,7 @@ def _report_file_overview(field_name: str, path: Path, logger: CoreLogger) -> No
         logger.log(tr("forcing_info_filesize_unreadable", "ℹ️ 文件大小：无法读取 ({error})").format(error=exc))
 
     try:
-        with Dataset(str(path), "r") as dataset:
+        with serialized_dataset(str(path), "r") as dataset:
             lon = _first_variable(dataset, ("longitude", "lon", "Longitude", "LON"))
             lat = _first_variable(dataset, ("latitude", "lat", "Latitude", "LAT"))
 
