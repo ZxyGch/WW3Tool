@@ -106,6 +106,44 @@ WW3 7.14 仓库内的对照证据：
 改它去不掉对数打包。本版不做对数反解（`ww3_bounc` 自己按 `10**(raw*scale)-1e-12` 反解，
 见 `ww3_bounc.F90:609`）。
 
+## SHOU 服务器粗网格 → 细网格端到端验收（2026-09-15）
+
+用工具自身的正常流程（`generate-grid → prepare-forcing → recommend-cfl → prepare-ww3 → upload → submit → download-results`）
+在 SHOU 上跑真实嵌套，边界谱来自粗网格自己的 `ww3_ounp` 输出，而不是脚本合成的谱。
+
+- 构建：服务器 `7.14 ST4_RECT`（`/public/home/weiyl001/bin/wavewatch3/7.14/st4_rect/bin`），CPU6240R，24 核。
+- 强迫：ERA5 0.25° 风场，2025-02-11 00 时 → 02-13 23 时。
+- A（粗）：110–145°E、10–40°N、0.5°，02-11 → 02-13；`calc.mode: spectral_point`，在 B 的 218 个边界目标点上逐小时输出二维谱。
+- B（细）：121.5–127.5°E、21.5–27.5°N、0.1°，02-11 → 02-12，四边开边界（西边 14 个点落在台湾陆地上，被掩码排除）。
+  `B_bnd` 为 `external_spectra` / `location: remote` / `nearest` / `max_distance_km: 10`；`B_none` 为关闭边界的对照。
+
+结果：作业 149284（A，1 分 01 秒）、149287（B_bnd，1 分 40 秒）、149286（B_none，1 分 12 秒）均成功。
+计算节点上 `deferred_remote → prepared`，`ww3_bounc` 生成 NBI=218、NK=35、NTH=36、49 个时刻的 `nest.ww3`，
+映射距离 ≤ 0.0003 km。事先写定的判据全部通过（第二天、B 内部 3376 个海洋点）：
+
+| | 相对偏差 | 相对 RMSE | 相关 |
+| --- | --- | --- | --- |
+| 内部 B_bnd vs A | −3.8% | 7.2% | 0.982 |
+| 内部 B_none vs A | −29.8% | 34.4% | 0.856 |
+| 距边界 ≤5 格 B_bnd vs A | −1.3% | 3.4% | 0.995 |
+| 距边界 ≤5 格 B_none vs A | −36.2% | 41.4% | 0.782 |
+
+从服务器上的 `nest.ww3` 二进制重算 60 个（点，时刻）的 Hs，与 A 点谱同刻 Hs 的最大相对差为 2.3e-8。
+B_bnd 内部偏低主要来自八重山、宫古诸岛的遮蔽带，0.5° 的 A 分辨不出。
+
+本次验收暴露并已修复的两处阻塞问题（此前 16 个真实积分算例都没暴露，因为验收脚本自写精简 namelist、且只在本机 netCDF4 1.7.2 上跑）：
+
+- 解析 `ww3_grid.nml` 时把模板注释 `!     SPECTRUM%NK = 0` 当成赋值，pregrid 读到 NK=NTH=0；6.07 与 7.14 模板都会触发（`4db98a5`）。
+- 服务器 netCDF4 1.7.4 的 `stringtochar` 对 `S` 型数组不可用，写规范化站点谱时失败（`6479d89`）。
+
+仍未解决、使用时需要注意：
+
+- `server.sh` / `local.sh` 在常规网格路径上无条件调用边界运行时，并先检查能否 import。服务器端 WW3Tool 若未升级到含边界模块的版本，
+  **所有常规网格作业都会失败，即使没开边界**。SHOU 当前安装 0.1.30 实测 `ModuleNotFoundError`；本次验收在提交时设 `WW3TOOL_ROOT` 指向上传的源码。
+- `end_date` 只允许 `YYYYMMDD`、积分到当日 23:59:59，而逐小时点输出最后一帧在 23:00；边界覆盖又禁止外推。
+  所以粗、细网格填同样的起止日期必然报 `BOUNDARY_TIME_COVERAGE`，粗网格至少要多跑一个输出步（本次 A 多跑了一天）。
+- `inspect-boundary --remote` 读到远程文件的维度与变量后既不打印也不写入 JSON，文本模式只显示"连接成功"。
+
 ## 已知限制
 
 - 嵌套 `ww3_multi`、UNST、SMC、周期/跨日界线目标矩形、频率方向插值、ASCII 输入均报告不支持。
