@@ -63,18 +63,20 @@ def efth_unit_scale(units: str) -> tuple[float, str]:
             "efth 缺少 units，禁止猜测",
             context={"units": raw},
         )
-    # ww3_ounp 的 NCVARTYPE<=3 把谱按 NINT(log10(efth+1e-12)/0.0004) 存成 NF90_SHORT，
-    # units 写作 'log10(m2 s rad-1 +1E-12)'。这串里含 "rad"，若不先拦下来就会被当成
-    # 线性 m2 s rad-1；netCDF4 只做线性解包，拿到的是 log10 值而不是谱。
-    # 首版不支持对数打包输入，必须在这里给出可操作的报错，不能落到"谱值为负"。
+    # 7.14 ww3_ounp 的 SPECTRA%TYPE 为 2 或 3 时（代码里 NCVARTYPE<=3），把谱按
+    # NINT(log10(efth+1e-12)/0.0004) 存成 NF90_SHORT，units 写作 'log10(m2 s rad-1 +1E-12)'。
+    # 默认 SPECTRA%TYPE=4 写线性 REAL；6.07 只写 FLOAT，没有这个选项。
+    # 这串 units 含 "rad"，若不先拦下来就会被当成线性 m2 s rad-1；netCDF4 只做线性解包，
+    # 拿到的是 log10 值而不是谱。首版不支持对数打包输入，必须在这里给出可操作的报错。
     if "log10" in lower or "logarithm" in lower:
         raise BoundaryError(
             "BOUNDARY_CONVENTION_UNKNOWN",
             f"efth 是对数打包的 ww3_ounp 输出（units={raw}），首版不支持",
             context={"units": raw},
             hints=[
-                "重跑 ww3_ounp 并设 FILE%NETCDF 的 NCVARTYPE=4（写 NF90_FLOAT 线性谱，"
-                "units 为 'm2 s rad-1'）",
+                "重跑 ww3_ounp，在 ww3_ounp.nml 的 SPECTRA_NML 中设 SPECTRA%TYPE = 4"
+                "（写 NF90_FLOAT 线性谱，units 为 'm2 s rad-1'）。"
+                "注意 FILE%NETCDF 只管 NetCDF3/4 文件格式，改它不能去掉对数打包",
                 "对数打包为 NINT(log10(efth+1e-12)/0.0004) 的 NF90_SHORT，"
                 "需按 10**x-1e-12 反解，本版不做该反解",
             ],

@@ -98,10 +98,13 @@ WW3 7.14 仓库内的对照证据：
 - 方向 `standard_name`：官方是空格分隔的 `sea surface wave to direction`，原先只匹配下划线形式，
   官方文件一律被判 `BOUNDARY_CONVENTION_UNKNOWN` 拒收。
 
-另外 `ww3_ounp` 默认档（`NCVARTYPE<=3`）写的是 `NINT(log10(efth+1e-12)/0.0004)` 的 `NF90_SHORT`，
-`units='log10(m2 s rad-1 +1E-12)'`。该串含 `rad`，原先被判成线性谱，而 netCDF4 只做线性解包，
-拿到的是 log10 值。现在在单位层拦下并提示改用 `NCVARTYPE=4`。本版不做对数反解
-（`ww3_bounc` 自己是按 `10**(raw*scale)-1e-12` 反解的，见 `ww3_bounc.F90:609`）。
+另外 7.14 `ww3_ounp` 在 `SPECTRA%TYPE` 设为 2 或 3 时（代码中 `NCVARTYPE<=3`）写的是
+`NINT(log10(efth+1e-12)/0.0004)` 的 `NF90_SHORT`，`units='log10(m2 s rad-1 +1E-12)'`。
+**默认 `SPECTRA%TYPE=4` 写线性 REAL**（`w3nmlounpmd.F90:522`）；6.07 只写 FLOAT，没有该选项。
+该 units 串含 `rad`，原先会被判成线性谱，而 netCDF4 只做线性解包，拿到的是 log10 值。
+现在在单位层拦下并提示改回 `SPECTRA%TYPE = 4`。`FILE%NETCDF` 只管 NetCDF3/4 文件格式，
+改它去不掉对数打包。本版不做对数反解（`ww3_bounc` 自己按 `10**(raw*scale)-1e-12` 反解，
+见 `ww3_bounc.F90:609`）。
 
 ## 已知限制
 

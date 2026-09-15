@@ -147,9 +147,10 @@ def test_decode_station_name_string_array():
 
 
 def test_log_packed_ounp_units_rejected_with_actionable_hint():
-    """ww3_ounp NCVARTYPE<=3 写 log10 打包谱，units 含 "rad" 但不是线性谱。
+    """7.14 ww3_ounp 的 SPECTRA%TYPE=2/3 写 log10 打包谱，units 含 "rad" 但不是线性谱。
 
-    必须在单位这一层拦下并指明改用 NCVARTYPE=4，不能落到下游"谱值为负"的误导报错。
+    必须在单位这一层拦下并指明改 SPECTRA%TYPE=4，不能落到下游"谱值为负"的误导报错；
+    提示里不得把 FILE%NETCDF 当成解决办法（它只管 NetCDF3/4 文件格式）。
     """
     import pytest
 
@@ -159,11 +160,12 @@ def test_log_packed_ounp_units_rejected_with_actionable_hint():
     with pytest.raises(BoundaryError) as exc:
         efth_unit_scale("log10(m2 s rad-1 +1E-12)")
     assert exc.value.code == "BOUNDARY_CONVENTION_UNKNOWN"
-    assert any("NCVARTYPE=4" in h for h in exc.value.hints)
+    assert any("SPECTRA%TYPE = 4" in h for h in exc.value.hints)
+    assert not any("FILE%NETCDF 的" in h for h in exc.value.hints)
 
 
 def test_linear_efth_units_still_accepted():
-    """NCVARTYPE=4 的线性谱与每度谱不受影响。"""
+    """SPECTRA%TYPE=4 的线性谱与每度谱不受影响。"""
     import math
 
     from workflows.infrastructure.boundary.spectra_normalizer import efth_unit_scale
