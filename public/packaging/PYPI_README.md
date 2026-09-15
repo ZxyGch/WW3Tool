@@ -13,6 +13,7 @@ A pure-Python preprocessing & run-assist toolkit around WAVEWATCH III (third-gen
 WW3Tool does **not** replace the WW3 executables (`ww3_grid`, `ww3_prnc`, `ww3_shel`, ...). It automates and chains them:
 
 - **Forcing preprocessing**: validate / fix / merge wind & current NetCDF forcing files (latitude sorting, variable renaming, time-axis repair).
+- **External boundary spectra (one-way nesting)**: feed 2D point spectra from a larger WW3 run into the open edges of a structured grid; `ww3_bounc` builds `nest.ww3` and the tool reads it back to verify it (`inspect-boundary`, `prepare-boundary`, `boundary-status`).
 - **Mesh generation**: structured rectilinear meshes (arbitrary-depth two-way nesting), unstructured triangular meshes, and SMC meshes.
 - **Automatic namelists**: generate the full WW3 namelist set for v6.07.1 and v7.14 (`ww3_grid.nml`, `ww3_prnc.nml`, `ww3_shel.nml`, `ww3_ounf.nml`, `ww3_multi.nml`, ...).
 - **Run scripts**: generate scripts that correctly invoke `ww3_grid` / `ww3_prnc` / `ww3_shel`.
@@ -57,7 +58,7 @@ ww3tool          # no argument prints the help
 
 ### Calling it from an AI agent or a script
 
-All 37 subcommands speak JSON. With `--json`, stdout carries exactly one
+All 41 subcommands speak JSON. With `--json`, stdout carries exactly one
 object, so nothing has to be parsed out of prose:
 
 ```bash
@@ -98,7 +99,7 @@ Tab completion and history; shares the same configuration as the GUI.
 
 ### MCP server (for AI clients)
 
-The repo ships an MCP server (34 `ww3tool_*` tools + `list_commands`, stdio transport) for Claude / Cursor and other AI clients. See `public/packaging/mcp/` in the GitHub repo.
+The repo ships an MCP server (40 `ww3tool_*` tools + `list_commands`, stdio transport) for Claude / Cursor and other AI clients. See `public/packaging/mcp/` in the GitHub repo.
 
 ### Links
 
@@ -114,6 +115,7 @@ The repo ships an MCP server (34 `ww3tool_*` tools + `list_commands`, stdio tran
 WW3Tool **不替代** WW3 可执行文件（`ww3_grid`、`ww3_prnc`、`ww3_shel` 等），而是把这些流程串起来、自动化：
 
 - **强迫场预处理**：风场 / 流场 NetCDF 强迫文件的校验、修复与合并（纬度排序、变量重命名、时间轴修正）。
+- **外部边界谱（单向嵌套）**：把更大范围 WW3 算例输出的二维点谱送到结构化网格的开边界，由 `ww3_bounc` 生成 `nest.ww3`，工具再回读校验（`inspect-boundary`、`prepare-boundary`、`boundary-status`）。
 - **网格生成**：结构化矩形网格（任意深度双向嵌套）、非结构化三角网格、SMC 网格。
 - **自动配置**：为 v6.07.1 与 v7.14 生成 WW3 全套 namelist（`ww3_grid.nml`、`ww3_prnc.nml`、`ww3_shel.nml`、`ww3_ounf.nml`、`ww3_multi.nml` 等）。
 - **运行脚本**：自动生成正确调用 `ww3_grid` / `ww3_prnc` / `ww3_shel` 的脚本。
@@ -156,7 +158,7 @@ ww3tool          # 无参数显示帮助
 
 ### 用 AI 或脚本调用
 
-37 条子命令全部支持 JSON。加 `--json` 后 stdout 上只有一个对象，不需要从
+41 条子命令全部支持 JSON。加 `--json` 后 stdout 上只有一个对象，不需要从
 散文里往外抠：
 
 ```bash
@@ -197,7 +199,7 @@ ww3tool shell
 
 ### MCP server（供 AI 客户端调用）
 
-仓库提供 MCP server（34 个 `ww3tool_*` 工具 + `list_commands`，stdio 传输），可直接接入 Claude / Cursor 等 AI 客户端。配置方法见 GitHub 仓库 `public/packaging/mcp/` 目录。
+仓库提供 MCP server（40 个 `ww3tool_*` 工具 + `list_commands`，stdio 传输），可直接接入 Claude / Cursor 等 AI 客户端。配置方法见 GitHub 仓库 `public/packaging/mcp/` 目录。
 
 ### 相关链接
 

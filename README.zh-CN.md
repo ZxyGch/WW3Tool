@@ -108,6 +108,10 @@ CLI 的"一条命令一个步骤、无需人工交互"特性天然适合 AI Agen
 | 预处理  | generate-grid [workdir]                                       | 生成网格（Step 1）        |
 |      | merge-forcing <in1.nc> [...] -o <out.nc>                      | 独立工具：校验并合并强迫场 NetCDF |
 |      | prepare-forcing [workdir]                                     | 准备强迫场（Step 2）        |
+|      | inspect-boundary [workdir] [--remote]                         | 检查外部边界谱              |
+|      | prepare-boundary [workdir]                                    | 准备规范化边界谱            |
+|      | boundary-status [workdir] [--remote]                          | 查看边界准备状态            |
+|      | download-boundary-report [workdir]                            | 下载边界诊断                |
 |      | recommend-grid [workdir] [--coarse\|--fine]                   | 按区域范围推荐网格间距          |
 |      | recommend-cfl [workdir] [--mode safe\|fast\|faster] [--factor X] | 按 CFL 公式推荐时间步长       |
 |      | prepare-ww3 [workdir]                                         | 仅生成 WW3 namelist     |
@@ -962,7 +966,100 @@ forcing:
 
 打开工作目录时，会自动检测是否存在已经标准化处理过的强迫场文件，并在 GUI 中回填对应按钮。扫描主要依据标准文件名和组合文件名，例如 `wind.nc`、`current.nc`、`level.nc`、`ice.nc`、`current_level.nc`、`wind_current_level_ice.nc`。
 
-扫描只负责恢复 Step 1 的网格参数显示；真正生成网格仍然需要用户点击“生成网格”。
+扫描只负责恢复界面显示；真正导入仍然需要点击"确认裁剪并导入"或"直接导入，不进行裁剪"。
+
+#### 外部边界谱（单向嵌套）
+
+区域网格是从大洋里切出来的一块，远处风暴产生的涌浪会从开边界传进来。不给边界输入时，WW3 把开边界当成"外面没有浪进来"。外部边界谱把更大范围、更粗网格的 WW3 结果里的二维谱（能量在频率 × 方向上的分布）送到细网格的开边界上：由 WW3 自带的 `ww3_bounc` 生成 `nest.ww3`，`ww3_shel` 取其中向内传播的部分作为边界条件。这就是 WW3 的离线单向嵌套，细网格不会反馈给粗网格；需要双向耦合时请用嵌套网格 `ww3_multi`（§5.5.8）。
+
+| 本版支持 | 会明确报不支持 |
+| --- | --- |
+| 单层结构化经纬度网格（`mesh_type: structured`、`grid_type: normal`），非周期 | 嵌套 `ww3_multi`、SMC、非结构网格、周期或跨日界线网格 |
+| `ww3_ounp` 写出的 WW3 二维点谱 NetCDF | ASCII 谱、直接导入现成的 `nest.ww3` |
+| 最近邻、两点线性（`ww3_bounc` `INTERP=1/2`） | 频率或方向插值 |
+| 冷启动与热启动 | |
+
+##### 源谱从哪来
+
+最常见的做法是先跑一个范围更大、网格更粗的 WW3 算例：
+
+1. **沿细网格的开边界设输出点。** 在粗网格算例的 Step 3 选**二维谱点**（`calc.mode: spectral_point`）。细网格的活动边界是向内一格的一圈：西边经度 `X0 + SX`，东边 `X0 + (NX-2)·SX`，南边纬度 `Y0 + SY`，北边 `Y0 + (NY-2)·SY`（`X0`、`SX`、`NX` 等取自细网格算例的 `ww3_grid.nml`）。每个边界格点放一个最省事；每隔几格放一个再用 `linear` 也可以。点距比粗网格格距更密没有意义，因为 `ww3_ounp` 本身就是从粗网格双线性插值出点谱。
+2. **两个算例的谱离散保持一致。** Step 4 的 `SPECTRUM%FREQ1`、`XFR`、`NK`、`NTH`、`THOFF` 必须相同；工具不做谱插值，不一致会报 `BOUNDARY_SPECTRAL_MISMATCH`。都用模板默认值创建的两个算例天然一致。
+3. **粗网格要比细网格晚结束。** `end_date` 表示积分到当天 23:59:59，而逐小时的点谱最后一帧在 23:00，边界输入又不允许外推，所以两边填相同日期必然报 `BOUNDARY_TIME_COVERAGE`。粗网格至少多跑一个输出步，最简单是多跑一天。
+4. **跑粗网格算例。** `ww3_ounp` 写出 `ww3.spec.nc`。模板已设好 `POINT%TYPE = 1`、`SPECTRA%OUTPUT = 3`，7.14 还设了 `SPECTRA%TYPE = 4`（线性 REAL）。`SPECTRA%TYPE = 2` 或 `3` 会写成 log10 打包的 SHORT，会被 `BOUNDARY_CONVENTION_UNKNOWN` 拒绝。
+
+其他来源的谱（下载的后报产品、其他模式输出）需要先转换成相同的文件结构和谱离散，谱密度单位为每 Hz、每弧度，方向变量的元数据要写明 `to_direction` 或 `from_direction`。
+
+##### 配置
+
+GUI 中，**外部边界谱**卡片位于 Step 2，网格不是 structured + normal 时置灰。卡片字段与 `params.yml` 一一对应，另有**检查谱文件**、**准备边界**、**预览映射**、**填写目标谱**（把源谱离散写进 Step 4）四个按钮。界面上的**时间缺口**以小时填写，保存为秒。
+
+```yaml
+boundary:
+  mode: external_spectra        # none | external_spectra；工作目录缺少本段时视为 none
+  source:
+    format: ww3_netcdf          # 只支持这一种
+    location: local             # local | remote（文件已在服务器上；一个算例只用一种位置）
+    files:                      # 明确列出；按时间分片的多个文件会按站点合并
+    - /data/coarse/ww3.spec.nc
+  selection:
+    type: sides
+    sides: [west, east, south, north]   # 哪几条边是开边界
+    inset_cells: 1              # 固定为 1：活动边界是向内一格的一圈
+  interpolation:
+    method: nearest             # nearest | linear（取最近的两个站点）
+    max_distance_km: 50         # 必填，> 0
+  validation:
+    max_time_gap_seconds: 10800 # 必填，> 0
+  resources:
+    memory_limit_mb: 1024       # 谱转换的内存预算
+```
+
+- **`max_distance_km` 是唯一的距离把关。** `ww3_bounc` 本身会把每个边界点映射到最近的站点，不管有多远。取粗网格格距的 1～1.5 倍比较合适，`50` 只是示例。
+- **`linear` 要求边界点两侧都有站点。** 若边界点投影落在最近两个站点的连线之外，准备阶段会报 `BOUNDARY_SPATIAL_COVERAGE`，而不是悄悄退化成最近邻。
+- **`location: remote`** 填服务器上的 POSIX 路径。此时本地准备只写出计划（`deferred_remote`），读谱和全部检查都在计算节点上完成；用 `local.sh` 本地运行远程来源会报 `BOUNDARY_LOCATION_MISMATCH`。
+
+##### 命令
+
+```sh
+python3 run.py validate [workdir] --stage boundary     # 只校验配置
+python3 run.py inspect-boundary [workdir]              # 查看谱文件的站点、时间与谱轴
+python3 run.py inspect-boundary [workdir] --remote     # 通过 SSH 检查服务器上文件的文件头
+python3 run.py prepare-boundary [workdir]              # 规范化谱、映射边界点、写出计划
+python3 run.py boundary-status [workdir]               # 例如 boundary state=prepared pending=[]
+python3 run.py download-boundary-report [workdir]      # 从服务器只下载计划、映射与日志
+```
+
+`prepare-ww3` 和 `run-workflow` 也会准备边界，运行脚本在积分前还会再准备一次，所以手动执行 `prepare-boundary` 不是必须的。准备结果写在工作目录的 `boundary/` 下：
+
+| 文件 | 内容 |
+| --- | --- |
+| `inspection.json` | 谱文件中的站点、时间与谱轴 |
+| `target_points.csv` | 活动边界点 |
+| `mapping.csv` | 每个边界点对应的源站点、距离与权重 |
+| `plan.json`、`manifest.json` | 计划与指纹，用于判断输入是否过期 |
+| `normalized/` | 每个站点一个规范化谱文件，外加供 `ww3_bounc` 读取的 `spec.list` |
+| `grid.mask_boundary` | 标出边界点的掩码；原始的 `grid.mask_nobound` 保留不动 |
+
+`mapping.csv` 只是预览，`ww3_bounc` 会自己重新计算映射。它跑完后，工具会回读 `nest.ww3`，把坐标、源站索引、线性权重和抽样谱值与预览逐一比对，任何不一致都会以 `BOUNDARY_VERIFY_FAILED` 停止。
+
+##### 运行
+
+启动算例的方式不变。启用边界后，`local.sh` 和 `server.sh` 会在 `ww3_grid` 之前加一步**边界前处理**，之后加一步**边界后处理**（`ww3_bounc` → `nest.ww3` → 校验），见 §5.5.9。之后把 `mode` 改回 `none` 时，工具会归档托管的 `nest.ww3`，并把 `MASK%FILENAME` 指回原始掩码。`boundary/.boundary.lock` 防止两个作业同时准备同一个算例。
+
+> **在服务器上运行时，服务器端要装同一版本的 WW3Tool。** `server.sh` 会在作业里用服务器的 `python3` 调用 WW3Tool 的边界运行时。如果那个 Python 里装的是旧版 WW3Tool，所有常规网格作业都会在 `ww3_grid` 之前失败，`run.log` 提示无法导入 `workflows.infrastructure.boundary.runtime`，**即使没有开启边界也一样**。请升级（`pip install -U ww3tool`），或把 `WW3TOOL_PYTHON` 指向装有该版本的解释器（也可以用 `WW3TOOL_ROOT` 指向对应版本的源码目录）。
+
+##### 常见报错
+
+| 错误码 | 原因 | 处理 |
+| --- | --- | --- |
+| `BOUNDARY_SPECTRAL_MISMATCH` | 源谱的 `NK`/`NTH`/`FREQ1`/`XFR`/`THOFF` 与 Step 4 不一致 | 使用相同的谱离散，或点**填写目标谱** |
+| `BOUNDARY_TIME_COVERAGE` | 谱数据没有覆盖积分的起点或终点 | 让粗网格多跑一段，检查起止日期 |
+| `BOUNDARY_TIME_GAP` | 相邻谱时刻的间隔超过 `max_time_gap_seconds` | 提高谱输出频率，或放宽上限 |
+| `BOUNDARY_SPATIAL_COVERAGE` | 边界点在 `max_distance_km` 内找不到站点，或 `linear` 无法夹住该点 | 加密输出点、放宽距离，或改用 `nearest` |
+| `BOUNDARY_CONVENTION_UNKNOWN` | 单位或方向约定不明，或谱是对数打包的 | 使用 `SPECTRA%TYPE = 4` 的 `ww3_ounp` 输出 |
+| `BOUNDARY_GRID_UNSUPPORTED` | 网格不是单层结构化网格，或是周期网格 | 设 `mesh_type: structured`、`grid_type: normal` |
+| `BOUNDARY_LOCATION_MISMATCH` | 本地运行却配置了 `location: remote` | 改到服务器运行，或把文件拷到本地并改为 `local` |
 
 
 
@@ -1580,8 +1677,14 @@ Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处
 **0. 热启动预处理（仅热启动）**  
 若第四步选了热启动，脚本在一切之前先：在工作目录找最新 checkpoint → 复制为 `restart.ww3` → 把 `ww3_shel.nml` 里积分/输出的起始时刻改成 checkpoint 时刻（详见 §5.5.5）。冷启动跳过此步。
 
+**0b. 边界前处理（仅外部边界谱）**  
+检查谱文件、映射边界点，写出 `boundary/grid.mask_boundary` 并让 `MASK%FILENAME` 指向它（见 §5.3「外部边界谱」）。未开启边界时只负责把掩码恢复为原始文件。
+
 **1. `ww3_grid`**  
 读 `ww3_grid.nml`（第四步根据 Step 1 网格写入）和 `grid.bot` 等，生成 `mod_def.ww3`。后面所有步骤都依赖它。
+
+**1b. 边界后处理（仅外部边界谱）**  
+用 `boundary/normalized/spec.list` 运行 `ww3_bounc`，回读校验生成的 `nest.ww3`，再发布到工作目录供 `ww3_shel` 读取。
 
 **2. `ww3_prnc`（可能有多次）**  
 读 `ww3_prnc.nml` 及第二步导入的 NetCDF 强迫场，生成 `wind.ww3` 等二进制强迫。WW3 一次只处理一种强迫，所以若第四步勾了流场、水位等，脚本会临时改名 nml，按 **风 → 流 → 水位 → 海冰** 顺序逐个跑（见 §5.5.7 日志）。
@@ -1604,7 +1707,9 @@ Step 4 在嵌套模式下对 **每一层** `level0/`、`level1/`、… 依次处
 ```text
 [热启动] 找 checkpoint → restart.ww3 → 改 ww3_shel.nml 起点
     ↓
-ww3_grid → ww3_prnc（×N 种强迫）→ ww3_strt 或跳过
+[边界前处理] → ww3_grid → [边界后处理：ww3_bounc → nest.ww3]
+    ↓
+ww3_prnc（×N 种强迫）→ ww3_strt 或跳过
     ↓
 mpirun ww3_shel
     ↓
@@ -2082,7 +2187,7 @@ python3 run.py plot-spectrum new --mode polar
 
 ## 6. 用 AI 或脚本调用
 
-37 条子命令全部支持 JSON。加上 `--json`，stdout 上**只有一个对象**，不掺
+41 条子命令全部支持 JSON。加上 `--json`，stdout 上**只有一个对象**，不掺
 任何别的输出，可以直接解析：
 
 ```bash

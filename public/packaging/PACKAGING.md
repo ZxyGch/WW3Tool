@@ -6,7 +6,7 @@
 | 形态 | 入口 | 适合谁 |
 | --- | --- | --- |
 | CLI 全局命令 | `ww3tool`（安装后任意目录可用） | 人（终端）与脚本 |
-| MCP server | 34 个 `ww3tool_*` tools + `list_commands`（stdio） | Claude / Cursor 等 AI 客户端 |
+| MCP server | 40 个 `ww3tool_*` tools + `list_commands`（stdio） | Claude / Cursor 等 AI 客户端 |
 
 所有形态都复用仓库根的 `run.py` 统一入口，venv 引导、依赖检查、语言切换
 完全一致，**不需要改动任何现有代码**（打包形态下仅需 `WW3TOOL_ROOT` 指向资源）。
@@ -138,12 +138,14 @@ ww3tool upload --confirm my_workdir     # 上传到远程
 - **Cursor**：项目根 `.cursor/mcp.json`（或用 `cursor mcp add` 命令添加）
 - **VS Code / Copilot**、**Cherry Studio** 等：在各自的 MCP 设置里按同样格式添加
 
-### 3. 工具清单（35 个）
+### 3. 工具清单（41 个）
 
 - `list_commands`：列出全部命令及用途（帮助 LLM 选工具）
-- `ww3tool_workdir / validate / config / print_params`：配置管理
-- `ww3tool_prepare_forcing / generate_grid / prepare_ww3 / recommend_cfl /
+- `ww3tool_workdir / validate / config / print_params / print_example / schema`：配置管理
+- `ww3tool_prepare_forcing / inspect_forcing / generate_grid / prepare_ww3 / recommend_cfl /
   recommend_grid / run_workflow / local_run / merge_forcing`：预处理
+- `ww3tool_inspect_boundary / prepare_boundary / boundary_status /
+  download_boundary_report`：外部边界谱
 - `ww3tool_plot_wave_maps / plot_spectrum / plot_jason3 / plot_jason3_swh /
   download_jason3 / plot_ndbc / download_ndbc`：后处理与绘图
 - `ww3tool_connect_test / slurm_idle / confirm_slurm / upload /

@@ -110,6 +110,10 @@ The CLI’s “one command, one step, no manual interaction” design is natural
 | Preprocessing | generate-grid [workdir] | Generate grid (Step 1) |
 | | merge-forcing <in1.nc> [...] -o <out.nc> | Standalone tool: validate and merge forcing NetCDF |
 | | prepare-forcing [workdir] | Prepare forcing fields (Step 2) |
+| | inspect-boundary [workdir] [--remote] | Inspect external boundary spectra |
+| | prepare-boundary [workdir] | Prepare normalized boundary spectra |
+| | boundary-status [workdir] [--remote] | Show boundary preparation state |
+| | download-boundary-report [workdir] | Download boundary diagnostics |
 | | recommend-grid [workdir] [--coarse\|--fine] | Recommend grid spacing from domain extent |
 | | recommend-cfl [workdir] [--mode safe\|fast\|faster] [--factor X] | Recommend timesteps from CFL formula |
 | | prepare-ww3 [workdir] | Generate WW3 namelists only |
@@ -954,6 +958,99 @@ With `auto_associate: false`, only the slot where you selected the file is updat
 
 On open, normalized forcing files are detected and GUI buttons restored (`wind.nc`, `current.nc`, `level.nc`, `ice.nc`, `current_level.nc`, `wind_current_level_ice.nc`, etc.). Scan only restores display; import still requires **Confirm crop and import** or **Import directly**.
 
+#### External boundary spectra (one-way nesting)
+
+A regional grid is a cut-out of a larger ocean, and swell generated far away enters through its open edges. Without boundary input, WW3 treats an open edge as "no waves come in". External boundary spectra feed 2D spectra (energy over frequency × direction) from a larger, coarser WW3 run into the open edges of a fine grid. WW3's own `ww3_bounc` builds `nest.ww3` from them, and `ww3_shel` uses the part travelling into the domain as the boundary condition. This is WW3's offline one-way nesting: the fine grid does not feed back into the coarse one. Use nested `ww3_multi` grids (§5.5.8) when you need two-way coupling.
+
+| Supported in this version | Reported as unsupported |
+| --- | --- |
+| Single-level structured lon/lat grid (`mesh_type: structured`, `grid_type: normal`), not periodic | Nested `ww3_multi`, SMC, unstructured, periodic or dateline-crossing grids |
+| WW3 2D point spectra NetCDF written by `ww3_ounp` | ASCII spectra, importing an existing `nest.ww3` |
+| Nearest neighbour or two-point linear (`ww3_bounc` `INTERP=1/2`) | Frequency or direction interpolation |
+| Cold start and hot restart | |
+
+##### Getting source spectra
+
+The usual source is a larger, coarser WW3 case that you run first:
+
+1. **Output points along the fine grid's open edges.** In the coarse case, choose **Spectral points** in Step 3 (`calc.mode: spectral_point`). The fine grid's active boundary is the ring one cell inside its edges: west at `X0 + SX`, east at `X0 + (NX-2)·SX`, south at `Y0 + SY`, north at `Y0 + (NY-2)·SY` (`X0`, `SX`, `NX`, … from the fine case's `ww3_grid.nml`). One point per boundary cell is simplest; a point every few cells with `linear` also works. Spacing finer than the coarse grid adds nothing, because `ww3_ounp` interpolates the coarse field bilinearly.
+2. **Keep the spectral discretization identical.** `SPECTRUM%FREQ1`, `XFR`, `NK`, `NTH` and `THOFF` (Step 4) must match between the two cases. The tool never interpolates spectra and stops with `BOUNDARY_SPECTRAL_MISMATCH`. Two cases created from the template already match.
+3. **Let the coarse run end later than the fine run.** `end_date` runs to 23:59:59 of that day, but hourly spectra stop at 23:00, and boundary input is never extrapolated. With identical dates the fine run fails with `BOUNDARY_TIME_COVERAGE`; run the coarse case at least one output step longer (one extra day is simplest).
+4. **Run the coarse case.** `ww3_ounp` writes `ww3.spec.nc`. The template already sets `POINT%TYPE = 1`, `SPECTRA%OUTPUT = 3` and, for 7.14, `SPECTRA%TYPE = 4` (linear REAL values). `SPECTRA%TYPE = 2` or `3` writes log10-packed SHORT values, which are rejected with `BOUNDARY_CONVENTION_UNKNOWN`.
+
+Spectra from elsewhere (downloaded hindcasts, other models) can be used after converting them to the same layout and discretization, with variance density per Hz per radian and direction metadata that states `to_direction` or `from_direction`.
+
+##### Configuration
+
+In the GUI, the **External Boundary Spectra** card sits under Step 2 and is greyed out unless the grid is structured + normal. It covers the same fields as `params.yml`, plus **Inspect Spectra**, **Prepare Boundary**, **Preview Mapping** and **Fill Target Spectrum** (copies the source discretization into Step 4). **Max Time Gap** is entered in hours there and stored in seconds.
+
+```yaml
+boundary:
+  mode: external_spectra        # none | external_spectra; a workdir without this section is none
+  source:
+    format: ww3_netcdf          # the only format
+    location: local             # local | remote (files already on the server; one location per case)
+    files:                      # explicit list; files split in time are merged per station
+    - /data/coarse/ww3.spec.nc
+  selection:
+    type: sides
+    sides: [west, east, south, north]   # open edges
+    inset_cells: 1              # fixed: the active ring is one cell inside the edge
+  interpolation:
+    method: nearest             # nearest | linear (two nearest stations)
+    max_distance_km: 50         # required, > 0
+  validation:
+    max_time_gap_seconds: 10800 # required, > 0
+  resources:
+    memory_limit_mb: 1024       # memory budget for converting spectra
+```
+
+- **`max_distance_km` is the only distance check.** `ww3_bounc` itself maps each boundary point to the nearest station however far away it is. About 1–1.5 times the coarse grid spacing is a sensible value; `50` is only an example.
+- **`linear` needs a station on each side of a point.** If a point projects outside the segment between its two nearest stations, preparation stops with `BOUNDARY_SPATIAL_COVERAGE` instead of silently falling back to the nearest one.
+- **`location: remote`** takes POSIX paths on the server. Local preparation then only writes a plan (`deferred_remote`); reading the spectra and all checks happen on the compute node. Running `local.sh` with a remote source stops with `BOUNDARY_LOCATION_MISMATCH`.
+
+##### Commands
+
+```sh
+python3 run.py validate [workdir] --stage boundary     # configuration only
+python3 run.py inspect-boundary [workdir]              # stations, times and spectral axes of the files
+python3 run.py inspect-boundary [workdir] --remote     # header check of server-side files over SSH
+python3 run.py prepare-boundary [workdir]              # normalize spectra, map points, write the plan
+python3 run.py boundary-status [workdir]               # e.g. boundary state=prepared pending=[]
+python3 run.py download-boundary-report [workdir]      # plan, mapping and logs from the server
+```
+
+`prepare-ww3` and `run-workflow` prepare the boundary as well, and the run scripts prepare it again at run time, so calling `prepare-boundary` yourself is optional. It writes `boundary/` in the work directory:
+
+| File | Contents |
+| --- | --- |
+| `inspection.json` | Stations, times and spectral axes found in the files |
+| `target_points.csv` | Active boundary points |
+| `mapping.csv` | Source stations, distances and weights for each point |
+| `plan.json`, `manifest.json` | Plan and fingerprints used to detect stale inputs |
+| `normalized/` | One normalized spectra file per station, plus `spec.list` for `ww3_bounc` |
+| `grid.mask_boundary` | Mask with the boundary points marked; `grid.mask_nobound` is kept |
+
+`mapping.csv` is a preview: `ww3_bounc` computes the mapping again. After it runs, the tool reads `nest.ww3` back and compares coordinates, source indices, linear weights and sampled spectra with the preview, stopping with `BOUNDARY_VERIFY_FAILED` on any mismatch.
+
+##### Running
+
+Nothing changes in how a case is started. With boundaries enabled, `local.sh` and `server.sh` add a **boundary pregrid** step before `ww3_grid` and a **boundary postgrid** step (`ww3_bounc` → `nest.ww3` → verification) after it (§5.5.9). Setting `mode: none` later archives the managed `nest.ww3` and points `MASK%FILENAME` back to the original mask. `boundary/.boundary.lock` keeps two jobs from preparing the same case at the same time.
+
+> **On a server, install the same WW3Tool version there.** `server.sh` runs WW3Tool's boundary runtime inside the job with the server's `python3`. If that Python has an older WW3Tool, every regular-grid job fails before `ww3_grid` and `run.log` reports that `workflows.infrastructure.boundary.runtime` cannot be imported, **even with boundaries off**. Upgrade it (`pip install -U ww3tool`), or set `WW3TOOL_PYTHON` to an interpreter that has this version (or `WW3TOOL_ROOT` to a matching source checkout).
+
+##### Common errors
+
+| Code | Cause | What to do |
+| --- | --- | --- |
+| `BOUNDARY_SPECTRAL_MISMATCH` | Source `NK`/`NTH`/`FREQ1`/`XFR`/`THOFF` differ from Step 4 | Use the same discretization, or **Fill Target Spectrum** |
+| `BOUNDARY_TIME_COVERAGE` | Spectra do not reach the start or end of the integration | Run the coarse case longer; check the dates |
+| `BOUNDARY_TIME_GAP` | A gap between spectra times exceeds `max_time_gap_seconds` | Output spectra more often, or raise the limit |
+| `BOUNDARY_SPATIAL_COVERAGE` | A boundary point has no station within `max_distance_km`, or `linear` cannot bracket it | Add points, raise the distance, or use `nearest` |
+| `BOUNDARY_CONVENTION_UNKNOWN` | Units or direction convention unclear, or log-packed spectra | Use `ww3_ounp` output with `SPECTRA%TYPE = 4` |
+| `BOUNDARY_GRID_UNSUPPORTED` | The grid is not single-level structured, or is periodic | Use `mesh_type: structured` and `grid_type: normal` |
+| `BOUNDARY_LOCATION_MISMATCH` | A local run with `location: remote` | Run on the server, or copy the files and use `local` |
+
 
 
 
@@ -1552,8 +1649,14 @@ Below is a **cold start** pipeline. Hot restart adds a few steps at the top and 
 **0. Hot-restart prep (hot only)**  
 If Step 4 chose hot restart, before anything else the script: finds the latest checkpoint in the work directory → copies it to `restart.ww3` → updates integration/output start times in `ww3_shel.nml` (§5.5.5). Cold start skips this.
 
+**0b. Boundary pregrid (external boundary spectra only)**  
+Checks the spectra, maps the boundary points, writes `boundary/grid.mask_boundary` and points `MASK%FILENAME` at it (§5.3, External boundary spectra). With boundaries off it only restores the original mask.
+
 **1. `ww3_grid`**  
 Reads `ww3_grid.nml` (from Step 1 grid in Step 4) and `grid.bot`, etc., and builds `mod_def.ww3`. Required for all later steps.
+
+**1b. Boundary postgrid (external boundary spectra only)**  
+Runs `ww3_bounc` on `boundary/normalized/spec.list`, reads the resulting `nest.ww3` back to verify it, and publishes it to the work directory for `ww3_shel`.
 
 **2. `ww3_prnc` (possibly several times)**  
 Reads `ww3_prnc.nml` and Step 2 NetCDF forcing, producing `wind.ww3` and similar binaries. WW3 handles one forcing type per invocation, so if Step 4 enabled current, level, ice, the script renames nml files and runs **wind → current → level → ice** in order (§5.5.7 log examples).
@@ -1576,7 +1679,9 @@ The full chain completed.
 ```text
 [hot] find checkpoint → restart.ww3 → patch ww3_shel.nml start
     ↓
-ww3_grid → ww3_prnc (×N forcings) → ww3_strt or skip
+[boundary pregrid] → ww3_grid → [boundary postgrid: ww3_bounc → nest.ww3]
+    ↓
+ww3_prnc (×N forcings) → ww3_strt or skip
     ↓
 mpirun ww3_shel
     ↓
@@ -2044,7 +2149,7 @@ python3 run.py plot-spectrum new --mode polar
 
 ## 6. Calling WW3Tool from an AI Agent or a Script
 
-Every one of the 37 subcommands speaks JSON. Add `--json` and stdout carries
+Every one of the 41 subcommands speaks JSON. Add `--json` and stdout carries
 exactly one object — nothing else, so it parses without any cleanup:
 
 ```bash
