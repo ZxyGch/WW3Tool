@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from workflows.domain.grid_bounds import point_in_lon_lat_bounds
+from workflows.support.translations import tr
 
 # [EN] ``lon lat 'name'``: longitude, latitude, optional quoted name.
 # ``lon lat 'name'``：经度、纬度、可带引号的名称。
@@ -126,7 +127,7 @@ def parse_spectral_points_file(
                 continue
             match = _SPECTRAL_LINE.match(line)
             if not match:
-                warnings.append(f"第 {line_num} 行：格式不正确，已跳过")
+                warnings.append(tr("points_line_bad_format", "第 {line} 行：格式不正确，已跳过").format(line=line_num))
                 continue
             name = match.group(3).strip().strip("'\"")
             if name.upper() == "STOPSTRING":
@@ -135,13 +136,13 @@ def parse_spectral_points_file(
                 lon = float(match.group(1))
                 lat = float(match.group(2))
             except ValueError:
-                warnings.append(f"第 {line_num} 行：无法解析经纬度，已跳过")
+                warnings.append(tr("points_line_bad_lonlat", "第 {line} 行：无法解析经纬度，已跳过").format(line=line_num))
                 continue
             if not _in_global_range(lon, lat):
-                warnings.append(f"第 {line_num} 行：经纬度超出范围，已跳过")
+                warnings.append(tr("points_line_lonlat_out_of_range", "第 {line} 行：经纬度超出范围，已跳过").format(line=line_num))
                 continue
             if not _in_bounds(lon, lat, bounds):
-                warnings.append(f"第 {line_num} 行：点位不在网格范围内，已跳过")
+                warnings.append(tr("points_line_outside_grid", "第 {line} 行：点位不在网格范围内，已跳过").format(line=line_num))
                 continue
             points.append({"lon": lon, "lat": lat, "name": name})
     return points, warnings
@@ -168,7 +169,7 @@ def parse_track_points_file(
                 continue
             parts = line.split()
             if len(parts) < 4:
-                warnings.append(f"第 {line_num} 行：列数不足（需 date time lon lat），已跳过")
+                warnings.append(tr("points_line_too_few_columns", "第 {line} 行：列数不足（需 date time lon lat），已跳过").format(line=line_num))
                 continue
             date_str, time_str = parts[0], parts[1]
             name = " ".join(parts[4:]) if len(parts) > 4 else f"Track{line_num}"
@@ -176,13 +177,13 @@ def parse_track_points_file(
                 lon = float(parts[2])
                 lat = float(parts[3])
             except ValueError:
-                warnings.append(f"第 {line_num} 行：无法解析经纬度，已跳过")
+                warnings.append(tr("points_line_bad_lonlat", "第 {line} 行：无法解析经纬度，已跳过").format(line=line_num))
                 continue
             if not _in_global_range(lon, lat):
-                warnings.append(f"第 {line_num} 行：经纬度超出范围，已跳过")
+                warnings.append(tr("points_line_lonlat_out_of_range", "第 {line} 行：经纬度超出范围，已跳过").format(line=line_num))
                 continue
             if not _in_bounds(lon, lat, bounds):
-                warnings.append(f"第 {line_num} 行：点位不在网格范围内，已跳过")
+                warnings.append(tr("points_line_outside_grid", "第 {line} 行：点位不在网格范围内，已跳过").format(line=line_num))
                 continue
             points.append(
                 {"datetime": f"{date_str} {time_str}", "lon": lon, "lat": lat, "name": name}

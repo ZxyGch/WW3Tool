@@ -2980,5 +2980,17 @@
   "boundary_hint_use_ounp_netcdf": "使用 ww3_ounp 点谱 NetCDF，不要直接导入 nest.ww3 或 ASCII",
   "boundary_remote_config_only": "当前只检查了配置；服务器谱的数据检查尚未完成",
   "boundary_hint_submit_or_local": "提交计算节点检查，或把来源改为本地文件",
-  "boundary_cancelled": "用户取消了边界准备"
+  "boundary_cancelled": "用户取消了边界准备",
+  "points_line_bad_format": "第 {line} 行：格式不正确，已跳过",
+  "points_line_bad_lonlat": "第 {line} 行：无法解析经纬度，已跳过",
+  "points_line_lonlat_out_of_range": "第 {line} 行：经纬度超出范围，已跳过",
+  "points_line_outside_grid": "第 {line} 行：点位不在网格范围内，已跳过",
+  "points_line_too_few_columns": "第 {line} 行：列数不足（需 date time lon lat），已跳过",
+  "gui_deps_auto_installing": "检测到缺少桌面 GUI 依赖，正在自动安装（首次约需下载 200MB，请稍候）...",
+  "gui_deps_installed": "GUI 依赖安装完成。",
+  "gui_deps_install_failed": "自动安装失败：{error}",
+  "gui_webengine_fallback": "⚠️ QtWebEngineCore 加载失败，已自动切换到无地图模式（地图预览禁用，其余功能正常）。",
+  "gui_webengine_error_detail": "   详细错误：",
+  "gui_webengine_restore_hint": "   想恢复地图功能（Windows 常见原因）：\n     安装 Microsoft Visual C++ 运行库：\n     https://aka.ms/vs/17/release/vc_redist.x64.exe\n     或重装：python -m pip install --force-reinstall PyQt6-WebEngine PyQt6",
+  "error_unknown": "未知错误"
 }

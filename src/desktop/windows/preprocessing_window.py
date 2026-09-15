@@ -77,7 +77,8 @@ from .plot_window import PlotInterface
 from .tools_window import ToolsInterface, delete_all_under, delete_run_artifacts_under
 from .cluster_monitor import ClusterMonitorInterface
 from ..qt_callback_dispatcher import QtCallbackDispatcher
-from ..steps import CalculationStepPanel, ForcingStepPanel, GridStepPanel, WW3StepPanel
+from ..steps import BoundaryStepPanel, CalculationStepPanel, ForcingStepPanel, GridStepPanel, WW3StepPanel
+from ..view_models.boundary import BoundaryViewModel
 from ..view_models.forcing_step import ForcingStepState, ForcingStepViewModel
 from ..view_models.pipeline import PipelineStepState, PipelineViewModel
 from ..view_models.plot import PlotViewModel
@@ -175,6 +176,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             on_log=self._forcing_updates.post_log,
             on_state_change=self._forcing_updates.post_state,
         )
+        self._boundary_vm = BoundaryViewModel(on_log=self._pipeline_updates.post_log)
         self._pipeline_vm = PipelineViewModel(
             on_log=self._pipeline_updates.post_log,
             on_state_change=self._pipeline_updates.post_state,
@@ -804,6 +806,21 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         self._sync_forcing_options_from_runtime()
         layout.addWidget(self._forcing_panel.widget)
 
+        self._boundary_panel = BoundaryStepPanel(
+            parent,
+            create_button=self._primary_button,
+            input_style=self._input_style,
+            combo_style=self._combo_style,
+            inspect=self._inspect_boundary,
+            prepare=self._prepare_boundary,
+            preview=self._preview_boundary_map,
+            copy_spectrum=self._copy_boundary_spectrum_to_target,
+        )
+        layout.addWidget(self._boundary_panel.widget)
+        self._grid_panel.grid_type_combo.currentIndexChanged.connect(self._sync_boundary_grid_support)
+        self._grid_panel.mesh_type_combo.currentIndexChanged.connect(self._sync_boundary_grid_support)
+        self._sync_boundary_grid_support()
+
         self._calculation_panel = CalculationStepPanel(
             parent,
             create_button=self._primary_button,
@@ -1286,6 +1303,8 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         # 用当前 UI 表单中的强迫场路径覆盖 config（确保 Step 4 显示最新选择）
         self._sync_config_forcing_paths(config)
         self._grid_panel.render(config.grid)
+        if hasattr(self, "_boundary_panel"):
+            self._boundary_panel.render(config)
         self._calculation_panel.render(config.calc)
         self._ww3_panel.render(config)
         if hasattr(self, "_server_connect_panel"):
@@ -1467,7 +1486,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
             if isinstance(result, dict) and not result.get("success", True):
                 self._append_log(
                     tr("forcing_auto_resolve_error", "⚠️ {field} 变量解析失败：{error}").format(
-                        field=key, error=result.get("error", "未知错误")
+                        field=key, error=result.get("error", tr("error_unknown", "未知错误"))
                     )
                 )
                 self._open_variable_mapping(key)
@@ -1626,6 +1645,7 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
                 else self._ww3_panel.slurm_overrides()
             ),
             server_overrides=self._server_overrides(),
+            boundary_overrides=self._boundary_panel.overrides() if hasattr(self, "_boundary_panel") else None,
         )
 
     def _server_overrides(self) -> dict:
@@ -1804,6 +1824,126 @@ class PreprocessingWindow(FluentWindow, ImageGalleryHost):
         if not self._validate_calc_points():
             return False
         return self._persist_current_form_to_workdir_params() is not None
+
+    def _sync_boundary_grid_support(self, *_args) -> None:
+        if not hasattr(self, "_boundary_panel"):
+            return
+        supported = (not self._grid_panel.is_nested) and self._grid_panel.mesh_type_combo.currentIndex() == 0
+        self._boundary_panel.set_grid_supported(supported)
+
+    def _boundary_config(self, *, stage: str = "boundary"):
+        return self._build_pipeline_config(validation_stage=stage)
+
+    def _inspect_boundary(self) -> None:
+        config = self._boundary_config()
+        if config is None or self._busy:
+            return
+        self._set_busy(True)
+
+        def task():
+            return self._boundary_vm.inspect(config)
+
+        def done(result: object) -> None:
+            self._set_busy(False)
+            if isinstance(result, dict) and result.get("success") is False and "state" not in result:
+                self._show_error(str(result.get("error") or "inspect failed"))
+                return
+            data = result if isinstance(result, dict) else {}
+            state = data.get("state", "")
+            self._boundary_panel.set_status(f"{state}  pending={data.get('pending_checks')}")
+            if not data.get("success", True):
+                issues = data.get("issues") or []
+                msg = issues[0]["message"] if issues else str(data.get("error") or "failed")
+                self._show_error(msg)
+
+        self._runner.run(task, done)
+
+    def _prepare_boundary(self) -> None:
+        config = self._boundary_config()
+        if config is None or self._busy:
+            return
+        self._set_busy(True)
+
+        def task():
+            return self._boundary_vm.prepare(config)
+
+        def done(result: object) -> None:
+            self._set_busy(False)
+            if isinstance(result, dict) and result.get("success") is False and "state" not in result:
+                self._show_error(str(result.get("error") or "prepare failed"))
+                return
+            data = result if isinstance(result, dict) else {}
+            self._boundary_panel.set_status(str(data.get("state") or ""))
+            if not data.get("success", False):
+                self._show_error(str(data.get("error") or "prepare failed"))
+
+        self._runner.run(task, done)
+
+    def _preview_boundary_map(self) -> None:
+        workdir = self._paths["workdir"].text().strip()
+        mapping = Path(workdir) / "boundary" / "mapping.csv" if workdir else None
+        targets = Path(workdir) / "boundary" / "target_points.csv" if workdir else None
+        if mapping is None or not mapping.is_file() or targets is None or not targets.is_file():
+            self._show_error(tr("step2_boundary_need_prepare", "请先准备边界以生成映射预览"))
+            return
+        try:
+            import matplotlib.pyplot as plt
+            import csv
+
+            tlon, tlat, slon, slat = [], [], [], []
+            with targets.open("r", encoding="utf-8") as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    tlon.append(float(row["lon"]))
+                    tlat.append(float(row["lat"]))
+            inspect_path = Path(workdir) / "boundary" / "inspection.json"
+            if inspect_path.is_file():
+                import json as _json
+                payload = _json.loads(inspect_path.read_text(encoding="utf-8"))
+                for station in payload.get("stations") or []:
+                    slon.append(float(station["lon"]))
+                    slat.append(float(station["lat"]))
+            fig, ax = plt.subplots()
+            ax.scatter(tlon, tlat, s=12, label="target")
+            if slon:
+                ax.scatter(slon, slat, s=20, marker="x", label="source")
+            ax.set_xlabel("lon")
+            ax.set_ylabel("lat")
+            ax.legend()
+            ax.set_title("boundary mapping")
+            fig.show()
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _copy_boundary_spectrum_to_target(self) -> None:
+        config = self._boundary_config()
+        if config is None:
+            return
+        files = list(config.boundary.source.files or [])
+        if not files:
+            self._show_error(tr("step2_boundary_need_files", "请先选择源谱文件"))
+            return
+        try:
+            from workflows.infrastructure.boundary.spectra_reader import inspect_spectra_file
+
+            meta = inspect_spectra_file(files[0])
+            freqs = list(meta.frequencies_hz) if meta.frequencies_hz is not None else []
+            dirs = list(meta.directions_deg) if meta.directions_deg is not None else []
+            if len(freqs) < 2:
+                self._show_error(tr("step2_boundary_need_freq", "源谱缺少频率轴"))
+                return
+            xfr = freqs[1] / freqs[0] if freqs[0] else None
+            values = {
+                "SPECTRUM%FREQ1": f"{freqs[0]:.8g}",
+                "SPECTRUM%NK": str(len(freqs)),
+                "SPECTRUM%NTH": str(len(dirs) if dirs else ""),
+            }
+            if xfr:
+                values["SPECTRUM%XFR"] = f"{xfr:.8g}"
+            self._ww3_panel.set_spectrum_values(values, mark_boundary_stale=True)
+            self._append_log(tr("step4_copied_source_spectrum", "已用源谱离散填写目标 FREQ1/XFR/NK/NTH，请重新准备边界"))
+        except Exception as exc:
+            self._show_error(str(exc))
 
     def _prepare_forcing(self, *, fields: tuple[ForcingField, ...] | None = None) -> None:
         config = self._build_forcing_config()

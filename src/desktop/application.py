@@ -33,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     # the missing pieces (pip install) instead of asking the user to do it.
     _GUI_PACKAGES = ("PyQt6", "PyQt6-WebEngine", "PyQt6-Fluent-Widgets")
 
+    from workflows.support.translations import tr
+
     def _gui_imports_ok() -> bool:
         try:
             import PyQt6.QtCore  # noqa: F401
@@ -44,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _auto_install_gui() -> None:
         """自动安装缺失的 GUI 依赖（用当前解释器的 pip）。"""
-        print("检测到缺少桌面 GUI 依赖，正在自动安装（首次约需下载 200MB，请稍候）...")
+        print(tr("gui_deps_auto_installing", "检测到缺少桌面 GUI 依赖，正在自动安装（首次约需下载 200MB，请稍候）..."))
         try:
             import subprocess
 
@@ -53,9 +55,9 @@ def main(argv: list[str] | None = None) -> int:
                 check=True,
                 timeout=900,
             )
-            print("GUI 依赖安装完成。")
+            print(tr("gui_deps_installed", "GUI 依赖安装完成。"))
         except Exception as exc:  # noqa: BLE001 - 任何失败都走提示路径
-            print(f"自动安装失败：{exc}", file=sys.stderr)
+            print(tr("gui_deps_install_failed", "自动安装失败：{error}").format(error=exc), file=sys.stderr)
 
     if not _gui_imports_ok():
         _auto_install_gui()
@@ -68,17 +70,20 @@ def main(argv: list[str] | None = None) -> int:
             # launching, so the app still opens with zero extra steps.
             import traceback
 
-            print("⚠️ QtWebEngineCore 加载失败，已自动切换到无地图模式（地图预览禁用，其余功能正常）。", file=sys.stderr)
-            print("   详细错误：", file=sys.stderr)
+            print(tr("gui_webengine_fallback", "⚠️ QtWebEngineCore 加载失败，已自动切换到无地图模式（地图预览禁用，其余功能正常）。"), file=sys.stderr)
+            print(tr("gui_webengine_error_detail", "   详细错误："), file=sys.stderr)
             try:
                 import PyQt6.QtWebEngineCore  # noqa: F401
             except ImportError:
                 traceback.print_exc()
             print(
-                "   想恢复地图功能（Windows 常见原因）：\n"
-                "     安装 Microsoft Visual C++ 运行库：\n"
-                "     https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
-                "     或重装：python -m pip install --force-reinstall PyQt6-WebEngine PyQt6",
+                tr(
+                    "gui_webengine_restore_hint",
+                    "   想恢复地图功能（Windows 常见原因）：\n"
+                    "     安装 Microsoft Visual C++ 运行库：\n"
+                    "     https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                    "     或重装：python -m pip install --force-reinstall PyQt6-WebEngine PyQt6",
+                ),
                 file=sys.stderr,
             )
             os.environ["WW3TOOL_NO_MAP"] = "1"

@@ -74,18 +74,8 @@ class PipelineViewModel:
             ) from exc
         if not isinstance(loaded, dict):
             raise ConfigError(tr("params_top_level_invalid", "参数文件顶层必须是对象：{path}").format(path=path))
-        workdir_raw: dict = loaded
-
-        # [EN] Fill empty values in workdir with root params.yml defaults
-        # 用根 params.yml 默认值填充工作目录中的空值
-        root_path = _repo_params_path()
-        if root_path.is_file():
-            with root_path.open("r", encoding="utf-8") as f:
-                root_raw = yaml.safe_load(f) or {}
-            workdir_raw = _deep_merge_defaults(root_raw, workdir_raw)
-
         return parse_pipeline_config(
-            workdir_raw, base_dir=path.parent, source_path=path, validation_stage=validation_stage
+            loaded, base_dir=path.parent, source_path=path, validation_stage=validation_stage
         )
 
     def validate(self, config: PipelineConfig, *, stage: str = "full") -> None:
@@ -333,6 +323,7 @@ class PipelineViewModel:
         plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
+        boundary_overrides: dict | None = None,
         validation_stage: str = "full",
     ) -> PipelineConfig:
         source_path = Path(params_path).expanduser().resolve()
@@ -358,6 +349,7 @@ class PipelineViewModel:
             plot_overrides=plot_overrides,
             slurm_overrides=slurm_overrides,
             server_overrides=server_overrides,
+            boundary_overrides=boundary_overrides,
         )
         return parse_pipeline_config(
             raw,
@@ -488,6 +480,8 @@ class PipelineViewModel:
                 old_server = old.get("server", {}) or {}
                 if old_server.get("remote_dir"):
                     case_fields["server_remote_dir"] = old_server["remote_dir"]
+                if "boundary" in old:
+                    case_fields["boundary"] = old.get("boundary")
             except Exception:
                 pass
 
@@ -517,6 +511,16 @@ class PipelineViewModel:
             server = dict(raw.get("server") or {})
             server["remote_dir"] = case_fields["server_remote_dir"]
             raw["server"] = server
+        if "boundary" in case_fields:
+            raw["boundary"] = case_fields["boundary"]
+        else:
+            # 工作目录从未写过 boundary 时保持关闭，不要带入根模板中的谱路径。
+            boundary = dict(raw.get("boundary") or {})
+            source = dict(boundary.get("source") or {})
+            source["files"] = []
+            boundary["mode"] = "none"
+            boundary["source"] = source
+            raw["boundary"] = boundary
 
         _normalize_params_scalar_types(raw)
         _strip_unstructured_dem_file(raw)
@@ -548,6 +552,7 @@ class PipelineViewModel:
         plot_overrides: dict | None = None,
         slurm_overrides: dict | None = None,
         server_overrides: dict | None = None,
+        boundary_overrides: dict | None = None,
     ) -> dict:
         # [EN] Load raw yaml, overlay form overrides, return merged raw.
         # [EN] Priority: form > params.yml.
@@ -636,6 +641,8 @@ class PipelineViewModel:
             )
         if server_overrides:
             raw["server"] = {**_as_dict(raw.get("server")), **server_overrides}
+        if boundary_overrides is not None:
+            raw["boundary"] = dict(boundary_overrides)
         return raw
 
     def init_workdir_params(self, target: Path, workdir: str) -> Path:
@@ -684,6 +691,12 @@ class PipelineViewModel:
         content = re.sub(
             r"(^  remote_dir:\s*).*",
             r"\g<1>",
+            content, count=1, flags=re.MULTILINE,
+        )
+        # 新算例不得带入模板中的外部谱路径。
+        content = re.sub(
+            r"(^    files:\s*).*",
+            r"\g<1>[]",
             content, count=1, flags=re.MULTILINE,
         )
 
@@ -787,6 +800,7 @@ _NUMERIC_PARAM_PATHS = {
     "grid.unstructured.margin_deg",
     "ww3_grid.SPECTRUM%XFR",
     "ww3_grid.SPECTRUM%FREQ1",
+    "ww3_grid.SPECTRUM%THOFF",
     "ww3.namelist.SIN4%BETAMAX",
     "ww3.namelist.SIN4%SWELLF",
     "ww3.namelist.SDS4%SDSC2",
@@ -951,7 +965,7 @@ def _load_raw_yaml(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
     if not isinstance(raw, dict):
-        raise ConfigError("参数文件顶层必须是对象")
+        raise ConfigError(tr("params_top_level_invalid", "参数文件顶层必须是对象：{path}").format(path=path))
     return raw
 
 

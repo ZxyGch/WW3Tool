@@ -2980,5 +2980,17 @@
   "boundary_hint_use_ounp_netcdf": "Use ww3_ounp point spectra NetCDF; do not import nest.ww3 or ASCII directly",
   "boundary_remote_config_only": "Only the configuration has been checked; data checks on the server spectra are not done yet",
   "boundary_hint_submit_or_local": "Submit for checking on a compute node, or switch the source to local files",
-  "boundary_cancelled": "Boundary preparation cancelled by user"
+  "boundary_cancelled": "Boundary preparation cancelled by user",
+  "points_line_bad_format": "Line {line}: invalid format, skipped",
+  "points_line_bad_lonlat": "Line {line}: cannot parse longitude/latitude, skipped",
+  "points_line_lonlat_out_of_range": "Line {line}: longitude/latitude out of range, skipped",
+  "points_line_outside_grid": "Line {line}: point is outside the grid, skipped",
+  "points_line_too_few_columns": "Line {line}: too few columns (need date time lon lat), skipped",
+  "gui_deps_auto_installing": "Desktop GUI dependencies are missing; installing them automatically (the first run downloads about 200 MB, please wait)...",
+  "gui_deps_installed": "GUI dependencies installed.",
+  "gui_deps_install_failed": "Automatic installation failed: {error}",
+  "gui_webengine_fallback": "⚠️ QtWebEngineCore failed to load; switched to no-map mode automatically (map preview is disabled, everything else works).",
+  "gui_webengine_error_detail": "   Details:",
+  "gui_webengine_restore_hint": "   To restore the map (a common cause on Windows):\n     install the Microsoft Visual C++ Redistributable:\n     https://aka.ms/vs/17/release/vc_redist.x64.exe\n     or reinstall: python -m pip install --force-reinstall PyQt6-WebEngine PyQt6",
+  "error_unknown": "Unknown error"
 }
