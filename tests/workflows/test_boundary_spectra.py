@@ -250,3 +250,48 @@ def test_decode_station_name_transposed_char_array():
     normal = np.stack([chars("w02"), chars("w03")])           # (station, string16)
     assert _decode_names(_Var(normal, ("station", "string16")), 2) == ["w02", "w03"]
     assert _decode_names(_Var(normal.T, ("string16", "station")), 2) == ["w02", "w03"]
+
+
+def test_write_station_file_does_not_depend_on_stringtochar(tmp_path, monkeypatch):
+    """SHOU 服务器（netCDF4 1.7.4 + numpy 2.4.6）上 stringtochar 对 S 型数组不可用：
+
+    默认 encoding 会对 numpy.bytes_ 调 .encode 报 AttributeError，encoding='none' 报 TypeError。
+    本地 netCDF4 1.7.2 不会失败，所以这里把 stringtochar 换成会抛同样异常的替身来模拟。
+    """
+    from datetime import datetime, timezone
+
+    import netCDF4
+    import numpy as np
+
+    from workflows.infrastructure.boundary.spectra_normalizer import write_station_file
+    from workflows.infrastructure.boundary.spectra_reader import inspect_spectra_file
+
+    def broken(*_args, **_kwargs):
+        raise AttributeError("'numpy.bytes_' object has no attribute 'encode'")
+
+    monkeypatch.setattr(netCDF4, "stringtochar", broken)
+    out = tmp_path / "src_000001.nc"
+    write_station_file(
+        out,
+        name="i0002j0002",
+        lon=121.6,
+        lat=21.6,
+        times=[datetime(2025, 2, 11, tzinfo=timezone.utc), datetime(2025, 2, 11, 1, tzinfo=timezone.utc)],
+        frequencies=np.array([0.0375, 0.04125]),
+        directions=np.array([90.0, 0.0, 270.0, 180.0]),
+        efth=np.ones((2, 2, 4)),
+    )
+    meta = inspect_spectra_file(out)
+    assert meta.stations[0].name == "i0002j0002"
+
+
+def test_station_char_matrix_truncates_and_pads():
+    import numpy as np
+
+    from workflows.infrastructure.boundary.spectra_normalizer import station_char_matrix
+
+    m = station_char_matrix(["abc", "x" * 20, ""], 16)
+    assert m.dtype == np.dtype("S1") and m.shape == (3, 16)
+    assert b"".join(m[0].tolist()) == b"abc".ljust(16)
+    assert b"".join(m[1].tolist()) == b"x" * 16
+    assert b"".join(m[2].tolist()) == b" " * 16

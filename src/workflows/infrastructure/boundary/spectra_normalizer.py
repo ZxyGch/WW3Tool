@@ -215,6 +215,20 @@ def sanitize_efth(data: np.ndarray) -> tuple[np.ndarray, int, float]:
     return arr, n_neg, max_fix
 
 
+def station_char_matrix(names: list[str], width: int) -> np.ndarray:
+    """站名 → ``(n, width)`` 的 ``S1`` 字符矩阵，右侧补空格，超长按字节截断。
+
+    不用 ``netCDF4.stringtochar``：SHOU 服务器的 netCDF4 1.7.4 + numpy 2.4.6 上，
+    对 ``S`` 型数组默认 encoding 会对 ``numpy.bytes_`` 调 ``.encode`` 报 AttributeError，
+    ``encoding='none'`` 又报 TypeError；本地 1.7.2 不报，此前测试与验收都没暴露。
+    """
+    rows = []
+    for name in names:
+        raw = str(name or "").encode("utf-8")[:width].decode("utf-8", "ignore").encode("utf-8")
+        rows.append(raw.ljust(width))
+    return np.frombuffer(b"".join(rows), dtype="S1").reshape(len(rows), width).copy()
+
+
 def write_station_file(
     path: Path,
     *,
@@ -227,7 +241,7 @@ def write_station_file(
     efth: np.ndarray,
 ) -> None:
     """写出 netCDF3 classic、station=1、float32 未打包谱值。"""
-    from netCDF4 import Dataset, stringtochar
+    from netCDF4 import Dataset
 
     path.parent.mkdir(parents=True, exist_ok=True)
     times_utc = []
@@ -235,7 +249,6 @@ def write_station_file(
     for t in times:
         dt = t if t.tzinfo else t.replace(tzinfo=timezone.utc)
         times_utc.append((dt.astimezone(timezone.utc) - epoch).total_seconds())
-    name16 = (name or "station")[:16].ljust(16)
     with serialized_dataset(str(path), "w", format="NETCDF3_CLASSIC") as ds:
         ds.createDimension("time", len(times_utc))
         ds.createDimension("station", 1)
@@ -247,7 +260,7 @@ def write_station_file(
         v_time.calendar = "gregorian"
         v_time[:] = np.asarray(times_utc, dtype=np.float64)
         v_name = ds.createVariable("station_name", "S1", ("station", "string16"))
-        v_name[:] = stringtochar(np.array([name16], dtype="S16"))
+        v_name[:] = station_char_matrix([name or "station"], 16)
         v_lon = ds.createVariable("longitude", "f8", ("station",))
         v_lon.units = "degree_east"
         v_lon[:] = [float(lon)]
