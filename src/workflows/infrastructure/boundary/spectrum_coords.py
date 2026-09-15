@@ -10,6 +10,7 @@ import numpy as np
 
 from ...domain.boundary_models import ANGLE_TOL_DEG, FREQ_ATOL_HZ, FREQ_RTOL, SpectralDiscrete
 from .errors import BoundaryError
+from .nml_text import effective_nml_assignments
 
 
 def geometric_frequencies(freq1: float, xfr: float, nk: int) -> np.ndarray:
@@ -119,18 +120,12 @@ def parse_spectrum_from_nml(nml_path: Path, parameters: dict[str, str] | None = 
             if ukey in values and raw is not None and str(raw).strip():
                 values[ukey] = float(raw)
     if nml_path.is_file():
-        text = nml_path.read_text(encoding="utf-8", errors="replace")
-        import re
-
+        # 只取未注释、组内、最后一次的赋值；模板里 "!  SPECTRUM%NK = 0" 这类说明行必须忽略
+        effective = effective_nml_assignments(nml_path.read_text(encoding="utf-8", errors="replace"))
         for key in list(values):
-            pattern = re.compile(
-                rf"^[ \t]*!?[ \t]*{re.escape(key)}\s*=\s*([^\s!/]+)",
-                re.IGNORECASE | re.MULTILINE,
-            )
-            match = pattern.search(text)
-            if match:
+            if key in effective:
                 try:
-                    values[key] = float(match.group(1).strip().strip("'\""))
+                    values[key] = float(effective[key])
                 except ValueError:
                     pass
     nk = int(values["SPECTRUM%NK"])
